@@ -15,7 +15,7 @@ To add a new prototype: create `games/<name>/index.html`, and add a link to it f
 
 ## Prototypes
 
-- **[Cube Pop](games/cube-pop/index.html)** — point a Quest controller at a floating cube and pull the trigger to pop it. Counter tracks progress; popping all cubes shows a win state with an in-VR reset button.
+- **[Cube Pop](games/cube-pop/index.html)** — point a Quest controller at a floating cube and pull the trigger to pop it. Counter tracks progress; popping all cubes shows a win state with an in-VR reset button. Also has a gaze-reticle fallback so you can validate it from a phone or desktop browser without a headset — see below.
 
 ## Running locally
 
@@ -25,7 +25,16 @@ Any static file server works. From the repo root:
 python3 -m http.server 8080
 ```
 
-Then open `http://localhost:8080` in a desktop browser to sanity-check the page (you'll see the scene and default A-Frame VR camera controls, but no real headset input).
+Then open `http://localhost:8080` in a desktop browser to sanity-check the page.
+
+## Testing without a headset (phone or desktop)
+
+Cube Pop has a small reticle (ring) fixed to the center of the camera view, in addition to the VR controller lasers. It works with no headset at all:
+
+- **Phone**: open the deployed Netlify/GitHub Pages URL in your phone's browser. Look around by tilting the phone (it uses the gyroscope); when the reticle sits on a cube, tap anywhere on the screen to pop it.
+- **Desktop**: click-and-drag on the page to look around, then click a cube to pop it.
+
+This is meant for quick sanity checks (did my change break spawning/popping/win/reset?) — it's not a replacement for testing the real controller-trigger interaction on the Quest 2 itself.
 
 ## Testing on a Quest 2
 

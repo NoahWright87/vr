@@ -84,6 +84,17 @@
 
            The HUD text is a child of the camera, so it moves with your
            view and stays readable both on the flat screen and in VR.
+
+           The small ring is a "gaze reticle": a cursor that raycasts
+           straight out from the center of the camera view, so you can
+           test on a phone or desktop with no VR headset/controllers at
+           all. Aim by looking around (phone tilt via gyroscope, or mouse
+           drag on desktop) so the reticle sits on a cube, then tap the
+           screen (or click) to pop it — cursor's default behavior fires
+           the same "click" event a controller trigger would. This is
+           purely additive: on an actual Quest 2 you'll aim with the
+           controller lasers instead, and the reticle just sits inertly
+           in the middle of your view.
       ============================================================ -->
       <a-camera>
         <a-text
@@ -94,6 +105,13 @@
           width="2"
           position="0 -0.35 -1"
         ></a-text>
+        <a-entity
+          cursor="fuse: false"
+          position="0 0 -1"
+          geometry="primitive: ring; radiusInner: 0.005; radiusOuter: 0.008"
+          material="color: #FFFFFF; shader: flat; opacity: 0.8"
+          raycaster="objects: .cube-target, .reset-target; far: 10"
+        ></a-entity>
       </a-camera>
 
       <!-- ============================================================
