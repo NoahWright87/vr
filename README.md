@@ -22,18 +22,23 @@ To add a new prototype: create `games/<name>/index.html`, and add a link to it f
 
 The core idea being tested: **punching is the locomotion**, not a separate joystick/teleport system.
 
+- Both hands are tracked independently and identically — each has its own `punch-tracker` component instance, so there's no shared state that could cause only one hand to register. Hand pose comes from `generic-tracked-controller-controls` (matches by handedness only) rather than a device-specific component like `oculus-touch-controls`, which matches by the controller's exact device-ID string and can silently fail to bind on one hand if that string doesn't match what's expected. The in-headset debug HUD shows `L:ok`/`L:--` and `R:ok`/`R:--` so a real tracking dropout is visible immediately instead of looking like a game bug.
 - Each hand tracks its own real-world velocity every frame (position delta relative to the player rig, not world space — see the `punch-tracker` component comment for why that distinction matters, it's what keeps the rig's own motion from feeding back into itself).
 - A swing past a speed threshold fires a "punch" impulse that pushes the player rig (`punch-locomotion` component) in the punch's direction. Harder/faster swings push farther. A punch angled mostly upward (dot product with world-up) is treated as an **uppercut** and gets an extra vertical boost, launching you airborne. A downward swing while already airborne overrides the shallow arm angle with a hard **crash straight down**.
 - Gravity pulls you back down; drag is strong on the ground (a lunge resolves into a stop rather than an endless ice-skating slide — this is the main lever for avoiding motion sickness) and light in the air (so a jump/lunge keeps its arc).
 - Head motion in the same direction as the punch adds a small bonus to the impulse — "leaning into it" or stepping forward moves you farther, per the original idea of using your whole body.
-- Cubes pop from real proximity + force (fist within ~0.3m of a cube while moving fast enough), not a raycast click. Popping one immediately spawns a replacement — it's an endless heavy-bag loop with a running counter, not a fixed batch + win screen like Cube Pop.
-- Reset is bound to either controller's physical trigger button, since there's no laser/cursor to click a reset target with.
+- Cubes pop from real proximity + force (fist within ~0.35m of a cube while moving fast enough), not a raycast click. Popping one immediately spawns a replacement — it's an endless heavy-bag loop with a running counter, not a fixed batch + win screen like Cube Pop.
+- Cubes aren't static anymore. Each one gets a `cube-behavior` — `bob` (float in place, the original feel), `chase` (slowly drifts toward you), `patrol` (walks between two fixed points), or `wander` (ambles to a new random nearby spot every couple seconds). Default is `mixed`: every spawned cube gets a random one of the four.
+- You're inside an actual room (30x30m, 6m walls) with a checkerboard floor/wall texture rather than an open plane — partly for presence, partly because a strong static visual frame around you is one of the standard techniques for countering motion-sickness during fast locomotion.
+- Reset is bound to either controller's physical trigger button for a quick restart, and there's also a "Reset Arena" button in the pause menu.
 
-Tuning knobs (trigger speed, force-to-move scale, gravity, drag, uppercut/smash thresholds, etc.) all live as schema properties on the `punch-tracker`, `punch-locomotion`, and `punch-game` components at the top of each one in `games/punch-pop/index.html` — adjust the `punch-locomotion="..."` / `punch-game="..."` attributes on `#rig` / `#cube-manager`, or the defaults in the schema, to change feel without touching the logic.
+**Pause menu:** squeeze either controller's grip button (or the "Menu" button in the desktop overlay) to open it. It's aimed with the same reticle used for the desktop/phone fallback, switched into gaze-and-dwell mode (look at a button for ~800ms to select it) so no controller trigger is needed — that keeps the trigger free for its normal quick-reset job even while the menu is open. From the menu you can adjust **Move Speed** (a single multiplier over the whole punch-to-move impulse, since "does punching feel strong enough" is the real question, not any one internal constant), **Cube Count**, cycle **Cube Behavior**, **Reset Arena**, **Resume**, or — the direct fix for getting stuck in VR — **Exit VR**.
+
+Tuning knobs (trigger speed, force-to-move scale, gravity, drag, uppercut/smash thresholds, room size, etc.) all live as schema properties on the `punch-tracker`, `punch-locomotion`, and `punch-game` components at the top of each one in `games/punch-pop/index.html` — adjust the `punch-locomotion="..."` / `punch-game="..."` attributes on `#rig` / `#cube-manager`, the defaults in the schema, or the in-headset pause menu, to change feel without touching the logic.
 
 **Open question this POC exists to answer:** does punching alone generate enough sense of motion to avoid VR motion sickness, especially during the airborne uppercut/smash arcs? That can only really be judged in the headset — the desktop "Simulate punch/uppercut/smash" buttons exist to sanity-check the physics code, not the comfort of the experience.
 
-**Safety:** this moves your whole viewpoint based on real arm swings — clear at least ~2x2m of real space and be mindful of your surroundings before trying it in a headset.
+**Safety:** this moves your whole viewpoint based on real arm swings — clear at least ~2x2m of real space and be mindful of your surroundings before trying it in a headset. If you ever need to bail out and the in-VR "Exit VR" menu button isn't reachable for some reason, your headset's own system button (e.g. the Oculus/Meta button on a Quest controller) always backs out of any WebXR session regardless of what the page does.
 
 ## Running locally
 
@@ -86,4 +91,5 @@ Once this repo is on Netlify (or GitHub Pages in the meantime), just open the de
 **Punch Pop:**
 
 3. There's no laser — throw real punches. A fast punch that connects with a cube pops it; a fast punch anywhere lunges you in that direction, an uppercut launches you up, and a downward swing while airborne crashes you down.
-4. Pull either trigger at any time to reset.
+4. Pull either trigger at any time for a quick reset.
+5. Squeeze either grip to open the pause menu — adjust speed/cube count/behavior, or select **Exit VR** to leave the session.

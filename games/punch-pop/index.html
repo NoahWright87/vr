@@ -35,7 +35,7 @@
       }
       #overlay p {
         margin: 0;
-        max-width: 40rem;
+        max-width: 42rem;
       }
       #debug-controls {
         display: flex;
@@ -59,11 +59,13 @@
     <div id="overlay">
       <p>
         Punch Pop — punching <em>is</em> movement. Swing to lunge, uppercut to launch, hammer down to crash.
-        Punch a cube hard enough to pop it. Pull either controller trigger to reset.
+        Punch a cube hard enough to pop it. Squeeze either grip to open the pause menu (speed, cube count,
+        behavior, <strong>Exit VR</strong>). Pull either trigger for a quick reset.
         <strong>Clear ~2x2m of real space before trying this in a headset.</strong>
         <a href="../../index.html">All prototypes</a>
       </p>
       <div id="debug-controls">
+        <button id="menu-button-html">Menu</button>
         <button id="sim-punch">Simulate punch (desktop)</button>
         <button id="sim-uppercut">Simulate uppercut</button>
         <button id="sim-smash">Simulate smash</button>
@@ -72,13 +74,26 @@
     </div>
 
     <a-scene>
-      <a-plane
-        rotation="-90 0 0"
-        width="20"
-        height="20"
-        color="#445"
-        position="0 0 0"
-      ></a-plane>
+      <!-- ============================================================
+           ROOM
+           A closed, human-scaled room (30x30m, 6m walls) instead of an
+           empty plane + sky, so there's a static visual frame of
+           reference around you as you fly across the arena — both for
+           "this is a real place" presence and because a strong static
+           background is one of the standard ways to counter vection-
+           induced motion sickness during fast locomotion. Floor/walls
+           get a checkerboard/grid texture painted onto a <canvas> at
+           runtime (see applyCheckerTexture below) rather than an
+           external image, so the room has zero extra network
+           dependency beyond the A-Frame script itself.
+      ============================================================ -->
+      <a-entity id="room">
+        <a-plane id="floor" rotation="-90 0 0" width="30" height="30" position="0 0 0"></a-plane>
+        <a-plane class="wall" width="30" height="6" position="0 3 -15" rotation="0 0 0" material="side: double; color: #2a3350"></a-plane>
+        <a-plane class="wall" width="30" height="6" position="0 3 15" rotation="0 180 0" material="side: double; color: #2a3350"></a-plane>
+        <a-plane class="wall" width="30" height="6" position="15 3 0" rotation="0 -90 0" material="side: double; color: #2a3350"></a-plane>
+        <a-plane class="wall" width="30" height="6" position="-15 3 0" rotation="0 90 0" material="side: double; color: #2a3350"></a-plane>
+      </a-entity>
       <a-sky color="#0d1526"></a-sky>
 
       <!-- ============================================================
@@ -106,8 +121,8 @@
             value=""
             align="center"
             color="#9ad"
-            width="1.3"
-            position="0 0.5 -1"
+            width="1.1"
+            position="0 0.55 -1"
           ></a-text>
           <a-text
             id="punch-label"
@@ -115,38 +130,57 @@
             align="center"
             color="#FFD166"
             width="4"
-            position="0 0.15 -1"
+            position="0 0.2 -1"
             visible="false"
           ></a-text>
+
           <!-- Gaze reticle: lets a phone/desktop tester pop a cube by
                looking at it and tapping/clicking, same fallback pattern as
-               Cube Pop. It only pops on contact, never on force, so it
-               can't be used to test the punch-force threshold — just the
-               spawn/pop/respawn loop. -->
+               Cube Pop. It's also repurposed as the pause menu's pointer:
+               pause-menu below flips it into gaze+dwell ("fuse") mode and
+               widens its raycast target list while the menu is open, so
+               menu items can be selected by looking at them for ~800ms —
+               no controller buttons required, which sidesteps needing a
+               laser pointer anywhere near the punching hands. -->
           <a-entity
+            id="gaze-cursor"
             cursor="fuse: false"
             position="0 0 -1"
             geometry="primitive: ring; radiusInner: 0.005; radiusOuter: 0.008"
             material="color: #FFFFFF; shader: flat; opacity: 0.8"
             raycaster="objects: .cube-target; far: 10"
           ></a-entity>
+
+          <!-- Pause menu panel. Parented to the camera (like the HUD text
+               above) rather than placed in world space: simpler and
+               reuses an already-working pattern in this file, at the cost
+               of the panel following your head while open — acceptable
+               for a settings menu you're not meant to leave open while
+               moving around. -->
+          <a-entity id="menu-panel" pause-menu position="0 0 -1.1" visible="false"></a-entity>
         </a-camera>
 
         <!-- Hands: no laser-controls here on purpose. This is a boxing
              game, not a pointer game — hit detection is real proximity
              between fist and cube (see punch-game below), not a raycast.
-             model:false swaps the full controller model for a small
-             sphere so the "fist" reads clearly in VR. -->
+             generic-tracked-controller-controls (rather than the more
+             specific oculus-touch-controls) binds purely by handedness
+             instead of matching the controller's exact device-ID string,
+             which is the more broadly-compatible choice — a device-ID
+             mismatch is a known way for a model-specific controls
+             component to silently fail to bind on one hand while the
+             other works fine. model:false swaps the full controller
+             model for a small sphere so the "fist" reads clearly in VR. -->
         <a-entity
           id="leftHand"
-          oculus-touch-controls="hand: left; model: false"
+          generic-tracked-controller-controls="hand: left; model: false"
           punch-tracker="edgeDetect: true"
         >
           <a-sphere radius="0.06" color="#EF476F" shader="flat"></a-sphere>
         </a-entity>
         <a-entity
           id="rightHand"
-          oculus-touch-controls="hand: right; model: false"
+          generic-tracked-controller-controls="hand: right; model: false"
           punch-tracker="edgeDetect: true"
         >
           <a-sphere radius="0.06" color="#118AB2" shader="flat"></a-sphere>
@@ -161,10 +195,64 @@
            better than a one-shot win state, and it's simpler to iterate
            on for a movement-feel POC.
       ============================================================ -->
-      <a-entity id="cube-manager" punch-game="count: 6"></a-entity>
+      <a-entity id="cube-manager" punch-game="count: 6; behaviorMode: mixed"></a-entity>
     </a-scene>
 
     <script>
+      // ==============================================================
+      // Small shared helpers
+      // ==============================================================
+      function clamp(v, lo, hi) {
+        return Math.min(hi, Math.max(lo, v));
+      }
+
+      // The four "live" per-cube movement behaviors. Menu's cycle button
+      // also offers "mixed", which isn't itself a movement behavior —
+      // it means "assign each newly-spawned cube a random one of these."
+      var CUBE_BEHAVIOR_MODES = ['bob', 'chase', 'patrol', 'wander'];
+
+      // Haptics are a nice-to-have confirmation buzz on hit/punch, not
+      // load-bearing — swallow anything unsupported rather than let a
+      // missing hapticActuators API break the game.
+      function pulseHaptics(handEl, intensity, durationMs) {
+        try {
+          var tracked = handEl && handEl.components['tracked-controls'];
+          var controller = tracked && tracked.controller;
+          var actuator = controller && controller.hapticActuators && controller.hapticActuators[0];
+          if (actuator) actuator.pulse(intensity, durationMs);
+        } catch (e) {
+          // ignore
+        }
+      }
+
+      // Paints a simple 2-color checker pattern onto a <canvas> and
+      // applies it as a tiled texture on an already-created (or
+      // about-to-be-created) A-Frame primitive's mesh. Avoids any
+      // external image asset/network dependency for the room's look.
+      function applyCheckerTexture(el, colorA, colorB, repeatX, repeatY) {
+        var canvas = document.createElement('canvas');
+        canvas.width = canvas.height = 64;
+        var ctx = canvas.getContext('2d');
+        ctx.fillStyle = colorA;
+        ctx.fillRect(0, 0, 64, 64);
+        ctx.fillStyle = colorB;
+        ctx.fillRect(0, 0, 32, 32);
+        ctx.fillRect(32, 32, 32, 32);
+
+        var texture = new THREE.CanvasTexture(canvas);
+        texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+        texture.repeat.set(repeatX, repeatY);
+
+        function apply() {
+          var mesh = el.getObject3D('mesh');
+          if (!mesh || !mesh.material) return;
+          mesh.material.map = texture;
+          mesh.material.needsUpdate = true;
+        }
+        if (el.getObject3D('mesh')) apply();
+        else el.addEventListener('loaded', apply, { once: true });
+      }
+
       // ==============================================================
       // COMPONENT: punch-tracker
       // Attached to each hand and to the head. Tracks *local* position
@@ -182,12 +270,17 @@
       // `resetSpeed` as a lower hysteresis bound so one swing can't fire
       // dozens of events while speed stays above threshold for several
       // frames.
+      //
+      // Also tracks whether the underlying WebXR controller is actually
+      // connected, surfaced in punch-locomotion's debug HUD line — a
+      // direct way to see, in-headset, whether both hands are being
+      // recognized at all (as opposed to a movement-feel/tuning issue).
       // ==============================================================
       AFRAME.registerComponent('punch-tracker', {
         schema: {
           edgeDetect: { type: 'boolean', default: false },
-          triggerSpeed: { type: 'number', default: 1.8 },
-          resetSpeed: { type: 'number', default: 0.6 },
+          triggerSpeed: { type: 'number', default: 1.2 },
+          resetSpeed: { type: 'number', default: 0.4 },
         },
 
         init: function () {
@@ -197,6 +290,11 @@
           this.speed = 0;
           this.hasPrev = false;
           this.armed = true;
+          this.connected = false;
+
+          var self = this;
+          this.el.addEventListener('controllerconnected', function () { self.connected = true; });
+          this.el.addEventListener('controllerdisconnected', function () { self.connected = false; });
         },
 
         tick: function (time, deltaMs) {
@@ -236,21 +334,28 @@
       // hands and turns each one into a velocity impulse, then integrates
       // that velocity into rig position every frame (gravity, ground
       // collision, drag). This is the whole "punch to move" mechanic.
+      //
+      // `powerMultiplier` is the one knob the pause menu exposes to the
+      // player as "Move Speed" — it scales the whole impulse uniformly
+      // rather than exposing every constant below, since "punching feels
+      // too weak/strong overall" is the actual in-headset question, not
+      // any one of these individually.
       // ==============================================================
       AFRAME.registerComponent('punch-locomotion', {
         schema: {
-          moveScale: { type: 'number', default: 0.9 },
-          headBonusScale: { type: 'number', default: 0.6 },
-          maxHorizontalSpeed: { type: 'number', default: 6 },
-          maxLaunchSpeed: { type: 'number', default: 5 },
+          moveScale: { type: 'number', default: 1.8 },
+          headBonusScale: { type: 'number', default: 1.0 },
+          maxHorizontalSpeed: { type: 'number', default: 10 },
+          maxLaunchSpeed: { type: 'number', default: 7 },
           gravity: { type: 'number', default: 7 },
-          groundStopTau: { type: 'number', default: 0.08 },
-          airDragTau: { type: 'number', default: 0.8 },
-          uppercutBoost: { type: 'number', default: 1.6 },
+          groundStopTau: { type: 'number', default: 0.12 },
+          airDragTau: { type: 'number', default: 1.0 },
+          uppercutBoost: { type: 'number', default: 2.0 },
           uppercutDirThreshold: { type: 'number', default: 0.5 },
           smashDirThreshold: { type: 'number', default: -0.5 },
-          smashExtraDown: { type: 'number', default: 4 },
-          bounds: { type: 'number', default: 9 },
+          smashExtraDown: { type: 'number', default: 6 },
+          bounds: { type: 'number', default: 14 },
+          powerMultiplier: { type: 'number', default: 1.0 },
         },
 
         init: function () {
@@ -258,6 +363,8 @@
           this.grounded = true;
           this.lastLabel = '';
           this.head = document.querySelector('#head');
+          this.leftHand = document.querySelector('#leftHand');
+          this.rightHand = document.querySelector('#rightHand');
           this.debugText = document.querySelector('#debug-text');
           this.labelText = document.querySelector('#punch-label');
           this.labelTimeout = null;
@@ -269,6 +376,7 @@
         onPunch: function (evt) {
           var dir = evt.detail.direction;
           var handSpeed = evt.detail.speed;
+          var power = this.data.powerMultiplier;
 
           // Bonus for driving the punch with real body motion (leaning
           // in, stepping forward) in roughly the same direction as the
@@ -280,7 +388,7 @@
             headBonus = Math.max(0, headTracker.velocity.dot(dir)) * this.data.headBonusScale;
           }
 
-          var impulseSpeed = handSpeed * this.data.moveScale + headBonus;
+          var impulseSpeed = (handSpeed * this.data.moveScale + headBonus) * power;
           var label = 'PUNCH!';
 
           if (dir.y > this.data.uppercutDirThreshold) {
@@ -293,7 +401,7 @@
             // than following the exact (fairly flat) arm trajectory —
             // "smashing downward should make you crash down."
             var smashFactor = clamp(handSpeed / 3, 0.5, 2);
-            this.velocity.y -= this.data.smashExtraDown * smashFactor;
+            this.velocity.y -= this.data.smashExtraDown * smashFactor * power;
             label = 'SMASH!';
           }
 
@@ -348,9 +456,14 @@
 
           if (this.debugText) {
             var speed = this.velocity.length();
+            var leftTracker = this.leftHand && this.leftHand.components['punch-tracker'];
+            var rightTracker = this.rightHand && this.rightHand.components['punch-tracker'];
+            var handsStatus =
+              'L:' + (leftTracker && leftTracker.connected ? 'ok' : '--') +
+              ' R:' + (rightTracker && rightTracker.connected ? 'ok' : '--');
             this.debugText.setAttribute(
               'value',
-              'rig speed: ' + speed.toFixed(1) + ' m/s' + (this.grounded ? '' : ' (airborne)')
+              'rig speed: ' + speed.toFixed(1) + ' m/s' + (this.grounded ? '' : ' (air)') + '\n' + handsStatus
             );
           }
         },
@@ -370,6 +483,91 @@
           this.el.object3D.position.set(0, 0, 0);
           this.velocity.set(0, 0, 0);
           this.grounded = true;
+        },
+      });
+
+      // ==============================================================
+      // COMPONENT: cube-behavior
+      // Drives a cube's own horizontal movement (independent of the
+      // player) plus a constant vertical bob. Modes:
+      //   bob     - stationary, just the float (the original Cube Pop
+      //             feel).
+      //   chase   - slowly drifts toward the player rig's position,
+      //             stopping just short so it doesn't clip into you.
+      //   patrol  - walks back and forth between two fixed points.
+      //   wander  - picks a new nearby random point every couple of
+      //             seconds and ambles toward it.
+      // "chase" reads the rig's own position as a stand-in for "where
+      // the player is" (not the headset's exact room-scale offset) —
+      // close enough for a slow approach AI in a POC.
+      // ==============================================================
+      AFRAME.registerComponent('cube-behavior', {
+        schema: {
+          mode: { type: 'string', default: 'bob' },
+          speed: { type: 'number', default: 0.5 },
+        },
+
+        init: function () {
+          this.basePos = this.el.object3D.position.clone();
+          this.bobPhase = Math.random() * Math.PI * 2;
+          this.rig = document.querySelector('#rig');
+
+          this.patrolA = this.basePos.clone();
+          this.patrolB = this.basePos
+            .clone()
+            .add(new THREE.Vector3((Math.random() - 0.5) * 3, 0, (Math.random() - 0.5) * 3));
+          this.patrolTarget = this.patrolB;
+
+          this.wanderTarget = this.basePos.clone();
+          this.nextWanderTime = 0;
+
+          this.scratch = new THREE.Vector3();
+        },
+
+        tick: function (time, deltaMs) {
+          if (!deltaMs) return;
+          var dt = deltaMs / 1000;
+          var pos = this.el.object3D.position;
+          var mode = this.data.mode;
+          var speed = this.data.speed;
+
+          if (mode === 'chase' && this.rig) {
+            var playerPos = this.rig.object3D.position;
+            var toPlayer = this.scratch.set(playerPos.x - pos.x, 0, playerPos.z - pos.z);
+            var dist = toPlayer.length();
+            if (dist > 0.7) {
+              toPlayer.normalize();
+              pos.x += toPlayer.x * speed * dt;
+              pos.z += toPlayer.z * speed * dt;
+            }
+          } else if (mode === 'patrol') {
+            var toTarget = this.scratch.set(this.patrolTarget.x - pos.x, 0, this.patrolTarget.z - pos.z);
+            if (toTarget.length() < 0.15) {
+              this.patrolTarget = this.patrolTarget === this.patrolA ? this.patrolB : this.patrolA;
+            } else {
+              toTarget.normalize();
+              pos.x += toTarget.x * speed * dt;
+              pos.z += toTarget.z * speed * dt;
+            }
+          } else if (mode === 'wander') {
+            if (time > this.nextWanderTime) {
+              this.wanderTarget.set(
+                this.basePos.x + (Math.random() - 0.5) * 3,
+                0,
+                this.basePos.z + (Math.random() - 0.5) * 3
+              );
+              this.nextWanderTime = time + 1500 + Math.random() * 2000;
+            }
+            var toWander = this.scratch.set(this.wanderTarget.x - pos.x, 0, this.wanderTarget.z - pos.z);
+            if (toWander.length() > 0.1) {
+              toWander.normalize();
+              pos.x += toWander.x * speed * dt;
+              pos.z += toWander.z * speed * dt;
+            }
+          }
+          // 'bob' (or anything unrecognized): no horizontal movement.
+
+          pos.y = this.basePos.y + Math.sin(time / 1000 * 1.6 + this.bobPhase) * 0.12;
         },
       });
 
@@ -394,6 +592,12 @@
         pop: function (hitVelocity) {
           if (this.popped) return;
           this.popped = true;
+
+          // Stop cube-behavior from continuing to drive this entity's
+          // position — otherwise it fights the knockback/shrink
+          // animation below for control of the same transform every
+          // frame for the ~150ms it takes to play out.
+          this.el.removeAttribute('cube-behavior');
 
           this.el.setAttribute('material', 'color', '#FFFFFF');
 
@@ -436,8 +640,9 @@
       AFRAME.registerComponent('punch-game', {
         schema: {
           count: { type: 'number', default: 6 },
-          hitRadius: { type: 'number', default: 0.32 },
-          popForceSpeed: { type: 'number', default: 1.4 },
+          hitRadius: { type: 'number', default: 0.35 },
+          popForceSpeed: { type: 'number', default: 1.0 },
+          behaviorMode: { type: 'string', default: 'mixed' },
         },
 
         init: function () {
@@ -455,7 +660,8 @@
 
           // Physical trigger pull resets, on either hand — no laser
           // needed for this since it's a direct button event, not a
-          // raycast hit.
+          // raycast hit. (The pause menu, opened with grip, also has an
+          // explicit "Reset Arena" button.)
           if (this.leftHand) this.leftHand.addEventListener('triggerdown', this.reset);
           if (this.rightHand) this.rightHand.addEventListener('triggerdown', this.reset);
           document.querySelector('#reset-button-html').addEventListener('click', this.reset);
@@ -482,8 +688,8 @@
           // naturally calls for a mix of jabs, lunges, and up/down angled
           // punches — the same punch that pops a high or low cube is the
           // one that also reads as an uppercut or a smash.
-          var angle = (Math.random() - 0.5) * 1.6; // radians
-          var radius = 0.9 + Math.random() * 1.6; // 0.9m jab .. 2.5m lunge
+          var angle = (Math.random() - 0.5) * 1.8; // radians
+          var radius = 0.9 + Math.random() * 2.1; // 0.9m jab .. 3m lunge
           var x = radius * Math.sin(angle);
           var z = -radius * Math.cos(angle);
           var y = 0.6 + Math.random() * 1.7; // knee height .. overhead
@@ -494,13 +700,14 @@
           cube.setAttribute('position', { x: x, y: y, z: z });
           cube.classList.add('cube-target');
           cube.setAttribute('punch-target', '');
-          cube.setAttribute('animation__bob', {
-            property: 'position',
-            dir: 'alternate',
-            loop: true,
-            dur: 1500 + Math.random() * 1000,
-            easing: 'easeInOutSine',
-            to: x + ' ' + (y + 0.15) + ' ' + z,
+
+          var mode = this.data.behaviorMode;
+          if (mode === 'mixed') {
+            mode = CUBE_BEHAVIOR_MODES[Math.floor(Math.random() * CUBE_BEHAVIOR_MODES.length)];
+          }
+          cube.setAttribute('cube-behavior', {
+            mode: mode,
+            speed: 0.4 + Math.random() * 0.5,
           });
 
           this.el.appendChild(cube);
@@ -544,25 +751,226 @@
       });
 
       // ==============================================================
-      // Small shared helpers
+      // Pause menu DOM helpers. Both create a `.menu-target` clickable
+      // row parented under the given entity, and both re-derive their
+      // displayed label from a function (rather than a fixed string) so
+      // the current value shows immediately after every click without
+      // needing separate manual-refresh bookkeeping in pause-menu.
       // ==============================================================
-      function clamp(v, lo, hi) {
-        return Math.min(hi, Math.max(lo, v));
+      function makeMenuButton(parentEl, y, labelFn, onClick) {
+        var btn = document.createElement('a-entity');
+        btn.setAttribute('geometry', { primitive: 'plane', width: 1.3, height: 0.18 });
+        btn.setAttribute('material', { color: '#2a3350', shader: 'flat' });
+        btn.setAttribute('position', { x: 0, y: y, z: 0.01 });
+        btn.classList.add('menu-target');
+
+        var text = document.createElement('a-text');
+        text.setAttribute('align', 'center');
+        text.setAttribute('color', '#FFFFFF');
+        text.setAttribute('width', 2.2);
+        text.setAttribute('position', '0 0 0.01');
+        text.setAttribute('value', labelFn());
+        btn.appendChild(text);
+
+        btn.addEventListener('click', function () {
+          onClick();
+          text.setAttribute('value', labelFn());
+        });
+        parentEl.appendChild(btn);
       }
 
-      // Haptics are a nice-to-have confirmation buzz on hit/punch, not
-      // load-bearing — swallow anything unsupported rather than let a
-      // missing hapticActuators API break the game.
-      function pulseHaptics(handEl, intensity, durationMs) {
-        try {
-          var tracked = handEl && handEl.components['tracked-controls'];
-          var controller = tracked && tracked.controller;
-          var actuator = controller && controller.hapticActuators && controller.hapticActuators[0];
-          if (actuator) actuator.pulse(intensity, durationMs);
-        } catch (e) {
-          // ignore
+      function makeAdjustRow(parentEl, y, labelFn, onMinus, onPlus) {
+        var label = document.createElement('a-text');
+        label.setAttribute('align', 'center');
+        label.setAttribute('color', '#FFFFFF');
+        label.setAttribute('width', 2.0);
+        label.setAttribute('position', '0 ' + y + ' 0.01');
+        label.setAttribute('value', labelFn());
+        parentEl.appendChild(label);
+
+        function makeSmallButton(x, glyph, onClick) {
+          var btn = document.createElement('a-entity');
+          btn.setAttribute('geometry', { primitive: 'plane', width: 0.22, height: 0.18 });
+          btn.setAttribute('material', { color: '#3a4468', shader: 'flat' });
+          btn.setAttribute('position', { x: x, y: y, z: 0.01 });
+          btn.classList.add('menu-target');
+
+          var t = document.createElement('a-text');
+          t.setAttribute('value', glyph);
+          t.setAttribute('align', 'center');
+          t.setAttribute('color', '#FFFFFF');
+          t.setAttribute('width', 3);
+          t.setAttribute('position', '0 0 0.01');
+          btn.appendChild(t);
+
+          btn.addEventListener('click', function () {
+            onClick();
+            label.setAttribute('value', labelFn());
+          });
+          parentEl.appendChild(btn);
         }
+
+        makeSmallButton(-0.78, '-', onMinus);
+        makeSmallButton(0.78, '+', onPlus);
       }
+
+      // ==============================================================
+      // COMPONENT: pause-menu
+      // Builds and controls the in-VR settings panel: move speed, cube
+      // count, cube behavior, reset, resume, and — the actual fix for
+      // "there's no way to get out of VR" — an Exit VR button. Opened by
+      // squeezing either controller's grip button, which is a standard
+      // xr-standard gamepad button present on effectively all 6DoF
+      // controllers, so it doesn't depend on the same device-ID matching
+      // that caused the one-hand-tracking bug above.
+      // ==============================================================
+      AFRAME.registerComponent('pause-menu', {
+        init: function () {
+          this.open = false;
+          this.buildMenu = this.buildMenu.bind(this);
+
+          // #menu-panel sits inside #rig (rig > head > menu-panel) but
+          // needs to reference #cube-manager, a *later* sibling of #rig
+          // in the markup — at the moment this entity's own init() runs
+          // during initial parse, that sibling doesn't exist in the DOM
+          // yet. Deferring to the scene's "loaded" event (which fires
+          // once every entity and component in the scene is ready) is
+          // the standard, reliable way around that ordering hazard,
+          // rather than relying on incidental document-order timing.
+          var sceneEl = this.el.sceneEl;
+          if (sceneEl.hasLoaded) this.buildMenu();
+          else sceneEl.addEventListener('loaded', this.buildMenu, { once: true });
+        },
+
+        buildMenu: function () {
+          this.rig = document.querySelector('#rig');
+          this.gameEl = document.querySelector('#cube-manager');
+          this.cursorEl = document.querySelector('#gaze-cursor');
+
+          var self = this;
+          var behaviorModes = ['mixed'].concat(CUBE_BEHAVIOR_MODES);
+
+          var bg = document.createElement('a-plane');
+          bg.setAttribute('width', 1.7);
+          bg.setAttribute('height', 1.8);
+          bg.setAttribute('material', 'color: #0d1526; opacity: 0.92; shader: flat');
+          this.el.appendChild(bg);
+
+          var title = document.createElement('a-text');
+          title.setAttribute('value', 'PAUSE MENU');
+          title.setAttribute('align', 'center');
+          title.setAttribute('color', '#FFD166');
+          title.setAttribute('width', 2.6);
+          title.setAttribute('position', '0 0.75 0.01');
+          this.el.appendChild(title);
+
+          makeAdjustRow(
+            this.el,
+            0.45,
+            function () {
+              return 'Move Speed: ' + self.rig.getAttribute('punch-locomotion').powerMultiplier.toFixed(1) + 'x';
+            },
+            function () { self.setPower(self.rig.getAttribute('punch-locomotion').powerMultiplier - 0.2); },
+            function () { self.setPower(self.rig.getAttribute('punch-locomotion').powerMultiplier + 0.2); }
+          );
+
+          makeAdjustRow(
+            this.el,
+            0.2,
+            function () { return 'Cube Count: ' + self.gameEl.getAttribute('punch-game').count; },
+            function () { self.setCount(self.gameEl.getAttribute('punch-game').count - 1); },
+            function () { self.setCount(self.gameEl.getAttribute('punch-game').count + 1); }
+          );
+
+          makeMenuButton(
+            this.el,
+            -0.1,
+            function () { return 'Behavior: ' + self.gameEl.getAttribute('punch-game').behaviorMode; },
+            function () { self.cycleBehavior(behaviorModes); }
+          );
+
+          makeMenuButton(this.el, -0.38, function () { return 'Reset Arena'; }, function () {
+            self.gameEl.components['punch-game'].reset();
+          });
+          makeMenuButton(this.el, -0.62, function () { return 'Resume'; }, function () {
+            self.close();
+          });
+          makeMenuButton(this.el, -0.92, function () { return 'Exit VR'; }, function () {
+            self.exitVR();
+          });
+
+          this.toggle = this.toggle.bind(this);
+          var leftHand = document.querySelector('#leftHand');
+          var rightHand = document.querySelector('#rightHand');
+          if (leftHand) leftHand.addEventListener('gripdown', this.toggle);
+          if (rightHand) rightHand.addEventListener('gripdown', this.toggle);
+          document.querySelector('#menu-button-html').addEventListener('click', this.toggle);
+        },
+
+        toggle: function () {
+          if (this.open) this.close();
+          else this.openMenu();
+        },
+
+        openMenu: function () {
+          this.open = true;
+          this.el.setAttribute('visible', true);
+          if (this.cursorEl) {
+            // Widen the existing reticle's raycast targets to include
+            // menu buttons, and switch it from instant-click to
+            // gaze-and-dwell so menu items can be selected just by
+            // looking at them — no controller trigger needed, which
+            // keeps the trigger free for its normal "quick reset" job
+            // even while the menu happens to be open.
+            this.cursorEl.setAttribute('raycaster', 'objects', '.cube-target, .menu-target');
+            this.cursorEl.setAttribute('cursor', 'fuse', true);
+            this.cursorEl.setAttribute('cursor', 'fuseTimeout', 800);
+          }
+        },
+
+        close: function () {
+          this.open = false;
+          this.el.setAttribute('visible', false);
+          if (this.cursorEl) {
+            this.cursorEl.setAttribute('raycaster', 'objects', '.cube-target');
+            this.cursorEl.setAttribute('cursor', 'fuse', false);
+          }
+        },
+
+        setPower: function (v) {
+          v = clamp(Math.round(v * 10) / 10, 0.4, 3.0);
+          this.rig.setAttribute('punch-locomotion', 'powerMultiplier', v);
+        },
+
+        setCount: function (v) {
+          v = clamp(v, 2, 14);
+          this.gameEl.setAttribute('punch-game', 'count', v);
+          this.gameEl.components['punch-game'].reset();
+        },
+
+        cycleBehavior: function (modes) {
+          var current = this.gameEl.getAttribute('punch-game').behaviorMode;
+          var next = modes[(modes.indexOf(current) + 1) % modes.length];
+          this.gameEl.setAttribute('punch-game', 'behaviorMode', next);
+          this.gameEl.components['punch-game'].reset();
+        },
+
+        exitVR: function () {
+          var sceneEl = this.el.sceneEl;
+          if (sceneEl) sceneEl.exitVR();
+        },
+      });
+
+      // ==============================================================
+      // Room textures + desktop simulate buttons
+      // ==============================================================
+      document.querySelector('a-scene').addEventListener('loaded', function () {
+        applyCheckerTexture(document.querySelector('#floor'), '#3a4468', '#2c3454', 10, 10);
+        var walls = document.querySelectorAll('.wall');
+        for (var i = 0; i < walls.length; i++) {
+          applyCheckerTexture(walls[i], '#2a3350', '#242c48', 10, 2);
+        }
+      });
 
       // Desktop-only simulate buttons: no mouse can produce a real
       // controller-velocity punch, so these call punch-locomotion's exact
