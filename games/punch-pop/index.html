@@ -59,8 +59,9 @@
     <div id="overlay">
       <p>
         Punch Pop — punching <em>is</em> movement. Swing to lunge, uppercut to launch, hammer down to crash.
-        Punch a cube hard enough to pop it. Squeeze either grip to open the pause menu (speed, cube count,
-        behavior, <strong>Exit VR</strong>). Pull either trigger for a quick reset.
+        Punch a cube hard enough to pop it. Squeeze either grip to open the pause menu — it disables punching
+        and gives you a laser pointer to aim with; pull the trigger to click a button (speed, cube count,
+        behavior, <strong>Exit VR</strong>). Outside the menu, pull either trigger for a quick reset.
         <strong>Clear ~2x2m of real space before trying this in a headset.</strong>
         <a href="../../index.html">All prototypes</a>
       </p>
@@ -135,13 +136,16 @@
           ></a-text>
 
           <!-- Gaze reticle: lets a phone/desktop tester pop a cube by
-               looking at it and tapping/clicking, same fallback pattern as
-               Cube Pop. It's also repurposed as the pause menu's pointer:
-               pause-menu below flips it into gaze+dwell ("fuse") mode and
-               widens its raycast target list while the menu is open, so
-               menu items can be selected by looking at them for ~800ms —
-               no controller buttons required, which sidesteps needing a
-               laser pointer anywhere near the punching hands. -->
+               looking at it and clicking, same fallback pattern as Cube
+               Pop. It doubles as the pause menu's desktop/phone pointer
+               too — pause-menu widens its raycast target list to include
+               menu buttons while the menu is open, so a mouse click still
+               works there without a real controller. In VR proper, menu
+               buttons are instead clicked with the per-hand laser
+               pointers (see the hand entities below) — a literal
+               laser+cursor is easier to aim precisely than gaze, and it
+               keeps the menu's "trigger to click" input independent of
+               whatever direction you happen to be looking. -->
           <a-entity
             id="gaze-cursor"
             cursor="fuse: false"
@@ -160,12 +164,12 @@
           <a-entity id="menu-panel" pause-menu position="0 0 -1.1" visible="false"></a-entity>
         </a-camera>
 
-        <!-- Hands: no laser-controls here on purpose. This is a boxing
-             game, not a pointer game — hit detection is real proximity
-             between fist and cube (see punch-game below), not a raycast.
-             oculus-touch-controls is the Quest-native controls component
-             and is confirmed to actually bind on real Quest 2 Touch
-             controllers. An earlier revision swapped this for
+        <!-- Hands: no laser during normal play, on purpose — this is a
+             boxing game, not a pointer game, so hit detection is real
+             proximity between fist and cube (see punch-game below), not
+             a raycast. oculus-touch-controls is the Quest-native controls
+             component and is confirmed to actually bind on real Quest 2
+             Touch controllers. An earlier revision swapped this for
              generic-tracked-controller-controls on the theory that
              device-ID matching might be flaky — that turned out to be
              the wrong diagnosis (a controller with a dying battery was
@@ -173,20 +177,50 @@
              generic-tracked-controller-controls simply never bound at
              all on this hardware, breaking both hands. Back to
              oculus-touch-controls. model:false swaps the full controller
-             model for a small sphere so the "fist" reads clearly in VR. -->
+             model for a small sphere so the "fist" reads clearly in VR.
+
+             Each hand also carries a raycaster+cursor pair, same pattern
+             laser-controls itself uses, but pointed at `.menu-target`
+             instead of `.cube-target` and left disabled (raycaster
+             enabled:false, .menu-laser hidden) during normal punching.
+             pause-menu flips both on only while the menu panel is open,
+             so pulling a trigger there clicks whatever the visible beam
+             is pointing at instead of throwing a punch. -->
         <a-entity
           id="leftHand"
           oculus-touch-controls="hand: left; model: false"
           punch-tracker="edgeDetect: true"
+          raycaster="objects: .menu-target; far: 5; enabled: false"
+          cursor="fuse: false"
         >
           <a-sphere radius="0.06" color="#EF476F" shader="flat"></a-sphere>
+          <a-box
+            class="menu-laser"
+            width="0.006"
+            height="0.006"
+            depth="3"
+            position="0 0 -1.5"
+            material="color: #FFD166; shader: flat; opacity: 0.85"
+            visible="false"
+          ></a-box>
         </a-entity>
         <a-entity
           id="rightHand"
           oculus-touch-controls="hand: right; model: false"
           punch-tracker="edgeDetect: true"
+          raycaster="objects: .menu-target; far: 5; enabled: false"
+          cursor="fuse: false"
         >
           <a-sphere radius="0.06" color="#118AB2" shader="flat"></a-sphere>
+          <a-box
+            class="menu-laser"
+            width="0.006"
+            height="0.006"
+            depth="3"
+            position="0 0 -1.5"
+            material="color: #FFD166; shader: flat; opacity: 0.85"
+            visible="false"
+          ></a-box>
         </a-entity>
       </a-entity>
 
@@ -208,6 +242,13 @@
       function clamp(v, lo, hi) {
         return Math.min(hi, Math.max(lo, v));
       }
+
+      // True while the pause menu is open. Read by punch-locomotion and
+      // punch-game to disable punching (both locomotion and cube-popping)
+      // and freeze rig physics while the player is fiddling with
+      // settings, and by punch-game's trigger-reset handler so pulling
+      // the trigger to click a menu item doesn't *also* reset the arena.
+      var menuOpen = false;
 
       // The four "live" per-cube movement behaviors. Menu's cycle button
       // also offers "mixed", which isn't itself a movement behavior —
@@ -272,7 +313,12 @@
       // "punch" event the moment speed crosses `triggerSpeed`, with
       // `resetSpeed` as a lower hysteresis bound so one swing can't fire
       // dozens of events while speed stays above threshold for several
-      // frames.
+      // frames — *and* only while the hand is actually extending away
+      // from the body (see the `extending` tracking below). Without that
+      // second gate, a fast wind-up (cocking your fist back before
+      // throwing a big punch) reads as a full-speed "punch" in the
+      // backward direction and launches the player before they've thrown
+      // anything.
       //
       // Also tracks whether the underlying WebXR controller is actually
       // connected, surfaced in punch-locomotion's debug HUD line — a
@@ -295,8 +341,47 @@
           this.armed = true;
           this.connected = false;
 
+          if (this.data.edgeDetect) {
+            // Radial extension tracking, hands only: is the hand moving
+            // away from the body (throwing) or toward it (cocking back)?
+            this.head = document.querySelector('#head');
+            this.extending = false;
+            this.radial = new THREE.Vector3();
+
+            // Rolling recent-minimum hand height: instantly drops to a
+            // new low, decays back toward the current height over
+            // roughly half a second of being held still/higher. This is
+            // what punch-locomotion uses to tell a real uppercut (hand
+            // was recently down near the waist) from a jab that just
+            // happens to be aimed at a high target (hand's been up
+            // around shoulder/guard height the whole time). It's
+            // deliberately NOT based on "distance from the head" the way
+            // the extending/wind-up check above is — an uppercut's hand
+            // ends up *near* the chin at full extension, so radial
+            // distance from the head shrinks rather than grows during
+            // one, making it useless as an extension signal for this
+            // particular punch shape.
+            this.recentMinY = this.el.object3D.position.y;
+          }
+
           var self = this;
-          this.el.addEventListener('controllerconnected', function () { self.connected = true; });
+          this.el.addEventListener('controllerconnected', function () {
+            self.connected = true;
+            // The entity sits at its declared (0,0,0)-ish rest position
+            // until a real controller connects and starts driving its
+            // pose. Without this reseed, that stale pre-connection
+            // position leaks into the very first punches thrown right
+            // after connecting: `hasPrev=false` would otherwise let a
+            // huge one-frame "velocity" spike through as a false punch,
+            // and a near-zero recentMinY would make an early punch of any
+            // kind briefly misread as "started low" (an uppercut).
+            self.hasPrev = false;
+            if (self.data.edgeDetect) {
+              self.recentMinY = self.el.object3D.position.y;
+              self.extending = false;
+              self.armed = true;
+            }
+          });
           this.el.addEventListener('controllerdisconnected', function () { self.connected = false; });
         },
 
@@ -319,11 +404,30 @@
 
           if (!this.data.edgeDetect) return;
 
-          if (this.armed && this.speed >= this.data.triggerSpeed) {
+          if (localPos.y < this.recentMinY) {
+            this.recentMinY = localPos.y;
+          } else {
+            var minDecay = 1 - Math.exp(-dt / 0.4);
+            this.recentMinY += (localPos.y - this.recentMinY) * minDecay;
+          }
+
+          if (this.head) {
+            this.radial.subVectors(localPos, this.head.object3D.position);
+            var dist = this.radial.length();
+            if (dist > 0.05) {
+              this.radial.divideScalar(dist);
+              // Small positive epsilon (rather than a bare >0) so tiny
+              // tracking jitter right at the top of a wind-up doesn't
+              // flicker the extending state.
+              this.extending = this.velocity.dot(this.radial) > 0.05;
+            }
+          }
+
+          if (this.armed && this.speed >= this.data.triggerSpeed && this.extending) {
             this.armed = false;
             var dir = this.velocity.clone().normalize();
             if (isFinite(dir.x)) {
-              this.el.emit('punch', { direction: dir, speed: this.speed }, true);
+              this.el.emit('punch', { direction: dir, speed: this.speed, swingStartY: this.recentMinY }, true);
             }
           } else if (!this.armed && this.speed <= this.data.resetSpeed) {
             this.armed = true;
@@ -355,6 +459,7 @@
           airDragTau: { type: 'number', default: 1.0 },
           uppercutBoost: { type: 'number', default: 2.0 },
           uppercutDirThreshold: { type: 'number', default: 0.5 },
+          uppercutMaxStartHeight: { type: 'number', default: 1.15 },
           smashDirThreshold: { type: 'number', default: -0.5 },
           smashExtraDown: { type: 'number', default: 6 },
           bounds: { type: 'number', default: 14 },
@@ -377,8 +482,11 @@
         },
 
         onPunch: function (evt) {
+          if (menuOpen) return; // punching is disabled while the pause menu is open
+
           var dir = evt.detail.direction;
           var handSpeed = evt.detail.speed;
+          var swingStartY = evt.detail.swingStartY;
           var power = this.data.powerMultiplier;
 
           // Bonus for driving the punch with real body motion (leaning
@@ -394,7 +502,18 @@
           var impulseSpeed = (handSpeed * this.data.moveScale + headBonus) * power;
           var label = 'PUNCH!';
 
-          if (dir.y > this.data.uppercutDirThreshold) {
+          // An uppercut needs BOTH a steep upward angle AND to have
+          // started from down near the waist — otherwise a plain jab
+          // aimed at a high target (thrown from shoulder/guard height)
+          // would wrongly count as one just because it's angled upward.
+          // `swingStartY` is undefined for the desktop "Simulate
+          // uppercut" button (it doesn't have a real swing to measure),
+          // so that debug path still counts as an uppercut unconditionally.
+          var isUppercut =
+            dir.y > this.data.uppercutDirThreshold &&
+            (swingStartY === undefined || swingStartY < this.data.uppercutMaxStartHeight);
+
+          if (isUppercut) {
             impulseSpeed *= this.data.uppercutBoost;
             label = 'UPPERCUT!';
             this.velocity.y += dir.y * impulseSpeed;
@@ -426,6 +545,7 @@
 
         tick: function (time, deltaMs) {
           if (!deltaMs) return;
+          if (menuOpen) return; // freeze in place while the pause menu is open
           var dt = Math.min(deltaMs / 1000, 0.05); // guard against huge steps (tab switch, etc.)
           var pos = this.el.object3D.position;
 
@@ -658,17 +778,26 @@
           this.scratch = new THREE.Vector3();
 
           this.reset = this.reset.bind(this);
+          this.onTriggerReset = this.onTriggerReset.bind(this);
           this.onCubePopped = this.onCubePopped.bind(this);
           this.el.addEventListener('cube-popped', this.onCubePopped);
 
-          // Physical trigger pull resets, on either hand — no laser
-          // needed for this since it's a direct button event, not a
-          // raycast hit. (The pause menu, opened with grip, also has an
-          // explicit "Reset Arena" button.)
-          if (this.leftHand) this.leftHand.addEventListener('triggerdown', this.reset);
-          if (this.rightHand) this.rightHand.addEventListener('triggerdown', this.reset);
+          // Physical trigger pull resets, on either hand — a direct
+          // button event, not a raycast hit. Gated on menuOpen (see
+          // onTriggerReset) since while the pause menu is open, the
+          // trigger is instead doing menu-click duty via the hand
+          // raycaster+cursor — without that gate, clicking a menu button
+          // would also reset the arena on the same trigger pull. (The
+          // pause menu also has its own explicit "Reset Arena" button.)
+          if (this.leftHand) this.leftHand.addEventListener('triggerdown', this.onTriggerReset);
+          if (this.rightHand) this.rightHand.addEventListener('triggerdown', this.onTriggerReset);
           document.querySelector('#reset-button-html').addEventListener('click', this.reset);
 
+          this.reset();
+        },
+
+        onTriggerReset: function () {
+          if (menuOpen) return;
           this.reset();
         },
 
@@ -718,6 +847,7 @@
         },
 
         tick: function () {
+          if (menuOpen) return; // punching (including cube-popping) is disabled while the pause menu is open
           this.checkHand(this.leftHand);
           this.checkHand(this.rightHand);
         },
@@ -826,10 +956,16 @@
       // xr-standard gamepad button present on effectively all 6DoF
       // controllers, so it doesn't depend on the same device-ID matching
       // that caused the one-hand-tracking bug above.
+      //
+      // While open: punching is disabled and rig physics freeze (both
+      // gated on the shared `menuOpen` flag, checked by punch-locomotion
+      // and punch-game), and each hand's raycaster+cursor+laser (see the
+      // hand entities above) is switched on so menu buttons can be
+      // pointed at and clicked with the trigger, same as any standard VR
+      // laser-pointer UI.
       // ==============================================================
       AFRAME.registerComponent('pause-menu', {
         init: function () {
-          this.open = false;
           this.buildMenu = this.buildMenu.bind(this);
 
           // #menu-panel sits inside #rig (rig > head > menu-panel) but
@@ -849,6 +985,8 @@
           this.rig = document.querySelector('#rig');
           this.gameEl = document.querySelector('#cube-manager');
           this.cursorEl = document.querySelector('#gaze-cursor');
+          this.leftHand = document.querySelector('#leftHand');
+          this.rightHand = document.querySelector('#rightHand');
 
           var self = this;
           var behaviorModes = ['mixed'].concat(CUBE_BEHAVIOR_MODES);
@@ -903,40 +1041,46 @@
           });
 
           this.toggle = this.toggle.bind(this);
-          var leftHand = document.querySelector('#leftHand');
-          var rightHand = document.querySelector('#rightHand');
-          if (leftHand) leftHand.addEventListener('gripdown', this.toggle);
-          if (rightHand) rightHand.addEventListener('gripdown', this.toggle);
+          if (this.leftHand) this.leftHand.addEventListener('gripdown', this.toggle);
+          if (this.rightHand) this.rightHand.addEventListener('gripdown', this.toggle);
           document.querySelector('#menu-button-html').addEventListener('click', this.toggle);
         },
 
         toggle: function () {
-          if (this.open) this.close();
+          if (menuOpen) this.close();
           else this.openMenu();
         },
 
         openMenu: function () {
-          this.open = true;
+          menuOpen = true;
           this.el.setAttribute('visible', true);
+          this.setHandLasers(true);
+          // Also widen the desktop/phone gaze reticle's raycast targets
+          // to include menu buttons, so testing without a headset still
+          // works (plain instant click, same as it already does for
+          // cubes — no dwell/fuse involved).
           if (this.cursorEl) {
-            // Widen the existing reticle's raycast targets to include
-            // menu buttons, and switch it from instant-click to
-            // gaze-and-dwell so menu items can be selected just by
-            // looking at them — no controller trigger needed, which
-            // keeps the trigger free for its normal "quick reset" job
-            // even while the menu happens to be open.
             this.cursorEl.setAttribute('raycaster', 'objects', '.cube-target, .menu-target');
-            this.cursorEl.setAttribute('cursor', 'fuse', true);
-            this.cursorEl.setAttribute('cursor', 'fuseTimeout', 800);
           }
         },
 
         close: function () {
-          this.open = false;
+          menuOpen = false;
           this.el.setAttribute('visible', false);
+          this.setHandLasers(false);
           if (this.cursorEl) {
             this.cursorEl.setAttribute('raycaster', 'objects', '.cube-target');
-            this.cursorEl.setAttribute('cursor', 'fuse', false);
+          }
+        },
+
+        setHandLasers: function (on) {
+          var hands = [this.leftHand, this.rightHand];
+          for (var i = 0; i < hands.length; i++) {
+            var hand = hands[i];
+            if (!hand) continue;
+            hand.setAttribute('raycaster', 'enabled', on);
+            var laser = hand.querySelector('.menu-laser');
+            if (laser) laser.setAttribute('visible', on);
           }
         },
 
