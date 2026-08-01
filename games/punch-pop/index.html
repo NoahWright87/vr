@@ -163,24 +163,27 @@
         <!-- Hands: no laser-controls here on purpose. This is a boxing
              game, not a pointer game — hit detection is real proximity
              between fist and cube (see punch-game below), not a raycast.
-             generic-tracked-controller-controls (rather than the more
-             specific oculus-touch-controls) binds purely by handedness
-             instead of matching the controller's exact device-ID string,
-             which is the more broadly-compatible choice — a device-ID
-             mismatch is a known way for a model-specific controls
-             component to silently fail to bind on one hand while the
-             other works fine. model:false swaps the full controller
+             oculus-touch-controls is the Quest-native controls component
+             and is confirmed to actually bind on real Quest 2 Touch
+             controllers. An earlier revision swapped this for
+             generic-tracked-controller-controls on the theory that
+             device-ID matching might be flaky — that turned out to be
+             the wrong diagnosis (a controller with a dying battery was
+             the real cause of that earlier "only one hand" report), and
+             generic-tracked-controller-controls simply never bound at
+             all on this hardware, breaking both hands. Back to
+             oculus-touch-controls. model:false swaps the full controller
              model for a small sphere so the "fist" reads clearly in VR. -->
         <a-entity
           id="leftHand"
-          generic-tracked-controller-controls="hand: left; model: false"
+          oculus-touch-controls="hand: left; model: false"
           punch-tracker="edgeDetect: true"
         >
           <a-sphere radius="0.06" color="#EF476F" shader="flat"></a-sphere>
         </a-entity>
         <a-entity
           id="rightHand"
-          generic-tracked-controller-controls="hand: right; model: false"
+          oculus-touch-controls="hand: right; model: false"
           punch-tracker="edgeDetect: true"
         >
           <a-sphere radius="0.06" color="#118AB2" shader="flat"></a-sphere>
