@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Punch Pop — WebXR Prototype</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <!-- Same no-build-step A-Frame CDN pattern as Cube Pop. Pinned so this
+         page doesn't shift under us on a future A-Frame release. -->
+    <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
+
+    <style>
+      body {
+        margin: 0;
+        font-family: system-ui, sans-serif;
+      }
+      #overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        padding: 0.75rem 1rem;
+        background: rgba(0, 0, 0, 0.6);
+        color: white;
+        z-index: 1;
+        font-size: 0.85rem;
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        align-items: center;
+        gap: 0.75rem;
+      }
+      #overlay a {
+        color: #9ad;
+      }
+      #overlay p {
+        margin: 0;
+        max-width: 40rem;
+      }
+      #debug-controls {
+        display: flex;
+        gap: 0.4rem;
+        flex-wrap: wrap;
+      }
+      #debug-controls button {
+        font-size: 0.8rem;
+        padding: 0.3rem 0.6rem;
+        cursor: pointer;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Flat HTML overlay: desktop/browser testing convenience only,
+         invisible in the headset. Real punch/locomotion physics can't be
+         exercised with a mouse, so the "Simulate" buttons call the exact
+         same code path a real controller punch would (see bottom script) —
+         that's how this whole prototype got sanity-checked before ever
+         touching a headset. -->
+    <div id="overlay">
+      <p>
+        Punch Pop — punching <em>is</em> movement. Swing to lunge, uppercut to launch, hammer down to crash.
+        Punch a cube hard enough to pop it. Pull either controller trigger to reset.
+        <strong>Clear ~2x2m of real space before trying this in a headset.</strong>
+        <a href="../../index.html">All prototypes</a>
+      </p>
+      <div id="debug-controls">
+        <button id="sim-punch">Simulate punch (desktop)</button>
+        <button id="sim-uppercut">Simulate uppercut</button>
+        <button id="sim-smash">Simulate smash</button>
+        <button id="reset-button-html">Reset (desktop)</button>
+      </div>
+    </div>
+
+    <a-scene>
+      <a-plane
+        rotation="-90 0 0"
+        width="20"
+        height="20"
+        color="#445"
+        position="0 0 0"
+      ></a-plane>
+      <a-sky color="#0d1526"></a-sky>
+
+      <!-- ============================================================
+           PLAYER RIG
+           Everything the physical player can move (head + both hands) is
+           nested under #rig. WebXR reports head/hand poses as each
+           entity's *local* transform relative to its parent, so moving
+           #rig in world space carries the whole play space with it while
+           your real physical head/hand motion still reads correctly
+           relative to that new spot. This is what lets "punch = move":
+           punch-locomotion translates #rig itself, never the camera.
+      ============================================================ -->
+      <a-entity id="rig" position="0 0 0" punch-locomotion>
+        <a-camera id="head" wasd-controls="enabled: false" punch-tracker>
+          <a-text
+            id="hud-text"
+            value="Popped: 0"
+            align="center"
+            color="#FFFFFF"
+            width="2"
+            position="0 -0.35 -1"
+          ></a-text>
+          <a-text
+            id="debug-text"
+            value=""
+            align="center"
+            color="#9ad"
+            width="1.3"
+            position="0 0.5 -1"
+          ></a-text>
+          <a-text
+            id="punch-label"
+            value=""
+            align="center"
+            color="#FFD166"
+            width="4"
+            position="0 0.15 -1"
+            visible="false"
+          ></a-text>
+          <!-- Gaze reticle: lets a phone/desktop tester pop a cube by
+               looking at it and tapping/clicking, same fallback pattern as
+               Cube Pop. It only pops on contact, never on force, so it
+               can't be used to test the punch-force threshold — just the
+               spawn/pop/respawn loop. -->
+          <a-entity
+            cursor="fuse: false"
+            position="0 0 -1"
+            geometry="primitive: ring; radiusInner: 0.005; radiusOuter: 0.008"
+            material="color: #FFFFFF; shader: flat; opacity: 0.8"
+            raycaster="objects: .cube-target; far: 10"
+          ></a-entity>
+        </a-camera>
+
+        <!-- Hands: no laser-controls here on purpose. This is a boxing
+             game, not a pointer game — hit detection is real proximity
+             between fist and cube (see punch-game below), not a raycast.
+             model:false swaps the full controller model for a small
+             sphere so the "fist" reads clearly in VR. -->
+        <a-entity
+          id="leftHand"
+          oculus-touch-controls="hand: left; model: false"
+          punch-tracker="edgeDetect: true"
+        >
+          <a-sphere radius="0.06" color="#EF476F" shader="flat"></a-sphere>
+        </a-entity>
+        <a-entity
+          id="rightHand"
+          oculus-touch-controls="hand: right; model: false"
+          punch-tracker="edgeDetect: true"
+        >
+          <a-sphere radius="0.06" color="#118AB2" shader="flat"></a-sphere>
+        </a-entity>
+      </a-entity>
+
+      <!-- ============================================================
+           GAME MANAGER
+           Unlike Cube Pop's fixed batch + win screen, this is an endless
+           heavy-bag loop: always `count` cubes live, each pop spawns a
+           fresh replacement immediately. That fits a fitness/reps framing
+           better than a one-shot win state, and it's simpler to iterate
+           on for a movement-feel POC.
+      ============================================================ -->
+      <a-entity id="cube-manager" punch-game="count: 6"></a-entity>
+    </a-scene>
+
+    <script>
+      // ==============================================================
+      // COMPONENT: punch-tracker
+      // Attached to each hand and to the head. Tracks *local* position
+      // deltas (i.e. relative to the #rig parent) frame to frame to get
+      // real physical velocity of that body part — deliberately NOT
+      // world-space velocity. If we used world position, a hand's
+      // apparent velocity would include however fast #rig itself is
+      // currently drifting from a previous punch, which would let one
+      // hard swing bootstrap runaway "phantom" punches forever. Local
+      // position sidesteps that: your rig can be flying across the arena
+      // and a stationary hand still reads as zero velocity.
+      //
+      // When edgeDetect is on (hands only, not the head), it also fires a
+      // "punch" event the moment speed crosses `triggerSpeed`, with
+      // `resetSpeed` as a lower hysteresis bound so one swing can't fire
+      // dozens of events while speed stays above threshold for several
+      // frames.
+      // ==============================================================
+      AFRAME.registerComponent('punch-tracker', {
+        schema: {
+          edgeDetect: { type: 'boolean', default: false },
+          triggerSpeed: { type: 'number', default: 1.8 },
+          resetSpeed: { type: 'number', default: 0.6 },
+        },
+
+        init: function () {
+          this.prevLocal = this.el.object3D.position.clone();
+          this.velocity = new THREE.Vector3();
+          this.worldPos = new THREE.Vector3();
+          this.speed = 0;
+          this.hasPrev = false;
+          this.armed = true;
+        },
+
+        tick: function (time, deltaMs) {
+          if (!deltaMs) return;
+          var dt = deltaMs / 1000;
+          var localPos = this.el.object3D.position;
+
+          if (this.hasPrev) {
+            this.velocity.subVectors(localPos, this.prevLocal).divideScalar(dt);
+            this.speed = this.velocity.length();
+          }
+          this.prevLocal.copy(localPos);
+          this.hasPrev = true;
+
+          // Hit-testing against cubes (which live in world space, outside
+          // the rig) needs the real world position, separately from the
+          // rig-relative velocity above.
+          this.el.object3D.getWorldPosition(this.worldPos);
+
+          if (!this.data.edgeDetect) return;
+
+          if (this.armed && this.speed >= this.data.triggerSpeed) {
+            this.armed = false;
+            var dir = this.velocity.clone().normalize();
+            if (isFinite(dir.x)) {
+              this.el.emit('punch', { direction: dir, speed: this.speed }, true);
+            }
+          } else if (!this.armed && this.speed <= this.data.resetSpeed) {
+            this.armed = true;
+          }
+        },
+      });
+
+      // ==============================================================
+      // COMPONENT: punch-locomotion
+      // Lives on #rig. Listens for "punch" events bubbling up from the
+      // hands and turns each one into a velocity impulse, then integrates
+      // that velocity into rig position every frame (gravity, ground
+      // collision, drag). This is the whole "punch to move" mechanic.
+      // ==============================================================
+      AFRAME.registerComponent('punch-locomotion', {
+        schema: {
+          moveScale: { type: 'number', default: 0.9 },
+          headBonusScale: { type: 'number', default: 0.6 },
+          maxHorizontalSpeed: { type: 'number', default: 6 },
+          maxLaunchSpeed: { type: 'number', default: 5 },
+          gravity: { type: 'number', default: 7 },
+          groundStopTau: { type: 'number', default: 0.08 },
+          airDragTau: { type: 'number', default: 0.8 },
+          uppercutBoost: { type: 'number', default: 1.6 },
+          uppercutDirThreshold: { type: 'number', default: 0.5 },
+          smashDirThreshold: { type: 'number', default: -0.5 },
+          smashExtraDown: { type: 'number', default: 4 },
+          bounds: { type: 'number', default: 9 },
+        },
+
+        init: function () {
+          this.velocity = new THREE.Vector3();
+          this.grounded = true;
+          this.lastLabel = '';
+          this.head = document.querySelector('#head');
+          this.debugText = document.querySelector('#debug-text');
+          this.labelText = document.querySelector('#punch-label');
+          this.labelTimeout = null;
+
+          this.onPunch = this.onPunch.bind(this);
+          this.el.addEventListener('punch', this.onPunch);
+        },
+
+        onPunch: function (evt) {
+          var dir = evt.detail.direction;
+          var handSpeed = evt.detail.speed;
+
+          // Bonus for driving the punch with real body motion (leaning
+          // in, stepping forward) in roughly the same direction as the
+          // punch. Dot product so head motion *away* from the punch (or
+          // sideways) contributes nothing.
+          var headTracker = this.head && this.head.components['punch-tracker'];
+          var headBonus = 0;
+          if (headTracker && headTracker.hasPrev) {
+            headBonus = Math.max(0, headTracker.velocity.dot(dir)) * this.data.headBonusScale;
+          }
+
+          var impulseSpeed = handSpeed * this.data.moveScale + headBonus;
+          var label = 'PUNCH!';
+
+          if (dir.y > this.data.uppercutDirThreshold) {
+            impulseSpeed *= this.data.uppercutBoost;
+            label = 'UPPERCUT!';
+            this.velocity.y += dir.y * impulseSpeed;
+          } else if (dir.y < this.data.smashDirThreshold && !this.grounded) {
+            // A downward swing while airborne overrides the shallow punch
+            // angle with a hard, satisfying crash straight down rather
+            // than following the exact (fairly flat) arm trajectory —
+            // "smashing downward should make you crash down."
+            var smashFactor = clamp(handSpeed / 3, 0.5, 2);
+            this.velocity.y -= this.data.smashExtraDown * smashFactor;
+            label = 'SMASH!';
+          }
+
+          this.velocity.x += dir.x * impulseSpeed;
+          this.velocity.z += dir.z * impulseSpeed;
+
+          var horizontal = Math.sqrt(this.velocity.x * this.velocity.x + this.velocity.z * this.velocity.z);
+          if (horizontal > this.data.maxHorizontalSpeed) {
+            var scale = this.data.maxHorizontalSpeed / horizontal;
+            this.velocity.x *= scale;
+            this.velocity.z *= scale;
+          }
+          this.velocity.y = clamp(this.velocity.y, -this.data.maxLaunchSpeed, this.data.maxLaunchSpeed);
+
+          this.lastLabel = label;
+          this.showLabel(label);
+          pulseHaptics(evt.target, label === 'PUNCH!' ? 0.4 : 0.8, 60);
+        },
+
+        tick: function (time, deltaMs) {
+          if (!deltaMs) return;
+          var dt = Math.min(deltaMs / 1000, 0.05); // guard against huge steps (tab switch, etc.)
+          var pos = this.el.object3D.position;
+
+          if (!this.grounded || this.velocity.y > 0) {
+            this.velocity.y -= this.data.gravity * dt;
+          }
+
+          pos.x += this.velocity.x * dt;
+          pos.y += this.velocity.y * dt;
+          pos.z += this.velocity.z * dt;
+
+          if (pos.y <= 0) {
+            pos.y = 0;
+            this.velocity.y = 0;
+            this.grounded = true;
+          } else {
+            this.grounded = false;
+          }
+
+          pos.x = clamp(pos.x, -this.data.bounds, this.data.bounds);
+          pos.z = clamp(pos.z, -this.data.bounds, this.data.bounds);
+
+          // Exponential decay: fast stop on the ground so a lunge resolves
+          // into a stance instead of an endless ice-skating slide (a big
+          // part of what would make this nauseating), slow decay in the
+          // air so a jump/lunge keeps its momentum through the arc.
+          var tau = this.grounded ? this.data.groundStopTau : this.data.airDragTau;
+          var damping = Math.exp(-dt / tau);
+          this.velocity.x *= damping;
+          this.velocity.z *= damping;
+
+          if (this.debugText) {
+            var speed = this.velocity.length();
+            this.debugText.setAttribute(
+              'value',
+              'rig speed: ' + speed.toFixed(1) + ' m/s' + (this.grounded ? '' : ' (airborne)')
+            );
+          }
+        },
+
+        showLabel: function (label) {
+          if (!this.labelText) return;
+          this.labelText.setAttribute('value', label);
+          this.labelText.setAttribute('visible', true);
+          clearTimeout(this.labelTimeout);
+          var el = this.labelText;
+          this.labelTimeout = setTimeout(function () {
+            el.setAttribute('visible', false);
+          }, 500);
+        },
+
+        resetPosition: function () {
+          this.el.object3D.position.set(0, 0, 0);
+          this.velocity.set(0, 0, 0);
+          this.grounded = true;
+        },
+      });
+
+      // ==============================================================
+      // COMPONENT: punch-target
+      // Attached to each cube. pop() handles both real punch hits (from
+      // punch-game's proximity check) and the desktop reticle click
+      // fallback — same flash/knockback/removal either way, matching
+      // Cube Pop's poppable component.
+      // ==============================================================
+      AFRAME.registerComponent('punch-target', {
+        init: function () {
+          this.popped = false;
+          this.onClick = this.onClick.bind(this);
+          this.el.addEventListener('click', this.onClick);
+        },
+
+        onClick: function () {
+          this.pop(new THREE.Vector3(0, 0.4, -1));
+        },
+
+        pop: function (hitVelocity) {
+          if (this.popped) return;
+          this.popped = true;
+
+          this.el.setAttribute('material', 'color', '#FFFFFF');
+
+          var dir = hitVelocity.clone().normalize();
+          if (!isFinite(dir.x)) dir.set(0, 0.4, -1).normalize();
+          var p = this.el.object3D.position;
+          this.el.setAttribute('animation__knockback', {
+            property: 'position',
+            to: p.x + dir.x * 0.6 + ' ' + (p.y + dir.y * 0.6) + ' ' + (p.z + dir.z * 0.6),
+            dur: 150,
+            easing: 'easeOutQuad',
+          });
+          this.el.setAttribute('animation__shrink', {
+            property: 'scale',
+            to: '0.001 0.001 0.001',
+            dur: 150,
+            easing: 'easeInBack',
+          });
+
+          var el = this.el;
+          setTimeout(function () {
+            el.emit('cube-popped', {}, true);
+            if (el.parentNode) el.parentNode.removeChild(el);
+          }, 150);
+        },
+
+        remove: function () {
+          this.el.removeEventListener('click', this.onClick);
+        },
+      });
+
+      // ==============================================================
+      // COMPONENT: punch-game
+      // Game manager. Keeps `count` cubes live at all times, checks both
+      // hands against every cube every frame for a force-based hit, and
+      // tracks the running popped total. Reset is bound to either
+      // controller's physical trigger button (triggerdown) rather than a
+      // raycast target, since there are no laser pointers in this scene.
+      // ==============================================================
+      AFRAME.registerComponent('punch-game', {
+        schema: {
+          count: { type: 'number', default: 6 },
+          hitRadius: { type: 'number', default: 0.32 },
+          popForceSpeed: { type: 'number', default: 1.4 },
+        },
+
+        init: function () {
+          this.hud = document.querySelector('#hud-text');
+          this.leftHand = document.querySelector('#leftHand');
+          this.rightHand = document.querySelector('#rightHand');
+          this.rig = document.querySelector('#rig');
+          this.cubes = [];
+          this.colors = ['#EF476F', '#FFD166', '#06D6A0', '#118AB2', '#7B2CBF'];
+          this.scratch = new THREE.Vector3();
+
+          this.reset = this.reset.bind(this);
+          this.onCubePopped = this.onCubePopped.bind(this);
+          this.el.addEventListener('cube-popped', this.onCubePopped);
+
+          // Physical trigger pull resets, on either hand — no laser
+          // needed for this since it's a direct button event, not a
+          // raycast hit.
+          if (this.leftHand) this.leftHand.addEventListener('triggerdown', this.reset);
+          if (this.rightHand) this.rightHand.addEventListener('triggerdown', this.reset);
+          document.querySelector('#reset-button-html').addEventListener('click', this.reset);
+
+          this.reset();
+        },
+
+        reset: function () {
+          for (var i = 0; i < this.cubes.length; i++) {
+            if (this.cubes[i].parentNode) this.cubes[i].parentNode.removeChild(this.cubes[i]);
+          }
+          this.cubes = [];
+          this.popped = 0;
+          this.updateHud();
+
+          var locomotion = this.rig.components['punch-locomotion'];
+          if (locomotion) locomotion.resetPosition();
+
+          for (var c = 0; c < this.data.count; c++) this.spawnCube(c);
+        },
+
+        spawnCube: function (colorSeed) {
+          // Wide spread of distance and height so hitting the field
+          // naturally calls for a mix of jabs, lunges, and up/down angled
+          // punches — the same punch that pops a high or low cube is the
+          // one that also reads as an uppercut or a smash.
+          var angle = (Math.random() - 0.5) * 1.6; // radians
+          var radius = 0.9 + Math.random() * 1.6; // 0.9m jab .. 2.5m lunge
+          var x = radius * Math.sin(angle);
+          var z = -radius * Math.cos(angle);
+          var y = 0.6 + Math.random() * 1.7; // knee height .. overhead
+
+          var cube = document.createElement('a-entity');
+          cube.setAttribute('geometry', { primitive: 'box', width: 0.35, height: 0.35, depth: 0.35 });
+          cube.setAttribute('material', { color: this.colors[colorSeed % this.colors.length] });
+          cube.setAttribute('position', { x: x, y: y, z: z });
+          cube.classList.add('cube-target');
+          cube.setAttribute('punch-target', '');
+          cube.setAttribute('animation__bob', {
+            property: 'position',
+            dir: 'alternate',
+            loop: true,
+            dur: 1500 + Math.random() * 1000,
+            easing: 'easeInOutSine',
+            to: x + ' ' + (y + 0.15) + ' ' + z,
+          });
+
+          this.el.appendChild(cube);
+          this.cubes.push(cube);
+        },
+
+        tick: function () {
+          this.checkHand(this.leftHand);
+          this.checkHand(this.rightHand);
+        },
+
+        checkHand: function (handEl) {
+          if (!handEl) return;
+          var tracker = handEl.components['punch-tracker'];
+          if (!tracker || !tracker.hasPrev || tracker.speed < this.data.popForceSpeed) return;
+
+          for (var i = this.cubes.length - 1; i >= 0; i--) {
+            var cube = this.cubes[i];
+            var target = cube.components['punch-target'];
+            if (!target || target.popped) continue;
+
+            cube.object3D.getWorldPosition(this.scratch);
+            if (tracker.worldPos.distanceTo(this.scratch) <= this.data.hitRadius) {
+              target.pop(tracker.velocity);
+              pulseHaptics(handEl, 0.6, 40);
+            }
+          }
+        },
+
+        onCubePopped: function (evt) {
+          this.popped++;
+          this.updateHud();
+          var idx = this.cubes.indexOf(evt.target);
+          if (idx !== -1) this.cubes.splice(idx, 1);
+          this.spawnCube(this.popped);
+        },
+
+        updateHud: function () {
+          this.hud.setAttribute('text', 'value', 'Popped: ' + this.popped);
+        },
+      });
+
+      // ==============================================================
+      // Small shared helpers
+      // ==============================================================
+      function clamp(v, lo, hi) {
+        return Math.min(hi, Math.max(lo, v));
+      }
+
+      // Haptics are a nice-to-have confirmation buzz on hit/punch, not
+      // load-bearing — swallow anything unsupported rather than let a
+      // missing hapticActuators API break the game.
+      function pulseHaptics(handEl, intensity, durationMs) {
+        try {
+          var tracked = handEl && handEl.components['tracked-controls'];
+          var controller = tracked && tracked.controller;
+          var actuator = controller && controller.hapticActuators && controller.hapticActuators[0];
+          if (actuator) actuator.pulse(intensity, durationMs);
+        } catch (e) {
+          // ignore
+        }
+      }
+
+      // Desktop-only simulate buttons: no mouse can produce a real
+      // controller-velocity punch, so these call punch-locomotion's exact
+      // onPunch() path directly with a synthetic direction/speed. This is
+      // how the movement physics (gravity, drag, launch, crash-down) got
+      // sanity-checked in a plain browser before ever touching a headset.
+      function simulatePunch(direction, speed) {
+        var rig = document.querySelector('#rig');
+        var locomotion = rig && rig.components['punch-locomotion'];
+        if (locomotion) locomotion.onPunch({ target: null, detail: { direction: direction, speed: speed } });
+      }
+      document.querySelector('#sim-punch').addEventListener('click', function () {
+        simulatePunch(new THREE.Vector3(0, 0, -1), 3.2);
+      });
+      document.querySelector('#sim-uppercut').addEventListener('click', function () {
+        simulatePunch(new THREE.Vector3(0, 1, -0.3).normalize(), 3.2);
+      });
+      document.querySelector('#sim-smash').addEventListener('click', function () {
+        simulatePunch(new THREE.Vector3(0, -1, -0.2).normalize(), 3.2);
+      });
+    </script>
+  </body>
+</html>
