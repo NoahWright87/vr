@@ -59,10 +59,10 @@
     <div id="overlay">
       <p>
         Punch Pop — punching <em>is</em> movement. Swing to lunge, uppercut to launch, hammer down to crash.
-        Punch a cube hard enough to pop it. Squeeze either grip to open the pause menu — it disables punching
-        and gives you a laser pointer to aim with; pull the trigger to click a button (speed, cube count,
-        behavior, <strong>Exit VR</strong>). Outside the menu, pull either trigger for a quick reset.
-        <strong>Clear ~2x2m of real space before trying this in a headset.</strong>
+        Punch a cube hard enough to pop it. Hold either grip to check the watch menu on that wrist — it
+        disables punching and gives your <em>other</em> hand a laser pointer to click with (speed, cube
+        count, behavior, <strong>Exit VR</strong>); release the grip to close it. Outside the menu, pull
+        either trigger for a quick reset. <strong>Clear ~2x2m of real space before trying this in a headset.</strong>
         <a href="../../index.html">All prototypes</a>
       </p>
       <div id="debug-controls">
@@ -137,15 +137,12 @@
 
           <!-- Gaze reticle: lets a phone/desktop tester pop a cube by
                looking at it and clicking, same fallback pattern as Cube
-               Pop. It doubles as the pause menu's desktop/phone pointer
-               too — pause-menu widens its raycast target list to include
-               menu buttons while the menu is open, so a mouse click still
-               works there without a real controller. In VR proper, menu
-               buttons are instead clicked with the per-hand laser
-               pointers (see the hand entities below) — a literal
-               laser+cursor is easier to aim precisely than gaze, and it
-               keeps the menu's "trigger to click" input independent of
-               whatever direction you happen to be looking. -->
+               Pop. It doubles as the watch menu's desktop/phone pointer
+               too — watch-menu-system widens its raycast target list to
+               include menu buttons while a watch menu is open, so a mouse
+               click still works there without real controllers. In VR
+               proper, menu buttons are clicked with a per-hand laser
+               pointer instead (see the hand entities below). -->
           <a-entity
             id="gaze-cursor"
             cursor="fuse: false"
@@ -154,14 +151,6 @@
             material="color: #FFFFFF; shader: flat; opacity: 0.8"
             raycaster="objects: .cube-target; far: 10"
           ></a-entity>
-
-          <!-- Pause menu panel. Parented to the camera (like the HUD text
-               above) rather than placed in world space: simpler and
-               reuses an already-working pattern in this file, at the cost
-               of the panel following your head while open — acceptable
-               for a settings menu you're not meant to leave open while
-               moving around. -->
-          <a-entity id="menu-panel" pause-menu position="0 0 -1.1" visible="false"></a-entity>
         </a-camera>
 
         <!-- Hands: no laser during normal play, on purpose — this is a
@@ -183,9 +172,15 @@
              laser-controls itself uses, but pointed at `.menu-target`
              instead of `.cube-target` and left disabled (raycaster
              enabled:false, .menu-laser hidden) during normal punching.
-             pause-menu flips both on only while the menu panel is open,
-             so pulling a trigger there clicks whatever the visible beam
-             is pointing at instead of throwing a punch. -->
+             watch-menu-system enables this on *at most one* hand at a
+             time — whichever hand is NOT currently showing its watch
+             menu — so there's never a moment where both hands are live
+             pointers at once (that was the root cause of a trigger pull
+             on one hand accidentally registering a click aimed by the
+             other). Each hand also carries its own watch-menu panel,
+             positioned above where a watch face would sit on the wrist;
+             watch-menu-system shows/hides it while that hand's grip is
+             held down. -->
         <a-entity
           id="leftHand"
           oculus-touch-controls="hand: left; model: false"
@@ -203,6 +198,20 @@
             material="color: #FFD166; shader: flat; opacity: 0.85"
             visible="false"
           ></a-box>
+          <!-- Watch face position/tilt is a first guess (position just
+               above the fist, tilted to roughly face up-and-toward-you
+               the way a real wrist rotates into view) — this needs
+               tuning against how it actually reads in a headset.
+               side:double on the background material means a rotation
+               sign mistake would show it mirrored, not invisible. -->
+          <a-entity
+            id="watch-menu-left"
+            class="watch-menu-panel"
+            position="0 0.12 0.02"
+            rotation="-60 0 0"
+            scale="0.15 0.15 0.15"
+            visible="false"
+          ></a-entity>
         </a-entity>
         <a-entity
           id="rightHand"
@@ -221,6 +230,14 @@
             material="color: #FFD166; shader: flat; opacity: 0.85"
             visible="false"
           ></a-box>
+          <a-entity
+            id="watch-menu-right"
+            class="watch-menu-panel"
+            position="0 0.12 0.02"
+            rotation="-60 0 0"
+            scale="0.15 0.15 0.15"
+            visible="false"
+          ></a-entity>
         </a-entity>
       </a-entity>
 
@@ -233,6 +250,13 @@
            on for a movement-feel POC.
       ============================================================ -->
       <a-entity id="cube-manager" punch-game="count: 6; behaviorMode: mixed"></a-entity>
+
+      <!-- Builds and drives the two watch-menu panels declared as
+           children of #leftHand/#rightHand above. Lives on its own
+           empty entity, unrelated to where it sits in the scene graph,
+           since it defers all cross-entity wiring to the scene's
+           "loaded" event anyway (see watch-menu-system.init). -->
+      <a-entity watch-menu-system></a-entity>
     </a-scene>
 
     <script>
@@ -884,11 +908,15 @@
       });
 
       // ==============================================================
-      // Pause menu DOM helpers. Both create a `.menu-target` clickable
-      // row parented under the given entity, and both re-derive their
-      // displayed label from a function (rather than a fixed string) so
-      // the current value shows immediately after every click without
-      // needing separate manual-refresh bookkeeping in pause-menu.
+      // REUSABLE: makeMenuButton / makeAdjustRow
+      // Small VR-menu row builders, used by createTabbedPanel's tab
+      // headers and by buildSettingsTabs' tab content alike. Both create
+      // `.menu-target` clickable row(s) parented under the given entity,
+      // and both re-derive their displayed label from a function (rather
+      // than a fixed string) so the current value shows immediately
+      // after every click without needing separate manual-refresh
+      // bookkeeping in the caller. Generic enough to copy-paste
+      // alongside createTabbedPanel into a future prototype.
       // ==============================================================
       function makeMenuButton(parentEl, y, labelFn, onClick) {
         var btn = document.createElement('a-entity');
@@ -948,163 +976,261 @@
       }
 
       // ==============================================================
-      // COMPONENT: pause-menu
-      // Builds and controls the in-VR settings panel: move speed, cube
-      // count, cube behavior, reset, resume, and — the actual fix for
-      // "there's no way to get out of VR" — an Exit VR button. Opened by
-      // squeezing either controller's grip button, which is a standard
-      // xr-standard gamepad button present on effectively all 6DoF
-      // controllers, so it doesn't depend on the same device-ID matching
-      // that caused the one-hand-tracking bug above.
+      // REUSABLE: createTabbedPanel
+      // Builds a tab bar (evenly-spaced clickable headers) plus one
+      // content container per tab inside `parentEl`, and shows/hides
+      // content containers as tabs are clicked. Nothing about this is
+      // specific to Punch Pop's settings — it only assumes `.menu-target`
+      // is whatever class the caller's raycaster(s) are already filtering
+      // on for clickable UI (see the gaze/hand raycaster `objects`
+      // configs above). This project has no build step or shared module
+      // system, so "reusable" here means "self-contained enough to
+      // copy-paste into the next prototype that needs tabs" rather than
+      // an import — grab this function and makeMenuButton/makeAdjustRow
+      // below wholesale.
       //
-      // While open: punching is disabled and rig physics freeze (both
-      // gated on the shared `menuOpen` flag, checked by punch-locomotion
-      // and punch-game), and each hand's raycaster+cursor+laser (see the
-      // hand entities above) is switched on so menu buttons can be
-      // pointed at and clicked with the trigger, same as any standard VR
-      // laser-pointer UI.
+      // tabs: [{ id, label }, ...]
+      // Returns { getContent(id) -> <a-entity> to append that tab's rows
+      // into, setActive(id) }.
       // ==============================================================
-      AFRAME.registerComponent('pause-menu', {
-        init: function () {
-          this.buildMenu = this.buildMenu.bind(this);
+      function createTabbedPanel(parentEl, tabs, width, tabBarY) {
+        var contentById = {};
+        var headerById = {};
 
-          // #menu-panel sits inside #rig (rig > head > menu-panel) but
-          // needs to reference #cube-manager, a *later* sibling of #rig
-          // in the markup — at the moment this entity's own init() runs
-          // during initial parse, that sibling doesn't exist in the DOM
-          // yet. Deferring to the scene's "loaded" event (which fires
-          // once every entity and component in the scene is ready) is
-          // the standard, reliable way around that ordering hazard,
-          // rather than relying on incidental document-order timing.
+        function setActive(id) {
+          for (var tabId in contentById) {
+            contentById[tabId].setAttribute('visible', tabId === id);
+            headerById[tabId].setAttribute('material', 'color', tabId === id ? '#3a4468' : '#182238');
+          }
+        }
+
+        var tabWidth = width / tabs.length;
+        tabs.forEach(function (tab, index) {
+          var x = -width / 2 + tabWidth * (index + 0.5);
+
+          var header = document.createElement('a-entity');
+          header.setAttribute('geometry', { primitive: 'plane', width: tabWidth - 0.02, height: 0.16 });
+          header.setAttribute('material', { color: '#182238', shader: 'flat' });
+          header.setAttribute('position', { x: x, y: tabBarY, z: 0.01 });
+          header.classList.add('menu-target');
+
+          var label = document.createElement('a-text');
+          label.setAttribute('value', tab.label);
+          label.setAttribute('align', 'center');
+          label.setAttribute('color', '#FFFFFF');
+          label.setAttribute('width', 2.6);
+          label.setAttribute('position', '0 0 0.01');
+          header.appendChild(label);
+
+          header.addEventListener('click', function () { setActive(tab.id); });
+          parentEl.appendChild(header);
+          headerById[tab.id] = header;
+
+          var content = document.createElement('a-entity');
+          parentEl.appendChild(content);
+          contentById[tab.id] = content;
+        });
+
+        setActive(tabs[0] && tabs[0].id);
+
+        return {
+          getContent: function (id) { return contentById[id]; },
+          setActive: setActive,
+        };
+      }
+
+      // ==============================================================
+      // Builds Punch Pop's actual settings content into a tabbed panel
+      // (see buildWatchMenu below). `api` is a small object of getters
+      // and actions (see watch-menu-system.buildApi) so this function
+      // doesn't need to know how settings are actually stored.
+      // ==============================================================
+      function buildSettingsTabs(panelEl, api) {
+        var panel = createTabbedPanel(
+          panelEl,
+          [
+            { id: 'punch', label: 'PUNCH' },
+            { id: 'foes', label: 'FOES' },
+            { id: 'more', label: 'MORE' },
+          ],
+          1.6,
+          0.8
+        );
+
+        var punchTab = panel.getContent('punch');
+        makeAdjustRow(
+          punchTab,
+          0.4,
+          function () { return 'Move Speed: ' + api.getPower().toFixed(1) + 'x'; },
+          function () { api.setPower(api.getPower() - 0.2); },
+          function () { api.setPower(api.getPower() + 0.2); }
+        );
+        makeMenuButton(punchTab, 0.05, function () { return 'Reset Arena'; }, api.resetArena);
+
+        var foesTab = panel.getContent('foes');
+        makeAdjustRow(
+          foesTab,
+          0.4,
+          function () { return 'Cube Count: ' + api.getCount(); },
+          function () { api.setCount(api.getCount() - 1); },
+          function () { api.setCount(api.getCount() + 1); }
+        );
+        makeMenuButton(
+          foesTab,
+          0.05,
+          function () { return 'Behavior: ' + api.getBehavior(); },
+          api.cycleBehavior
+        );
+
+        var moreTab = panel.getContent('more');
+        makeMenuButton(moreTab, 0.4, function () { return 'Resume'; }, api.resume);
+        makeMenuButton(moreTab, 0.1, function () { return 'Exit VR'; }, api.exitVR);
+      }
+
+      // Shared by both watch panels — background + the tabbed settings
+      // content. Each hand gets its own independent copy (see
+      // watch-menu-system.build) rather than one panel that gets
+      // reparented, which is simpler than juggling A-Frame's scene-graph
+      // transforms across an entity move.
+      function buildWatchMenu(panelEl, api) {
+        var bg = document.createElement('a-plane');
+        bg.setAttribute('width', 1.7);
+        bg.setAttribute('height', 1.9);
+        bg.setAttribute('material', 'color: #0d1526; opacity: 0.95; shader: flat; side: double');
+        panelEl.appendChild(bg);
+        buildSettingsTabs(panelEl, api);
+      }
+
+      // ==============================================================
+      // COMPONENT: watch-menu-system
+      // Replaces an earlier face-filling "pause menu" design with a
+      // wrist-mounted watch: holding a hand's grip button shows *that*
+      // hand's watch-menu-panel (see the hand entities above) and gives
+      // the OTHER hand a laser pointer to click it with. Releasing the
+      // grip closes it. This is a hold gesture, not a toggle, matching
+      // "check your watch" rather than "open a settings screen."
+      //
+      // It's also the fix for a real interaction bug in the previous
+      // design: with both hands able to have an active laser
+      // simultaneously, an absent-minded trigger pull on the hand you
+      // *weren't* looking at could click whatever it happened to be
+      // pointing at. Structurally, only one hand can ever be the
+      // "pointer" at a time now — the menu hand never gets a raycaster
+      // enabled at all — so that's no longer possible.
+      //
+      // While a watch is open: punching is disabled and rig physics
+      // freeze (both gated on the shared `menuOpen` flag, checked by
+      // punch-locomotion and punch-game), and the trigger's normal
+      // quick-reset job is suspended so clicking a menu button doesn't
+      // also reset the arena.
+      // ==============================================================
+      AFRAME.registerComponent('watch-menu-system', {
+        init: function () {
+          this.build = this.build.bind(this);
+          // Deferred to scene "loaded" for the same reason the old
+          // pause-menu had to be: this entity can end up initializing
+          // before sibling entities elsewhere in the markup exist yet,
+          // and this component needs several of them (#cube-manager in
+          // particular) up front.
           var sceneEl = this.el.sceneEl;
-          if (sceneEl.hasLoaded) this.buildMenu();
-          else sceneEl.addEventListener('loaded', this.buildMenu, { once: true });
+          if (sceneEl.hasLoaded) this.build();
+          else sceneEl.addEventListener('loaded', this.build, { once: true });
         },
 
-        buildMenu: function () {
+        build: function () {
           this.rig = document.querySelector('#rig');
           this.gameEl = document.querySelector('#cube-manager');
           this.cursorEl = document.querySelector('#gaze-cursor');
           this.leftHand = document.querySelector('#leftHand');
           this.rightHand = document.querySelector('#rightHand');
+          this.leftPanel = document.querySelector('#watch-menu-left');
+          this.rightPanel = document.querySelector('#watch-menu-right');
+          this.activeHand = null; // 'left' | 'right' | null
 
+          var api = this.buildApi();
+          buildWatchMenu(this.leftPanel, api);
+          buildWatchMenu(this.rightPanel, api);
+
+          this.openLeft = this.openFor.bind(this, 'left');
+          this.closeLeft = this.closeFor.bind(this, 'left');
+          this.openRight = this.openFor.bind(this, 'right');
+          this.closeRight = this.closeFor.bind(this, 'right');
+          this.leftHand.addEventListener('gripdown', this.openLeft);
+          this.leftHand.addEventListener('gripup', this.closeLeft);
+          this.rightHand.addEventListener('gripdown', this.openRight);
+          this.rightHand.addEventListener('gripup', this.closeRight);
+
+          // Desktop/phone has no grip button, so the overlay's "Menu"
+          // button toggles the left watch instead, using the gaze
+          // reticle (widened below) as its pointer.
+          this.toggleDesktop = this.toggleDesktop.bind(this);
+          document.querySelector('#menu-button-html').addEventListener('click', this.toggleDesktop);
+        },
+
+        buildApi: function () {
           var self = this;
-          var behaviorModes = ['mixed'].concat(CUBE_BEHAVIOR_MODES);
-
-          var bg = document.createElement('a-plane');
-          bg.setAttribute('width', 1.7);
-          bg.setAttribute('height', 1.8);
-          bg.setAttribute('material', 'color: #0d1526; opacity: 0.92; shader: flat');
-          this.el.appendChild(bg);
-
-          var title = document.createElement('a-text');
-          title.setAttribute('value', 'PAUSE MENU');
-          title.setAttribute('align', 'center');
-          title.setAttribute('color', '#FFD166');
-          title.setAttribute('width', 2.6);
-          title.setAttribute('position', '0 0.75 0.01');
-          this.el.appendChild(title);
-
-          makeAdjustRow(
-            this.el,
-            0.45,
-            function () {
-              return 'Move Speed: ' + self.rig.getAttribute('punch-locomotion').powerMultiplier.toFixed(1) + 'x';
+          return {
+            getPower: function () { return self.rig.getAttribute('punch-locomotion').powerMultiplier; },
+            setPower: function (v) {
+              v = clamp(Math.round(v * 10) / 10, 0.4, 3.0);
+              self.rig.setAttribute('punch-locomotion', 'powerMultiplier', v);
             },
-            function () { self.setPower(self.rig.getAttribute('punch-locomotion').powerMultiplier - 0.2); },
-            function () { self.setPower(self.rig.getAttribute('punch-locomotion').powerMultiplier + 0.2); }
-          );
-
-          makeAdjustRow(
-            this.el,
-            0.2,
-            function () { return 'Cube Count: ' + self.gameEl.getAttribute('punch-game').count; },
-            function () { self.setCount(self.gameEl.getAttribute('punch-game').count - 1); },
-            function () { self.setCount(self.gameEl.getAttribute('punch-game').count + 1); }
-          );
-
-          makeMenuButton(
-            this.el,
-            -0.1,
-            function () { return 'Behavior: ' + self.gameEl.getAttribute('punch-game').behaviorMode; },
-            function () { self.cycleBehavior(behaviorModes); }
-          );
-
-          makeMenuButton(this.el, -0.38, function () { return 'Reset Arena'; }, function () {
-            self.gameEl.components['punch-game'].reset();
-          });
-          makeMenuButton(this.el, -0.62, function () { return 'Resume'; }, function () {
-            self.close();
-          });
-          makeMenuButton(this.el, -0.92, function () { return 'Exit VR'; }, function () {
-            self.exitVR();
-          });
-
-          this.toggle = this.toggle.bind(this);
-          if (this.leftHand) this.leftHand.addEventListener('gripdown', this.toggle);
-          if (this.rightHand) this.rightHand.addEventListener('gripdown', this.toggle);
-          document.querySelector('#menu-button-html').addEventListener('click', this.toggle);
+            getCount: function () { return self.gameEl.getAttribute('punch-game').count; },
+            setCount: function (v) {
+              v = clamp(v, 2, 14);
+              self.gameEl.setAttribute('punch-game', 'count', v);
+              self.gameEl.components['punch-game'].reset();
+            },
+            getBehavior: function () { return self.gameEl.getAttribute('punch-game').behaviorMode; },
+            cycleBehavior: function () {
+              var modes = ['mixed'].concat(CUBE_BEHAVIOR_MODES);
+              var current = self.gameEl.getAttribute('punch-game').behaviorMode;
+              var next = modes[(modes.indexOf(current) + 1) % modes.length];
+              self.gameEl.setAttribute('punch-game', 'behaviorMode', next);
+              self.gameEl.components['punch-game'].reset();
+            },
+            resetArena: function () { self.gameEl.components['punch-game'].reset(); },
+            resume: function () { if (self.activeHand) self.closeFor(self.activeHand); },
+            exitVR: function () {
+              var sceneEl = self.el.sceneEl;
+              if (sceneEl) sceneEl.exitVR();
+            },
+          };
         },
 
-        toggle: function () {
-          if (menuOpen) this.close();
-          else this.openMenu();
-        },
-
-        openMenu: function () {
+        openFor: function (hand) {
+          if (this.activeHand) return; // a menu is already open on the other hand; ignore
+          this.activeHand = hand;
           menuOpen = true;
-          this.el.setAttribute('visible', true);
-          this.setHandLasers(true);
-          // Also widen the desktop/phone gaze reticle's raycast targets
-          // to include menu buttons, so testing without a headset still
-          // works (plain instant click, same as it already does for
-          // cubes — no dwell/fuse involved).
-          if (this.cursorEl) {
-            this.cursorEl.setAttribute('raycaster', 'objects', '.cube-target, .menu-target');
-          }
+
+          var panel = hand === 'left' ? this.leftPanel : this.rightPanel;
+          var otherHand = hand === 'left' ? this.rightHand : this.leftHand;
+          panel.setAttribute('visible', true);
+          this.setLaser(otherHand, true);
+          if (this.cursorEl) this.cursorEl.setAttribute('raycaster', 'objects', '.cube-target, .menu-target');
         },
 
-        close: function () {
+        closeFor: function (hand) {
+          if (this.activeHand !== hand) return;
+          this.activeHand = null;
           menuOpen = false;
-          this.el.setAttribute('visible', false);
-          this.setHandLasers(false);
-          if (this.cursorEl) {
-            this.cursorEl.setAttribute('raycaster', 'objects', '.cube-target');
-          }
+
+          var panel = hand === 'left' ? this.leftPanel : this.rightPanel;
+          var otherHand = hand === 'left' ? this.rightHand : this.leftHand;
+          panel.setAttribute('visible', false);
+          this.setLaser(otherHand, false);
+          if (this.cursorEl) this.cursorEl.setAttribute('raycaster', 'objects', '.cube-target');
         },
 
-        setHandLasers: function (on) {
-          var hands = [this.leftHand, this.rightHand];
-          for (var i = 0; i < hands.length; i++) {
-            var hand = hands[i];
-            if (!hand) continue;
-            hand.setAttribute('raycaster', 'enabled', on);
-            var laser = hand.querySelector('.menu-laser');
-            if (laser) laser.setAttribute('visible', on);
-          }
+        setLaser: function (handEl, on) {
+          handEl.setAttribute('raycaster', 'enabled', on);
+          var laser = handEl.querySelector('.menu-laser');
+          if (laser) laser.setAttribute('visible', on);
         },
 
-        setPower: function (v) {
-          v = clamp(Math.round(v * 10) / 10, 0.4, 3.0);
-          this.rig.setAttribute('punch-locomotion', 'powerMultiplier', v);
-        },
-
-        setCount: function (v) {
-          v = clamp(v, 2, 14);
-          this.gameEl.setAttribute('punch-game', 'count', v);
-          this.gameEl.components['punch-game'].reset();
-        },
-
-        cycleBehavior: function (modes) {
-          var current = this.gameEl.getAttribute('punch-game').behaviorMode;
-          var next = modes[(modes.indexOf(current) + 1) % modes.length];
-          this.gameEl.setAttribute('punch-game', 'behaviorMode', next);
-          this.gameEl.components['punch-game'].reset();
-        },
-
-        exitVR: function () {
-          var sceneEl = this.el.sceneEl;
-          if (sceneEl) sceneEl.exitVR();
+        toggleDesktop: function () {
+          if (this.activeHand) this.closeFor(this.activeHand);
+          else this.openFor('left');
         },
       });
 
