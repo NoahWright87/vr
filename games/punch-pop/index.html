@@ -189,26 +189,32 @@
           cursor="fuse: false"
         >
           <a-sphere radius="0.06" color="#EF476F" shader="flat"></a-sphere>
+          <!-- depth starts at 1 (unit length); laser-beam scales/repositions
+               it every frame to stop exactly at whatever it's pointed at,
+               instead of a fixed length that visibly pokes out the far
+               side of the menu panel it's aimed at. -->
           <a-box
             class="menu-laser"
             width="0.006"
             height="0.006"
-            depth="3"
-            position="0 0 -1.5"
+            depth="1"
+            position="0 0 -0.5"
             material="color: #FFD166; shader: flat; opacity: 0.85"
+            laser-beam="maxLength: 3"
             visible="false"
           ></a-box>
-          <!-- Watch face position/tilt is a first guess (position just
-               above the fist, tilted to roughly face up-and-toward-you
-               the way a real wrist rotates into view) — this needs
-               tuning against how it actually reads in a headset.
-               side:double on the background material means a rotation
-               sign mistake would show it mirrored, not invisible. -->
+          <!-- Watch face position/tilt is a best-effort guess, not yet
+               confirmed on real hardware — see the "Debug Axes" toggle in
+               the watch menu's MORE tab, which draws labelled RGB=XYZ
+               lines out of both fists for figuring out the correct
+               rotation empirically. side:double on the background
+               material means a rotation sign mistake shows it mirrored
+               rather than invisible. -->
           <a-entity
             id="watch-menu-left"
             class="watch-menu-panel"
             position="0 0.12 0.02"
-            rotation="-60 0 0"
+            rotation="-60 90 0"
             scale="0.15 0.15 0.15"
             visible="false"
           ></a-entity>
@@ -225,16 +231,17 @@
             class="menu-laser"
             width="0.006"
             height="0.006"
-            depth="3"
-            position="0 0 -1.5"
+            depth="1"
+            position="0 0 -0.5"
             material="color: #FFD166; shader: flat; opacity: 0.85"
+            laser-beam="maxLength: 3"
             visible="false"
           ></a-box>
           <a-entity
             id="watch-menu-right"
             class="watch-menu-panel"
             position="0 0.12 0.02"
-            rotation="-60 0 0"
+            rotation="-60 90 0"
             scale="0.15 0.15 0.15"
             visible="false"
           ></a-entity>
@@ -273,6 +280,13 @@
       // settings, and by punch-game's trigger-reset handler so pulling
       // the trigger to click a menu item doesn't *also* reset the arena.
       var menuOpen = false;
+
+      // Toggled from the watch menu's MORE tab. Shows/hides the RGB=XYZ
+      // axis gizmos on both hands (see addAxisGizmo) — a way to read off
+      // real controller-local axis directions in-headset, since the
+      // watch panel's position/rotation was tuned blind (no headset to
+      // check it against) and needs empirical correction.
+      var debugAxesOn = false;
 
       // The four "live" per-cube movement behaviors. Menu's cycle button
       // also offers "mixed", which isn't itself a movement behavior —
@@ -777,6 +791,40 @@
       });
 
       // ==============================================================
+      // COMPONENT: laser-beam
+      // Attached to a `.menu-laser` box (a child of a hand entity that
+      // also carries the raycaster it's visualizing). Every frame, reads
+      // that raycaster's current intersection and stretches/repositions
+      // the box so it stops exactly at whatever it's pointing at —
+      // scale.z + position.z rather than rebuilding the geometry, since
+      // this runs every frame the whole time a watch menu is open. A
+      // fixed-length beam used to pass visibly through the menu panel it
+      // had just clicked, which reads as "did that actually register?"
+      // even though it did.
+      // ==============================================================
+      AFRAME.registerComponent('laser-beam', {
+        schema: { maxLength: { type: 'number', default: 3 } },
+
+        init: function () {
+          this.raycasterEl = this.el.parentEl;
+        },
+
+        tick: function () {
+          var raycaster = this.raycasterEl.components.raycaster;
+          if (!raycaster || !raycaster.data.enabled) return;
+
+          var length = this.data.maxLength;
+          if (raycaster.intersections && raycaster.intersections.length) {
+            length = Math.min(raycaster.intersections[0].distance, this.data.maxLength);
+          }
+          length = Math.max(length, 0.01);
+
+          this.el.object3D.scale.z = length;
+          this.el.object3D.position.z = -length / 2;
+        },
+      });
+
+      // ==============================================================
       // COMPONENT: punch-game
       // Game manager. Keeps `count` cubes live at all times, checks both
       // hands against every cube every frame for a force-based hit, and
@@ -915,10 +963,23 @@
       // and both re-derive their displayed label from a function (rather
       // than a fixed string) so the current value shows immediately
       // after every click without needing separate manual-refresh
-      // bookkeeping in the caller. Generic enough to copy-paste
-      // alongside createTabbedPanel into a future prototype.
+      // bookkeeping in the caller.
+      //
+      // The optional trailing `refreshList` array, if given, gets this
+      // row's refresh function pushed onto it. That's what lets a caller
+      // force every row in a panel to re-read its current value on
+      // demand (see buildSettingsTabs / watch-menu-system.openFor) —
+      // needed because Punch Pop has *two* independent watch panels
+      // (one per wrist) sharing one underlying settings state, and a
+      // row only repaints itself on its own click otherwise. A panel
+      // that's been sitting hidden while the other hand's watch changed
+      // Move Speed would otherwise still show the old value the next
+      // time it's opened.
+      //
+      // Generic enough to copy-paste alongside createTabbedPanel into a
+      // future prototype.
       // ==============================================================
-      function makeMenuButton(parentEl, y, labelFn, onClick) {
+      function makeMenuButton(parentEl, y, labelFn, onClick, refreshList) {
         var btn = document.createElement('a-entity');
         btn.setAttribute('geometry', { primitive: 'plane', width: 1.3, height: 0.18 });
         btn.setAttribute('material', { color: '#2a3350', shader: 'flat' });
@@ -933,14 +994,17 @@
         text.setAttribute('value', labelFn());
         btn.appendChild(text);
 
+        var refresh = function () { text.setAttribute('value', labelFn()); };
+        if (refreshList) refreshList.push(refresh);
+
         btn.addEventListener('click', function () {
           onClick();
-          text.setAttribute('value', labelFn());
+          refresh();
         });
         parentEl.appendChild(btn);
       }
 
-      function makeAdjustRow(parentEl, y, labelFn, onMinus, onPlus) {
+      function makeAdjustRow(parentEl, y, labelFn, onMinus, onPlus, refreshList) {
         var label = document.createElement('a-text');
         label.setAttribute('align', 'center');
         label.setAttribute('color', '#FFFFFF');
@@ -948,6 +1012,9 @@
         label.setAttribute('position', '0 ' + y + ' 0.01');
         label.setAttribute('value', labelFn());
         parentEl.appendChild(label);
+
+        var refresh = function () { label.setAttribute('value', labelFn()); };
+        if (refreshList) refreshList.push(refresh);
 
         function makeSmallButton(x, glyph, onClick) {
           var btn = document.createElement('a-entity');
@@ -966,7 +1033,7 @@
 
           btn.addEventListener('click', function () {
             onClick();
-            label.setAttribute('value', labelFn());
+            refresh();
           });
           parentEl.appendChild(btn);
         }
@@ -1046,6 +1113,8 @@
       // doesn't need to know how settings are actually stored.
       // ==============================================================
       function buildSettingsTabs(panelEl, api) {
+        var refreshFns = [];
+
         var panel = createTabbedPanel(
           panelEl,
           [
@@ -1063,9 +1132,10 @@
           0.4,
           function () { return 'Move Speed: ' + api.getPower().toFixed(1) + 'x'; },
           function () { api.setPower(api.getPower() - 0.2); },
-          function () { api.setPower(api.getPower() + 0.2); }
+          function () { api.setPower(api.getPower() + 0.2); },
+          refreshFns
         );
-        makeMenuButton(punchTab, 0.05, function () { return 'Reset Arena'; }, api.resetArena);
+        makeMenuButton(punchTab, 0.05, function () { return 'Reset Arena'; }, api.resetArena, refreshFns);
 
         var foesTab = panel.getContent('foes');
         makeAdjustRow(
@@ -1073,18 +1143,34 @@
           0.4,
           function () { return 'Cube Count: ' + api.getCount(); },
           function () { api.setCount(api.getCount() - 1); },
-          function () { api.setCount(api.getCount() + 1); }
+          function () { api.setCount(api.getCount() + 1); },
+          refreshFns
         );
         makeMenuButton(
           foesTab,
           0.05,
           function () { return 'Behavior: ' + api.getBehavior(); },
-          api.cycleBehavior
+          api.cycleBehavior,
+          refreshFns
         );
 
         var moreTab = panel.getContent('more');
-        makeMenuButton(moreTab, 0.4, function () { return 'Resume'; }, api.resume);
-        makeMenuButton(moreTab, 0.1, function () { return 'Exit VR'; }, api.exitVR);
+        makeMenuButton(moreTab, 0.4, function () { return 'Resume'; }, api.resume, refreshFns);
+        makeMenuButton(moreTab, 0.1, function () { return 'Exit VR'; }, api.exitVR, refreshFns);
+        makeMenuButton(
+          moreTab,
+          -0.2,
+          function () { return 'Debug Axes: ' + (api.getDebugAxes() ? 'ON' : 'OFF'); },
+          api.toggleDebugAxes,
+          refreshFns
+        );
+
+        // Called by watch-menu-system right before showing this panel,
+        // so a value changed on the other wrist (or via desktop) is
+        // never stale the moment you look down at this one.
+        panelEl.refreshLabels = function () {
+          refreshFns.forEach(function (fn) { fn(); });
+        };
       }
 
       // Shared by both watch panels — background + the tabbed settings
@@ -1099,6 +1185,59 @@
         bg.setAttribute('material', 'color: #0d1526; opacity: 0.95; shader: flat; side: double');
         panelEl.appendChild(bg);
         buildSettingsTabs(panelEl, api);
+      }
+
+      // ==============================================================
+      // addAxisGizmo: draws three colored, labelled bars out of `handEl`
+      // along its local +X (red, "X"), +Y (green, "Y"), and +Z (blue,
+      // "Z") axes — the standard RGB=XYZ convention. Each bar is a box
+      // sized along just one dimension and shifted so it starts at the
+      // hand's local origin and extends only in the positive direction,
+      // which needs zero rotation math (and so has zero chance of the
+      // sign-of-rotation mistakes that made the watch panel's own
+      // orientation hard to get right blind).
+      //
+      // Hidden by default; toggled by the watch menu's "Debug Axes"
+      // button (see watch-menu-system.buildApi). The intent is purely
+      // diagnostic: hold your hand in the pose you'd naturally check a
+      // watch in, read off which colored/labelled axis is pointing
+      // toward your eyes, and that tells us exactly which local axis the
+      // watch panel's rotation should be built around instead of
+      // guessing again.
+      // ==============================================================
+      function addAxisGizmo(handEl, length) {
+        var gizmo = document.createElement('a-entity');
+        gizmo.classList.add('axis-gizmo');
+        gizmo.setAttribute('visible', debugAxesOn);
+
+        [
+          { axis: 'x', dim: 'width', color: '#FF4444' },
+          { axis: 'y', dim: 'height', color: '#44FF44' },
+          { axis: 'z', dim: 'depth', color: '#4488FF' },
+        ].forEach(function (a) {
+          var geometry = { width: 0.006, height: 0.006, depth: 0.006 };
+          geometry[a.dim] = length;
+          var bar = document.createElement('a-box');
+          bar.setAttribute('geometry', geometry);
+          bar.setAttribute('material', { color: a.color, shader: 'flat' });
+          var barPos = { x: 0, y: 0, z: 0 };
+          barPos[a.axis] = length / 2;
+          bar.setAttribute('position', barPos);
+          gizmo.appendChild(bar);
+
+          var label = document.createElement('a-text');
+          label.setAttribute('value', a.axis.toUpperCase());
+          label.setAttribute('align', 'center');
+          label.setAttribute('color', a.color);
+          label.setAttribute('width', 6);
+          var labelPos = { x: 0, y: 0, z: 0 };
+          labelPos[a.axis] = length + 0.03;
+          label.setAttribute('position', labelPos);
+          gizmo.appendChild(label);
+        });
+
+        handEl.appendChild(gizmo);
+        return gizmo;
       }
 
       // ==============================================================
@@ -1151,6 +1290,9 @@
           buildWatchMenu(this.leftPanel, api);
           buildWatchMenu(this.rightPanel, api);
 
+          addAxisGizmo(this.leftHand, 0.25);
+          addAxisGizmo(this.rightHand, 0.25);
+
           this.openLeft = this.openFor.bind(this, 'left');
           this.closeLeft = this.closeFor.bind(this, 'left');
           this.openRight = this.openFor.bind(this, 'right');
@@ -1195,6 +1337,13 @@
               var sceneEl = self.el.sceneEl;
               if (sceneEl) sceneEl.exitVR();
             },
+            getDebugAxes: function () { return debugAxesOn; },
+            toggleDebugAxes: function () {
+              debugAxesOn = !debugAxesOn;
+              document.querySelectorAll('.axis-gizmo').forEach(function (gizmo) {
+                gizmo.setAttribute('visible', debugAxesOn);
+              });
+            },
           };
         },
 
@@ -1205,6 +1354,12 @@
 
           var panel = hand === 'left' ? this.leftPanel : this.rightPanel;
           var otherHand = hand === 'left' ? this.rightHand : this.leftHand;
+          // Refresh every row's displayed value before showing — the two
+          // watch panels share one underlying settings state, but each
+          // has its own DOM text that only updates when its own button
+          // is clicked, so the panel that's been hidden can otherwise
+          // show a stale value from before the other wrist changed it.
+          if (panel.refreshLabels) panel.refreshLabels();
           panel.setAttribute('visible', true);
           this.setLaser(otherHand, true);
           if (this.cursorEl) this.cursorEl.setAttribute('raycaster', 'objects', '.cube-target, .menu-target');
