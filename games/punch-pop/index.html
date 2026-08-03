@@ -203,18 +203,17 @@
             laser-beam="maxLength: 3"
             visible="false"
           ></a-box>
-          <!-- Watch face position/tilt is a best-effort guess, not yet
-               confirmed on real hardware — see the "Debug Axes" toggle in
-               the watch menu's MORE tab, which draws labelled RGB=XYZ
-               lines out of both fists for figuring out the correct
-               rotation empirically. side:double on the background
-               material means a rotation sign mistake shows it mirrored
-               rather than invisible. -->
+          <!-- Position/rotation are computed at runtime from the SETUP
+               tab's Facing/Roll settings (see applyWatchTransform) rather
+               than fixed here — guessing the right values blind twice
+               didn't work, so this is now adjustable live from inside
+               the menu itself instead of round-tripping through code
+               changes. side:double on the background material means a
+               bad orientation choice still shows the panel (mirrored),
+               not nothing. -->
           <a-entity
             id="watch-menu-left"
             class="watch-menu-panel"
-            position="0 0.12 0.02"
-            rotation="-60 90 0"
             scale="0.15 0.15 0.15"
             visible="false"
           ></a-entity>
@@ -240,8 +239,6 @@
           <a-entity
             id="watch-menu-right"
             class="watch-menu-panel"
-            position="0 0.12 0.02"
-            rotation="-60 90 0"
             scale="0.15 0.15 0.15"
             visible="false"
           ></a-entity>
@@ -274,6 +271,10 @@
         return Math.min(hi, Math.max(lo, v));
       }
 
+      function degToRad(d) {
+        return (d * Math.PI) / 180;
+      }
+
       // True while the pause menu is open. Read by punch-locomotion and
       // punch-game to disable punching (both locomotion and cube-popping)
       // and freeze rig physics while the player is fiddling with
@@ -287,6 +288,26 @@
       // watch panel's position/rotation was tuned blind (no headset to
       // check it against) and needs empirical correction.
       var debugAxesOn = false;
+
+      // How steep (dot with world-up) a swing's direction needs to be
+      // before punch-tracker exempts it from the wind-up/extending gate
+      // — see the comment at that check for why uppercuts need this
+      // separate, looser threshold rather than sharing
+      // punch-locomotion's own (menu-adjustable) uppercut angle exactly.
+      var UPPERCUT_EXEMPT_DIR_Y = 0.35;
+
+      // Per-wrist watch panel placement, adjustable live from each
+      // panel's own SETUP tab (see buildSettingsTabs / applyWatchTransform
+      // below). `axis`+`sign` pick which local axis (relative to the
+      // hand) the panel is offset out along; `roll` spins it around its
+      // own facing direction in 45-degree steps to fix up/sideways text
+      // after the facing axis is right. Two rounds of guessing this
+      // blind (no headset to check against) didn't land on a working
+      // orientation, so it's a live control now instead of another guess.
+      var watchSettings = {
+        left: { axis: 'x', sign: 1, roll: 0 },
+        right: { axis: 'x', sign: 1, roll: 0 },
+      };
 
       // The four "live" per-cube movement behaviors. Menu's cycle button
       // also offers "mixed", which isn't itself a movement behavior —
@@ -461,9 +482,25 @@
             }
           }
 
-          if (this.armed && this.speed >= this.data.triggerSpeed && this.extending) {
+          // A steep-upward swing bypasses the extending/wind-up check
+          // entirely, rather than requiring it like every other punch
+          // shape does. That check is "is the hand moving away from the
+          // head" — a good fit for jabs/crosses/hooks (which extend away
+          // from the body) but a bad one for uppercuts, whose hand curls
+          // *up toward the chin* and so often has a shrinking, not
+          // growing, distance from the head for large parts of the
+          // swing. Gating uppercuts on it made real ones nearly
+          // impossible to throw on purpose. UPPERCUT_EXEMPT_DIR_Y is
+          // deliberately a bit looser than punch-locomotion's own
+          // (menu-adjustable) uppercut angle threshold — better to let a
+          // borderline swing through here and have the stricter,
+          // two-condition check in punch-locomotion decide whether it
+          // actually counts as an uppercut, than to block it here first.
+          var dir = this.velocity.clone().normalize();
+          var steepUpward = isFinite(dir.y) && dir.y > UPPERCUT_EXEMPT_DIR_Y;
+
+          if (this.armed && this.speed >= this.data.triggerSpeed && (this.extending || steepUpward)) {
             this.armed = false;
-            var dir = this.velocity.clone().normalize();
             if (isFinite(dir.x)) {
               this.el.emit('punch', { direction: dir, speed: this.speed, swingStartY: this.recentMinY }, true);
             }
@@ -480,19 +517,27 @@
       // that velocity into rig position every frame (gravity, ground
       // collision, drag). This is the whole "punch to move" mechanic.
       //
-      // `powerMultiplier` is the one knob the pause menu exposes to the
+      // `powerMultiplier` is the main knob the watch menu exposes to the
       // player as "Move Speed" — it scales the whole impulse uniformly
       // rather than exposing every constant below, since "punching feels
       // too weak/strong overall" is the actual in-headset question, not
-      // any one of these individually.
+      // any one of these individually. Default bumped to 3.0 (and the
+      // adjustable range widened well past that) after playtesting found
+      // 1.0x way too slow and 3.0x "where it starts to feel fun" — so
+      // that's the new baseline, not something you have to crank every
+      // time. maxHorizontalSpeed/maxLaunchSpeed were raised to match, so
+      // the extra power multiplier headroom doesn't just immediately
+      // saturate against the old, lower caps. Gravity's default was also
+      // lowered a bit for a floatier, more super-heroic feel (easier to
+      // hang in the air / juggle), and is menu-adjustable too.
       // ==============================================================
       AFRAME.registerComponent('punch-locomotion', {
         schema: {
           moveScale: { type: 'number', default: 1.8 },
           headBonusScale: { type: 'number', default: 1.0 },
-          maxHorizontalSpeed: { type: 'number', default: 10 },
-          maxLaunchSpeed: { type: 'number', default: 7 },
-          gravity: { type: 'number', default: 7 },
+          maxHorizontalSpeed: { type: 'number', default: 16 },
+          maxLaunchSpeed: { type: 'number', default: 12 },
+          gravity: { type: 'number', default: 5.5 },
           groundStopTau: { type: 'number', default: 0.12 },
           airDragTau: { type: 'number', default: 1.0 },
           uppercutBoost: { type: 'number', default: 2.0 },
@@ -501,7 +546,7 @@
           smashDirThreshold: { type: 'number', default: -0.5 },
           smashExtraDown: { type: 'number', default: 6 },
           bounds: { type: 'number', default: 14 },
-          powerMultiplier: { type: 'number', default: 1.0 },
+          powerMultiplier: { type: 'number', default: 3.0 },
         },
 
         init: function () {
@@ -1110,9 +1155,13 @@
       // Builds Punch Pop's actual settings content into a tabbed panel
       // (see buildWatchMenu below). `api` is a small object of getters
       // and actions (see watch-menu-system.buildApi) so this function
-      // doesn't need to know how settings are actually stored.
+      // doesn't need to know how settings are actually stored. `hand` is
+      // 'left' or 'right' — this panel's own wrist, needed only for the
+      // SETUP tab, which edits *this* panel's own facing/roll rather
+      // than the other wrist's (each watch is independent, since a
+      // player's two arms don't necessarily need the same orientation).
       // ==============================================================
-      function buildSettingsTabs(panelEl, api) {
+      function buildSettingsTabs(panelEl, api, hand) {
         var refreshFns = [];
 
         var panel = createTabbedPanel(
@@ -1120,6 +1169,8 @@
           [
             { id: 'punch', label: 'PUNCH' },
             { id: 'foes', label: 'FOES' },
+            { id: 'air', label: 'AIR' },
+            { id: 'setup', label: 'SETUP' },
             { id: 'more', label: 'MORE' },
           ],
           1.6,
@@ -1129,13 +1180,21 @@
         var punchTab = panel.getContent('punch');
         makeAdjustRow(
           punchTab,
-          0.4,
+          0.5,
           function () { return 'Move Speed: ' + api.getPower().toFixed(1) + 'x'; },
-          function () { api.setPower(api.getPower() - 0.2); },
-          function () { api.setPower(api.getPower() + 0.2); },
+          function () { api.setPower(api.getPower() - 0.5); },
+          function () { api.setPower(api.getPower() + 0.5); },
           refreshFns
         );
-        makeMenuButton(punchTab, 0.05, function () { return 'Reset Arena'; }, api.resetArena, refreshFns);
+        makeAdjustRow(
+          punchTab,
+          0.2,
+          function () { return 'Gravity: ' + api.getGravity().toFixed(1); },
+          function () { api.setGravity(api.getGravity() - 0.5); },
+          function () { api.setGravity(api.getGravity() + 0.5); },
+          refreshFns
+        );
+        makeMenuButton(punchTab, -0.15, function () { return 'Reset Arena'; }, api.resetArena, refreshFns);
 
         var foesTab = panel.getContent('foes');
         makeAdjustRow(
@@ -1151,6 +1210,72 @@
           0.05,
           function () { return 'Behavior: ' + api.getBehavior(); },
           api.cycleBehavior,
+          refreshFns
+        );
+
+        // "How high you go airborne" and "how the uppercut is detected"
+        // as two separate, explicit concerns per Noah's feedback that
+        // the wind-up fix made real uppercuts nearly impossible to throw
+        // on purpose (fixed separately, in punch-tracker's exemption for
+        // steep-upward swings) — this tab is for tuning feel on top of
+        // that, once uppercuts reliably fire again.
+        var airTab = panel.getContent('air');
+        makeAdjustRow(
+          airTab,
+          0.55,
+          function () { return 'Uppercut Power: ' + api.getUppercutBoost().toFixed(1) + 'x'; },
+          function () { api.setUppercutBoost(api.getUppercutBoost() - 0.2); },
+          function () { api.setUppercutBoost(api.getUppercutBoost() + 0.2); },
+          refreshFns
+        );
+        makeAdjustRow(
+          airTab,
+          0.27,
+          function () { return 'Max Air Speed: ' + api.getMaxLaunchSpeed().toFixed(1); },
+          function () { api.setMaxLaunchSpeed(api.getMaxLaunchSpeed() - 1); },
+          function () { api.setMaxLaunchSpeed(api.getMaxLaunchSpeed() + 1); },
+          refreshFns
+        );
+        makeAdjustRow(
+          airTab,
+          -0.01,
+          function () { return 'Uppercut Angle: ' + api.getUppercutAngle().toFixed(2); },
+          function () { api.setUppercutAngle(api.getUppercutAngle() - 0.05); },
+          function () { api.setUppercutAngle(api.getUppercutAngle() + 0.05); },
+          refreshFns
+        );
+        makeAdjustRow(
+          airTab,
+          -0.29,
+          function () { return 'Max Start Height: ' + api.getUppercutStartHeight().toFixed(2); },
+          function () { api.setUppercutStartHeight(api.getUppercutStartHeight() - 0.05); },
+          function () { api.setUppercutStartHeight(api.getUppercutStartHeight() + 0.05); },
+          refreshFns
+        );
+
+        // This panel's own wrist placement — see applyWatchTransform.
+        // "Facing" cycles through all 6 axis+sign combinations; "Roll"
+        // spins the panel around whichever direction that ends up being,
+        // in 45-degree steps, to fix up/sideways text afterward.
+        var setupTab = panel.getContent('setup');
+        var facingOrder = ['x+', 'x-', 'y+', 'y-', 'z+', 'z-'];
+        makeMenuButton(
+          setupTab,
+          0.4,
+          function () { return 'Facing: ' + api.getWatchFacing(hand).toUpperCase(); },
+          function () {
+            var current = api.getWatchFacing(hand);
+            var next = facingOrder[(facingOrder.indexOf(current) + 1) % facingOrder.length];
+            api.setWatchFacing(hand, next);
+          },
+          refreshFns
+        );
+        makeAdjustRow(
+          setupTab,
+          0.05,
+          function () { return 'Roll: ' + api.getWatchRoll(hand) + '°'; },
+          function () { api.adjustWatchRoll(hand, -45); },
+          function () { api.adjustWatchRoll(hand, 45); },
           refreshFns
         );
 
@@ -1178,13 +1303,13 @@
       // watch-menu-system.build) rather than one panel that gets
       // reparented, which is simpler than juggling A-Frame's scene-graph
       // transforms across an entity move.
-      function buildWatchMenu(panelEl, api) {
+      function buildWatchMenu(panelEl, api, hand) {
         var bg = document.createElement('a-plane');
         bg.setAttribute('width', 1.7);
         bg.setAttribute('height', 1.9);
         bg.setAttribute('material', 'color: #0d1526; opacity: 0.95; shader: flat; side: double');
         panelEl.appendChild(bg);
-        buildSettingsTabs(panelEl, api);
+        buildSettingsTabs(panelEl, api, hand);
       }
 
       // ==============================================================
@@ -1241,6 +1366,58 @@
       }
 
       // ==============================================================
+      // applyWatchTransform: positions/orients a watch panel purely from
+      // `settings.axis` ("x"/"y"/"z"), `settings.sign` (+1/-1), and
+      // `settings.roll` (degrees, any multiple of 45), all set live from
+      // that panel's own SETUP tab.
+      //
+      // Position is simply the chosen axis direction times a fixed
+      // distance from the hand — "the direction it's facing out of."
+      // Orientation is built from a lookup table mapping each of the 6
+      // axis+sign combinations to the base rotation that points the
+      // panel's front (local +Z, its default facing direction before any
+      // rotation) back along the *opposite* of the offset — i.e. the
+      // panel faces back toward the hand it's attached to, which is
+      // roughly toward the player's eyes for most of the ways a watch
+      // panel might plausibly be offset. `roll` then spins the panel
+      // around that resulting facing direction — composed as
+      // baseRotation ∘ rollAroundLocalZ via quaternions (rather than
+      // trying to hand-compose Euler angles, which doesn't reliably
+      // commute) so it changes text orientation without ever moving
+      // which way the panel is actually facing.
+      // ==============================================================
+      var WATCH_AXIS_VECTORS = {
+        x: new THREE.Vector3(1, 0, 0),
+        y: new THREE.Vector3(0, 1, 0),
+        z: new THREE.Vector3(0, 0, 1),
+      };
+
+      // [x, y, z] Euler degrees (order 'XYZ') that rotate local +Z to
+      // point along -axis*sign, keyed "x+", "x-", "y+", "y-", "z+", "z-".
+      var WATCH_BASE_EULER_DEG = {
+        'x+': [0, -90, 0],
+        'x-': [0, 90, 0],
+        'y+': [90, 0, 0],
+        'y-': [-90, 0, 0],
+        'z+': [0, 180, 0],
+        'z-': [0, 0, 0],
+      };
+
+      var WATCH_OFFSET_DISTANCE = 0.12;
+
+      function applyWatchTransform(panelEl, settings) {
+        var key = settings.axis + (settings.sign > 0 ? '+' : '-');
+        var baseDeg = WATCH_BASE_EULER_DEG[key];
+        var baseEuler = new THREE.Euler(degToRad(baseDeg[0]), degToRad(baseDeg[1]), degToRad(baseDeg[2]), 'XYZ');
+        var baseQuat = new THREE.Quaternion().setFromEuler(baseEuler);
+        var rollQuat = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), degToRad(settings.roll));
+        panelEl.object3D.quaternion.copy(baseQuat).multiply(rollQuat);
+
+        var offset = WATCH_AXIS_VECTORS[settings.axis].clone().multiplyScalar(WATCH_OFFSET_DISTANCE * settings.sign);
+        panelEl.object3D.position.copy(offset);
+      }
+
+      // ==============================================================
       // COMPONENT: watch-menu-system
       // Replaces an earlier face-filling "pause menu" design with a
       // wrist-mounted watch: holding a hand's grip button shows *that*
@@ -1287,8 +1464,10 @@
           this.activeHand = null; // 'left' | 'right' | null
 
           var api = this.buildApi();
-          buildWatchMenu(this.leftPanel, api);
-          buildWatchMenu(this.rightPanel, api);
+          buildWatchMenu(this.leftPanel, api, 'left');
+          buildWatchMenu(this.rightPanel, api, 'right');
+          applyWatchTransform(this.leftPanel, watchSettings.left);
+          applyWatchTransform(this.rightPanel, watchSettings.right);
 
           addAxisGizmo(this.leftHand, 0.25);
           addAxisGizmo(this.rightHand, 0.25);
@@ -1314,8 +1493,51 @@
           return {
             getPower: function () { return self.rig.getAttribute('punch-locomotion').powerMultiplier; },
             setPower: function (v) {
-              v = clamp(Math.round(v * 10) / 10, 0.4, 3.0);
+              v = clamp(Math.round(v * 10) / 10, 0.4, 8.0);
               self.rig.setAttribute('punch-locomotion', 'powerMultiplier', v);
+            },
+            getGravity: function () { return self.rig.getAttribute('punch-locomotion').gravity; },
+            setGravity: function (v) {
+              v = clamp(Math.round(v * 10) / 10, 1, 12);
+              self.rig.setAttribute('punch-locomotion', 'gravity', v);
+            },
+            getUppercutBoost: function () { return self.rig.getAttribute('punch-locomotion').uppercutBoost; },
+            setUppercutBoost: function (v) {
+              v = clamp(Math.round(v * 10) / 10, 1.0, 5.0);
+              self.rig.setAttribute('punch-locomotion', 'uppercutBoost', v);
+            },
+            getMaxLaunchSpeed: function () { return self.rig.getAttribute('punch-locomotion').maxLaunchSpeed; },
+            setMaxLaunchSpeed: function (v) {
+              v = clamp(Math.round(v), 3, 25);
+              self.rig.setAttribute('punch-locomotion', 'maxLaunchSpeed', v);
+            },
+            getUppercutAngle: function () { return self.rig.getAttribute('punch-locomotion').uppercutDirThreshold; },
+            setUppercutAngle: function (v) {
+              v = clamp(Math.round(v * 100) / 100, 0.2, 0.9);
+              self.rig.setAttribute('punch-locomotion', 'uppercutDirThreshold', v);
+            },
+            getUppercutStartHeight: function () {
+              return self.rig.getAttribute('punch-locomotion').uppercutMaxStartHeight;
+            },
+            setUppercutStartHeight: function (v) {
+              v = clamp(Math.round(v * 100) / 100, 0.5, 2.0);
+              self.rig.setAttribute('punch-locomotion', 'uppercutMaxStartHeight', v);
+            },
+            getWatchFacing: function (hand) {
+              var s = watchSettings[hand];
+              return s.axis + (s.sign > 0 ? '+' : '-');
+            },
+            setWatchFacing: function (hand, facing) {
+              var s = watchSettings[hand];
+              s.axis = facing.charAt(0);
+              s.sign = facing.charAt(1) === '+' ? 1 : -1;
+              applyWatchTransform(hand === 'left' ? self.leftPanel : self.rightPanel, s);
+            },
+            getWatchRoll: function (hand) { return watchSettings[hand].roll; },
+            adjustWatchRoll: function (hand, deltaDeg) {
+              var s = watchSettings[hand];
+              s.roll = ((s.roll + deltaDeg) % 360 + 360) % 360;
+              applyWatchTransform(hand === 'left' ? self.leftPanel : self.rightPanel, s);
             },
             getCount: function () { return self.gameEl.getAttribute('punch-game').count; },
             setCount: function (v) {
