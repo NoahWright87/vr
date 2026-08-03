@@ -58,18 +58,20 @@
          touching a headset. -->
     <div id="overlay">
       <p>
-        Punch Pop — punching <em>is</em> movement. Swing to lunge, uppercut to launch, hammer down to crash.
-        Punch a cube hard enough to pop it. Hold either grip to check the watch menu on that wrist — it
-        disables punching and gives your <em>other</em> hand a laser pointer to click with (speed, cube
-        count, behavior, <strong>Exit VR</strong>); release the grip to close it. Outside the menu, pull
-        either trigger for a quick reset. <strong>Clear ~2x2m of real space before trying this in a headset.</strong>
+        Punch Pop — punching <em>is</em> movement. A swing only lunges you if it's roughly aimed where you're
+        looking (prevents accidental backward punches); if an enemy is close by and near your aim it locks
+        on, otherwise you move halfway between your punch and look directions. Punch a cube hard enough to
+        pop it — any direction, including up. Press either grip to open the menu, a couple feet in front of
+        you — your other hand gets a laser pointer to click with; press either grip again to close it.
+        Outside the menu, pull either trigger for a quick reset.
+        <strong>Clear ~2x2m of real space before trying this in a headset.</strong>
         <a href="../../index.html">All prototypes</a>
       </p>
       <div id="debug-controls">
         <button id="menu-button-html">Menu</button>
-        <button id="sim-punch">Simulate punch (desktop)</button>
-        <button id="sim-uppercut">Simulate uppercut</button>
-        <button id="sim-smash">Simulate smash</button>
+        <button id="sim-punch">Simulate punch (forward)</button>
+        <button id="sim-up">Simulate punch (up-ish)</button>
+        <button id="sim-down">Simulate punch (down-ish)</button>
         <button id="reset-button-html">Reset (desktop)</button>
       </div>
     </div>
@@ -125,6 +127,19 @@
             width="1.1"
             position="0 0.55 -1"
           ></a-text>
+          <!-- Toggled from the menu's MORE tab (Show Stats). Off by
+               default — this is a playtesting aid for understanding what
+               the new look-gated/lock-on punch targeting is doing, not
+               something meant to stay on for normal play. -->
+          <a-text
+            id="stats-text"
+            value=""
+            align="center"
+            color="#7CFC9A"
+            width="1.1"
+            position="0 0.85 -1"
+            visible="false"
+          ></a-text>
           <a-text
             id="punch-label"
             value=""
@@ -137,9 +152,9 @@
 
           <!-- Gaze reticle: lets a phone/desktop tester pop a cube by
                looking at it and clicking, same fallback pattern as Cube
-               Pop. It doubles as the watch menu's desktop/phone pointer
-               too — watch-menu-system widens its raycast target list to
-               include menu buttons while a watch menu is open, so a mouse
+               Pop. It doubles as the world menu's desktop/phone pointer
+               too — world-menu-system widens its raycast target list to
+               include menu buttons while the menu is open, so a mouse
                click still works there without real controllers. In VR
                proper, menu buttons are clicked with a per-hand laser
                pointer instead (see the hand entities below). -->
@@ -158,29 +173,18 @@
              proximity between fist and cube (see punch-game below), not
              a raycast. oculus-touch-controls is the Quest-native controls
              component and is confirmed to actually bind on real Quest 2
-             Touch controllers. An earlier revision swapped this for
-             generic-tracked-controller-controls on the theory that
-             device-ID matching might be flaky — that turned out to be
-             the wrong diagnosis (a controller with a dying battery was
-             the real cause of that earlier "only one hand" report), and
-             generic-tracked-controller-controls simply never bound at
-             all on this hardware, breaking both hands. Back to
-             oculus-touch-controls. model:false swaps the full controller
+             Touch controllers. model:false swaps the full controller
              model for a small sphere so the "fist" reads clearly in VR.
 
              Each hand also carries a raycaster+cursor pair, same pattern
              laser-controls itself uses, but pointed at `.menu-target`
              instead of `.cube-target` and left disabled (raycaster
              enabled:false, .menu-laser hidden) during normal punching.
-             watch-menu-system enables this on *at most one* hand at a
-             time — whichever hand is NOT currently showing its watch
-             menu — so there's never a moment where both hands are live
-             pointers at once (that was the root cause of a trigger pull
-             on one hand accidentally registering a click aimed by the
-             other). Each hand also carries its own watch-menu panel,
-             positioned above where a watch face would sit on the wrist;
-             watch-menu-system shows/hides it while that hand's grip is
-             held down. -->
+             world-menu-system enables this on *at most one* hand at a
+             time — whichever hand didn't press grip to open the menu —
+             so there's never a moment where both hands are live pointers
+             at once (that was the root cause of a trigger pull on one
+             hand accidentally registering a click aimed by the other). -->
         <a-entity
           id="leftHand"
           oculus-touch-controls="hand: left; model: false"
@@ -203,20 +207,6 @@
             laser-beam="maxLength: 3"
             visible="false"
           ></a-box>
-          <!-- Position/rotation are computed at runtime from the SETUP
-               tab's Facing/Roll settings (see applyWatchTransform) rather
-               than fixed here — guessing the right values blind twice
-               didn't work, so this is now adjustable live from inside
-               the menu itself instead of round-tripping through code
-               changes. side:double on the background material means a
-               bad orientation choice still shows the panel (mirrored),
-               not nothing. -->
-          <a-entity
-            id="watch-menu-left"
-            class="watch-menu-panel"
-            scale="0.15 0.15 0.15"
-            visible="false"
-          ></a-entity>
         </a-entity>
         <a-entity
           id="rightHand"
@@ -236,12 +226,6 @@
             laser-beam="maxLength: 3"
             visible="false"
           ></a-box>
-          <a-entity
-            id="watch-menu-right"
-            class="watch-menu-panel"
-            scale="0.15 0.15 0.15"
-            visible="false"
-          ></a-entity>
         </a-entity>
       </a-entity>
 
@@ -255,12 +239,18 @@
       ============================================================ -->
       <a-entity id="cube-manager" punch-game="count: 6; behaviorMode: mixed"></a-entity>
 
-      <!-- Builds and drives the two watch-menu panels declared as
-           children of #leftHand/#rightHand above. Lives on its own
-           empty entity, unrelated to where it sits in the scene graph,
-           since it defers all cross-entity wiring to the scene's
-           "loaded" event anyway (see watch-menu-system.init). -->
-      <a-entity watch-menu-system></a-entity>
+      <!-- ============================================================
+           WORLD MENU
+           A single panel fixed in world space (NOT parented to the
+           camera or a hand) — world-menu-system repositions it a couple
+           feet in front of wherever the player is standing/looking each
+           time it opens, facing back toward them. Replaced an earlier
+           per-wrist "watch menu" design that turned out hard to aim at
+           and to keep readable across a growing number of tabs.
+      ============================================================ -->
+      <a-entity id="world-menu" visible="false" scale="0.6 0.6 0.6"></a-entity>
+
+      <a-entity world-menu-system></a-entity>
     </a-scene>
 
     <script>
@@ -275,39 +265,46 @@
         return (d * Math.PI) / 180;
       }
 
-      // True while the pause menu is open. Read by punch-locomotion and
+      // Gets the world-space direction an entity is "pointing," using
+      // this codebase's consistent local -Z-is-forward convention (same
+      // one the menu-laser and punch directions use throughout). This is
+      // deliberately NOT `el.object3D.getWorldDirection()` — that method
+      // is only overridden to mean -Z for an actual THREE.Camera object;
+      // for a plain Object3D (which is what an A-Frame entity's own
+      // `.object3D` is, even <a-camera>'s — the real THREE.Camera lives
+      // on a child object3D reachable via `.getObject3D('camera')`) it
+      // returns +Z instead, silently pointing the opposite way. Fell
+      // into that exact trap once already; this avoids it everywhere.
+      var _forwardQuat = new THREE.Quaternion();
+      function getForwardDirection(el, target) {
+        el.object3D.getWorldQuaternion(_forwardQuat);
+        return target.set(0, 0, -1).applyQuaternion(_forwardQuat);
+      }
+
+      // True while the menu is open. Read by punch-locomotion and
       // punch-game to disable punching (both locomotion and cube-popping)
       // and freeze rig physics while the player is fiddling with
       // settings, and by punch-game's trigger-reset handler so pulling
       // the trigger to click a menu item doesn't *also* reset the arena.
       var menuOpen = false;
 
-      // Toggled from the watch menu's MORE tab. Shows/hides the RGB=XYZ
-      // axis gizmos on both hands (see addAxisGizmo) — a way to read off
-      // real controller-local axis directions in-headset, since the
-      // watch panel's position/rotation was tuned blind (no headset to
-      // check it against) and needs empirical correction.
-      var debugAxesOn = false;
+      // Toggled from the menu's MORE tab (Show Stats). Read by
+      // punch-locomotion to decide whether to bother updating the
+      // in-view stats HUD after each punch.
+      var showStatsOn = false;
 
-      // How steep (dot with world-up) a swing's direction needs to be
-      // before punch-tracker exempts it from the wind-up/extending gate
-      // — see the comment at that check for why uppercuts need this
-      // separate, looser threshold rather than sharing
-      // punch-locomotion's own (menu-adjustable) uppercut angle exactly.
-      var UPPERCUT_EXEMPT_DIR_Y = 0.35;
+      // A swing that's still "in progress" past this duration force-
+      // finishes rather than tracking forever — guards against e.g. slow
+      // continuous circular hand motion (arm circles) being read as one
+      // enormous, meaningless swing. Not expected to matter for normal
+      // punches, which finish in well under this.
+      var MAX_SWING_MS = 2000;
 
-      // Per-wrist watch panel placement, adjustable live from each
-      // panel's own SETUP tab (see buildSettingsTabs / applyWatchTransform
-      // below). `axis`+`sign` pick which local axis (relative to the
-      // hand) the panel is offset out along; `roll` spins it around its
-      // own facing direction in 45-degree steps to fix up/sideways text
-      // after the facing axis is right. Two rounds of guessing this
-      // blind (no headset to check against) didn't land on a working
-      // orientation, so it's a live control now instead of another guess.
-      var watchSettings = {
-        left: { axis: 'x', sign: 1, roll: 0 },
-        right: { axis: 'x', sign: 1, roll: 0 },
-      };
+      // A swing whose net hand displacement is smaller than this (in
+      // meters) is treated as noise rather than a real punch — guards
+      // against tiny hand jitter that technically crosses triggerSpeed
+      // for a single frame and then immediately settles back down.
+      var MIN_SWING_DISPLACEMENT = 0.05;
 
       // The four "live" per-cube movement behaviors. Menu's cycle button
       // also offers "mixed", which isn't itself a movement behavior —
@@ -368,16 +365,32 @@
       // position sidesteps that: your rig can be flying across the arena
       // and a stationary hand still reads as zero velocity.
       //
-      // When edgeDetect is on (hands only, not the head), it also fires a
-      // "punch" event the moment speed crosses `triggerSpeed`, with
-      // `resetSpeed` as a lower hysteresis bound so one swing can't fire
-      // dozens of events while speed stays above threshold for several
-      // frames — *and* only while the hand is actually extending away
-      // from the body (see the `extending` tracking below). Without that
-      // second gate, a fast wind-up (cocking your fist back before
-      // throwing a big punch) reads as a full-speed "punch" in the
-      // backward direction and launches the player before they've thrown
-      // anything.
+      // When edgeDetect is on (hands only, not the head), it runs a
+      // small swing state machine instead of firing the instant speed
+      // crosses `triggerSpeed`:
+      //   - speed rises above triggerSpeed -> a swing begins. Start
+      //     tracking max speed reached, total hand path length
+      //     travelled, and (via the head's own punch-tracker instance)
+      //     total head path length travelled over the same window.
+      //   - speed falls back to/below resetSpeed (or the swing runs
+      //     past MAX_SWING_MS) -> the swing is "finished." Compute the
+      //     net displacement from where the swing started to where the
+      //     hand ended up, and emit a "punch" event carrying that
+      //     direction plus the accumulated stats.
+      //
+      // Using the *net displacement* as the punch direction, decided
+      // only once the swing is over, is what replaced an earlier "is the
+      // hand currently moving away from the head" per-frame heuristic
+      // that had gotten increasingly hard to tune correctly for every
+      // punch shape (see git history — it went through a few rounds).
+      // punch-locomotion now separately checks that direction against
+      // where the player is looking before allowing any lunge at all,
+      // which handles the original "accidental backward punch" problem
+      // more directly: a fast cock-back followed by a forward throw
+      // nets out roughly forward (whichever phase moved farther
+      // dominates), and even if cocking back alone finishes as its own
+      // separate swing, its direction won't match the look direction and
+      // gets rejected downstream.
       //
       // Also tracks whether the underlying WebXR controller is actually
       // connected, surfaced in punch-locomotion's debug HUD line — a
@@ -397,30 +410,17 @@
           this.worldPos = new THREE.Vector3();
           this.speed = 0;
           this.hasPrev = false;
-          this.armed = true;
           this.connected = false;
 
           if (this.data.edgeDetect) {
-            // Radial extension tracking, hands only: is the hand moving
-            // away from the body (throwing) or toward it (cocking back)?
             this.head = document.querySelector('#head');
-            this.extending = false;
-            this.radial = new THREE.Vector3();
-
-            // Rolling recent-minimum hand height: instantly drops to a
-            // new low, decays back toward the current height over
-            // roughly half a second of being held still/higher. This is
-            // what punch-locomotion uses to tell a real uppercut (hand
-            // was recently down near the waist) from a jab that just
-            // happens to be aimed at a high target (hand's been up
-            // around shoulder/guard height the whole time). It's
-            // deliberately NOT based on "distance from the head" the way
-            // the extending/wind-up check above is — an uppercut's hand
-            // ends up *near* the chin at full extension, so radial
-            // distance from the head shrinks rather than grows during
-            // one, making it useless as an extension signal for this
-            // particular punch shape.
-            this.recentMinY = this.el.object3D.position.y;
+            this.swinging = false;
+            this.maxSpeed = 0;
+            this.handTravelDist = 0;
+            this.headTravelDist = 0;
+            this.swingStartPos = new THREE.Vector3();
+            this.swingStartTime = 0;
+            this.prevHeadPos = new THREE.Vector3();
           }
 
           var self = this;
@@ -429,17 +429,11 @@
             // The entity sits at its declared (0,0,0)-ish rest position
             // until a real controller connects and starts driving its
             // pose. Without this reseed, that stale pre-connection
-            // position leaks into the very first punches thrown right
-            // after connecting: `hasPrev=false` would otherwise let a
-            // huge one-frame "velocity" spike through as a false punch,
-            // and a near-zero recentMinY would make an early punch of any
-            // kind briefly misread as "started low" (an uppercut).
+            // position leaks into the first tick after connecting as a
+            // huge one-frame "velocity" spike, which could look like (or
+            // start) a swing that never really happened.
             self.hasPrev = false;
-            if (self.data.edgeDetect) {
-              self.recentMinY = self.el.object3D.position.y;
-              self.extending = false;
-              self.armed = true;
-            }
+            if (self.data.edgeDetect) self.swinging = false;
           });
           this.el.addEventListener('controllerdisconnected', function () { self.connected = false; });
         },
@@ -463,88 +457,139 @@
 
           if (!this.data.edgeDetect) return;
 
-          if (localPos.y < this.recentMinY) {
-            this.recentMinY = localPos.y;
-          } else {
-            var minDecay = 1 - Math.exp(-dt / 0.4);
-            this.recentMinY += (localPos.y - this.recentMinY) * minDecay;
+          if (!this.swinging) {
+            if (this.speed >= this.data.triggerSpeed) {
+              this.swinging = true;
+              this.maxSpeed = this.speed;
+              this.handTravelDist = 0;
+              this.headTravelDist = 0;
+              this.swingStartPos.copy(localPos);
+              this.swingStartTime = time;
+              if (this.head) this.prevHeadPos.copy(this.head.object3D.position);
+            }
+            return;
           }
 
+          // Mid-swing: keep accumulating stats every frame regardless of
+          // instantaneous speed, right up until the swing finishes below.
+          this.maxSpeed = Math.max(this.maxSpeed, this.speed);
+          this.handTravelDist += this.velocity.length() * dt;
           if (this.head) {
-            this.radial.subVectors(localPos, this.head.object3D.position);
-            var dist = this.radial.length();
-            if (dist > 0.05) {
-              this.radial.divideScalar(dist);
-              // Small positive epsilon (rather than a bare >0) so tiny
-              // tracking jitter right at the top of a wind-up doesn't
-              // flicker the extending state.
-              this.extending = this.velocity.dot(this.radial) > 0.05;
-            }
+            var headPos = this.head.object3D.position;
+            this.headTravelDist += headPos.distanceTo(this.prevHeadPos);
+            this.prevHeadPos.copy(headPos);
           }
 
-          // A steep-upward swing bypasses the extending/wind-up check
-          // entirely, rather than requiring it like every other punch
-          // shape does. That check is "is the hand moving away from the
-          // head" — a good fit for jabs/crosses/hooks (which extend away
-          // from the body) but a bad one for uppercuts, whose hand curls
-          // *up toward the chin* and so often has a shrinking, not
-          // growing, distance from the head for large parts of the
-          // swing. Gating uppercuts on it made real ones nearly
-          // impossible to throw on purpose. UPPERCUT_EXEMPT_DIR_Y is
-          // deliberately a bit looser than punch-locomotion's own
-          // (menu-adjustable) uppercut angle threshold — better to let a
-          // borderline swing through here and have the stricter,
-          // two-condition check in punch-locomotion decide whether it
-          // actually counts as an uppercut, than to block it here first.
-          var dir = this.velocity.clone().normalize();
-          var steepUpward = isFinite(dir.y) && dir.y > UPPERCUT_EXEMPT_DIR_Y;
+          var finished = this.speed <= this.data.resetSpeed || time - this.swingStartTime > MAX_SWING_MS;
+          if (!finished) return;
 
-          if (this.armed && this.speed >= this.data.triggerSpeed && (this.extending || steepUpward)) {
-            this.armed = false;
-            if (isFinite(dir.x)) {
-              this.el.emit('punch', { direction: dir, speed: this.speed, swingStartY: this.recentMinY }, true);
-            }
-          } else if (!this.armed && this.speed <= this.data.resetSpeed) {
-            this.armed = true;
-          }
+          this.swinging = false;
+          var displacement = new THREE.Vector3().subVectors(localPos, this.swingStartPos);
+          var dist = displacement.length();
+          if (dist <= MIN_SWING_DISPLACEMENT) return; // too small to be a real punch
+
+          var dir = displacement.divideScalar(dist);
+          if (!isFinite(dir.x)) return;
+
+          this.el.emit(
+            'punch',
+            {
+              direction: dir,
+              maxSpeed: this.maxSpeed,
+              handTravelDist: this.handTravelDist,
+              headTravelDist: this.headTravelDist,
+            },
+            true
+          );
         },
       });
 
       // ==============================================================
+      // findLockOnTarget: among live (unpopped) cubes, finds the one
+      // closest to dead-center of the player's aim — within `maxRange`
+      // of `originPos` and within `maxAngleRad` of `lookDir` — and
+      // returns its element, or null if nothing qualifies. Ties (well,
+      // "closest to center" ties) go to whichever is checked first;
+      // not worth being fussier about for this few cubes.
+      // ==============================================================
+      function findLockOnTarget(originPos, lookDir, maxRange, maxAngleRad) {
+        var cubes = document.querySelectorAll('.cube-target');
+        var best = null;
+        var bestAngle = Infinity;
+        var toCube = new THREE.Vector3();
+        var cubePos = new THREE.Vector3();
+
+        for (var i = 0; i < cubes.length; i++) {
+          var cube = cubes[i];
+          var target = cube.components['punch-target'];
+          if (!target || target.popped) continue;
+
+          cube.object3D.getWorldPosition(cubePos);
+          toCube.subVectors(cubePos, originPos);
+          var dist = toCube.length();
+          if (dist > maxRange || dist < 0.001) continue;
+
+          toCube.divideScalar(dist);
+          var angle = toCube.angleTo(lookDir);
+          if (angle <= maxAngleRad && angle < bestAngle) {
+            bestAngle = angle;
+            best = cube;
+          }
+        }
+
+        return best;
+      }
+
+      // ==============================================================
       // COMPONENT: punch-locomotion
       // Lives on #rig. Listens for "punch" events bubbling up from the
-      // hands and turns each one into a velocity impulse, then integrates
-      // that velocity into rig position every frame (gravity, ground
-      // collision, drag). This is the whole "punch to move" mechanic.
+      // hands (see punch-tracker's swing state machine for how a punch's
+      // direction/stats are computed) and turns each one into a velocity
+      // impulse, then integrates that velocity into rig position every
+      // frame (gravity, ground collision, drag). This is the whole
+      // "punch to move" mechanic.
       //
-      // `powerMultiplier` is the main knob the watch menu exposes to the
-      // player as "Move Speed" — it scales the whole impulse uniformly
-      // rather than exposing every constant below, since "punching feels
-      // too weak/strong overall" is the actual in-headset question, not
-      // any one of these individually. Default bumped to 3.0 (and the
-      // adjustable range widened well past that) after playtesting found
-      // 1.0x way too slow and 3.0x "where it starts to feel fun" — so
-      // that's the new baseline, not something you have to crank every
-      // time. maxHorizontalSpeed/maxLaunchSpeed were raised to match, so
-      // the extra power multiplier headroom doesn't just immediately
-      // saturate against the old, lower caps. Gravity's default was also
-      // lowered a bit for a floatier, more super-heroic feel (easier to
-      // hang in the air / juggle), and is menu-adjustable too.
+      // A punch only produces any movement at all if its direction is
+      // within `lookConeAngle` of where the player is currently looking
+      // — this is the direct fix for accidental-backward-punch: a
+      // cock-back's net direction essentially never matches your look
+      // direction, so it's rejected before it can move you at all. There
+      // is deliberately no separate "uppercut" or "smash" special case
+      // any more — punches can send the player in *any* direction their
+      // swing+look combination points toward, including straight up if
+      // you're looking at something above you and punch that way.
+      //
+      // If a live cube is close enough (`baseLockRange`, extended a bit
+      // by how committed the swing was) and within `lockOnConeAngle` of
+      // your aim, the punch locks onto it and moves you straight toward
+      // it. Otherwise the movement direction is the punch direction
+      // blended halfway with the look direction — so punching with
+      // nothing to aim at still generally sends you where you're
+      // looking, and punching *something* off to the side still nudges
+      // your look direction into it rather than just teleporting your
+      // aim onto a target you only grazed.
+      //
+      // Impulse magnitude comes from three swing stats togther — how
+      // fast the hand was moving at its peak, how far the hand
+      // travelled, and how far the head travelled over the same window
+      // (rewarding leaning/stepping into a punch, not just flicking the
+      // wrist) — combined via speedFactor/handDistFactor/headDistFactor
+      // and then scaled by `powerMultiplier`, the one knob exposed to
+      // the player as "Move Speed" in the menu.
       // ==============================================================
       AFRAME.registerComponent('punch-locomotion', {
         schema: {
-          moveScale: { type: 'number', default: 1.8 },
-          headBonusScale: { type: 'number', default: 1.0 },
-          maxHorizontalSpeed: { type: 'number', default: 16 },
-          maxLaunchSpeed: { type: 'number', default: 12 },
+          speedFactor: { type: 'number', default: 1.1 },
+          handDistFactor: { type: 'number', default: 4.5 },
+          headDistFactor: { type: 'number', default: 6.0 },
+          lookConeAngle: { type: 'number', default: 80 }, // degrees
+          lockOnConeAngle: { type: 'number', default: 25 }, // degrees
+          baseLockRange: { type: 'number', default: 1.5 }, // meters
+          lockRangeFactor: { type: 'number', default: 0.15 },
+          maxSpeed: { type: 'number', default: 14 },
           gravity: { type: 'number', default: 5.5 },
           groundStopTau: { type: 'number', default: 0.12 },
           airDragTau: { type: 'number', default: 1.0 },
-          uppercutBoost: { type: 'number', default: 2.0 },
-          uppercutDirThreshold: { type: 'number', default: 0.5 },
-          uppercutMaxStartHeight: { type: 'number', default: 1.15 },
-          smashDirThreshold: { type: 'number', default: -0.5 },
-          smashExtraDown: { type: 'number', default: 6 },
           bounds: { type: 'number', default: 14 },
           powerMultiplier: { type: 'number', default: 3.0 },
         },
@@ -552,83 +597,93 @@
         init: function () {
           this.velocity = new THREE.Vector3();
           this.grounded = true;
-          this.lastLabel = '';
           this.head = document.querySelector('#head');
           this.leftHand = document.querySelector('#leftHand');
           this.rightHand = document.querySelector('#rightHand');
           this.debugText = document.querySelector('#debug-text');
+          this.statsText = document.querySelector('#stats-text');
           this.labelText = document.querySelector('#punch-label');
           this.labelTimeout = null;
+
+          this.lookDir = new THREE.Vector3();
+          this.headWorldPos = new THREE.Vector3();
+          this.finalDir = new THREE.Vector3();
+          this.lastStats = null;
 
           this.onPunch = this.onPunch.bind(this);
           this.el.addEventListener('punch', this.onPunch);
         },
 
         onPunch: function (evt) {
-          if (menuOpen) return; // punching is disabled while the pause menu is open
+          if (menuOpen) return; // punching is disabled while the menu is open
 
-          var dir = evt.detail.direction;
-          var handSpeed = evt.detail.speed;
-          var swingStartY = evt.detail.swingStartY;
-          var power = this.data.powerMultiplier;
+          var punchDir = evt.detail.direction;
+          var maxSpeed = evt.detail.maxSpeed;
+          var handDist = evt.detail.handTravelDist;
+          var headDist = evt.detail.headTravelDist || 0;
 
-          // Bonus for driving the punch with real body motion (leaning
-          // in, stepping forward) in roughly the same direction as the
-          // punch. Dot product so head motion *away* from the punch (or
-          // sideways) contributes nothing.
-          var headTracker = this.head && this.head.components['punch-tracker'];
-          var headBonus = 0;
-          if (headTracker && headTracker.hasPrev) {
-            headBonus = Math.max(0, headTracker.velocity.dot(dir)) * this.data.headBonusScale;
+          getForwardDirection(this.head, this.lookDir);
+          var angleToLook = punchDir.angleTo(this.lookDir);
+          var lookConeRad = degToRad(this.data.lookConeAngle);
+
+          this.lastStats = {
+            maxSpeed: maxSpeed,
+            handDist: handDist,
+            headDist: headDist,
+            angleDeg: (angleToLook * 180) / Math.PI,
+            magnitude: 0,
+            locked: false,
+            outcome: 'BLOCKED',
+          };
+
+          if (angleToLook > lookConeRad) {
+            // Punch didn't land anywhere near where you're looking —
+            // pop cubes it physically connects with (unaffected, see
+            // punch-game's own proximity+force check) but no lunge.
+            this.updateStatsHud();
+            this.showLabel('BLOCKED');
+            return;
           }
 
-          var impulseSpeed = (handSpeed * this.data.moveScale + headBonus) * power;
-          var label = 'PUNCH!';
+          var magnitude =
+            (maxSpeed * this.data.speedFactor +
+              handDist * this.data.handDistFactor +
+              headDist * this.data.headDistFactor) *
+            this.data.powerMultiplier;
 
-          // An uppercut needs BOTH a steep upward angle AND to have
-          // started from down near the waist — otherwise a plain jab
-          // aimed at a high target (thrown from shoulder/guard height)
-          // would wrongly count as one just because it's angled upward.
-          // `swingStartY` is undefined for the desktop "Simulate
-          // uppercut" button (it doesn't have a real swing to measure),
-          // so that debug path still counts as an uppercut unconditionally.
-          var isUppercut =
-            dir.y > this.data.uppercutDirThreshold &&
-            (swingStartY === undefined || swingStartY < this.data.uppercutMaxStartHeight);
+          this.head.object3D.getWorldPosition(this.headWorldPos);
+          var lockRange = this.data.baseLockRange + magnitude * this.data.lockRangeFactor;
+          var lockConeRad = degToRad(this.data.lockOnConeAngle);
+          var target = findLockOnTarget(this.headWorldPos, this.lookDir, lockRange, lockConeRad);
 
-          if (isUppercut) {
-            impulseSpeed *= this.data.uppercutBoost;
-            label = 'UPPERCUT!';
-            this.velocity.y += dir.y * impulseSpeed;
-          } else if (dir.y < this.data.smashDirThreshold && !this.grounded) {
-            // A downward swing while airborne overrides the shallow punch
-            // angle with a hard, satisfying crash straight down rather
-            // than following the exact (fairly flat) arm trajectory —
-            // "smashing downward should make you crash down."
-            var smashFactor = clamp(handSpeed / 3, 0.5, 2);
-            this.velocity.y -= this.data.smashExtraDown * smashFactor * power;
-            label = 'SMASH!';
+          if (target) {
+            var targetPos = new THREE.Vector3();
+            target.object3D.getWorldPosition(targetPos);
+            this.finalDir.subVectors(targetPos, this.headWorldPos).normalize();
+            this.lastStats.locked = true;
+          } else {
+            this.finalDir.addVectors(punchDir, this.lookDir).normalize();
           }
 
-          this.velocity.x += dir.x * impulseSpeed;
-          this.velocity.z += dir.z * impulseSpeed;
+          this.velocity.x += this.finalDir.x * magnitude;
+          this.velocity.y += this.finalDir.y * magnitude;
+          this.velocity.z += this.finalDir.z * magnitude;
 
-          var horizontal = Math.sqrt(this.velocity.x * this.velocity.x + this.velocity.z * this.velocity.z);
-          if (horizontal > this.data.maxHorizontalSpeed) {
-            var scale = this.data.maxHorizontalSpeed / horizontal;
-            this.velocity.x *= scale;
-            this.velocity.z *= scale;
+          var totalSpeed = this.velocity.length();
+          if (totalSpeed > this.data.maxSpeed) {
+            this.velocity.multiplyScalar(this.data.maxSpeed / totalSpeed);
           }
-          this.velocity.y = clamp(this.velocity.y, -this.data.maxLaunchSpeed, this.data.maxLaunchSpeed);
 
-          this.lastLabel = label;
-          this.showLabel(label);
-          pulseHaptics(evt.target, label === 'PUNCH!' ? 0.4 : 0.8, 60);
+          this.lastStats.magnitude = magnitude;
+          this.lastStats.outcome = target ? 'LOCK-ON!' : 'PUNCH!';
+          this.updateStatsHud();
+          this.showLabel(this.lastStats.outcome);
+          pulseHaptics(evt.target, target ? 0.8 : 0.5, 60);
         },
 
         tick: function (time, deltaMs) {
           if (!deltaMs) return;
-          if (menuOpen) return; // freeze in place while the pause menu is open
+          if (menuOpen) return; // freeze in place while the menu is open
           var dt = Math.min(deltaMs / 1000, 0.05); // guard against huge steps (tab switch, etc.)
           var pos = this.el.object3D.position;
 
@@ -654,7 +709,10 @@
           // Exponential decay: fast stop on the ground so a lunge resolves
           // into a stance instead of an endless ice-skating slide (a big
           // part of what would make this nauseating), slow decay in the
-          // air so a jump/lunge keeps its momentum through the arc.
+          // air so a jump/lunge keeps its momentum through the arc —
+          // this is also what makes juggling/hovering between airborne
+          // punches feel controllable rather than just falling straight
+          // back down between hits.
           var tau = this.grounded ? this.data.groundStopTau : this.data.airDragTau;
           var damping = Math.exp(-dt / tau);
           this.velocity.x *= damping;
@@ -672,6 +730,17 @@
               'rig speed: ' + speed.toFixed(1) + ' m/s' + (this.grounded ? '' : ' (air)') + '\n' + handsStatus
             );
           }
+        },
+
+        updateStatsHud: function () {
+          if (!this.statsText || !this.lastStats) return;
+          var s = this.lastStats;
+          this.statsText.setAttribute(
+            'value',
+            'MaxSpd ' + s.maxSpeed.toFixed(1) + '  HandDist ' + s.handDist.toFixed(2) + '  HeadDist ' + s.headDist.toFixed(2) +
+              '\nMag ' + s.magnitude.toFixed(1) + '  Angle ' + s.angleDeg.toFixed(0) + 'deg' + (s.locked ? '  LOCKED' : '') +
+              '\n' + s.outcome
+          );
         },
 
         showLabel: function (label) {
@@ -842,7 +911,7 @@
       // that raycaster's current intersection and stretches/repositions
       // the box so it stops exactly at whatever it's pointing at —
       // scale.z + position.z rather than rebuilding the geometry, since
-      // this runs every frame the whole time a watch menu is open. A
+      // this runs every frame the whole time the menu is open. A
       // fixed-length beam used to pass visibly through the menu panel it
       // had just clicked, which reads as "did that actually register?"
       // even though it did.
@@ -875,7 +944,8 @@
       // hands against every cube every frame for a force-based hit, and
       // tracks the running popped total. Reset is bound to either
       // controller's physical trigger button (triggerdown) rather than a
-      // raycast target, since there are no laser pointers in this scene.
+      // raycast target, since there are no laser pointers in this scene
+      // outside the menu.
       // ==============================================================
       AFRAME.registerComponent('punch-game', {
         schema: {
@@ -901,11 +971,11 @@
 
           // Physical trigger pull resets, on either hand — a direct
           // button event, not a raycast hit. Gated on menuOpen (see
-          // onTriggerReset) since while the pause menu is open, the
-          // trigger is instead doing menu-click duty via the hand
-          // raycaster+cursor — without that gate, clicking a menu button
-          // would also reset the arena on the same trigger pull. (The
-          // pause menu also has its own explicit "Reset Arena" button.)
+          // onTriggerReset) since while the menu is open, the trigger is
+          // instead doing menu-click duty via the hand raycaster+cursor
+          // — without that gate, clicking a menu button would also
+          // reset the arena on the same trigger pull. (The menu also has
+          // its own explicit "Reset Arena" button.)
           if (this.leftHand) this.leftHand.addEventListener('triggerdown', this.onTriggerReset);
           if (this.rightHand) this.rightHand.addEventListener('triggerdown', this.onTriggerReset);
           document.querySelector('#reset-button-html').addEventListener('click', this.reset);
@@ -935,8 +1005,7 @@
         spawnCube: function (colorSeed) {
           // Wide spread of distance and height so hitting the field
           // naturally calls for a mix of jabs, lunges, and up/down angled
-          // punches — the same punch that pops a high or low cube is the
-          // one that also reads as an uppercut or a smash.
+          // punches.
           var angle = (Math.random() - 0.5) * 1.8; // radians
           var radius = 0.9 + Math.random() * 2.1; // 0.9m jab .. 3m lunge
           var x = radius * Math.sin(angle);
@@ -964,7 +1033,7 @@
         },
 
         tick: function () {
-          if (menuOpen) return; // punching (including cube-popping) is disabled while the pause menu is open
+          if (menuOpen) return; // punching (including cube-popping) is disabled while the menu is open
           this.checkHand(this.leftHand);
           this.checkHand(this.rightHand);
         },
@@ -1011,15 +1080,12 @@
       // bookkeeping in the caller.
       //
       // The optional trailing `refreshList` array, if given, gets this
-      // row's refresh function pushed onto it. That's what lets a caller
-      // force every row in a panel to re-read its current value on
-      // demand (see buildSettingsTabs / watch-menu-system.openFor) —
-      // needed because Punch Pop has *two* independent watch panels
-      // (one per wrist) sharing one underlying settings state, and a
-      // row only repaints itself on its own click otherwise. A panel
-      // that's been sitting hidden while the other hand's watch changed
-      // Move Speed would otherwise still show the old value the next
-      // time it's opened.
+      // row's refresh function pushed onto it, letting a caller force
+      // every row in a panel to re-read its current value on demand (see
+      // buildSettingsTabs / world-menu-system.open) — a defensive
+      // measure in case a value ever changes by some path other than
+      // this same panel's own buttons (e.g. the desktop overlay's Reset
+      // button) while the menu is closed.
       //
       // Generic enough to copy-paste alongside createTabbedPanel into a
       // future prototype.
@@ -1099,7 +1165,7 @@
       // system, so "reusable" here means "self-contained enough to
       // copy-paste into the next prototype that needs tabs" rather than
       // an import — grab this function and makeMenuButton/makeAdjustRow
-      // below wholesale.
+      // above wholesale.
       //
       // tabs: [{ id, label }, ...]
       // Returns { getContent(id) -> <a-entity> to append that tab's rows
@@ -1153,15 +1219,11 @@
 
       // ==============================================================
       // Builds Punch Pop's actual settings content into a tabbed panel
-      // (see buildWatchMenu below). `api` is a small object of getters
-      // and actions (see watch-menu-system.buildApi) so this function
-      // doesn't need to know how settings are actually stored. `hand` is
-      // 'left' or 'right' — this panel's own wrist, needed only for the
-      // SETUP tab, which edits *this* panel's own facing/roll rather
-      // than the other wrist's (each watch is independent, since a
-      // player's two arms don't necessarily need the same orientation).
+      // (see buildWorldMenu below). `api` is a small object of getters
+      // and actions (see world-menu-system.buildApi) so this function
+      // doesn't need to know how settings are actually stored.
       // ==============================================================
-      function buildSettingsTabs(panelEl, api, hand) {
+      function buildSettingsTabs(panelEl, api) {
         var refreshFns = [];
 
         var panel = createTabbedPanel(
@@ -1169,8 +1231,7 @@
           [
             { id: 'punch', label: 'PUNCH' },
             { id: 'foes', label: 'FOES' },
-            { id: 'air', label: 'AIR' },
-            { id: 'setup', label: 'SETUP' },
+            { id: 'aim', label: 'AIM' },
             { id: 'more', label: 'MORE' },
           ],
           1.6,
@@ -1188,13 +1249,21 @@
         );
         makeAdjustRow(
           punchTab,
-          0.2,
+          0.22,
           function () { return 'Gravity: ' + api.getGravity().toFixed(1); },
           function () { api.setGravity(api.getGravity() - 0.5); },
           function () { api.setGravity(api.getGravity() + 0.5); },
           refreshFns
         );
-        makeMenuButton(punchTab, -0.15, function () { return 'Reset Arena'; }, api.resetArena, refreshFns);
+        makeAdjustRow(
+          punchTab,
+          -0.06,
+          function () { return 'Max Speed: ' + api.getMaxSpeed().toFixed(0); },
+          function () { api.setMaxSpeed(api.getMaxSpeed() - 1); },
+          function () { api.setMaxSpeed(api.getMaxSpeed() + 1); },
+          refreshFns
+        );
+        makeMenuButton(punchTab, -0.36, function () { return 'Reset Arena'; }, api.resetArena, refreshFns);
 
         var foesTab = panel.getContent('foes');
         makeAdjustRow(
@@ -1213,69 +1282,36 @@
           refreshFns
         );
 
-        // "How high you go airborne" and "how the uppercut is detected"
-        // as two separate, explicit concerns per Noah's feedback that
-        // the wind-up fix made real uppercuts nearly impossible to throw
-        // on purpose (fixed separately, in punch-tracker's exemption for
-        // steep-upward swings) — this tab is for tuning feel on top of
-        // that, once uppercuts reliably fire again.
-        var airTab = panel.getContent('air');
+        // Tuning for the look-gated / lock-on punch targeting: how wide
+        // a cone around your look direction still counts as "aimed
+        // roughly where you're looking" (the whole fix for accidental
+        // backward punches), how tight a cone counts as "aimed enough at
+        // a specific enemy" to lock onto it, and the base search radius
+        // for that lock-on (which also scales up a bit with how
+        // committed the swing was — see punch-locomotion's onPunch).
+        var aimTab = panel.getContent('aim');
         makeAdjustRow(
-          airTab,
-          0.55,
-          function () { return 'Uppercut Power: ' + api.getUppercutBoost().toFixed(1) + 'x'; },
-          function () { api.setUppercutBoost(api.getUppercutBoost() - 0.2); },
-          function () { api.setUppercutBoost(api.getUppercutBoost() + 0.2); },
+          aimTab,
+          0.5,
+          function () { return 'Look Cone: ' + api.getLookCone().toFixed(0) + 'deg'; },
+          function () { api.setLookCone(api.getLookCone() - 5); },
+          function () { api.setLookCone(api.getLookCone() + 5); },
           refreshFns
         );
         makeAdjustRow(
-          airTab,
-          0.27,
-          function () { return 'Max Air Speed: ' + api.getMaxLaunchSpeed().toFixed(1); },
-          function () { api.setMaxLaunchSpeed(api.getMaxLaunchSpeed() - 1); },
-          function () { api.setMaxLaunchSpeed(api.getMaxLaunchSpeed() + 1); },
+          aimTab,
+          0.22,
+          function () { return 'Lock-On Cone: ' + api.getLockCone().toFixed(0) + 'deg'; },
+          function () { api.setLockCone(api.getLockCone() - 5); },
+          function () { api.setLockCone(api.getLockCone() + 5); },
           refreshFns
         );
         makeAdjustRow(
-          airTab,
-          -0.01,
-          function () { return 'Uppercut Angle: ' + api.getUppercutAngle().toFixed(2); },
-          function () { api.setUppercutAngle(api.getUppercutAngle() - 0.05); },
-          function () { api.setUppercutAngle(api.getUppercutAngle() + 0.05); },
-          refreshFns
-        );
-        makeAdjustRow(
-          airTab,
-          -0.29,
-          function () { return 'Max Start Height: ' + api.getUppercutStartHeight().toFixed(2); },
-          function () { api.setUppercutStartHeight(api.getUppercutStartHeight() - 0.05); },
-          function () { api.setUppercutStartHeight(api.getUppercutStartHeight() + 0.05); },
-          refreshFns
-        );
-
-        // This panel's own wrist placement — see applyWatchTransform.
-        // "Facing" cycles through all 6 axis+sign combinations; "Roll"
-        // spins the panel around whichever direction that ends up being,
-        // in 45-degree steps, to fix up/sideways text afterward.
-        var setupTab = panel.getContent('setup');
-        var facingOrder = ['x+', 'x-', 'y+', 'y-', 'z+', 'z-'];
-        makeMenuButton(
-          setupTab,
-          0.4,
-          function () { return 'Facing: ' + api.getWatchFacing(hand).toUpperCase(); },
-          function () {
-            var current = api.getWatchFacing(hand);
-            var next = facingOrder[(facingOrder.indexOf(current) + 1) % facingOrder.length];
-            api.setWatchFacing(hand, next);
-          },
-          refreshFns
-        );
-        makeAdjustRow(
-          setupTab,
-          0.05,
-          function () { return 'Roll: ' + api.getWatchRoll(hand) + '°'; },
-          function () { api.adjustWatchRoll(hand, -45); },
-          function () { api.adjustWatchRoll(hand, 45); },
+          aimTab,
+          -0.06,
+          function () { return 'Lock Range: ' + api.getLockRange().toFixed(2) + 'm'; },
+          function () { api.setLockRange(api.getLockRange() - 0.25); },
+          function () { api.setLockRange(api.getLockRange() + 0.25); },
           refreshFns
         );
 
@@ -1285,169 +1321,72 @@
         makeMenuButton(
           moreTab,
           -0.2,
-          function () { return 'Debug Axes: ' + (api.getDebugAxes() ? 'ON' : 'OFF'); },
-          api.toggleDebugAxes,
+          function () { return 'Show Stats: ' + (api.getShowStats() ? 'ON' : 'OFF'); },
+          api.toggleShowStats,
           refreshFns
         );
 
-        // Called by watch-menu-system right before showing this panel,
-        // so a value changed on the other wrist (or via desktop) is
-        // never stale the moment you look down at this one.
+        // Called by world-menu-system right before showing the panel, so
+        // a value that somehow changed while the menu was closed is
+        // never stale the moment it's opened again.
         panelEl.refreshLabels = function () {
           refreshFns.forEach(function (fn) { fn(); });
         };
       }
 
-      // Shared by both watch panels — background + the tabbed settings
-      // content. Each hand gets its own independent copy (see
-      // watch-menu-system.build) rather than one panel that gets
-      // reparented, which is simpler than juggling A-Frame's scene-graph
-      // transforms across an entity move.
-      function buildWatchMenu(panelEl, api, hand) {
+      // Background + the tabbed settings content for the world-fixed
+      // menu panel.
+      function buildWorldMenu(panelEl, api) {
         var bg = document.createElement('a-plane');
         bg.setAttribute('width', 1.7);
         bg.setAttribute('height', 1.9);
         bg.setAttribute('material', 'color: #0d1526; opacity: 0.95; shader: flat; side: double');
         panelEl.appendChild(bg);
-        buildSettingsTabs(panelEl, api, hand);
+        buildSettingsTabs(panelEl, api);
       }
 
+      // How far in front of the player (meters) the menu spawns when
+      // opened, and roughly how large it reads there — see the #world-menu
+      // entity's scale attribute for the actual size. Both are first
+      // guesses at a "couple feet, but noticeably bigger than before"
+      // panel; easy to retune here if it reads too close/far or too
+      // big/small once tried in a headset.
+      var MENU_SPAWN_DISTANCE = 0.9;
+
       // ==============================================================
-      // addAxisGizmo: draws three colored, labelled bars out of `handEl`
-      // along its local +X (red, "X"), +Y (green, "Y"), and +Z (blue,
-      // "Z") axes — the standard RGB=XYZ convention. Each bar is a box
-      // sized along just one dimension and shifted so it starts at the
-      // hand's local origin and extends only in the positive direction,
-      // which needs zero rotation math (and so has zero chance of the
-      // sign-of-rotation mistakes that made the watch panel's own
-      // orientation hard to get right blind).
+      // COMPONENT: world-menu-system
+      // Replaces an earlier per-wrist "watch menu" design: instead of a
+      // small panel mounted on the hand (hard to aim at, and ran out of
+      // room once there were several tabs of settings), there's one
+      // bigger panel fixed in world space. Pressing either controller's
+      // grip toggles it open/closed; when it opens, it's freshly
+      // repositioned a couple feet in front of wherever the player is
+      // currently standing and facing, oriented back toward them — see
+      // positionInFrontOfPlayer. The hand that did *not* press grip gets
+      // a laser pointer to click it with.
       //
-      // Hidden by default; toggled by the watch menu's "Debug Axes"
-      // button (see watch-menu-system.buildApi). The intent is purely
-      // diagnostic: hold your hand in the pose you'd naturally check a
-      // watch in, read off which colored/labelled axis is pointing
-      // toward your eyes, and that tells us exactly which local axis the
-      // watch panel's rotation should be built around instead of
-      // guessing again.
-      // ==============================================================
-      function addAxisGizmo(handEl, length) {
-        var gizmo = document.createElement('a-entity');
-        gizmo.classList.add('axis-gizmo');
-        gizmo.setAttribute('visible', debugAxesOn);
-
-        [
-          { axis: 'x', dim: 'width', color: '#FF4444' },
-          { axis: 'y', dim: 'height', color: '#44FF44' },
-          { axis: 'z', dim: 'depth', color: '#4488FF' },
-        ].forEach(function (a) {
-          var geometry = { width: 0.006, height: 0.006, depth: 0.006 };
-          geometry[a.dim] = length;
-          var bar = document.createElement('a-box');
-          bar.setAttribute('geometry', geometry);
-          bar.setAttribute('material', { color: a.color, shader: 'flat' });
-          var barPos = { x: 0, y: 0, z: 0 };
-          barPos[a.axis] = length / 2;
-          bar.setAttribute('position', barPos);
-          gizmo.appendChild(bar);
-
-          var label = document.createElement('a-text');
-          label.setAttribute('value', a.axis.toUpperCase());
-          label.setAttribute('align', 'center');
-          label.setAttribute('color', a.color);
-          label.setAttribute('width', 6);
-          var labelPos = { x: 0, y: 0, z: 0 };
-          labelPos[a.axis] = length + 0.03;
-          label.setAttribute('position', labelPos);
-          gizmo.appendChild(label);
-        });
-
-        handEl.appendChild(gizmo);
-        return gizmo;
-      }
-
-      // ==============================================================
-      // applyWatchTransform: positions/orients a watch panel purely from
-      // `settings.axis` ("x"/"y"/"z"), `settings.sign` (+1/-1), and
-      // `settings.roll` (degrees, any multiple of 45), all set live from
-      // that panel's own SETUP tab.
+      // Only one hand ever has an active raycaster at a time — a real
+      // interaction bug in an earlier design let a trigger pull on the
+      // hand you weren't looking at register a click aimed by that hand
+      // instead. Toggle-on-grip-press also means neither hand has to
+      // stay physically holding a button down for however long you're
+      // digging through tabs, unlike the previous hold-to-show design
+      // (reasonable for a quick wrist glance, less so for a bigger menu
+      // you might spend a while in).
       //
-      // Position is simply the chosen axis direction times a fixed
-      // distance from the hand — "the direction it's facing out of."
-      // Orientation is built from a lookup table mapping each of the 6
-      // axis+sign combinations to the base rotation that points the
-      // panel's front (local +Z, its default facing direction before any
-      // rotation) back along the *opposite* of the offset — i.e. the
-      // panel faces back toward the hand it's attached to, which is
-      // roughly toward the player's eyes for most of the ways a watch
-      // panel might plausibly be offset. `roll` then spins the panel
-      // around that resulting facing direction — composed as
-      // baseRotation ∘ rollAroundLocalZ via quaternions (rather than
-      // trying to hand-compose Euler angles, which doesn't reliably
-      // commute) so it changes text orientation without ever moving
-      // which way the panel is actually facing.
+      // While open: punching is disabled and rig physics freeze (both
+      // gated on the shared `menuOpen` flag, checked by punch-locomotion
+      // and punch-game), and the trigger's normal quick-reset job is
+      // suspended so clicking a menu button doesn't also reset the arena.
       // ==============================================================
-      var WATCH_AXIS_VECTORS = {
-        x: new THREE.Vector3(1, 0, 0),
-        y: new THREE.Vector3(0, 1, 0),
-        z: new THREE.Vector3(0, 0, 1),
-      };
-
-      // [x, y, z] Euler degrees (order 'XYZ') that rotate local +Z to
-      // point along -axis*sign, keyed "x+", "x-", "y+", "y-", "z+", "z-".
-      var WATCH_BASE_EULER_DEG = {
-        'x+': [0, -90, 0],
-        'x-': [0, 90, 0],
-        'y+': [90, 0, 0],
-        'y-': [-90, 0, 0],
-        'z+': [0, 180, 0],
-        'z-': [0, 0, 0],
-      };
-
-      var WATCH_OFFSET_DISTANCE = 0.12;
-
-      function applyWatchTransform(panelEl, settings) {
-        var key = settings.axis + (settings.sign > 0 ? '+' : '-');
-        var baseDeg = WATCH_BASE_EULER_DEG[key];
-        var baseEuler = new THREE.Euler(degToRad(baseDeg[0]), degToRad(baseDeg[1]), degToRad(baseDeg[2]), 'XYZ');
-        var baseQuat = new THREE.Quaternion().setFromEuler(baseEuler);
-        var rollQuat = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), degToRad(settings.roll));
-        panelEl.object3D.quaternion.copy(baseQuat).multiply(rollQuat);
-
-        var offset = WATCH_AXIS_VECTORS[settings.axis].clone().multiplyScalar(WATCH_OFFSET_DISTANCE * settings.sign);
-        panelEl.object3D.position.copy(offset);
-      }
-
-      // ==============================================================
-      // COMPONENT: watch-menu-system
-      // Replaces an earlier face-filling "pause menu" design with a
-      // wrist-mounted watch: holding a hand's grip button shows *that*
-      // hand's watch-menu-panel (see the hand entities above) and gives
-      // the OTHER hand a laser pointer to click it with. Releasing the
-      // grip closes it. This is a hold gesture, not a toggle, matching
-      // "check your watch" rather than "open a settings screen."
-      //
-      // It's also the fix for a real interaction bug in the previous
-      // design: with both hands able to have an active laser
-      // simultaneously, an absent-minded trigger pull on the hand you
-      // *weren't* looking at could click whatever it happened to be
-      // pointing at. Structurally, only one hand can ever be the
-      // "pointer" at a time now — the menu hand never gets a raycaster
-      // enabled at all — so that's no longer possible.
-      //
-      // While a watch is open: punching is disabled and rig physics
-      // freeze (both gated on the shared `menuOpen` flag, checked by
-      // punch-locomotion and punch-game), and the trigger's normal
-      // quick-reset job is suspended so clicking a menu button doesn't
-      // also reset the arena.
-      // ==============================================================
-      AFRAME.registerComponent('watch-menu-system', {
+      AFRAME.registerComponent('world-menu-system', {
         init: function () {
           this.build = this.build.bind(this);
-          // Deferred to scene "loaded" for the same reason the old
-          // pause-menu had to be: this entity can end up initializing
-          // before sibling entities elsewhere in the markup exist yet,
-          // and this component needs several of them (#cube-manager in
-          // particular) up front.
+          // Deferred to scene "loaded" for the same reason earlier
+          // menu-system revisions had to be: this entity can end up
+          // initializing before sibling entities elsewhere in the
+          // markup exist yet, and this component needs several of them
+          // (#cube-manager in particular) up front.
           var sceneEl = this.el.sceneEl;
           if (sceneEl.hasLoaded) this.build();
           else sceneEl.addEventListener('loaded', this.build, { once: true });
@@ -1455,37 +1394,93 @@
 
         build: function () {
           this.rig = document.querySelector('#rig');
+          this.head = document.querySelector('#head');
           this.gameEl = document.querySelector('#cube-manager');
           this.cursorEl = document.querySelector('#gaze-cursor');
           this.leftHand = document.querySelector('#leftHand');
           this.rightHand = document.querySelector('#rightHand');
-          this.leftPanel = document.querySelector('#watch-menu-left');
-          this.rightPanel = document.querySelector('#watch-menu-right');
-          this.activeHand = null; // 'left' | 'right' | null
+          this.panel = document.querySelector('#world-menu');
+          this.isOpen = false;
+          this.laserHand = null;
 
           var api = this.buildApi();
-          buildWatchMenu(this.leftPanel, api, 'left');
-          buildWatchMenu(this.rightPanel, api, 'right');
-          applyWatchTransform(this.leftPanel, watchSettings.left);
-          applyWatchTransform(this.rightPanel, watchSettings.right);
+          buildWorldMenu(this.panel, api);
 
-          addAxisGizmo(this.leftHand, 0.25);
-          addAxisGizmo(this.rightHand, 0.25);
-
-          this.openLeft = this.openFor.bind(this, 'left');
-          this.closeLeft = this.closeFor.bind(this, 'left');
-          this.openRight = this.openFor.bind(this, 'right');
-          this.closeRight = this.closeFor.bind(this, 'right');
-          this.leftHand.addEventListener('gripdown', this.openLeft);
-          this.leftHand.addEventListener('gripup', this.closeLeft);
-          this.rightHand.addEventListener('gripdown', this.openRight);
-          this.rightHand.addEventListener('gripup', this.closeRight);
+          this.onLeftGrip = this.onGrip.bind(this, 'left');
+          this.onRightGrip = this.onGrip.bind(this, 'right');
+          this.leftHand.addEventListener('gripdown', this.onLeftGrip);
+          this.rightHand.addEventListener('gripdown', this.onRightGrip);
 
           // Desktop/phone has no grip button, so the overlay's "Menu"
-          // button toggles the left watch instead, using the gaze
-          // reticle (widened below) as its pointer.
+          // button toggles it instead, using the gaze reticle (widened
+          // below) as its pointer.
           this.toggleDesktop = this.toggleDesktop.bind(this);
           document.querySelector('#menu-button-html').addEventListener('click', this.toggleDesktop);
+        },
+
+        onGrip: function (hand) {
+          if (this.isOpen) {
+            this.close();
+          } else {
+            this.open(hand === 'left' ? this.rightHand : this.leftHand);
+          }
+        },
+
+        toggleDesktop: function () {
+          if (this.isOpen) this.close();
+          else this.open(null); // no real hand on desktop; the gaze reticle is what's actually used
+        },
+
+        open: function (laserHandEl) {
+          this.isOpen = true;
+          menuOpen = true;
+          this.laserHand = laserHandEl;
+
+          this.positionInFrontOfPlayer();
+          if (this.panel.refreshLabels) this.panel.refreshLabels();
+          this.panel.setAttribute('visible', true);
+          if (this.laserHand) this.setLaser(this.laserHand, true);
+          if (this.cursorEl) this.cursorEl.setAttribute('raycaster', 'objects', '.cube-target, .menu-target');
+        },
+
+        close: function () {
+          this.isOpen = false;
+          menuOpen = false;
+
+          this.panel.setAttribute('visible', false);
+          if (this.laserHand) this.setLaser(this.laserHand, false);
+          this.laserHand = null;
+          if (this.cursorEl) this.cursorEl.setAttribute('raycaster', 'objects', '.cube-target');
+        },
+
+        // Spawns the panel roughly at eye height, MENU_SPAWN_DISTANCE in
+        // front of wherever the player is currently standing and
+        // facing (flattened to horizontal, so looking up/down when you
+        // open it doesn't tilt the panel into the floor or ceiling),
+        // then orients it to face back toward the player.
+        positionInFrontOfPlayer: function () {
+          var camPos = new THREE.Vector3();
+          this.head.object3D.getWorldPosition(camPos);
+          var camDir = new THREE.Vector3();
+          getForwardDirection(this.head, camDir);
+          camDir.y = 0;
+          if (camDir.lengthSq() < 0.0001) camDir.set(0, 0, -1);
+          camDir.normalize();
+
+          var spawnPos = camPos.clone().addScaledVector(camDir, MENU_SPAWN_DISTANCE);
+          this.panel.object3D.position.copy(spawnPos);
+          // For a plain Object3D (this panel isn't a camera), lookAt
+          // orients local +Z — this panel's front, per
+          // createTabbedPanel/makeMenuButton's row geometry — toward the
+          // given point. Aim it straight at the player's head position
+          // so the front faces them directly.
+          this.panel.object3D.lookAt(camPos);
+        },
+
+        setLaser: function (handEl, on) {
+          handEl.setAttribute('raycaster', 'enabled', on);
+          var laser = handEl.querySelector('.menu-laser');
+          if (laser) laser.setAttribute('visible', on);
         },
 
         buildApi: function () {
@@ -1501,43 +1496,25 @@
               v = clamp(Math.round(v * 10) / 10, 1, 12);
               self.rig.setAttribute('punch-locomotion', 'gravity', v);
             },
-            getUppercutBoost: function () { return self.rig.getAttribute('punch-locomotion').uppercutBoost; },
-            setUppercutBoost: function (v) {
-              v = clamp(Math.round(v * 10) / 10, 1.0, 5.0);
-              self.rig.setAttribute('punch-locomotion', 'uppercutBoost', v);
+            getMaxSpeed: function () { return self.rig.getAttribute('punch-locomotion').maxSpeed; },
+            setMaxSpeed: function (v) {
+              v = clamp(Math.round(v), 3, 30);
+              self.rig.setAttribute('punch-locomotion', 'maxSpeed', v);
             },
-            getMaxLaunchSpeed: function () { return self.rig.getAttribute('punch-locomotion').maxLaunchSpeed; },
-            setMaxLaunchSpeed: function (v) {
-              v = clamp(Math.round(v), 3, 25);
-              self.rig.setAttribute('punch-locomotion', 'maxLaunchSpeed', v);
+            getLookCone: function () { return self.rig.getAttribute('punch-locomotion').lookConeAngle; },
+            setLookCone: function (v) {
+              v = clamp(Math.round(v), 20, 150);
+              self.rig.setAttribute('punch-locomotion', 'lookConeAngle', v);
             },
-            getUppercutAngle: function () { return self.rig.getAttribute('punch-locomotion').uppercutDirThreshold; },
-            setUppercutAngle: function (v) {
-              v = clamp(Math.round(v * 100) / 100, 0.2, 0.9);
-              self.rig.setAttribute('punch-locomotion', 'uppercutDirThreshold', v);
+            getLockCone: function () { return self.rig.getAttribute('punch-locomotion').lockOnConeAngle; },
+            setLockCone: function (v) {
+              v = clamp(Math.round(v), 5, 90);
+              self.rig.setAttribute('punch-locomotion', 'lockOnConeAngle', v);
             },
-            getUppercutStartHeight: function () {
-              return self.rig.getAttribute('punch-locomotion').uppercutMaxStartHeight;
-            },
-            setUppercutStartHeight: function (v) {
-              v = clamp(Math.round(v * 100) / 100, 0.5, 2.0);
-              self.rig.setAttribute('punch-locomotion', 'uppercutMaxStartHeight', v);
-            },
-            getWatchFacing: function (hand) {
-              var s = watchSettings[hand];
-              return s.axis + (s.sign > 0 ? '+' : '-');
-            },
-            setWatchFacing: function (hand, facing) {
-              var s = watchSettings[hand];
-              s.axis = facing.charAt(0);
-              s.sign = facing.charAt(1) === '+' ? 1 : -1;
-              applyWatchTransform(hand === 'left' ? self.leftPanel : self.rightPanel, s);
-            },
-            getWatchRoll: function (hand) { return watchSettings[hand].roll; },
-            adjustWatchRoll: function (hand, deltaDeg) {
-              var s = watchSettings[hand];
-              s.roll = ((s.roll + deltaDeg) % 360 + 360) % 360;
-              applyWatchTransform(hand === 'left' ? self.leftPanel : self.rightPanel, s);
+            getLockRange: function () { return self.rig.getAttribute('punch-locomotion').baseLockRange; },
+            setLockRange: function (v) {
+              v = clamp(Math.round(v * 100) / 100, 0, 5);
+              self.rig.setAttribute('punch-locomotion', 'baseLockRange', v);
             },
             getCount: function () { return self.gameEl.getAttribute('punch-game').count; },
             setCount: function (v) {
@@ -1554,60 +1531,18 @@
               self.gameEl.components['punch-game'].reset();
             },
             resetArena: function () { self.gameEl.components['punch-game'].reset(); },
-            resume: function () { if (self.activeHand) self.closeFor(self.activeHand); },
+            resume: function () { self.close(); },
             exitVR: function () {
               var sceneEl = self.el.sceneEl;
               if (sceneEl) sceneEl.exitVR();
             },
-            getDebugAxes: function () { return debugAxesOn; },
-            toggleDebugAxes: function () {
-              debugAxesOn = !debugAxesOn;
-              document.querySelectorAll('.axis-gizmo').forEach(function (gizmo) {
-                gizmo.setAttribute('visible', debugAxesOn);
-              });
+            getShowStats: function () { return showStatsOn; },
+            toggleShowStats: function () {
+              showStatsOn = !showStatsOn;
+              var statsText = document.querySelector('#stats-text');
+              if (statsText) statsText.setAttribute('visible', showStatsOn);
             },
           };
-        },
-
-        openFor: function (hand) {
-          if (this.activeHand) return; // a menu is already open on the other hand; ignore
-          this.activeHand = hand;
-          menuOpen = true;
-
-          var panel = hand === 'left' ? this.leftPanel : this.rightPanel;
-          var otherHand = hand === 'left' ? this.rightHand : this.leftHand;
-          // Refresh every row's displayed value before showing — the two
-          // watch panels share one underlying settings state, but each
-          // has its own DOM text that only updates when its own button
-          // is clicked, so the panel that's been hidden can otherwise
-          // show a stale value from before the other wrist changed it.
-          if (panel.refreshLabels) panel.refreshLabels();
-          panel.setAttribute('visible', true);
-          this.setLaser(otherHand, true);
-          if (this.cursorEl) this.cursorEl.setAttribute('raycaster', 'objects', '.cube-target, .menu-target');
-        },
-
-        closeFor: function (hand) {
-          if (this.activeHand !== hand) return;
-          this.activeHand = null;
-          menuOpen = false;
-
-          var panel = hand === 'left' ? this.leftPanel : this.rightPanel;
-          var otherHand = hand === 'left' ? this.rightHand : this.leftHand;
-          panel.setAttribute('visible', false);
-          this.setLaser(otherHand, false);
-          if (this.cursorEl) this.cursorEl.setAttribute('raycaster', 'objects', '.cube-target');
-        },
-
-        setLaser: function (handEl, on) {
-          handEl.setAttribute('raycaster', 'enabled', on);
-          var laser = handEl.querySelector('.menu-laser');
-          if (laser) laser.setAttribute('visible', on);
-        },
-
-        toggleDesktop: function () {
-          if (this.activeHand) this.closeFor(this.activeHand);
-          else this.openFor('left');
         },
       });
 
@@ -1623,23 +1558,34 @@
       });
 
       // Desktop-only simulate buttons: no mouse can produce a real
-      // controller-velocity punch, so these call punch-locomotion's exact
-      // onPunch() path directly with a synthetic direction/speed. This is
-      // how the movement physics (gravity, drag, launch, crash-down) got
-      // sanity-checked in a plain browser before ever touching a headset.
-      function simulatePunch(direction, speed) {
+      // controller-velocity swing, so these call punch-locomotion's
+      // exact onPunch() path directly with a synthetic direction and
+      // swing stats (a plausible "solid, committed punch"). This is how
+      // the movement physics (gravity, drag, look-gating, lock-on) got
+      // sanity-checked in a plain browser before ever touching a
+      // headset. The up/down-ish directions are angled ~40 degrees off
+      // dead-ahead — steep enough to demonstrate vertical movement, but
+      // still within the default 80-degree look cone from the camera's
+      // straight-ahead starting orientation, so they don't get BLOCKED
+      // just because nothing moved the (simulated) camera to match.
+      function simulatePunch(direction, maxSpeed, handTravelDist, headTravelDist) {
         var rig = document.querySelector('#rig');
         var locomotion = rig && rig.components['punch-locomotion'];
-        if (locomotion) locomotion.onPunch({ target: null, detail: { direction: direction, speed: speed } });
+        if (locomotion) {
+          locomotion.onPunch({
+            target: null,
+            detail: { direction: direction, maxSpeed: maxSpeed, handTravelDist: handTravelDist, headTravelDist: headTravelDist },
+          });
+        }
       }
       document.querySelector('#sim-punch').addEventListener('click', function () {
-        simulatePunch(new THREE.Vector3(0, 0, -1), 3.2);
+        simulatePunch(new THREE.Vector3(0, 0, -1), 3.5, 0.5, 0.1);
       });
-      document.querySelector('#sim-uppercut').addEventListener('click', function () {
-        simulatePunch(new THREE.Vector3(0, 1, -0.3).normalize(), 3.2);
+      document.querySelector('#sim-up').addEventListener('click', function () {
+        simulatePunch(new THREE.Vector3(0, 0.65, -0.75).normalize(), 3.5, 0.5, 0.1);
       });
-      document.querySelector('#sim-smash').addEventListener('click', function () {
-        simulatePunch(new THREE.Vector3(0, -1, -0.2).normalize(), 3.2);
+      document.querySelector('#sim-down').addEventListener('click', function () {
+        simulatePunch(new THREE.Vector3(0, -0.65, -0.75).normalize(), 3.5, 0.5, 0.1);
       });
     </script>
   </body>

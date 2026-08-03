@@ -16,34 +16,71 @@ until they're actually asked for.
 
 ## Built so far
 
-- Punches lunge the player in the swing direction (`punch-locomotion`).
-- Uppercuts (steep-upward swings that started down near the waist)
-  launch the player airborne. Detection has gone through a few
-  iterations — see `punch-tracker`'s wind-up/extending check and
-  `punch-locomotion`'s uppercut classification — and is now tunable
-  live from the watch menu's AIR tab (Uppercut Power, Max Air Speed,
-  Uppercut Angle, Max Start Height) rather than only in code.
-- Downward swings while airborne crash the player down ("smash").
-  Currently affects only the player, not enemies/cubes.
+The punch → movement pipeline went through a full redesign (previous
+iterations tried a per-frame "is the hand extending away from the
+head" heuristic plus a separate hard-coded uppercut/smash
+classification; both are gone now). Current model, in
+`punch-tracker`/`punch-locomotion`:
+
+1. A hand swing is tracked start-to-finish as a small state machine
+   (`punch-tracker`): once speed crosses `triggerSpeed`, it accumulates
+   max speed, hand path length, and head path length (via the head's
+   own `punch-tracker` instance) until speed drops back to
+   `resetSpeed` (or a swing runs unreasonably long) — at which point it
+   emits a "punch" with the *net displacement* direction from swing
+   start to swing end, plus those three accumulated stats.
+2. `punch-locomotion` only allows a lunge if that direction is within
+   `lookConeAngle` of the camera's actual look direction — the fix for
+   accidental-backward-punches (a cock-back's net direction essentially
+   never matches where you're looking) and, as a side effect, what
+   makes punching in *any* direction — including straight up — work
+   uniformly, since there's no separate uppercut angle/height gate
+   anymore.
+3. If a live cube is within `lockOnConeAngle` of your aim and close
+   enough (`baseLockRange`, extended a bit by how big the swing was),
+   the punch snaps onto it ("lock-on"); otherwise the movement
+   direction is the punch direction blended halfway with the look
+   direction.
+4. Impulse magnitude combines max hand speed, hand travel distance, and
+   head travel distance (`speedFactor`/`handDistFactor`/`headDistFactor`),
+   scaled by `powerMultiplier` ("Move Speed" in the menu).
+
+Downward swings no longer get a special "smash" boost — a downward
+punch is just a punch whose computed direction happens to point down,
+handled by the same unified system. If that turns out to feel like it
+needs *more* juice than the unified formula gives it, that's a
+candidate for a future targeted addition, not a revert to special-casing.
+
+Other things in place:
 - Cubes have independent movement behavior (bob/chase/patrol/wander),
   though none of it reacts to being hit beyond popping.
-- Gravity is tunable (watch menu, PUNCH tab) — lower values give a
-  floatier, more super-heroic feel, which matters a lot for anything
-  below that involves being airborne on purpose (juggling, jumps).
+- Gravity is tunable (menu, PUNCH tab) — lower values give a floatier,
+  more super-heroic feel, which matters a lot for anything below that
+  involves being airborne on purpose (juggling, jumps).
+- An optional in-view stats HUD (menu, MORE tab → Show Stats) shows the
+  last punch's max speed / hand distance / head distance / computed
+  magnitude / angle-to-look / lock state — a playtesting aid for seeing
+  what the targeting system actually did, not something meant to stay
+  on for normal play.
 
 ## Ideas for future moves (not yet implemented)
 
-### Uppercuts toss enemies airborne, not just the player
-Currently an uppercut punch that connects with a cube just pops it
-like any other hit — no launch. Extending this needs cubes to have
+### Uppercuts (or any punch) toss enemies airborne, not just the player
+Currently a punch that connects with a cube just pops it, regardless of
+direction — no launch, even now that the player can be launched in any
+direction including straight up. Extending this needs cubes to have
 real velocity/gravity of their own (not just the current
 behavior-driven position tweening in `cube-behavior`), so a hit cube
-can be given an upward impulse and then fall under gravity like the
-player does, instead of just disappearing. Open question Noah raised
-and hasn't resolved: should the *player* still also launch on every
-uppercut once enemies do too, or does landing a juggle-starting
-uppercut on an enemy skip/reduce the self-launch? Leave both wired up
-as separate, easy-to-toggle behaviors rather than picking one.
+can be given an impulse in the punch's direction and then fall under
+gravity like the player does, instead of just disappearing. This
+should compose naturally with the unified direction/magnitude system
+above — the same `finalDir`/`magnitude` already computed for the
+player's own lunge is the obvious thing to also apply to whatever gets
+hit. Open question Noah raised and hasn't resolved: should the
+*player* still also launch on every hit once enemies do too, or does
+landing a juggle-starting punch on an enemy skip/reduce the
+self-launch? Leave both wired up as separate, easy-to-toggle behaviors
+rather than picking one.
 
 ### Squat-then-stand-quickly → jump (+ shockwave)
 Detect: head Y position drops below some threshold at low vertical
@@ -87,13 +124,14 @@ decaying impulse, since it's meant to read as a controlled dash rather
 than a lunge.
 
 ### Squat + downward two-arm swing → ground-pound smash
-Combine the squat detection above with a downward swing (already have
-the ingredients: `punch-locomotion`'s existing downward-swing-while-
-airborne "smash" case, and the squat detection from the jump idea).
-On landing, apply a radius-based AoE knockback/pop to nearby cubes —
-distinct from `punch-target`'s existing per-cube proximity+force pop,
-since this one is a shockwave from the impact point and shouldn't
-require direct fist contact with each cube.
+Combine the squat detection above with a downward swing — a downward
+punch already sends the player crashing down under the unified
+direction system (no special case needed for that part anymore). What
+this idea adds on top is a landing effect: apply a radius-based AoE
+knockback/pop to nearby cubes on impact — distinct from
+`punch-target`'s existing per-cube proximity+force pop, since this one
+is a shockwave from the impact point and shouldn't require direct fist
+contact with each cube.
 
 ## Chaining / combos
 
@@ -106,15 +144,18 @@ is already airborne from their own jump can be told apart from an
 uppercut thrown from standing on the ground — likely relevant for
 tuning how these moves stack rather than for basic detection.
 
-## Settings already exposed in the watch menu (as of this writing)
+## Settings already exposed in the menu (as of this writing)
 
-- **PUNCH tab**: Move Speed, Gravity, Reset Arena
+The menu itself changed shape too: it's now one bigger panel fixed in
+world space, spawned a couple feet in front of the player and facing
+them, rather than a small per-wrist panel — see the README for why.
+
+- **PUNCH tab**: Move Speed, Gravity, Max Speed, Reset Arena
 - **FOES tab**: Cube Count, Cube Behavior (bob/chase/patrol/wander/mixed)
-- **AIR tab**: Uppercut Power, Max Air Speed, Uppercut Angle, Max Start Height
-- **SETUP tab**: per-wrist watch Facing (6 axis+sign choices) and Roll (45° steps)
-- **MORE tab**: Resume, Exit VR, Debug Axes (RGB=XYZ gizmo on both fists)
+- **AIM tab**: Look Cone, Lock-On Cone, Lock Range — tuning for the
+  look-gated/lock-on targeting system described above
+- **MORE tab**: Resume, Exit VR, Show Stats
 
-Each new move idea above should probably get its own tab (or a shared
-"MOVES" tab if the watch panel starts running out of tab-bar width) as
-it's built, following the same tabbed-panel pattern already in place
+Each new move idea above should probably get its own tab as it's
+built, following the same tabbed-panel pattern already in place
 (`createTabbedPanel` / `buildSettingsTabs` in `games/punch-pop/index.html`).
