@@ -645,11 +645,7 @@
             return;
           }
 
-          var magnitude =
-            (maxSpeed * this.data.speedFactor +
-              handDist * this.data.handDistFactor +
-              headDist * this.data.headDistFactor) *
-            this.data.powerMultiplier;
+          var magnitude = this.computeMagnitude(maxSpeed, handDist, headDist);
 
           this.head.object3D.getWorldPosition(this.headWorldPos);
           var lockRange = this.data.baseLockRange + magnitude * this.data.lockRangeFactor;
@@ -679,6 +675,20 @@
           this.updateStatsHud();
           this.showLabel(this.lastStats.outcome);
           pulseHaptics(evt.target, target ? 0.8 : 0.5, 60);
+        },
+
+        // Same formula used for both "how far does this punch lunge the
+        // player" and "how much damage does this punch do to a cube" —
+        // punch-game's checkHand calls this directly rather than having
+        // its own separate notion of punch force, per Noah's ask that
+        // cube damage use the same calculation as player movement.
+        computeMagnitude: function (maxSpeed, handDist, headDist) {
+          return (
+            (maxSpeed * this.data.speedFactor +
+              handDist * this.data.handDistFactor +
+              headDist * this.data.headDistFactor) *
+            this.data.powerMultiplier
+          );
         },
 
         tick: function (time, deltaMs) {
@@ -846,27 +856,113 @@
         },
       });
 
+      // Minimum time (ms) between two hits registering on the same cube.
+      // Without this, a single swing that dwells in a cube's hit radius
+      // for more than one frame (punch-game's checkHand runs every tick,
+      // ~90Hz in VR) would apply damage many times over for what's
+      // physically one punch.
+      var HIT_COOLDOWN_MS = 220;
+
       // ==============================================================
       // COMPONENT: punch-target
-      // Attached to each cube. pop() handles both real punch hits (from
-      // punch-game's proximity check) and the desktop reticle click
-      // fallback — same flash/knockback/removal either way, matching
-      // Cube Pop's poppable component.
+      // Attached to each cube. Cubes have health now instead of popping
+      // in one hit — hit() applies damage (see punch-game.checkHand,
+      // which computes it via punch-locomotion.computeMagnitude, the
+      // exact same formula used for how far a punch lunges the player)
+      // and desaturates the cube's color toward gray in proportion to
+      // remaining health, so the color visibly drains out of it as it
+      // takes damage rather than showing a separate health bar. It dies
+      // (pop()) once health reaches zero — same flash/knockback/removal
+      // as the original one-hit design, just gated behind health instead
+      // of any hit.
       // ==============================================================
       AFRAME.registerComponent('punch-target', {
+        schema: {
+          maxHealth: { type: 'number', default: 100 },
+        },
+
         init: function () {
+          this.health = this.data.maxHealth;
           this.popped = false;
+          this.hitCooldownUntil = 0;
+          this.flinchTimeout = null;
+
+          // THREE.Color's HSL conversion is what drives desaturation:
+          // keep the cube's original hue/lightness, scale saturation
+          // down toward 0 (gray) as health drops toward 0. Falls back to
+          // white if this entity somehow has no material color set yet
+          // (punch-game's spawnCube always sets one first, but this
+          // component doesn't strictly depend on that ordering).
+          var materialData = this.el.getAttribute('material');
+          this.baseColor = new THREE.Color((materialData && materialData.color) || '#FFFFFF');
+          this.baseHsl = {};
+          this.baseColor.getHSL(this.baseHsl);
+          this.displayColor = new THREE.Color();
+
           this.onClick = this.onClick.bind(this);
           this.el.addEventListener('click', this.onClick);
         },
 
         onClick: function () {
-          this.pop(new THREE.Vector3(0, 0.4, -1));
+          // Desktop/phone fallback: an instant kill on click, matching
+          // the original one-hit-pops-it convenience for sanity-testing
+          // the spawn/pop/respawn loop without a headset.
+          this.hit(new THREE.Vector3(0, 0.4, -1), this.data.maxHealth);
+        },
+
+        // damage is in the same units as punch-locomotion's lunge
+        // magnitude (see computeMagnitude) — a light tap barely dents
+        // health, a big committed swing takes a real chunk out.
+        hit: function (hitVelocity, damage) {
+          if (this.popped) return;
+          var now = Date.now();
+          if (now < this.hitCooldownUntil) return;
+          this.hitCooldownUntil = now + HIT_COOLDOWN_MS;
+
+          this.health = clamp(this.health - damage, 0, this.data.maxHealth);
+          this.updateColor();
+
+          if (this.health <= 0) {
+            this.pop(hitVelocity);
+          } else {
+            this.flinch();
+          }
+        },
+
+        updateColor: function () {
+          var healthFrac = this.health / this.data.maxHealth;
+          this.displayColor.setHSL(this.baseHsl.h, this.baseHsl.s * healthFrac, this.baseHsl.l);
+          this.el.setAttribute('material', 'color', '#' + this.displayColor.getHexString());
+        },
+
+        // Non-lethal hit feedback: a quick bright flash + scale pulse,
+        // then settle back into the new (more desaturated) color. Scale
+        // rather than position for the pulse — cube-behavior sets this
+        // entity's position every single frame, so a position-based
+        // knockback here would just get overwritten immediately, same
+        // reason pop() below has to remove cube-behavior first (there,
+        // the cube really is being removed, so that's fine to do).
+        flinch: function () {
+          this.el.setAttribute('material', 'color', '#FFFFFF');
+          this.el.setAttribute('animation__flinch', {
+            property: 'scale',
+            from: '1.15 1.15 1.15',
+            to: '1 1 1',
+            dur: 120,
+            easing: 'easeOutQuad',
+          });
+
+          clearTimeout(this.flinchTimeout);
+          var self = this;
+          this.flinchTimeout = setTimeout(function () {
+            self.updateColor();
+          }, 60);
         },
 
         pop: function (hitVelocity) {
           if (this.popped) return;
           this.popped = true;
+          clearTimeout(this.flinchTimeout);
 
           // Stop cube-behavior from continuing to drive this entity's
           // position — otherwise it fights the knockback/shrink
@@ -901,6 +997,7 @@
 
         remove: function () {
           this.el.removeEventListener('click', this.onClick);
+          clearTimeout(this.flinchTimeout);
         },
       });
 
@@ -953,6 +1050,7 @@
           hitRadius: { type: 'number', default: 0.35 },
           popForceSpeed: { type: 'number', default: 1.0 },
           behaviorMode: { type: 'string', default: 'mixed' },
+          cubeHealth: { type: 'number', default: 100 },
         },
 
         init: function () {
@@ -960,6 +1058,7 @@
           this.leftHand = document.querySelector('#leftHand');
           this.rightHand = document.querySelector('#rightHand');
           this.rig = document.querySelector('#rig');
+          this.locomotion = this.rig.components['punch-locomotion'];
           this.cubes = [];
           this.colors = ['#EF476F', '#FFD166', '#06D6A0', '#118AB2', '#7B2CBF'];
           this.scratch = new THREE.Vector3();
@@ -1017,7 +1116,7 @@
           cube.setAttribute('material', { color: this.colors[colorSeed % this.colors.length] });
           cube.setAttribute('position', { x: x, y: y, z: z });
           cube.classList.add('cube-target');
-          cube.setAttribute('punch-target', '');
+          cube.setAttribute('punch-target', { maxHealth: this.data.cubeHealth });
 
           var mode = this.data.behaviorMode;
           if (mode === 'mixed') {
@@ -1043,6 +1142,21 @@
           var tracker = handEl.components['punch-tracker'];
           if (!tracker || !tracker.hasPrev || tracker.speed < this.data.popForceSpeed) return;
 
+          // Same magnitude formula that decides how far a punch lunges
+          // the player (computeMagnitude), fed with this hand's *current*
+          // swing-in-progress stats rather than waiting for the swing to
+          // finish — contact happens mid-swing, well before punch-tracker
+          // would otherwise emit its "punch" event. If the hand hasn't
+          // actually crossed into a tracked swing yet (a graze below
+          // triggerSpeed but still above popForceSpeed), hand/head
+          // distance default to 0 rather than reusing stale numbers left
+          // over from a previous, unrelated swing.
+          var handDist = tracker.swinging ? tracker.handTravelDist : 0;
+          var headDist = tracker.swinging ? tracker.headTravelDist : 0;
+          var damage = this.locomotion
+            ? this.locomotion.computeMagnitude(tracker.speed, handDist, headDist)
+            : tracker.speed;
+
           for (var i = this.cubes.length - 1; i >= 0; i--) {
             var cube = this.cubes[i];
             var target = cube.components['punch-target'];
@@ -1050,7 +1164,7 @@
 
             cube.object3D.getWorldPosition(this.scratch);
             if (tracker.worldPos.distanceTo(this.scratch) <= this.data.hitRadius) {
-              target.pop(tracker.velocity);
+              target.hit(tracker.velocity, damage);
               pulseHaptics(handEl, 0.6, 40);
             }
           }
@@ -1268,15 +1382,23 @@
         var foesTab = panel.getContent('foes');
         makeAdjustRow(
           foesTab,
-          0.4,
+          0.5,
           function () { return 'Cube Count: ' + api.getCount(); },
           function () { api.setCount(api.getCount() - 1); },
           function () { api.setCount(api.getCount() + 1); },
           refreshFns
         );
+        makeAdjustRow(
+          foesTab,
+          0.22,
+          function () { return 'Cube Health: ' + api.getCubeHealth(); },
+          function () { api.setCubeHealth(api.getCubeHealth() - 25); },
+          function () { api.setCubeHealth(api.getCubeHealth() + 25); },
+          refreshFns
+        );
         makeMenuButton(
           foesTab,
-          0.05,
+          -0.06,
           function () { return 'Behavior: ' + api.getBehavior(); },
           api.cycleBehavior,
           refreshFns
@@ -1520,6 +1642,12 @@
             setCount: function (v) {
               v = clamp(v, 2, 14);
               self.gameEl.setAttribute('punch-game', 'count', v);
+              self.gameEl.components['punch-game'].reset();
+            },
+            getCubeHealth: function () { return self.gameEl.getAttribute('punch-game').cubeHealth; },
+            setCubeHealth: function (v) {
+              v = clamp(v, 25, 400);
+              self.gameEl.setAttribute('punch-game', 'cubeHealth', v);
               self.gameEl.components['punch-game'].reset();
             },
             getBehavior: function () { return self.gameEl.getAttribute('punch-game').behaviorMode; },
