@@ -43,7 +43,30 @@ classification; both are gone now). Current model, in
    direction.
 4. Impulse magnitude combines max hand speed, hand travel distance, and
    head travel distance (`speedFactor`/`handDistFactor`/`headDistFactor`),
-   scaled by `powerMultiplier` ("Move Speed" in the menu).
+   scaled by `powerMultiplier` ("Move Speed" in the menu). For a
+   lock-on lunge specifically, the applied magnitude is additionally
+   capped by distance to the target (`LOCK_DISTANCE_FACTOR` /
+   `LOCK_MIN_MAGNITUDE`) — playtesting found that finishing off a cube
+   at point-blank range with the *uncapped* magnitude flung the player
+   past/through it, which read as "the game moves me around
+   unexpectedly" during close-range combos.
+
+Playtesting also turned up a real detection bug: rig-local hand
+*position* doesn't rotate with the player's physical body (only
+punch-locomotion's own translation moves it), so turning around while
+holding a hand out sweeps that hand through a wide arc in tracking
+space — the same velocity signature as a real swing, causing phantom
+lunges nobody threw. Fixed by comparing the swing-trigger threshold
+against the hand's velocity *relative to the head's own current
+velocity* (`punch-tracker`'s `headBlend` schema field, "Turn Filter" in
+the menu, default 100%) rather than raw hand velocity — a real punch
+still shows a large hand-vs-head differential since the head stays
+roughly still, while a body turn mostly cancels out since hand and head
+sweep through a correlated arc together. Important detail: only the
+*trigger* uses the head-relative speed — `maxSpeed` (and therefore
+impulse magnitude/damage) still accumulates from *raw* hand speed, so a
+real punch thrown while stepping/leaning in doesn't get discounted for
+the crime of the head also moving forward a bit.
 
 Downward swings no longer get a special "smash" boost — a downward
 punch is just a punch whose computed direction happens to point down,
@@ -65,17 +88,45 @@ Other things in place:
   raycast against the overlay mesh (`worldToSplatPixel`) rather than a
   hand-derived formula, on purpose — see the README's note on the
   `getWorldDirection`/`lookAt` bug for why "just derive the axes" was
-  worth avoiding a third time.
+  worth avoiding a third time. Splat size/opacity/scatter got bumped up
+  substantially after playtesting called the default splatter too
+  sparse and clustered, plus a **Splat Amount** and **Splat Scatter**
+  menu knob (SPLAT tab) to push further if needed — explicitly asked
+  for "way more splatter than you're expecting."
+- A non-lethal hit now physically launches the cube (real velocity +
+  friction + a light settling gravity, `cube-behavior.applyKnockback`),
+  proportional to hit force but much gentler than the player's own
+  lunge speed (**Knockback Force**, SPLAT tab). It runs in place of
+  that cube's normal chase/patrol/wander/bob movement while still
+  sliding, and paints a thin trail in its own color while doing so
+  (**Trail** toggle). A cube slid into another live cube
+  (`punch-game.checkCubeCollisions`) transfers some damage and velocity
+  on to it, capped to once per second per specific pair via a
+  timestamped cooldown map — otherwise two cubes resting against each
+  other would loop into infinite mutual damage. Watch for the dt-clamp
+  guard in `cube-behavior.tick()` (`Math.min(deltaMs/1000, 0.05)`,
+  mirroring the one already in `punch-locomotion.tick()`) if you touch
+  this — without it, a single slow/coalesced frame integrates gravity
+  over an oversized step and the knockback velocity runs away instead
+  of settling back to zero (found via testing, not by inspection).
 - Cubes have independent movement behavior (bob/chase/patrol/wander),
-  though none of it reacts to being hit beyond popping.
+  though none of it reacts to being hit beyond the knockback above.
 - Gravity is tunable (menu, PUNCH tab) — lower values give a floatier,
   more super-heroic feel, which matters a lot for anything below that
   involves being airborne on purpose (juggling, jumps).
 - An optional in-view stats HUD (menu, MORE tab → Show Stats) shows the
   last punch's max speed / hand distance / head distance / computed
-  magnitude / angle-to-look / lock state — a playtesting aid for seeing
-  what the targeting system actually did, not something meant to stay
-  on for normal play.
+  magnitude (plus the lock-on-capped value and distance, when the cap
+  applied) / angle-to-look vs. the current cone / lock state — a
+  playtesting aid for seeing what the targeting system actually did.
+- A separate, always-fresh **live debug HUD** (menu, DEBUG tab) shows
+  the raw signals `punch-tracker`'s state machine reads every frame —
+  both hands' raw vs. head-relative speed, swing state, the live
+  trigger/reset thresholds, and the turn filter — added specifically so
+  a confusing in-headset moment can be read directly (or screenshotted)
+  instead of guessed at blind from outside the headset. Trigger Speed,
+  Reset Speed, and Turn Filter are all live-adjustable from the same
+  DEBUG tab.
 
 ## Ideas for future moves (not yet implemented)
 
@@ -165,9 +216,12 @@ world space, spawned a couple feet in front of the player and facing
 them, rather than a small per-wrist panel — see the README for why.
 
 - **PUNCH tab**: Move Speed, Gravity, Max Speed, Reset Arena
-- **FOES tab**: Cube Count, Cube Behavior (bob/chase/patrol/wander/mixed)
+- **FOES tab**: Cube Count, Cube Health, Cube Behavior (bob/chase/patrol/wander/mixed)
 - **AIM tab**: Look Cone, Lock-On Cone, Lock Range — tuning for the
   look-gated/lock-on targeting system described above
+- **SPLAT tab**: Splat Amount, Splat Scatter, Knockback Force, Trail on/off
+- **DEBUG tab**: Live Debug HUD toggle, Trigger Speed, Reset Speed,
+  Turn Filter — punch-detection transparency/tuning, described above
 - **MORE tab**: Resume, Exit VR, Show Stats
 
 Each new move idea above should probably get its own tab as it's

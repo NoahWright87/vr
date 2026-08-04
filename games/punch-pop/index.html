@@ -163,6 +163,23 @@
             position="0 0.2 -1"
             visible="false"
           ></a-text>
+          <!-- Toggled from the menu's DEBUG tab (Live Debug HUD). Unlike
+               stats-text (a snapshot of the *last completed* punch), this
+               updates every single frame with the raw, live numbers the
+               punch-detection state machine is actually reading right
+               now — both hands' raw vs. head-relative speed and swing
+               state, the current trigger/reset thresholds, and the turn
+               filter — so a confusing moment in-headset can be read (or
+               screenshotted) directly instead of guessed at blind. -->
+          <a-text
+            id="live-debug-text"
+            value=""
+            align="center"
+            color="#FFAA55"
+            width="0.9"
+            position="0 1.15 -1"
+            visible="false"
+          ></a-text>
 
           <!-- Gaze reticle: lets a phone/desktop tester pop a cube by
                looking at it and clicking, same fallback pattern as Cube
@@ -307,6 +324,21 @@
       // in-view stats HUD after each punch.
       var showStatsOn = false;
 
+      // Toggled from the menu's DEBUG tab (Live Debug HUD). Read by
+      // punch-locomotion's tick to decide whether to bother refreshing
+      // the always-live (not post-punch-snapshot) debug text every frame.
+      var liveDebugOn = false;
+
+      // Global, menu-tunable knobs for the blood-splatter/knockback
+      // system. Kept as plain globals (like menuOpen/showStatsOn above)
+      // rather than component schema properties, since they apply
+      // uniformly across every cube regardless of when it was spawned —
+      // no per-entity attribute sync needed.
+      var splatAmountMultiplier = 1.5; // scales splat size/opacity/blob-count
+      var splatScatterMultiplier = 1.5; // scales how far blobs spread from the hit point
+      var cubeKnockbackFactor = 0.15; // damage -> knockback speed (m/s per damage point)
+      var cubeTrailEnabled = true;
+
       // A swing that's still "in progress" past this duration force-
       // finishes rather than tracking forever — guards against e.g. slow
       // continuous circular hand motion (arm circles) being read as one
@@ -324,6 +356,33 @@
       // also offers "mixed", which isn't itself a movement behavior —
       // it means "assign each newly-spawned cube a random one of these."
       var CUBE_BEHAVIOR_MODES = ['bob', 'chase', 'patrol', 'wander'];
+
+      // Cube knockback physics (cube-behavior) and cube-on-cube collision
+      // (punch-game) tuning. Kept as plain constants rather than menu
+      // knobs — cubeKnockbackFactor above already controls how hard a hit
+      // launches a cube, and these just shape what happens after that.
+      var CUBE_KNOCKBACK_FRICTION = 2.5; // exponential horizontal-velocity damping rate
+      var CUBE_KNOCKBACK_GRAVITY = 9; // m/s^2, pulls a launched cube back toward the floor
+      var CUBE_KNOCKBACK_MAX_SPEED = 6; // m/s cap, so a huge hit can't send a cube flying off-arena
+      var CUBE_KNOCKBACK_MIN_SPEED = 0.05; // below this, a cube is considered settled again
+      var CUBE_TRAIL_MIN_SPEED = 0.6; // m/s — a cube must be sliding at least this fast to leave a trail
+      var CUBE_TRAIL_INTERVAL = 0.06; // seconds between trail dots while sliding
+      var CUBE_COLLISION_RADIUS = 0.4; // meters between cube centers to count as a collision
+      var CUBE_COLLISION_MIN_SPEED = 0.6; // a cube must be sliding at least this fast to hit another
+      var CUBE_COLLISION_COOLDOWN_MS = 1000; // per-pair cooldown, so two cubes can't infinitely re-hit each other
+      var CUBE_COLLISION_DAMAGE_PER_SPEED = 8; // damage dealt to cube B = cubeA's slide speed * this
+      var CUBE_COLLISION_TRANSFER_FACTOR = 0.6; // fraction of cubeA's slide speed passed on as cubeB's new velocity
+
+      // Lock-on lunges are capped so finishing off a cube you're already
+      // standing next to gives a felt "thump" rather than launching you
+      // past or through it — the direct fix for "the game moves me
+      // around unexpectedly" during close-range combos. Distance-based
+      // cap: lunge magnitude can't exceed (distance to target *
+      // LOCK_DISTANCE_FACTOR + LOCK_MIN_MAGNITUDE), so magnitude scales
+      // up smoothly as the target gets farther away instead of a hard
+      // on/off cutoff.
+      var LOCK_DISTANCE_FACTOR = 3.5;
+      var LOCK_MIN_MAGNITUDE = 0.6;
 
       // Haptics are a nice-to-have confirmation buzz on hit/punch, not
       // load-bearing — swallow anything unsupported rather than let a
@@ -386,8 +445,10 @@
       // instead of more manual reasoning about conventions.
       // ==============================================================
       var SPLAT_CANVAS_SIZE = 1024;
-      var SPLAT_BASE_RADIUS = 0.18; // meters, before per-hit scaling
-      var SPLAT_BASE_OPACITY = 0.55;
+      var SPLAT_BASE_RADIUS = 0.22; // meters, before per-hit scaling and splatAmountMultiplier
+      var SPLAT_BASE_OPACITY = 0.65;
+      var SPLAT_TRAIL_RADIUS = 0.09; // small dots painted while a cube slides from knockback
+      var SPLAT_TRAIL_OPACITY = 0.4;
 
       var splatCanvas = document.createElement('canvas');
       splatCanvas.width = splatCanvas.height = SPLAT_CANVAS_SIZE;
@@ -436,23 +497,32 @@
 
       // One organic-ish blob: a handful of randomly offset, randomly
       // sized overlapping circles rather than one perfect circle, so it
-      // reads as a splat rather than a sticker.
+      // reads as a splat rather than a sticker. `splatAmountMultiplier`
+      // and `splatScatterMultiplier` (menu, SPLAT tab) scale size/
+      // opacity/blob-count and spread respectively, on top of whatever
+      // radius/opacity the caller asked for — playtesting feedback was
+      // that punch splats read as tight, sticker-like groupings under
+      // the cube, so both the baseline constants above and the default
+      // multipliers here start considerably more generous than a first
+      // guess would.
       function paintSplat(worldX, worldZ, colorHex, radiusMeters, opacity) {
         var pixel = worldToSplatPixel(worldX, worldZ);
         if (!pixel) return;
 
+        var effectiveRadius = radiusMeters * splatAmountMultiplier;
+        var effectiveOpacity = clamp(opacity * splatAmountMultiplier, 0.08, 1);
         var pixelsPerMeter = SPLAT_CANVAS_SIZE / 30; // room is 30m across
-        var pxRadius = radiusMeters * pixelsPerMeter;
+        var pxRadius = effectiveRadius * pixelsPerMeter;
 
         splatCtx.fillStyle = colorHex;
-        splatCtx.globalAlpha = opacity;
-        var blobCount = 4 + Math.floor(Math.random() * 3);
+        splatCtx.globalAlpha = effectiveOpacity;
+        var blobCount = Math.round((4 + Math.random() * 3) * clamp(splatAmountMultiplier, 1, 2.5));
         for (var i = 0; i < blobCount; i++) {
           var angle = Math.random() * Math.PI * 2;
-          var dist = Math.random() * pxRadius * 0.6;
+          var dist = Math.random() * pxRadius * 1.3 * splatScatterMultiplier;
           var bx = pixel.x + Math.cos(angle) * dist;
           var by = pixel.y + Math.sin(angle) * dist;
-          var br = pxRadius * (0.5 + Math.random() * 0.6);
+          var br = pxRadius * (0.4 + Math.random() * 0.6);
           splatCtx.beginPath();
           splatCtx.arc(bx, by, br, 0, Math.PI * 2);
           splatCtx.fill();
@@ -462,12 +532,15 @@
       }
 
       // A death burst: several splats scattered around the impact point
-      // rather than one blob, for a bigger "explosion" moment.
+      // rather than one blob, for a bigger "explosion" moment. Also
+      // scaled by splatAmountMultiplier (count) and splatScatterMultiplier
+      // (spread radius), on top of the per-splat scaling paintSplat
+      // already does.
       function paintSplatBurst(worldX, worldZ, colorHex) {
-        var count = 6 + Math.floor(Math.random() * 4);
+        var count = Math.round((6 + Math.random() * 4) * clamp(splatAmountMultiplier, 1, 2));
         for (var i = 0; i < count; i++) {
           var angle = Math.random() * Math.PI * 2;
-          var dist = Math.random() * 0.5;
+          var dist = Math.random() * 0.7 * splatScatterMultiplier;
           paintSplat(
             worldX + Math.cos(angle) * dist,
             worldZ + Math.sin(angle) * dist,
@@ -527,15 +600,33 @@
           edgeDetect: { type: 'boolean', default: false },
           triggerSpeed: { type: 'number', default: 1.2 },
           resetSpeed: { type: 'number', default: 0.4 },
+          // How much of the head's own current velocity to subtract from
+          // this hand's velocity before comparing against
+          // triggerSpeed/resetSpeed — 0 is the old "raw hand velocity"
+          // behavior, 1 fully filters it out. Default 1: turning your
+          // whole body while holding a hand out sweeps that hand through
+          // a wide arc in tracking space (rig-local position, which is
+          // what this component measures, doesn't rotate with you — only
+          // punch-locomotion's own translation moves it), which reads as
+          // exactly the same velocity signal as a real punch. The head
+          // sweeps through a correlated arc during a body turn but stays
+          // roughly still during a real punch, so subtracting its
+          // velocity cancels the false positive without meaningfully
+          // dulling real punches. Exposed in the menu's DEBUG tab as
+          // "Turn Filter" since this is a real behavioral tradeoff worth
+          // being able to dial back live if it ever over-corrects.
+          headBlend: { type: 'number', default: 1.0 },
         },
 
         init: function () {
           this.prevLocal = this.el.object3D.position.clone();
           this.velocity = new THREE.Vector3();
           this.worldPos = new THREE.Vector3();
-          this.speed = 0;
+          this.speed = 0; // the value actually compared against triggerSpeed/resetSpeed (head-relative when edgeDetect)
+          this.rawSpeed = 0; // unblended hand speed, kept around purely for the debug HUD
           this.hasPrev = false;
           this.connected = false;
+          this._relVelocity = new THREE.Vector3();
 
           if (this.data.edgeDetect) {
             this.head = document.querySelector('#head');
@@ -570,7 +661,27 @@
 
           if (this.hasPrev) {
             this.velocity.subVectors(localPos, this.prevLocal).divideScalar(dt);
-            this.speed = this.velocity.length();
+            this.rawSpeed = this.velocity.length();
+
+            if (this.data.edgeDetect && this.head) {
+              // Subtract (a fraction of) the head's own current velocity
+              // — see headBlend's schema comment for why. The head's
+              // punch-tracker instance ticks independently; reading its
+              // velocity here is at most one frame stale, which is
+              // imperceptible at VR frame rates.
+              var headTracker = this.head.components['punch-tracker'];
+              var headVel = headTracker ? headTracker.velocity : null;
+              if (headVel) {
+                this._relVelocity
+                  .copy(this.velocity)
+                  .addScaledVector(headVel, -this.data.headBlend);
+                this.speed = this._relVelocity.length();
+              } else {
+                this.speed = this.rawSpeed;
+              }
+            } else {
+              this.speed = this.rawSpeed;
+            }
           }
           this.prevLocal.copy(localPos);
           this.hasPrev = true;
@@ -585,7 +696,13 @@
           if (!this.swinging) {
             if (this.speed >= this.data.triggerSpeed) {
               this.swinging = true;
-              this.maxSpeed = this.speed;
+              // maxSpeed (and its later accumulation below) deliberately
+              // tracks rawSpeed, not the head-relative speed used to
+              // *detect* the swing — a punch thrown while stepping/
+              // leaning forward should still get full credit for that
+              // commitment in the magnitude formula, only the trigger/
+              // reset edge-detection needs the head-relative filter.
+              this.maxSpeed = this.rawSpeed;
               this.handTravelDist = 0;
               this.headTravelDist = 0;
               this.swingStartPos.copy(localPos);
@@ -597,7 +714,7 @@
 
           // Mid-swing: keep accumulating stats every frame regardless of
           // instantaneous speed, right up until the swing finishes below.
-          this.maxSpeed = Math.max(this.maxSpeed, this.speed);
+          this.maxSpeed = Math.max(this.maxSpeed, this.rawSpeed);
           this.handTravelDist += this.velocity.length() * dt;
           if (this.head) {
             var headPos = this.head.object3D.position;
@@ -707,7 +824,7 @@
           speedFactor: { type: 'number', default: 1.1 },
           handDistFactor: { type: 'number', default: 4.5 },
           headDistFactor: { type: 'number', default: 6.0 },
-          lookConeAngle: { type: 'number', default: 80 }, // degrees
+          lookConeAngle: { type: 'number', default: 100 }, // degrees
           lockOnConeAngle: { type: 'number', default: 25 }, // degrees
           baseLockRange: { type: 'number', default: 1.5 }, // meters
           lockRangeFactor: { type: 'number', default: 0.15 },
@@ -727,6 +844,7 @@
           this.rightHand = document.querySelector('#rightHand');
           this.debugText = document.querySelector('#debug-text');
           this.statsText = document.querySelector('#stats-text');
+          this.liveDebugText = document.querySelector('#live-debug-text');
           this.labelText = document.querySelector('#punch-label');
           this.labelTimeout = null;
 
@@ -756,7 +874,11 @@
             handDist: handDist,
             headDist: headDist,
             angleDeg: (angleToLook * 180) / Math.PI,
+            lookConeDeg: this.data.lookConeAngle,
             magnitude: 0,
+            appliedMagnitude: 0,
+            capped: false,
+            distToTarget: 0,
             locked: false,
             outcome: 'BLOCKED',
           };
@@ -764,9 +886,12 @@
           if (angleToLook > lookConeRad) {
             // Punch didn't land anywhere near where you're looking —
             // pop cubes it physically connects with (unaffected, see
-            // punch-game's own proximity+force check) but no lunge.
+            // punch-game's own proximity+force check) but no lunge. The
+            // label spells out the actual angle vs. the current cone so
+            // this is readable in-headset without opening the stats HUD
+            // — the direct answer to "why did that just say BLOCKED".
             this.updateStatsHud();
-            this.showLabel('BLOCKED');
+            this.showLabel('BLOCKED ' + Math.round(this.lastStats.angleDeg) + 'deg / ' + this.data.lookConeAngle + 'deg cone');
             return;
           }
 
@@ -777,18 +902,37 @@
           var lockConeRad = degToRad(this.data.lockOnConeAngle);
           var target = findLockOnTarget(this.headWorldPos, this.lookDir, lockRange, lockConeRad);
 
+          // Lock-on lunges are capped by how far away the target actually
+          // is: (distance * LOCK_DISTANCE_FACTOR + LOCK_MIN_MAGNITUDE).
+          // Without this, finishing off a cube you're already standing
+          // next to applies the SAME full magnitude as a lunge from
+          // across the room, flinging the player past/through it instead
+          // of landing a controlled close-range hit — the direct fix for
+          // "the game moves me around unexpectedly" while punching
+          // something at point-blank range repeatedly.
+          var appliedMagnitude = magnitude;
+
           if (target) {
             var targetPos = new THREE.Vector3();
             target.object3D.getWorldPosition(targetPos);
-            this.finalDir.subVectors(targetPos, this.headWorldPos).normalize();
+            this.finalDir.subVectors(targetPos, this.headWorldPos);
+            var distToTarget = this.finalDir.length();
+            this.finalDir.normalize();
             this.lastStats.locked = true;
+            this.lastStats.distToTarget = distToTarget;
+
+            var cappedMagnitude = distToTarget * LOCK_DISTANCE_FACTOR + LOCK_MIN_MAGNITUDE;
+            if (cappedMagnitude < appliedMagnitude) {
+              appliedMagnitude = cappedMagnitude;
+              this.lastStats.capped = true;
+            }
           } else {
             this.finalDir.addVectors(punchDir, this.lookDir).normalize();
           }
 
-          this.velocity.x += this.finalDir.x * magnitude;
-          this.velocity.y += this.finalDir.y * magnitude;
-          this.velocity.z += this.finalDir.z * magnitude;
+          this.velocity.x += this.finalDir.x * appliedMagnitude;
+          this.velocity.y += this.finalDir.y * appliedMagnitude;
+          this.velocity.z += this.finalDir.z * appliedMagnitude;
 
           var totalSpeed = this.velocity.length();
           if (totalSpeed > this.data.maxSpeed) {
@@ -796,9 +940,10 @@
           }
 
           this.lastStats.magnitude = magnitude;
+          this.lastStats.appliedMagnitude = appliedMagnitude;
           this.lastStats.outcome = target ? 'LOCK-ON!' : 'PUNCH!';
           this.updateStatsHud();
-          this.showLabel(this.lastStats.outcome);
+          this.showLabel(this.lastStats.outcome + (this.lastStats.capped ? ' (close)' : ''));
           pulseHaptics(evt.target, target ? 0.8 : 0.5, 60);
         },
 
@@ -865,6 +1010,8 @@
               'rig speed: ' + speed.toFixed(1) + ' m/s' + (this.grounded ? '' : ' (air)') + '\n' + handsStatus
             );
           }
+
+          if (liveDebugOn) this.updateLiveDebugHud();
         },
 
         updateStatsHud: function () {
@@ -873,9 +1020,46 @@
           this.statsText.setAttribute(
             'value',
             'MaxSpd ' + s.maxSpeed.toFixed(1) + '  HandDist ' + s.handDist.toFixed(2) + '  HeadDist ' + s.headDist.toFixed(2) +
-              '\nMag ' + s.magnitude.toFixed(1) + '  Angle ' + s.angleDeg.toFixed(0) + 'deg' + (s.locked ? '  LOCKED' : '') +
-              '\n' + s.outcome
+              '\nMag ' + s.magnitude.toFixed(1) + (s.capped ? ' -> ' + s.appliedMagnitude.toFixed(1) + ' (capped)' : '') +
+              '  Angle ' + s.angleDeg.toFixed(0) + 'deg/' + s.lookConeDeg + 'deg' +
+              '\n' + s.outcome + (s.locked ? '  dist ' + s.distToTarget.toFixed(2) + 'm' : '')
           );
+        },
+
+        // Continuously-updating (not post-punch-snapshot) view of the
+        // handful of raw numbers punch-tracker's swing state machine
+        // actually reads every frame — both hands' raw vs. head-relative
+        // speed and current swing state, plus the live trigger/reset
+        // thresholds and turn filter. This is deliberately everything
+        // the detection logic uses to decide "is this a punch" in one
+        // place, so a confusing moment in-headset (a phantom lunge, an
+        // unexpected BLOCKED) can be read directly off this HUD — or
+        // screenshotted — instead of guessed at from outside the headset.
+        updateLiveDebugHud: function () {
+          if (!this.liveDebugText) return;
+          var lt = this.leftHand && this.leftHand.components['punch-tracker'];
+          var rt = this.rightHand && this.rightHand.components['punch-tracker'];
+          var ht = this.head && this.head.components['punch-tracker'];
+
+          function handLine(label, t) {
+            if (!t) return label + ' --';
+            return (
+              label +
+              ' raw ' + t.rawSpeed.toFixed(2) +
+              ' rel ' + t.speed.toFixed(2) +
+              ' ' + (t.swinging ? '[SWING]' : '[idle]')
+            );
+          }
+
+          var lines = [
+            handLine('L', lt),
+            handLine('R', rt),
+            'trig ' + (lt ? lt.data.triggerSpeed.toFixed(2) : '-') +
+              ' rst ' + (lt ? lt.data.resetSpeed.toFixed(2) : '-') +
+              ' turn ' + (lt ? Math.round(lt.data.headBlend * 100) : '-') + '%',
+            'head spd ' + (ht ? ht.speed.toFixed(2) : '-') + '  rig vel ' + this.velocity.length().toFixed(2),
+          ];
+          this.liveDebugText.setAttribute('value', lines.join('\n'));
         },
 
         showLabel: function (label) {
@@ -932,12 +1116,95 @@
           this.nextWanderTime = 0;
 
           this.scratch = new THREE.Vector3();
+
+          // Real physical knockback, separate from the mode-driven
+          // movement above: a decaying velocity applied on top of (and,
+          // while significant, in place of) the normal chase/patrol/
+          // wander/bob position updates. See applyKnockback, called from
+          // punch-target.hit() on a non-lethal hit and from punch-game's
+          // cube-on-cube collision check.
+          this.knockbackVel = new THREE.Vector3();
+          this.trailAccum = 0;
+        },
+
+        // dir: normalized THREE.Vector3, speed: m/s. Additive (not a
+        // straight overwrite) so a cube already sliding from one hit and
+        // then clipped by another — or slammed into a neighbor — gets a
+        // combined push rather than the second hit just resetting the
+        // first's momentum.
+        applyKnockback: function (dir, speed) {
+          this.knockbackVel.addScaledVector(dir, speed);
+          if (this.knockbackVel.length() > CUBE_KNOCKBACK_MAX_SPEED) {
+            this.knockbackVel.setLength(CUBE_KNOCKBACK_MAX_SPEED);
+          }
         },
 
         tick: function (time, deltaMs) {
           if (!deltaMs) return;
-          var dt = deltaMs / 1000;
+          // Same guard as punch-locomotion's tick — without it, a single
+          // slow/coalesced frame (a real headset hitch, a GC pause, a
+          // backgrounded tab) integrates gravity over an oversized dt in
+          // one step, and since only applyKnockback's addScaledVector
+          // path checks the speed cap, that one-frame spike goes in
+          // uncapped: confirmed via testing, an unclamped dt let a cube's
+          // downward knockback velocity run away to 100+ m/s instead of
+          // settling back to ~0.
+          var dt = Math.min(deltaMs / 1000, 0.05);
           var pos = this.el.object3D.position;
+          var knockSpeed = this.knockbackVel.length();
+
+          if (knockSpeed > CUBE_KNOCKBACK_MIN_SPEED) {
+            // Sliding from a hit: integrate knockback velocity directly
+            // into position (in place of the mode-driven movement below,
+            // which would otherwise fight it every frame), with friction
+            // decaying horizontal speed and a light "gravity" pulling any
+            // vertical launch back down so a cube punched upward settles
+            // back toward the floor instead of drifting there forever.
+            pos.x += this.knockbackVel.x * dt;
+            pos.z += this.knockbackVel.z * dt;
+
+            var nextY = pos.y + this.knockbackVel.y * dt;
+            if (nextY <= 0.15) {
+              // Landed: zero the vertical component so gravity stops
+              // accumulating on it. Without this, a cube resting on the
+              // floor clamp keeps falling in velocity space forever (its
+              // position just can't follow), so knockbackVel.length()
+              // never drops back below CUBE_KNOCKBACK_MIN_SPEED and the
+              // cube is stuck "sliding" (skipping its normal behavior)
+              // indefinitely even though it looks stationary.
+              pos.y = 0.15;
+              this.knockbackVel.y = 0;
+            } else {
+              pos.y = nextY;
+              this.knockbackVel.y -= CUBE_KNOCKBACK_GRAVITY * dt;
+            }
+
+            var damping = Math.exp(-dt * CUBE_KNOCKBACK_FRICTION);
+            this.knockbackVel.x *= damping;
+            this.knockbackVel.z *= damping;
+
+            if (cubeTrailEnabled && knockSpeed > CUBE_TRAIL_MIN_SPEED) {
+              this.trailAccum += dt;
+              if (this.trailAccum >= CUBE_TRAIL_INTERVAL) {
+                this.trailAccum = 0;
+                var target = this.el.components['punch-target'];
+                if (target) {
+                  var sizeFactor = clamp(knockSpeed / CUBE_KNOCKBACK_MAX_SPEED, 0.2, 1);
+                  paintSplat(
+                    pos.x,
+                    pos.z,
+                    '#' + target.baseColor.getHexString(),
+                    SPLAT_TRAIL_RADIUS * (0.5 + sizeFactor * 0.5),
+                    SPLAT_TRAIL_OPACITY
+                  );
+                }
+              }
+            }
+            return;
+          }
+
+          this.knockbackVel.set(0, 0, 0);
+
           var mode = this.data.mode;
           var speed = this.data.speed;
 
@@ -1051,8 +1318,32 @@
           if (this.health <= 0) {
             this.pop(hitVelocity);
           } else {
+            // Real physical knockback only on a non-lethal hit — pop()
+            // removes cube-behavior immediately for a dying cube and
+            // plays its own separate death-knockback animation, so there
+            // would be nothing left to apply this to (and nothing to see
+            // if there were).
+            this.applyPhysicalKnockback(hitVelocity, damage);
             this.flinch();
           }
+        },
+
+        // Launches this cube via cube-behavior's knockback physics,
+        // scaled by how hard it was hit (same `damage` units as health,
+        // via cubeKnockbackFactor — a menu knob in the SPLAT tab).
+        // Deliberately much gentler than the player's own lunge speed
+        // ("not as fast as I zoomed into them") — see cubeKnockbackFactor's
+        // default. Also called from punch-game's cube-on-cube collision
+        // check when one sliding cube clips another.
+        applyPhysicalKnockback: function (hitVelocity, damage) {
+          var behavior = this.el.components['cube-behavior'];
+          if (!behavior) return;
+          var dir = hitVelocity.clone();
+          dir.y *= 0.4; // keep knockback mostly horizontal even from a steep punch
+          if (dir.lengthSq() < 0.0001) return;
+          dir.normalize();
+          var speed = clamp(damage * cubeKnockbackFactor, 0, CUBE_KNOCKBACK_MAX_SPEED);
+          behavior.applyKnockback(dir, speed);
         },
 
         // Splatters this cube's original (undamaged) color onto the
@@ -1069,12 +1360,6 @@
             var sizeFactor = clamp(damage / this.data.maxHealth, 0.15, 1);
             paintSplat(worldPos.x, worldPos.z, colorHex, SPLAT_BASE_RADIUS * (0.5 + sizeFactor), SPLAT_BASE_OPACITY);
           }
-        },
-
-        updateColor: function () {
-          var healthFrac = this.health / this.data.maxHealth;
-          this.displayColor.setHSL(this.baseHsl.h, this.baseHsl.s * healthFrac, this.baseHsl.l);
-          this.el.setAttribute('material', 'color', '#' + this.displayColor.getHexString());
         },
 
         updateColor: function () {
@@ -1210,6 +1495,17 @@
           this.cubes = [];
           this.colors = ['#EF476F', '#FFD166', '#06D6A0', '#118AB2', '#7B2CBF'];
           this.scratch = new THREE.Vector3();
+          this.collisionPosA = new THREE.Vector3();
+          this.collisionPosB = new THREE.Vector3();
+          this.collisionDir = new THREE.Vector3();
+
+          // Keyed by "smallerCubeId|largerCubeId" -> timestamp the pair
+          // is allowed to hit each other again. Without this, a cube
+          // slid into a neighbor would keep re-triggering damage+
+          // knockback every frame the two stay in contact, which reads
+          // as (and is) an infinite damage loop between them.
+          this.pairCooldowns = {};
+          this.nextCubeId = 1;
 
           this.reset = this.reset.bind(this);
           this.onTriggerReset = this.onTriggerReset.bind(this);
@@ -1241,6 +1537,7 @@
           }
           this.cubes = [];
           this.popped = 0;
+          this.pairCooldowns = {};
           this.updateHud();
           clearSplatCanvas();
 
@@ -1266,6 +1563,7 @@
           cube.setAttribute('position', { x: x, y: y, z: z });
           cube.classList.add('cube-target');
           cube.setAttribute('punch-target', { maxHealth: this.data.cubeHealth });
+          cube.cubeId = this.nextCubeId++;
 
           var mode = this.data.behaviorMode;
           if (mode === 'mixed') {
@@ -1284,27 +1582,83 @@
           if (menuOpen) return; // punching (including cube-popping) is disabled while the menu is open
           this.checkHand(this.leftHand);
           this.checkHand(this.rightHand);
+          this.checkCubeCollisions();
+        },
+
+        // A cube that's currently sliding from its own knockback (fast
+        // enough to matter) checked against every other live cube: close
+        // enough, and not on cooldown with that specific cube, transfers
+        // some damage and velocity to it — punching one cube into
+        // another should hurt both. O(n^2) over the live cube list, which
+        // tops out at 14 (menu's Cube Count max), so this is cheap.
+        checkCubeCollisions: function () {
+          var now = Date.now();
+          for (var i = 0; i < this.cubes.length; i++) {
+            var cubeA = this.cubes[i];
+            var targetA = cubeA.components['punch-target'];
+            var behaviorA = cubeA.components['cube-behavior'];
+            if (!targetA || targetA.popped || !behaviorA) continue;
+
+            var speedA = behaviorA.knockbackVel.length();
+            if (speedA < CUBE_COLLISION_MIN_SPEED) continue;
+
+            cubeA.object3D.getWorldPosition(this.collisionPosA);
+
+            for (var j = 0; j < this.cubes.length; j++) {
+              if (i === j) continue;
+              var cubeB = this.cubes[j];
+              var targetB = cubeB.components['punch-target'];
+              if (!targetB || targetB.popped) continue;
+
+              cubeB.object3D.getWorldPosition(this.collisionPosB);
+              if (this.collisionPosA.distanceTo(this.collisionPosB) > CUBE_COLLISION_RADIUS) continue;
+
+              var key = cubeA.cubeId < cubeB.cubeId ? cubeA.cubeId + '|' + cubeB.cubeId : cubeB.cubeId + '|' + cubeA.cubeId;
+              if (this.pairCooldowns[key] && now < this.pairCooldowns[key]) continue;
+              this.pairCooldowns[key] = now + CUBE_COLLISION_COOLDOWN_MS;
+
+              this.collisionDir.subVectors(this.collisionPosB, this.collisionPosA);
+              if (this.collisionDir.lengthSq() < 0.0001) {
+                this.collisionDir.set(Math.random() - 0.5, 0.2, Math.random() - 0.5);
+              }
+              this.collisionDir.normalize();
+
+              var damage = speedA * CUBE_COLLISION_DAMAGE_PER_SPEED;
+              targetB.hit(this.collisionDir, damage);
+
+              var behaviorB = cubeB.components['cube-behavior'];
+              if (behaviorB) behaviorB.applyKnockback(this.collisionDir, speedA * CUBE_COLLISION_TRANSFER_FACTOR);
+            }
+          }
         },
 
         checkHand: function (handEl) {
           if (!handEl) return;
           var tracker = handEl.components['punch-tracker'];
+          // Gate on the head-relative speed (tracker.speed), not raw —
+          // otherwise spinning your body with a fist happening to sweep
+          // past a nearby cube would register as a real hit.
           if (!tracker || !tracker.hasPrev || tracker.speed < this.data.popForceSpeed) return;
 
           // Same magnitude formula that decides how far a punch lunges
           // the player (computeMagnitude), fed with this hand's *current*
           // swing-in-progress stats rather than waiting for the swing to
           // finish — contact happens mid-swing, well before punch-tracker
-          // would otherwise emit its "punch" event. If the hand hasn't
-          // actually crossed into a tracked swing yet (a graze below
-          // triggerSpeed but still above popForceSpeed), hand/head
-          // distance default to 0 rather than reusing stale numbers left
-          // over from a previous, unrelated swing.
+          // would otherwise emit its "punch" event. Uses rawSpeed (not
+          // the head-relative tracker.speed used for the gate above) so
+          // damage still reflects true physical force once a hit is
+          // confirmed real — stepping/leaning into a hit should still hit
+          // harder, only the "is this actually a punch" gate needs the
+          // turn-filtered value. If the hand hasn't actually crossed into
+          // a tracked swing yet (a graze below triggerSpeed but still
+          // above popForceSpeed), hand/head distance default to 0 rather
+          // than reusing stale numbers left over from a previous,
+          // unrelated swing.
           var handDist = tracker.swinging ? tracker.handTravelDist : 0;
           var headDist = tracker.swinging ? tracker.headTravelDist : 0;
           var damage = this.locomotion
-            ? this.locomotion.computeMagnitude(tracker.speed, handDist, headDist)
-            : tracker.speed;
+            ? this.locomotion.computeMagnitude(tracker.rawSpeed, handDist, headDist)
+            : tracker.rawSpeed;
 
           for (var i = this.cubes.length - 1; i >= 0; i--) {
             var cube = this.cubes[i];
@@ -1495,10 +1849,12 @@
             { id: 'punch', label: 'PUNCH' },
             { id: 'foes', label: 'FOES' },
             { id: 'aim', label: 'AIM' },
+            { id: 'splat', label: 'SPLAT' },
+            { id: 'debug', label: 'DEBUG' },
             { id: 'more', label: 'MORE' },
           ],
-          1.6,
-          0.8
+          2.0,
+          0.86
         );
 
         var punchTab = panel.getContent('punch');
@@ -1586,6 +1942,88 @@
           refreshFns
         );
 
+        // Blood-splatter tuning, per playtesting feedback that the
+        // default splatter read as sparse and tightly clustered right
+        // under the cube. Splat Amount/Scatter scale the whole
+        // paintSplat/paintSplatBurst pipeline (size, opacity, blob count,
+        // spread); Knockback Force controls how hard a hit launches a
+        // cube (see cube-behavior's applyKnockback) — which also
+        // indirectly controls how much trail gets painted and how hard
+        // cube-on-cube collisions hit, since both derive from a cube's
+        // current slide speed.
+        var splatTab = panel.getContent('splat');
+        makeAdjustRow(
+          splatTab,
+          0.5,
+          function () { return 'Splat Amount: ' + api.getSplatAmount().toFixed(2) + 'x'; },
+          function () { api.setSplatAmount(api.getSplatAmount() - 0.5); },
+          function () { api.setSplatAmount(api.getSplatAmount() + 0.5); },
+          refreshFns
+        );
+        makeAdjustRow(
+          splatTab,
+          0.22,
+          function () { return 'Splat Scatter: ' + api.getSplatScatter().toFixed(2) + 'x'; },
+          function () { api.setSplatScatter(api.getSplatScatter() - 0.25); },
+          function () { api.setSplatScatter(api.getSplatScatter() + 0.25); },
+          refreshFns
+        );
+        makeAdjustRow(
+          splatTab,
+          -0.06,
+          function () { return 'Knockback Force: ' + api.getKnockbackForce().toFixed(2); },
+          function () { api.setKnockbackForce(api.getKnockbackForce() - 0.05); },
+          function () { api.setKnockbackForce(api.getKnockbackForce() + 0.05); },
+          refreshFns
+        );
+        makeMenuButton(
+          splatTab,
+          -0.36,
+          function () { return 'Trail: ' + (api.getTrailEnabled() ? 'ON' : 'OFF'); },
+          api.toggleTrail,
+          refreshFns
+        );
+
+        // Punch-detection transparency + tuning: the actual thresholds
+        // punch-tracker's swing state machine reads every frame, plus
+        // the head-relative "Turn Filter" that stops a physical body
+        // rotation from reading as a phantom punch (see punch-tracker's
+        // headBlend schema comment), plus a toggle for a continuously-
+        // live readout of the underlying numbers (raw/relative hand
+        // speed, swing state) rather than just a post-punch snapshot.
+        var debugTab = panel.getContent('debug');
+        makeMenuButton(
+          debugTab,
+          0.5,
+          function () { return 'Live Debug HUD: ' + (api.getLiveDebug() ? 'ON' : 'OFF'); },
+          api.toggleLiveDebug,
+          refreshFns
+        );
+        makeAdjustRow(
+          debugTab,
+          0.2,
+          function () { return 'Trigger Spd: ' + api.getTriggerSpeed().toFixed(2); },
+          function () { api.setTriggerSpeed(api.getTriggerSpeed() - 0.1); },
+          function () { api.setTriggerSpeed(api.getTriggerSpeed() + 0.1); },
+          refreshFns
+        );
+        makeAdjustRow(
+          debugTab,
+          -0.1,
+          function () { return 'Reset Spd: ' + api.getResetSpeed().toFixed(2); },
+          function () { api.setResetSpeed(api.getResetSpeed() - 0.05); },
+          function () { api.setResetSpeed(api.getResetSpeed() + 0.05); },
+          refreshFns
+        );
+        makeAdjustRow(
+          debugTab,
+          -0.4,
+          function () { return 'Turn Filter: ' + Math.round(api.getTurnFilter() * 100) + '%'; },
+          function () { api.setTurnFilter(api.getTurnFilter() - 0.1); },
+          function () { api.setTurnFilter(api.getTurnFilter() + 0.1); },
+          refreshFns
+        );
+
         var moreTab = panel.getContent('more');
         makeMenuButton(moreTab, 0.4, function () { return 'Resume'; }, api.resume, refreshFns);
         makeMenuButton(moreTab, 0.1, function () { return 'Exit VR'; }, api.exitVR, refreshFns);
@@ -1609,7 +2047,7 @@
       // menu panel.
       function buildWorldMenu(panelEl, api) {
         var bg = document.createElement('a-plane');
-        bg.setAttribute('width', 1.7);
+        bg.setAttribute('width', 2.1);
         bg.setAttribute('height', 1.9);
         bg.setAttribute('material', 'color: #0d1526; opacity: 0.95; shader: flat; side: double');
         panelEl.appendChild(bg);
@@ -1818,6 +2256,45 @@
               showStatsOn = !showStatsOn;
               var statsText = document.querySelector('#stats-text');
               if (statsText) statsText.setAttribute('visible', showStatsOn);
+            },
+
+            getSplatAmount: function () { return splatAmountMultiplier; },
+            setSplatAmount: function (v) { splatAmountMultiplier = clamp(Math.round(v * 100) / 100, 0.25, 6); },
+            getSplatScatter: function () { return splatScatterMultiplier; },
+            setSplatScatter: function (v) { splatScatterMultiplier = clamp(Math.round(v * 100) / 100, 0.25, 4); },
+            getKnockbackForce: function () { return cubeKnockbackFactor; },
+            setKnockbackForce: function (v) { cubeKnockbackFactor = clamp(Math.round(v * 100) / 100, 0, 1); },
+            getTrailEnabled: function () { return cubeTrailEnabled; },
+            toggleTrail: function () { cubeTrailEnabled = !cubeTrailEnabled; },
+
+            // Trigger/reset speed and the turn filter live on each
+            // hand's own punch-tracker instance, not on punch-locomotion
+            // — both hands are kept in sync by writing the same value to
+            // both on every change, same as how the two hand entities
+            // already mirror every other per-hand setting.
+            getTriggerSpeed: function () { return self.leftHand.getAttribute('punch-tracker').triggerSpeed; },
+            setTriggerSpeed: function (v) {
+              v = clamp(Math.round(v * 100) / 100, 0.3, 4);
+              self.leftHand.setAttribute('punch-tracker', 'triggerSpeed', v);
+              self.rightHand.setAttribute('punch-tracker', 'triggerSpeed', v);
+            },
+            getResetSpeed: function () { return self.leftHand.getAttribute('punch-tracker').resetSpeed; },
+            setResetSpeed: function (v) {
+              v = clamp(Math.round(v * 100) / 100, 0.05, 2);
+              self.leftHand.setAttribute('punch-tracker', 'resetSpeed', v);
+              self.rightHand.setAttribute('punch-tracker', 'resetSpeed', v);
+            },
+            getTurnFilter: function () { return self.leftHand.getAttribute('punch-tracker').headBlend; },
+            setTurnFilter: function (v) {
+              v = clamp(Math.round(v * 100) / 100, 0, 1);
+              self.leftHand.setAttribute('punch-tracker', 'headBlend', v);
+              self.rightHand.setAttribute('punch-tracker', 'headBlend', v);
+            },
+            getLiveDebug: function () { return liveDebugOn; },
+            toggleLiveDebug: function () {
+              liveDebugOn = !liveDebugOn;
+              var el = document.querySelector('#live-debug-text');
+              if (el) el.setAttribute('visible', liveDebugOn);
             },
           };
         },
