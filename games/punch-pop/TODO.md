@@ -223,6 +223,39 @@ Other things in place:
   instead of guessed at blind from outside the headset. Trigger Speed,
   Reset Speed, and Turn Filter are all live-adjustable from the same
   DEBUG tab.
+- **Comfort vignette + "zoom" haptic buzz** (menu, FEEL tab), both
+  requested speculatively before any playtesting — untried in a headset
+  as of this writing, so the defaults/ranges below are first guesses,
+  not tuned ones. Vignette: a camera-child plane (`#vignette`) carrying
+  a runtime-painted radial-gradient canvas texture (`buildVignetteTexture`
+  — transparent center, opaque edge; canvas pixels beyond the outer
+  gradient stop are opaque by default, which conveniently masks the
+  plane's corners too), opacity driven every frame in
+  `punch-locomotion.updateVignette` from current rig speed
+  (`VIGNETTE_REFERENCE_SPEED` for full ramp) and exponentially smoothed
+  (`VIGNETTE_SMOOTH_TAU`) so it doesn't flicker between frames.
+  `vignetteSize` scales the *plane itself* rather than repainting the
+  texture on every menu tweak — cheaper, and avoids a canvas regen on
+  every `+`/`-` press. Explicitly added to `world-menu-system`'s
+  existing overlay-hide list (see the menu bug-fix note above) since it
+  would otherwise freeze mid-fade while the menu is open (rig physics,
+  and therefore the speed driving it, pause too). True directional
+  motion blur was considered and specifically not built — it needs a
+  real post-processing pipeline this project doesn't have, has a real
+  mobile-GPU cost, and isn't actually the established comfort mechanism
+  (masking peripheral motion, not blurring it, is what vignetting is
+  for). "Zoom" buzz: `punch-locomotion.updateBuzzHaptics` fires a short
+  pulse to both hands roughly every `BUZZ_INTERVAL_MS` while rig speed
+  is above `BUZZ_MIN_SPEED`, intensity scaled by how fast you're
+  currently going (`BUZZ_REFERENCE_SPEED` for full intensity) — reuses
+  the existing `pulseHaptics` helper already wired into punch-connect
+  feedback, since the WebXR haptics API is discrete pulses, not a real
+  sustained rumble, so "buzz" is approximated by pulsing quickly and
+  repeatedly. Both default on, both fully tunable (Strength 0-200%,
+  Vignette also has a Size knob) — genuinely can't be judged from
+  outside a headset, and comfort tolerance is personal, so this is
+  explicitly meant to be dialed in live rather than shipped at a fixed
+  guess.
 
 ## Ideas for future moves (not yet implemented)
 
@@ -314,6 +347,8 @@ got pressed by accident too often during normal punching.
 - **REACH tab**: Calibrate Reach, Reach Fwd, Reach Up, Arm Threshold % —
   the reach-calibrated extension detection described above
 - **SPLAT tab**: Splat Amount, Splat Scatter, Knockback Force, Trail on/off
+- **FEEL tab**: Vignette on/off + Strength + Size, Zoom Buzz on/off +
+  Strength — the comfort vignette / haptic buzz described above
 - **DEBUG tab**: Live Debug HUD toggle, Stop Spd, Turn Filter —
   punch-detection transparency/tuning, described above
 - **MORE tab**: Resume, Exit VR, Show Stats
