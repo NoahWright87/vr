@@ -16,6 +16,7 @@ To add a new prototype: create `games/<name>/index.html`, and add a link to it f
 ## Prototypes
 
 - **[Cube Pop](games/cube-pop/index.html)** — point a Quest controller at a floating cube and pull the trigger to pop it. Counter tracks progress; popping all cubes shows a win state with an in-VR reset button. Also has a gaze-reticle fallback so you can validate it from a phone or desktop browser without a headset — see below.
+- **[Pistols at Dawn](games/pistols-at-dawn/index.html)** — a very simple boxy pistol is attached to each Touch controller. Point at one of three bullseye target stands and pull the trigger to score (higher points toward the center). First step toward a gun-tricks sandbox; also has the gaze-reticle fallback.
 
 ## Running locally
 
