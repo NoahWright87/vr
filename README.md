@@ -16,7 +16,7 @@ To add a new prototype: create `games/<name>/index.html`, and add a link to it f
 ## Prototypes
 
 - **[Cube Pop](games/cube-pop/index.html)** — point a Quest controller at a floating cube and pull the trigger to pop it. Counter tracks progress; popping all cubes shows a win state with an in-VR reset button. Also has a gaze-reticle fallback so you can validate it from a phone or desktop browser without a headset — see below.
-- **[Pistols at Dawn](games/pistols-at-dawn/index.html)** — a very simple boxy pistol is attached to each Touch controller. Point at one of three bullseye target stands and pull the trigger to score (higher points toward the center). First step toward a gun-tricks sandbox; also has the gaze-reticle fallback.
+- **[Pistols at Dawn](games/pistols-at-dawn/index.html)** — two boxy pistols sit holstered at your hips (approximated from headset yaw, since there's no real hip tracking). Grip near one to draw it, point at one of three bullseye target stands and pull the trigger to score. Release the grip near a hip to holster it (generously, so it doesn't drop by accident); release it elsewhere while still holding the trigger and it dangles from your finger by the trigger guard, swinging and spinning as a simple physics sim reacting to your hand motion — let go of the trigger too and it tumbles to the ground. First gun trick in what's meant to become a sandbox of them; also has the gaze-reticle fallback for target scoring, though the grab/dangle mechanic itself is VR-only.
 
 ## Running locally
 

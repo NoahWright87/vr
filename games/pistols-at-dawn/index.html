@@ -34,14 +34,12 @@
   </head>
   <body>
     <div id="overlay">
-      <span>Pistols at Dawn — hold a controller, point it at a target, pull the trigger. <a href="../../index.html">All prototypes</a></span>
+      <span>Pistols at Dawn — grip near a holstered pistol to draw it, pull the trigger to fire. Let go of the grip while still holding the trigger to let it dangle and spin. <a href="../../index.html">All prototypes</a></span>
     </div>
 
     <a-scene>
       <!-- ============================================================
            RANGE
-           A dusty ground plane and a dawn-colored sky. Nothing fancy —
-           just enough atmosphere to sell "shooting range at sunrise".
       ============================================================ -->
       <a-plane
         rotation="-90 0 0"
@@ -54,14 +52,14 @@
 
       <!-- ============================================================
            PLAYER RIG + DESKTOP/PHONE FALLBACK
-           Same gaze-reticle trick as Cube Pop: a cursor raycasting from
-           the center of the camera view lets you test scoring on a
-           phone or desktop, with no headset or controllers, by looking
-           at a ring and clicking/tapping. In VR it just sits inertly in
-           the middle of your view since you'll be aiming the gun model
-           instead.
+           The grab/holster/dangle mechanic below is inherently a VR
+           interaction (it needs grip + trigger buttons and real hand
+           motion), so there's no meaningful desktop equivalent for it.
+           The reticle + click-to-score fallback from the previous
+           version is kept as-is, purely so target scoring stays
+           sanity-checkable without a headset.
       ============================================================ -->
-      <a-camera>
+      <a-camera id="head-camera">
         <a-text
           id="hud-text"
           value="Score: 0   Shots: 0"
@@ -81,35 +79,74 @@
 
       <!-- ============================================================
            HANDS
-           oculus-touch-controls covers the Quest 2/3 Touch controllers
-           this repo targets, and emits standard triggerdown/triggerup
-           events we hook into below. model:false hides the default
-           controller model so our own gun renders in its place instead.
-           gun-hand builds the gun as a child of each hand and fires a
-           manual raycast from the muzzle whenever the trigger is
-           pulled — see the script block below.
+           hand-controls gives us an actual animated hand model (fist
+           when gripping, point when triggering) built into A-Frame
+           core — no extra asset pipeline needed. It still fires the
+           same triggerdown/triggerup/gripdown/gripup button events as
+           the raw controller components, which hand-rig listens for.
       ============================================================ -->
-      <a-entity oculus-touch-controls="hand: left; model: false" gun-hand></a-entity>
-      <a-entity oculus-touch-controls="hand: right; model: false" gun-hand></a-entity>
+      <a-entity
+        hand-controls="hand: left; handModelStyle: lowPoly; color: #3a3a3a"
+        hand-rig
+      ></a-entity>
+      <a-entity
+        hand-controls="hand: right; handModelStyle: lowPoly; color: #3a3a3a"
+        hand-rig
+      ></a-entity>
+
+      <!-- ============================================================
+           HOLSTERS
+           Two invisible anchor points that track the player's hips.
+           There's no real hip tracking on a Quest, so hip-anchor
+           approximates it from the headset: it follows the camera's
+           position and its yaw (turning left/right), but deliberately
+           ignores pitch/roll so looking up or tilting your head doesn't
+           drag the holsters around with it.
+      ============================================================ -->
+      <a-entity id="hip-left" class="holster-anchor" hip-anchor="side: left"></a-entity>
+      <a-entity id="hip-right" class="holster-anchor" hip-anchor="side: right"></a-entity>
+
+      <!-- ============================================================
+           PISTOLS
+           Each is a free-standing entity (not nested under a hand) so
+           it can be reparented at runtime between a holster, a hand,
+           or loose in the world while dangling/falling. See the
+           "pistol" component for the state machine.
+      ============================================================ -->
+      <a-entity class="pistol" pistol="holster: #hip-left"></a-entity>
+      <a-entity class="pistol" pistol="holster: #hip-right"></a-entity>
 
       <!-- ============================================================
            TARGETS
-           An empty entity that owns the range: spawns a few bullseye
-           stands and tracks score as rings get hit. See the
-           "shooting-range" component below.
       ============================================================ -->
       <a-entity id="range-manager" shooting-range></a-entity>
     </a-scene>
 
     <script>
       // ==============================================================
+      // TUNING CONSTANTS
+      // Everything about "does the twirl feel fun" lives in these few
+      // numbers. Expect to adjust them after actually trying it on a
+      // headset.
+      // ==============================================================
+      var GRAB_RADIUS = 0.15; // meters — how close a hand must be to pick something up
+      var HOLSTER_RADIUS = 0.3; // meters — deliberately generous, see the design discussion
+      var HIP_HEIGHT = 0.9; // meters off the ground
+      var HIP_SIDE_OFFSET = 0.18; // meters, left/right from body centerline
+      var GRAVITY = 9.8;
+      var DANGLE_DAMPING = 0.985; // per-frame angular velocity decay while swinging
+      var DANGLE_INERTIA_SCALE = 0.6; // how strongly flicking your hand imparts spin
+      var FALL_DAMPING = 0.99; // per-frame angular velocity decay while tumbling to the ground
+      var GROUND_REST_Y = 0.05; // meters — half the gun's resting thickness off the floor
+
+      // ==============================================================
       // COMPONENT: boxy-gun
       // Builds a very simple, low-poly pistol out of boxes, sized for a
-      // hand-held scale (roughly 20cm long). Deliberately blocky rather
-      // than modeled — the point is to have *a* gun to iterate tricks
-      // on, not a finished asset. Local space assumes the entity origin
-      // sits roughly where the hand grips it, with -Z as "forward"
-      // (matching how A-Frame orients tracked controllers).
+      // hand-held scale (roughly 20cm long). Local space is defined so
+      // the entity's own origin sits at the grip/trigger-guard area —
+      // that's what lets the dangle physics below treat "pivot around
+      // the entity origin" as "pivot around the trigger guard" without
+      // needing a separate offset.
       // ==============================================================
       AFRAME.registerComponent('boxy-gun', {
         init: function () {
@@ -140,7 +177,6 @@
           addBox(0.008, 0.012, 0.008, '0 0.085 -0.22', metal); // front sight
           addBox(0.03, 0.01, 0.012, '0 0.083 -0.03', metal); // rear sight
 
-          // Muzzle flash: hidden until the gun fires.
           var flash = document.createElement('a-circle');
           flash.setAttribute('radius', 0.03);
           flash.setAttribute('material', 'color: #ffe066; shader: flat; opacity: 0.9');
@@ -149,8 +185,6 @@
           flash.classList.add('muzzle-flash');
           el.appendChild(flash);
 
-          // No geometry of its own — just a world-space anchor gun-hand
-          // reads to know where the barrel is pointing when fired.
           var muzzle = document.createElement('a-entity');
           muzzle.setAttribute('position', '0 0.058 -0.235');
           muzzle.classList.add('muzzle');
@@ -159,59 +193,262 @@
       });
 
       // ==============================================================
-      // COMPONENT: gun-hand
-      // Attaches a boxy-gun to a controller entity and fires a manual
-      // THREE.Raycaster from the muzzle on triggerdown. A manual
-      // raycast (rather than A-Frame's raycaster component) is needed
-      // because the gun's aim direction changes every frame with hand
-      // tracking — we only need to know where it's pointing at the
-      // instant the trigger breaks.
-      //
-      // On a hit, it emits a "click" on the ring entity so the exact
-      // same handler (scoring-ring, below) scores both a VR trigger
-      // pull and a desktop/phone reticle click.
+      // COMPONENT: hip-anchor
+      // Drives an invisible entity to sit at roughly hip height,
+      // offset to one side of the player, following the headset's
+      // horizontal position and yaw only (see the comment above the
+      // markup for why pitch/roll are excluded).
       // ==============================================================
-      AFRAME.registerComponent('gun-hand', {
+      AFRAME.registerComponent('hip-anchor', {
+        schema: {
+          side: { type: 'string', default: 'right' },
+        },
+
         init: function () {
-          this.gunEl = document.createElement('a-entity');
-          this.gunEl.setAttribute('boxy-gun', '');
-          this.el.appendChild(this.gunEl);
-
-          this.raycaster = new THREE.Raycaster();
-          this.raycaster.far = 20;
-
-          this.onTriggerDown = this.onTriggerDown.bind(this);
-          this.el.addEventListener('triggerdown', this.onTriggerDown);
+          this.camera = document.querySelector('#head-camera');
+          this.offset = this.data.side === 'left' ? -HIP_SIDE_OFFSET : HIP_SIDE_OFFSET;
+          this.camPos = new THREE.Vector3();
+          this.camQuat = new THREE.Quaternion();
+          this.camEuler = new THREE.Euler();
+          this.sideVec = new THREE.Vector3();
         },
 
-        remove: function () {
-          this.el.removeEventListener('triggerdown', this.onTriggerDown);
+        tick: function () {
+          if (!this.camera || !this.camera.object3D) return;
+
+          this.camera.object3D.getWorldPosition(this.camPos);
+          this.camera.object3D.getWorldQuaternion(this.camQuat);
+          this.camEuler.setFromQuaternion(this.camQuat, 'YXZ');
+          var yaw = this.camEuler.y;
+
+          this.sideVec.set(this.offset, 0, 0).applyAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
+
+          this.el.object3D.position.set(
+            this.camPos.x + this.sideVec.x,
+            HIP_HEIGHT,
+            this.camPos.z + this.sideVec.z
+          );
+          this.el.object3D.rotation.set(0, yaw, 0);
+        },
+      });
+
+      // ==============================================================
+      // COMPONENT: pistol
+      // Owns one gun's state machine and physics:
+      //   holstered -> held (grabbed) -> dangling (grip released,
+      //   trigger still down) -> held again (caught) or falling
+      //   (trigger also let go, or grip released with nothing to catch
+      //   it) -> resting (on the ground, grabbable again). Releasing
+      //   near either hip while holding it always holsters it instead,
+      //   regardless of the trigger state — see release() below.
+      //
+      // Reparenting is done directly on the three.js object3D graph
+      // via Object3D.attach(), which reparents while preserving the
+      // object's current world transform — the DOM tree is left alone,
+      // since nothing here depends on DOM nesting.
+      // ==============================================================
+      AFRAME.registerComponent('pistol', {
+        schema: {
+          holster: { type: 'selector' },
         },
 
-        onTriggerDown: function () {
-          this.fire();
+        init: function () {
+          this.state = 'holstered';
+          this.hand = null; // the hand entity currently holding/dangling this gun
+
+          this.angularVelocity = new THREE.Vector3();
+          this.fallVelocity = new THREE.Vector3();
+          this.prevPivotPos = new THREE.Vector3();
+          this.prevPivotVelocity = new THREE.Vector3();
+
+          this._pivot = new THREE.Vector3();
+          this._pivotVelocity = new THREE.Vector3();
+          this._pivotAccel = new THREE.Vector3();
+          this._comLocal = new THREE.Vector3(0, 0.03, -0.08); // rough center of mass: up/forward of the grip
+          this._comWorld = new THREE.Vector3();
+          this._down = new THREE.Vector3(0, -1, 0);
+          this._torque = new THREE.Vector3();
+          this._deltaQuat = new THREE.Quaternion();
+          this._worldPos = new THREE.Vector3();
+          this._holsterPos = new THREE.Vector3();
+
+          this.el.setAttribute('boxy-gun', '');
+
+          if (this.data.holster) {
+            this.attachTo(this.data.holster.object3D, { x: 0, y: 0, z: 0 }, { x: -90, y: 0, z: 0 });
+          }
         },
 
+        tick: function (time, dt) {
+          var dtSeconds = Math.min((dt || 16) / 1000, 0.05);
+          if (this.state === 'dangling') this.updateDangle(dtSeconds);
+          else if (this.state === 'falling') this.updateFall(dtSeconds);
+        },
+
+        attachTo: function (parentObject3D, localPos, localRotDeg) {
+          parentObject3D.attach(this.el.object3D);
+          if (localPos) this.el.object3D.position.set(localPos.x, localPos.y, localPos.z);
+          if (localRotDeg) {
+            this.el.object3D.rotation.set(
+              (localRotDeg.x * Math.PI) / 180,
+              (localRotDeg.y * Math.PI) / 180,
+              (localRotDeg.z * Math.PI) / 180
+            );
+          }
+        },
+
+        // Called by hand-rig: either a fresh pickup (from a holster or
+        // the ground) or catching this same gun mid-dangle — both are
+        // "snap rigidly into this hand" and need no other distinction.
+        grab: function (handEl) {
+          this.state = 'held';
+          this.hand = handEl;
+          this.attachTo(handEl.object3D, { x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: 0 });
+          this.angularVelocity.set(0, 0, 0);
+        },
+
+        // Called by hand-rig when the hand currently holding this gun
+        // releases its grip. triggerHeld reflects whether that hand's
+        // trigger is still pressed at that moment.
+        release: function (triggerHeld) {
+          this.el.object3D.getWorldPosition(this._worldPos);
+          var nearestHolster = this.findNearestHolster(this._worldPos);
+
+          if (nearestHolster) {
+            this.state = 'holstered';
+            this.hand = null;
+            this.attachTo(nearestHolster.object3D, { x: 0, y: 0, z: 0 }, { x: -90, y: 0, z: 0 });
+            return;
+          }
+
+          if (triggerHeld) {
+            this.state = 'dangling';
+            this.el.sceneEl.object3D.attach(this.el.object3D);
+            this.el.object3D.getWorldPosition(this.prevPivotPos);
+            this.prevPivotVelocity.set(0, 0, 0);
+            return; // this.hand stays set — we're still dangling from it
+          }
+
+          this.startFalling();
+        },
+
+        // Called directly by hand-rig when the trigger lets go while
+        // this gun is dangling from that hand's finger — nothing left
+        // to hold it up.
+        startFalling: function () {
+          this.state = 'falling';
+          this.hand = null;
+          this.el.sceneEl.object3D.attach(this.el.object3D); // no-op if already world-parented
+          this.fallVelocity.set(0, 0, 0);
+        },
+
+        findNearestHolster: function (worldPos) {
+          var holsters = Array.prototype.slice.call(document.querySelectorAll('.holster-anchor'));
+          var nearest = null;
+          var nearestDist = HOLSTER_RADIUS;
+          for (var i = 0; i < holsters.length; i++) {
+            holsters[i].object3D.getWorldPosition(this._holsterPos);
+            var d = this._holsterPos.distanceTo(worldPos);
+            if (d < nearestDist) {
+              nearest = holsters[i];
+              nearestDist = d;
+            }
+          }
+          return nearest;
+        },
+
+        // Spherical-pendulum-ish swing around a moving pivot (the
+        // hand). Because the gun's own origin IS the pivot point (see
+        // the boxy-gun comment above), position just tracks the hand
+        // exactly each frame — only the orientation swings. Gravity
+        // pulls the gun's center of mass toward hanging straight down;
+        // the pivot's own acceleration (how fast you're flicking your
+        // hand around) injects extra spin, which is what makes a sharp
+        // wrist flick throw the gun into a twirl. This is a tuned-for-
+        // feel approximation, not a rigorous rigid-body simulation.
+        updateDangle: function (dt) {
+          if (!this.hand) {
+            this.startFalling();
+            return;
+          }
+
+          this.hand.object3D.getWorldPosition(this._pivot);
+
+          this._pivotVelocity.copy(this._pivot).sub(this.prevPivotPos).divideScalar(dt);
+          this._pivotAccel.copy(this._pivotVelocity).sub(this.prevPivotVelocity).divideScalar(dt);
+          this.prevPivotVelocity.copy(this._pivotVelocity);
+          this.prevPivotPos.copy(this._pivot);
+
+          this._comWorld.copy(this._comLocal).applyQuaternion(this.el.object3D.quaternion).normalize();
+
+          this._torque.crossVectors(this._comWorld, this._down).multiplyScalar(GRAVITY);
+          this.angularVelocity.addScaledVector(this._torque, dt);
+
+          this._torque.crossVectors(this._comWorld, this._pivotAccel).multiplyScalar(-DANGLE_INERTIA_SCALE);
+          this.angularVelocity.addScaledVector(this._torque, dt);
+
+          this.angularVelocity.multiplyScalar(DANGLE_DAMPING);
+
+          this.integrateRotation(dt);
+          this.el.object3D.position.copy(this._pivot);
+        },
+
+        // Free-fall under gravity, keeping whatever spin it had at the
+        // moment it was dropped so it tumbles rather than just sinking
+        // straight down. Settles once it reaches the ground.
+        updateFall: function (dt) {
+          this.fallVelocity.y -= GRAVITY * dt;
+          this.el.object3D.position.addScaledVector(this.fallVelocity, dt);
+          this.angularVelocity.multiplyScalar(FALL_DAMPING);
+          this.integrateRotation(dt);
+
+          if (this.el.object3D.position.y <= GROUND_REST_Y) {
+            this.el.object3D.position.y = GROUND_REST_Y;
+            this.fallVelocity.set(0, 0, 0);
+            this.angularVelocity.set(0, 0, 0);
+            this.state = 'resting';
+          }
+        },
+
+        // Standard dq/dt = 0.5 * omega-as-pure-quaternion * q integration.
+        integrateRotation: function (dt) {
+          var q = this.el.object3D.quaternion;
+          this._deltaQuat.set(
+            this.angularVelocity.x * dt,
+            this.angularVelocity.y * dt,
+            this.angularVelocity.z * dt,
+            0
+          );
+          this._deltaQuat.multiply(q);
+          q.set(
+            q.x + 0.5 * this._deltaQuat.x,
+            q.y + 0.5 * this._deltaQuat.y,
+            q.z + 0.5 * this._deltaQuat.z,
+            q.w + 0.5 * this._deltaQuat.w
+          ).normalize();
+        },
+
+        // Raycasts from the muzzle against the targets. Only fires
+        // while properly held — not while dangling or mid-air, so a
+        // twirl in progress can't accidentally go off.
         fire: function () {
-          var muzzleEl = this.gunEl.querySelector('.muzzle');
+          if (this.state !== 'held') return;
+
+          var muzzleEl = this.el.querySelector('.muzzle');
           if (!muzzleEl || !muzzleEl.object3D) return;
 
           var origin = new THREE.Vector3();
           var quat = new THREE.Quaternion();
           muzzleEl.object3D.getWorldPosition(origin);
           muzzleEl.object3D.getWorldQuaternion(quat);
-          var direction = new THREE.Vector3(0, 0, -1)
-            .applyQuaternion(quat)
-            .normalize();
+          var direction = new THREE.Vector3(0, 0, -1).applyQuaternion(quat).normalize();
 
-          this.raycaster.set(origin, direction);
-
+          var raycaster = new THREE.Raycaster(origin, direction, 0, 20);
           var meshes = Array.prototype
             .slice.call(document.querySelectorAll('.target-ring'))
             .map(function (targetEl) { return targetEl.getObject3D('mesh'); })
             .filter(Boolean);
-
-          var hits = this.raycaster.intersectObjects(meshes, false);
+          var hits = raycaster.intersectObjects(meshes, false);
 
           this.playMuzzleEffects();
 
@@ -224,8 +461,8 @@
         },
 
         playMuzzleEffects: function () {
-          this.gunEl.removeAttribute('animation__recoil');
-          this.gunEl.setAttribute('animation__recoil', {
+          this.el.removeAttribute('animation__recoil');
+          this.el.setAttribute('animation__recoil', {
             property: 'rotation',
             from: '-8 0 0',
             to: '0 0 0',
@@ -233,14 +470,115 @@
             easing: 'easeOutQuad',
           });
 
-          var flash = this.gunEl.querySelector('.muzzle-flash');
+          var flash = this.el.querySelector('.muzzle-flash');
           if (flash) {
             flash.setAttribute('visible', true);
             clearTimeout(this.flashTimeout);
+            var flashEl = flash;
             this.flashTimeout = setTimeout(function () {
-              flash.setAttribute('visible', false);
+              flashEl.setAttribute('visible', false);
             }, 80);
           }
+        },
+      });
+
+      // ==============================================================
+      // COMPONENT: hand-rig
+      // Listens to one hand's grip/trigger buttons. Owns the "what am
+      // I currently holding" bookkeeping and delegates all the actual
+      // state/physics work to the pistol component on whatever gun is
+      // involved.
+      // ==============================================================
+      AFRAME.registerComponent('hand-rig', {
+        init: function () {
+          this.heldGun = null; // gun currently rigidly held by this hand, if any
+          this.danglingGun = null; // gun currently dangling from this hand's trigger finger, if any
+          this.triggerHeld = false;
+
+          this.onGripDown = this.onGripDown.bind(this);
+          this.onGripUp = this.onGripUp.bind(this);
+          this.onTriggerDown = this.onTriggerDown.bind(this);
+          this.onTriggerUp = this.onTriggerUp.bind(this);
+
+          this.el.addEventListener('gripdown', this.onGripDown);
+          this.el.addEventListener('gripup', this.onGripUp);
+          this.el.addEventListener('triggerdown', this.onTriggerDown);
+          this.el.addEventListener('triggerup', this.onTriggerUp);
+        },
+
+        remove: function () {
+          this.el.removeEventListener('gripdown', this.onGripDown);
+          this.el.removeEventListener('gripup', this.onGripUp);
+          this.el.removeEventListener('triggerdown', this.onTriggerDown);
+          this.el.removeEventListener('triggerup', this.onTriggerUp);
+        },
+
+        onGripDown: function () {
+          if (this.heldGun) return;
+
+          var gun = this.findGrabbableGun();
+          if (!gun) return;
+
+          gun.components.pistol.grab(this.el);
+          this.heldGun = gun;
+          if (gun === this.danglingGun) this.danglingGun = null;
+        },
+
+        onGripUp: function () {
+          if (!this.heldGun) return;
+
+          var gun = this.heldGun;
+          this.heldGun = null;
+          gun.components.pistol.release(this.triggerHeld);
+
+          this.danglingGun = gun.components.pistol.state === 'dangling' ? gun : null;
+        },
+
+        onTriggerDown: function () {
+          this.triggerHeld = true;
+          if (this.heldGun) this.heldGun.components.pistol.fire();
+        },
+
+        onTriggerUp: function () {
+          this.triggerHeld = false;
+          if (this.danglingGun) {
+            this.danglingGun.components.pistol.startFalling();
+            this.danglingGun = null;
+          }
+        },
+
+        // Nearest gun this hand is currently allowed to grab: anything
+        // holstered or resting on the ground, or the gun already
+        // dangling from this specific hand's finger (a "catch").
+        findGrabbableGun: function () {
+          var handPos = new THREE.Vector3();
+          this.el.object3D.getWorldPosition(handPos);
+
+          var guns = Array.prototype.slice.call(document.querySelectorAll('.pistol'));
+          var self = this;
+          var nearest = null;
+          var nearestDist = GRAB_RADIUS;
+          var gunPos = new THREE.Vector3();
+
+          guns.forEach(function (gunEl) {
+            var pistol = gunEl.components.pistol;
+            if (!pistol) return;
+
+            var eligible =
+              pistol.state === 'holstered' ||
+              pistol.state === 'resting' ||
+              (pistol.state === 'dangling' && pistol.hand === self.el);
+            if (!eligible) return;
+
+            gunEl.object3D.getWorldPosition(gunPos);
+            var d = gunPos.distanceTo(handPos);
+            if (d < nearestDist) {
+              nearest = gunEl;
+              nearestDist = d;
+            }
+          });
+
+          return nearest;
         },
       });
 
@@ -249,8 +587,8 @@
       // Attached to each colored disc of a bullseye. Scores a hit,
       // flashes white for feedback, and emits "ring-hit" which bubbles
       // up to the range manager. Fires on the standard "click" event so
-      // it doesn't care whether that click came from a VR trigger pull
-      // (gun-hand, above) or a desktop/phone reticle tap.
+      // it doesn't care whether that click came from a fired shot
+      // (pistol.fire, above) or a desktop/phone reticle tap.
       // ==============================================================
       AFRAME.registerComponent('scoring-ring', {
         schema: {
@@ -288,8 +626,8 @@
       // ==============================================================
       // COMPONENT: shooting-range
       // The range manager. Spawns a few target stands, listens for
-      // "ring-hit" bubbling up from any ring plus "gun-miss" from
-      // gun-hand, and keeps score on the HUD.
+      // "ring-hit" bubbling up from any ring plus "gun-miss" from a
+      // fired shot that hit nothing, and keeps score on the HUD.
       // ==============================================================
       AFRAME.registerComponent('shooting-range', {
         init: function () {
@@ -302,13 +640,11 @@
           this.el.addEventListener('ring-hit', this.onRingHit);
           this.el.addEventListener('gun-miss', this.onMiss);
 
-          // Three stands in a shallow arc, at slightly different
-          // distances/heights so they don't read as a flat row.
           this.spawnTarget(-1.6, 1.3, -4, 12);
           this.spawnTarget(0, 1.5, -5, 0);
           this.spawnTarget(1.6, 1.2, -4.2, -12);
 
-          this.updateHud('Take aim and pull the trigger');
+          this.updateHud('Draw a pistol and take aim');
         },
 
         onRingHit: function (evt) {
@@ -330,9 +666,6 @@
           );
         },
 
-        // Builds one wooden target stand: a post, a backing board, and
-        // five stacked discs (largest/outermost first) that shrink
-        // toward camera-Z so each one reads as a ring around the next.
         spawnTarget: function (x, standHeight, z, rotY) {
           var stand = document.createElement('a-entity');
           stand.setAttribute('position', { x: x, y: 0, z: z });
