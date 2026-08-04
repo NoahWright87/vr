@@ -75,41 +75,85 @@ needs *more* juice than the unified formula gives it, that's a
 candidate for a future targeted addition, not a revert to special-casing.
 
 Other things in place:
+- Enemies are simple humanoids now, not floating cubes: a legs/torso/
+  head stack of boxes on a container entity (`punch-game.spawnCube`)
+  whose own position is the character's feet/ground-contact point —
+  always y=0 at rest, no floating spawn height, no idle bob. The
+  container has no geometry of its own; `punch-target` recolors
+  `el.bodyParts` (the three child meshes) instead of the container's
+  own material, and `punch-game.checkHand` hit-tests each body part
+  independently so a punch at any height connects with something real.
+  A future step is real skeleton/ragdoll models; this is deliberately
+  just enough to read as a combatant for now.
 - Cubes have health and take damage from `computeMagnitude` (same
   formula as player lunge distance) instead of popping in one hit;
   color desaturates toward gray as health drops (HSL saturation only,
-  hue/lightness held constant), and they die once fully drained.
-- Every hit — lethal or not — paints a splat of the cube's own color
-  onto a shared floor-sized canvas overlay (`#splat-layer`), sized by
-  damage dealt, with a scattered multi-blob burst on the killing blow.
-  Splats accumulate for the whole session (cleared only by Reset
-  Arena), so the floor visibly fills up with color the longer you
-  play. World-position-to-canvas-pixel mapping goes through an actual
-  raycast against the overlay mesh (`worldToSplatPixel`) rather than a
-  hand-derived formula, on purpose — see the README's note on the
-  `getWorldDirection`/`lookAt` bug for why "just derive the axes" was
-  worth avoiding a third time. Splat size/opacity/scatter got bumped up
-  substantially after playtesting called the default splatter too
-  sparse and clustered, plus a **Splat Amount** and **Splat Scatter**
-  menu knob (SPLAT tab) to push further if needed — explicitly asked
-  for "way more splatter than you're expecting."
-- A non-lethal hit now physically launches the cube (real velocity +
-  friction + a light settling gravity, `cube-behavior.applyKnockback`),
-  proportional to hit force but much gentler than the player's own
-  lunge speed (**Knockback Force**, SPLAT tab). It runs in place of
-  that cube's normal chase/patrol/wander/bob movement while still
-  sliding, and paints a thin trail in its own color while doing so
-  (**Trail** toggle). A cube slid into another live cube
-  (`punch-game.checkCubeCollisions`) transfers some damage and velocity
-  on to it, capped to once per second per specific pair via a
-  timestamped cooldown map — otherwise two cubes resting against each
-  other would loop into infinite mutual damage. Watch for the dt-clamp
-  guard in `cube-behavior.tick()` (`Math.min(deltaMs/1000, 0.05)`,
-  mirroring the one already in `punch-locomotion.tick()`) if you touch
-  this — without it, a single slow/coalesced frame integrates gravity
-  over an oversized step and the knockback velocity runs away instead
-  of settling back to zero (found via testing, not by inspection).
-- Cubes have independent movement behavior (bob/chase/patrol/wander),
+  hue/lightness held constant, applied to every body part), and they
+  die once fully drained. Default `cubeHealth` dropped 100 → 50 after
+  playtesting found a sustainable (not maximal-effort) punch only dented
+  a 100-health bar a little — the fight needs to feel winnable within a
+  realistic physical stamina budget.
+- **Found via testing, not playtesting — worth flagging**:
+  `punch-game.init()` used to cache `this.locomotion =
+  this.rig.components['punch-locomotion']` once. A-Frame doesn't
+  guarantee component-init order across sibling entities, and when this
+  raced ahead of `punch-locomotion`'s own `init()`, `this.locomotion`
+  stayed `undefined` for the whole session — `checkHand` silently fell
+  back to raw hand speed as damage with none of `computeMagnitude`'s
+  distance/power scaling, invisibly, no error. Likely a real (separate
+  from the health-value tuning above) contributor to "it takes forever
+  to kill one of these." Fixed by looking the component up fresh at the
+  point of use in `checkHand` instead of caching a possibly-premature
+  reference. If you ever cache another entity's component reference in
+  `init()`, either verify the ordering is actually safe or just don't —
+  a fresh `.components['x']` lookup at use-time is cheap and immune to
+  this whole class of bug.
+- A non-lethal hit physically launches the cube
+  (`cube-behavior.applyKnockback`), primarily **straight away from the
+  player** — not a raw reflection of the hand's instantaneous velocity,
+  which can be pretty wobbly mid-swing — angled only a little by the
+  actual swing direction (`KNOCKBACK_ANGLE_BLEND`). The swing's vertical
+  component contributes partial credit as launch/slam
+  (`KNOCKBACK_VERTICAL_FACTOR`): upward hits send the target a little
+  airborne, downward hits add a little downward velocity, which against
+  an already-grounded target immediately feeds the impact-damage system
+  below. Speed scales with hit force (**Knockback Force**, SPLAT tab)
+  but stays much gentler than the player's own lunge speed. Runs in
+  place of that cube's normal chase/patrol/wander/idle movement while
+  still sliding, and paints a thin trail in its own color while doing so
+  (**Trail** toggle). Once a knockback settles, `cube-behavior`
+  re-anchors its patrol/wander reference point to wherever the cube
+  actually ended up — otherwise a cube punched away from its spawn spot
+  would slide to a stop and then calmly walk itself back there once
+  behavior resumed, a milder echo of the "magically resets" bug below.
+  A cube slid into another live cube (`punch-game.checkCubeCollisions`)
+  transfers some damage and velocity on to it, capped to once per second
+  per specific pair via a timestamped cooldown map — otherwise two
+  cubes resting against each other would loop into infinite mutual
+  damage.
+- **"Move fast and break things"**: a cube's knockback velocity that
+  gets suddenly zeroed by a hard surface (room-bounds wall clamp, or
+  landing on the floor while still falling — both in
+  `cube-behavior.tick()`) deals impact damage proportional to the speed
+  just lost, above a minimum (small stumbles don't count) — real fall
+  damage, just triggered by any hard stop, not only a fall from height.
+  This is also what a second real bug (found via testing) turned out to
+  be entangled with: `cube-behavior.tick()` had no guard against an
+  oversized single-frame `dt` (unlike `punch-locomotion.tick()`, which
+  already had one). In a slow/coalesced frame, gravity integrated over
+  the whole oversized step at once and a falling cube's downward
+  velocity ran away past 100 m/s instead of settling near zero on
+  landing — which kept the cube permanently stuck in "still sliding"
+  state, so its normal settle-and-resume logic (including, at the time,
+  the old vertical bob) never got a clean chance to run — this was most
+  of the mechanism behind "it falls to the ground, then magically resets
+  back to where it was bobbing." Fixed by clamping `dt` the same way
+  `punch-locomotion` already did, plus (separately) explicitly zeroing
+  vertical knockback velocity the instant the floor clamp triggers so
+  gravity can't keep accumulating on a component whose position can no
+  longer follow it downward.
+- Cubes have independent movement behavior (idle/chase/patrol/wander;
+  `idle` replaced the old `bob` — grounded humanoids don't float),
   though none of it reacts to being hit beyond the knockback above.
 - Gravity is tunable (menu, PUNCH tab) — lower values give a floatier,
   more super-heroic feel, which matters a lot for anything below that
@@ -130,22 +174,17 @@ Other things in place:
 
 ## Ideas for future moves (not yet implemented)
 
-### Uppercuts (or any punch) toss enemies airborne, not just the player
-Currently a punch that connects with a cube just pops it, regardless of
-direction — no launch, even now that the player can be launched in any
-direction including straight up. Extending this needs cubes to have
-real velocity/gravity of their own (not just the current
-behavior-driven position tweening in `cube-behavior`), so a hit cube
-can be given an impulse in the punch's direction and then fall under
-gravity like the player does, instead of just disappearing. This
-should compose naturally with the unified direction/magnitude system
-above — the same `finalDir`/`magnitude` already computed for the
-player's own lunge is the obvious thing to also apply to whatever gets
-hit. Open question Noah raised and hasn't resolved: should the
-*player* still also launch on every hit once enemies do too, or does
-landing a juggle-starting punch on an enemy skip/reduce the
-self-launch? Leave both wired up as separate, easy-to-toggle behaviors
-rather than picking one.
+Enemies tossing airborne on a hit — the first item that used to be
+here — is now built (see "Built so far" above: `cube-behavior`'s real
+knockback velocity/gravity, with partial vertical launch on an
+upward-angled punch). Noah's open question about whether the player
+should still also self-launch on a hit that also launches the enemy
+turned out to already be resolved by how the systems compose: the
+player's own lunge (gated on look-alignment, `punch-locomotion.onPunch`)
+and the enemy's knockback (`punch-target.applyPhysicalKnockback`) are
+two independent reactions to the same punch event and already both
+fire together — there was never actually a case where one needed to
+suppress the other.
 
 ### Squat-then-stand-quickly → jump (+ shockwave)
 Detect: head Y position drops below some threshold at low vertical

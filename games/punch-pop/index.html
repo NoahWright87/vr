@@ -355,7 +355,10 @@
       // The four "live" per-cube movement behaviors. Menu's cycle button
       // also offers "mixed", which isn't itself a movement behavior —
       // it means "assign each newly-spawned cube a random one of these."
-      var CUBE_BEHAVIOR_MODES = ['bob', 'chase', 'patrol', 'wander'];
+      // 'idle' (formerly 'bob') used to float the cube up and down in
+      // place; now that enemies are grounded humanoids, it just means
+      // "stand still" — see cube-behavior.
+      var CUBE_BEHAVIOR_MODES = ['idle', 'chase', 'patrol', 'wander'];
 
       // Cube knockback physics (cube-behavior) and cube-on-cube collision
       // (punch-game) tuning. Kept as plain constants rather than menu
@@ -372,6 +375,29 @@
       var CUBE_COLLISION_COOLDOWN_MS = 1000; // per-pair cooldown, so two cubes can't infinitely re-hit each other
       var CUBE_COLLISION_DAMAGE_PER_SPEED = 8; // damage dealt to cube B = cubeA's slide speed * this
       var CUBE_COLLISION_TRANSFER_FACTOR = 0.6; // fraction of cubeA's slide speed passed on as cubeB's new velocity
+
+      // "Move fast and break things": a cube's knockback velocity that
+      // gets suddenly zeroed by a hard surface (floor or wall — see
+      // cube-behavior's room-bounds clamp and floor-landing logic) deals
+      // impact damage proportional to how much speed was just lost.
+      // Small stumbles/gentle landings (below the min) don't count —
+      // only a genuinely hard stop does.
+      var CUBE_ROOM_BOUND = 14; // meters, matches punch-locomotion's own player bounds/wall margin
+      var CUBE_IMPACT_MIN_LOST_SPEED = 1.5; // m/s
+      var CUBE_IMPACT_DAMAGE_PER_SPEED = 10; // damage per m/s lost above the minimum
+
+      // A punch's knockback on a cube is primarily "straight away from
+      // the player" (a clean push, not a wobbly reflection of whatever
+      // direction the fist happened to be moving), angled only a little
+      // by the actual swing direction, with the swing's vertical
+      // component given partial (not full) credit as a launch — "if
+      // there's upwards force, send them a little airborne," a downward
+      // swing likewise adds a little downward velocity (which, on an
+      // already-grounded target, immediately feeds into the impact-
+      // damage system above: a downward punch that connects with a
+      // standing enemy contributes to slamming them into the floor).
+      var KNOCKBACK_ANGLE_BLEND = 0.3; // 0 = straight away from player, 1 = pure swing direction
+      var KNOCKBACK_VERTICAL_FACTOR = 0.5; // fraction of the swing's vertical component kept as launch/slam
 
       // Lock-on lunges are capped so finishing off a cube you're already
       // standing next to gives a felt "thump" rather than launching you
@@ -1097,13 +1123,17 @@
       // ==============================================================
       AFRAME.registerComponent('cube-behavior', {
         schema: {
-          mode: { type: 'string', default: 'bob' },
+          mode: { type: 'string', default: 'idle' },
           speed: { type: 'number', default: 0.5 },
         },
 
         init: function () {
+          // Enemies are grounded humanoids now (see punch-game.spawnCube)
+          // — this entity's own position is always the character's feet/
+          // ground contact point, y=0 at rest. There is deliberately no
+          // vertical idle animation any more (the old "bob" float): a
+          // training dummy standing still just... stands still.
           this.basePos = this.el.object3D.position.clone();
-          this.bobPhase = Math.random() * Math.PI * 2;
           this.rig = document.querySelector('#rig');
 
           this.patrolA = this.basePos.clone();
@@ -1120,11 +1150,12 @@
           // Real physical knockback, separate from the mode-driven
           // movement above: a decaying velocity applied on top of (and,
           // while significant, in place of) the normal chase/patrol/
-          // wander/bob position updates. See applyKnockback, called from
-          // punch-target.hit() on a non-lethal hit and from punch-game's
-          // cube-on-cube collision check.
+          // wander/idle position updates. See applyKnockback, called
+          // from punch-target.hit() on a non-lethal hit and from
+          // punch-game's cube-on-cube collision check.
           this.knockbackVel = new THREE.Vector3();
           this.trailAccum = 0;
+          this.wasSliding = false;
         },
 
         // dir: normalized THREE.Vector3, speed: m/s. Additive (not a
@@ -1158,21 +1189,51 @@
             // into position (in place of the mode-driven movement below,
             // which would otherwise fight it every frame), with friction
             // decaying horizontal speed and a light "gravity" pulling any
-            // vertical launch back down so a cube punched upward settles
-            // back toward the floor instead of drifting there forever.
-            pos.x += this.knockbackVel.x * dt;
-            pos.z += this.knockbackVel.z * dt;
+            // vertical launch back down. Hitting the room bounds (a wall)
+            // or the floor while still moving fast enough is a genuinely
+            // sudden stop — "move fast and break things": that lost
+            // speed becomes impact damage below, separate from and on
+            // top of whatever punch caused the slide in the first place.
+            var impactLostSpeed = 0;
+
+            var nextX = pos.x + this.knockbackVel.x * dt;
+            if (nextX > CUBE_ROOM_BOUND) {
+              impactLostSpeed += Math.abs(this.knockbackVel.x);
+              nextX = CUBE_ROOM_BOUND;
+              this.knockbackVel.x = 0;
+            } else if (nextX < -CUBE_ROOM_BOUND) {
+              impactLostSpeed += Math.abs(this.knockbackVel.x);
+              nextX = -CUBE_ROOM_BOUND;
+              this.knockbackVel.x = 0;
+            }
+            pos.x = nextX;
+
+            var nextZ = pos.z + this.knockbackVel.z * dt;
+            if (nextZ > CUBE_ROOM_BOUND) {
+              impactLostSpeed += Math.abs(this.knockbackVel.z);
+              nextZ = CUBE_ROOM_BOUND;
+              this.knockbackVel.z = 0;
+            } else if (nextZ < -CUBE_ROOM_BOUND) {
+              impactLostSpeed += Math.abs(this.knockbackVel.z);
+              nextZ = -CUBE_ROOM_BOUND;
+              this.knockbackVel.z = 0;
+            }
+            pos.z = nextZ;
 
             var nextY = pos.y + this.knockbackVel.y * dt;
-            if (nextY <= 0.15) {
+            if (nextY <= 0) {
               // Landed: zero the vertical component so gravity stops
               // accumulating on it. Without this, a cube resting on the
               // floor clamp keeps falling in velocity space forever (its
               // position just can't follow), so knockbackVel.length()
               // never drops back below CUBE_KNOCKBACK_MIN_SPEED and the
               // cube is stuck "sliding" (skipping its normal behavior)
-              // indefinitely even though it looks stationary.
-              pos.y = 0.15;
+              // indefinitely even though it looks stationary. Only a
+              // downward landing counts as an impact — this branch can
+              // also be reached at exactly y=0 with no vertical velocity
+              // at all (a purely horizontal slide), which isn't a hit.
+              if (this.knockbackVel.y < 0) impactLostSpeed += -this.knockbackVel.y;
+              pos.y = 0;
               this.knockbackVel.y = 0;
             } else {
               pos.y = nextY;
@@ -1183,27 +1244,50 @@
             this.knockbackVel.x *= damping;
             this.knockbackVel.z *= damping;
 
-            if (cubeTrailEnabled && knockSpeed > CUBE_TRAIL_MIN_SPEED) {
+            var target = this.el.components['punch-target'];
+
+            if (impactLostSpeed > CUBE_IMPACT_MIN_LOST_SPEED && target) {
+              target.takeImpactDamage((impactLostSpeed - CUBE_IMPACT_MIN_LOST_SPEED) * CUBE_IMPACT_DAMAGE_PER_SPEED);
+            }
+
+            if (cubeTrailEnabled && knockSpeed > CUBE_TRAIL_MIN_SPEED && target) {
               this.trailAccum += dt;
               if (this.trailAccum >= CUBE_TRAIL_INTERVAL) {
                 this.trailAccum = 0;
-                var target = this.el.components['punch-target'];
-                if (target) {
-                  var sizeFactor = clamp(knockSpeed / CUBE_KNOCKBACK_MAX_SPEED, 0.2, 1);
-                  paintSplat(
-                    pos.x,
-                    pos.z,
-                    '#' + target.baseColor.getHexString(),
-                    SPLAT_TRAIL_RADIUS * (0.5 + sizeFactor * 0.5),
-                    SPLAT_TRAIL_OPACITY
-                  );
-                }
+                var sizeFactor = clamp(knockSpeed / CUBE_KNOCKBACK_MAX_SPEED, 0.2, 1);
+                paintSplat(
+                  pos.x,
+                  pos.z,
+                  '#' + target.baseColor.getHexString(),
+                  SPLAT_TRAIL_RADIUS * (0.5 + sizeFactor * 0.5),
+                  SPLAT_TRAIL_OPACITY
+                );
               }
             }
+            this.wasSliding = true;
             return;
           }
 
           this.knockbackVel.set(0, 0, 0);
+          pos.y = 0; // always grounded once settled
+
+          if (this.wasSliding) {
+            // Just settled from a knockback: re-anchor patrol/wander's
+            // reference points to wherever the cube actually ended up,
+            // rather than leaving them pointing at its original spawn
+            // location. Without this, a cube punched well away from
+            // where it spawned would slide to a stop and then calmly
+            // walk itself back toward its old spot once its behavior
+            // resumed — a milder echo of the same "magically resets"
+            // complaint the knockback rewrite was meant to fix.
+            this.basePos.copy(pos);
+            this.patrolA.copy(this.basePos);
+            this.patrolB.copy(this.basePos).add(new THREE.Vector3((Math.random() - 0.5) * 3, 0, (Math.random() - 0.5) * 3));
+            this.patrolTarget = this.patrolB;
+            this.wanderTarget.copy(this.basePos);
+            this.nextWanderTime = 0;
+            this.wasSliding = false;
+          }
 
           var mode = this.data.mode;
           var speed = this.data.speed;
@@ -1242,9 +1326,7 @@
               pos.z += toWander.z * speed * dt;
             }
           }
-          // 'bob' (or anything unrecognized): no horizontal movement.
-
-          pos.y = this.basePos.y + Math.sin(time / 1000 * 1.6 + this.bobPhase) * 0.12;
+          // 'idle' (or anything unrecognized): stand still.
         },
       });
 
@@ -1257,20 +1339,22 @@
 
       // ==============================================================
       // COMPONENT: punch-target
-      // Attached to each cube. Cubes have health now instead of popping
-      // in one hit — hit() applies damage (see punch-game.checkHand,
-      // which computes it via punch-locomotion.computeMagnitude, the
-      // exact same formula used for how far a punch lunges the player)
-      // and desaturates the cube's color toward gray in proportion to
-      // remaining health, so the color visibly drains out of it as it
-      // takes damage rather than showing a separate health bar. It dies
-      // (pop()) once health reaches zero — same flash/knockback/removal
-      // as the original one-hit design, just gated behind health instead
-      // of any hit.
+      // Attached to each cube-person's container entity (see
+      // punch-game.spawnCube — the actual head/torso/legs meshes are
+      // children listed in `this.el.bodyParts`, since the container
+      // itself carries no geometry/material of its own). Cubes have
+      // health instead of popping in one hit — hit() applies damage (see
+      // punch-game.checkHand, which computes it via punch-locomotion
+      // .computeMagnitude, the exact same formula used for how far a
+      // punch lunges the player) and desaturates every body part's color
+      // toward gray in proportion to remaining health, so the color
+      // visibly drains out as it takes damage rather than showing a
+      // separate health bar. It dies (pop()) once health reaches zero.
       // ==============================================================
       AFRAME.registerComponent('punch-target', {
         schema: {
           maxHealth: { type: 'number', default: 100 },
+          color: { type: 'color', default: '#FFFFFF' },
         },
 
         init: function () {
@@ -1281,18 +1365,24 @@
 
           // THREE.Color's HSL conversion is what drives desaturation:
           // keep the cube's original hue/lightness, scale saturation
-          // down toward 0 (gray) as health drops toward 0. Falls back to
-          // white if this entity somehow has no material color set yet
-          // (punch-game's spawnCube always sets one first, but this
-          // component doesn't strictly depend on that ordering).
-          var materialData = this.el.getAttribute('material');
-          this.baseColor = new THREE.Color((materialData && materialData.color) || '#FFFFFF');
+          // down toward 0 (gray) as health drops toward 0. Sourced from
+          // the schema (not read off the entity's own material) since
+          // this container has no material of its own — see bodyParts.
+          this.baseColor = new THREE.Color(this.data.color);
           this.baseHsl = {};
           this.baseColor.getHSL(this.baseHsl);
           this.displayColor = new THREE.Color();
 
           this.onClick = this.onClick.bind(this);
           this.el.addEventListener('click', this.onClick);
+        },
+
+        // The visible meshes to recolor for a damage/flinch/pop flash —
+        // punch-game.spawnCube sets `el.bodyParts` to [legs, torso, head].
+        // Falls back to the entity itself so this component still works
+        // if ever attached to a plain single-mesh entity (e.g. in tests).
+        parts: function () {
+          return this.el.bodyParts || [this.el];
         },
 
         onClick: function () {
@@ -1304,46 +1394,128 @@
 
         // damage is in the same units as punch-locomotion's lunge
         // magnitude (see computeMagnitude) — a light tap barely dents
-        // health, a big committed swing takes a real chunk out.
-        hit: function (hitVelocity, damage) {
+        // health, a big committed swing takes a real chunk out. playerPos
+        // (world-space) is used to knock the target *away from the
+        // player* rather than in whatever direction the hand happened to
+        // be instantaneously moving — see applyPhysicalKnockback. Omit
+        // it (e.g. from a cube-on-cube collision) to fall back to a
+        // plain hitVelocity-direction push.
+        hit: function (hitVelocity, damage, playerPos) {
           if (this.popped) return;
           var now = Date.now();
           if (now < this.hitCooldownUntil) return;
           this.hitCooldownUntil = now + HIT_COOLDOWN_MS;
 
-          this.health = clamp(this.health - damage, 0, this.data.maxHealth);
-          this.updateColor();
-          this.splatFloor(damage);
-
-          if (this.health <= 0) {
-            this.pop(hitVelocity);
-          } else {
+          var lethal = this.applyDamage(damage, hitVelocity);
+          if (!lethal) {
             // Real physical knockback only on a non-lethal hit — pop()
             // removes cube-behavior immediately for a dying cube and
             // plays its own separate death-knockback animation, so there
             // would be nothing left to apply this to (and nothing to see
             // if there were).
-            this.applyPhysicalKnockback(hitVelocity, damage);
-            this.flinch();
+            this.applyPhysicalKnockback(hitVelocity, damage, playerPos);
           }
         },
 
-        // Launches this cube via cube-behavior's knockback physics,
-        // scaled by how hard it was hit (same `damage` units as health,
-        // via cubeKnockbackFactor — a menu knob in the SPLAT tab).
-        // Deliberately much gentler than the player's own lunge speed
-        // ("not as fast as I zoomed into them") — see cubeKnockbackFactor's
-        // default. Also called from punch-game's cube-on-cube collision
-        // check when one sliding cube clips another.
-        applyPhysicalKnockback: function (hitVelocity, damage) {
+        // Impact damage from slamming into a hard surface (floor or
+        // wall — see cube-behavior's room-bounds clamp and floor-landing
+        // logic), proportional to how much speed the surface just
+        // absorbed. Shares hit()'s cooldown (so a bouncy landing can't
+        // machine-gun several impact ticks) but deliberately does NOT
+        // call applyPhysicalKnockback: the cube's velocity was just
+        // forcibly zeroed by the surface, so launching it again from
+        // taking that damage would start an unstoppable little bounce.
+        takeImpactDamage: function (damage) {
+          if (this.popped || damage <= 0) return;
+          var now = Date.now();
+          if (now < this.hitCooldownUntil) return;
+          this.hitCooldownUntil = now + HIT_COOLDOWN_MS;
+          this.applyDamage(damage, null);
+        },
+
+        // Shared by hit() and takeImpactDamage(): reduces health,
+        // updates color, splatters the floor, and either pops (dead) or
+        // flinches (still alive). Returns true if this damage was
+        // lethal. popDirHint is used only for pop()'s own death-
+        // knockback animation direction — takeImpactDamage has no
+        // meaningful "hit direction" to offer, so pop() falls back to a
+        // generic one when it's null.
+        applyDamage: function (damage, popDirHint) {
+          this.health = clamp(this.health - damage, 0, this.data.maxHealth);
+          this.updateColor();
+          this.splatFloor(damage);
+
+          if (this.health <= 0) {
+            this.pop(popDirHint);
+            return true;
+          }
+          this.flinch();
+          return false;
+        },
+
+        // Launches this cube via cube-behavior's knockback physics.
+        // Primarily "straight away from the player" rather than a raw
+        // reflection of the hand's instantaneous velocity direction
+        // (which can be pretty wobbly mid-swing) — angled only a little
+        // by the actual swing direction (KNOCKBACK_ANGLE_BLEND) — with
+        // the swing's vertical component contributing partial credit
+        // (KNOCKBACK_VERTICAL_FACTOR) as a launch/slam: "if there's
+        // upwards force, send them a little airborne," and a downward
+        // swing adds a little downward velocity too, which — on an
+        // already-grounded target — immediately feeds the impact-damage
+        // system above (cube-behavior lands it again right away).
+        // Overall speed scales with hit force (`damage`, via
+        // cubeKnockbackFactor — a menu knob in the SPLAT tab),
+        // deliberately much gentler than the player's own lunge speed.
+        // playerPos is optional: omit it (e.g. a cube-on-cube collision,
+        // where "away from the other cube" is already what hitVelocity's
+        // direction represents) to skip the away-blend and use
+        // hitVelocity's own horizontal direction directly.
+        applyPhysicalKnockback: function (hitVelocity, damage, playerPos) {
           var behavior = this.el.components['cube-behavior'];
           if (!behavior) return;
-          var dir = hitVelocity.clone();
-          dir.y *= 0.4; // keep knockback mostly horizontal even from a steep punch
-          if (dir.lengthSq() < 0.0001) return;
-          dir.normalize();
+
+          var hitDir = hitVelocity.clone();
+          var hitLenSq = hitDir.lengthSq();
+          var verticalComponent = 0;
+          var hitHorizontal = new THREE.Vector3();
+          if (hitLenSq > 0.0001) {
+            var hitNorm = hitDir.clone().normalize();
+            verticalComponent = hitNorm.y;
+            hitHorizontal.set(hitNorm.x, 0, hitNorm.z);
+            if (hitHorizontal.lengthSq() > 0.0001) hitHorizontal.normalize();
+          }
+
+          var horizontalDir;
+          if (playerPos) {
+            var cubePos = new THREE.Vector3();
+            this.el.object3D.getWorldPosition(cubePos);
+            var awayDir = new THREE.Vector3(cubePos.x - playerPos.x, 0, cubePos.z - playerPos.z);
+            if (awayDir.lengthSq() < 0.0001) awayDir.copy(hitHorizontal.lengthSq() > 0.0001 ? hitHorizontal : new THREE.Vector3(0, 0, -1));
+            else awayDir.normalize();
+
+            if (hitHorizontal.lengthSq() > 0.0001) {
+              horizontalDir = awayDir
+                .clone()
+                .multiplyScalar(1 - KNOCKBACK_ANGLE_BLEND)
+                .addScaledVector(hitHorizontal, KNOCKBACK_ANGLE_BLEND);
+              if (horizontalDir.lengthSq() < 0.0001) horizontalDir.copy(awayDir);
+              else horizontalDir.normalize();
+            } else {
+              horizontalDir = awayDir;
+            }
+          } else if (hitHorizontal.lengthSq() > 0.0001) {
+            horizontalDir = hitHorizontal;
+          } else {
+            return; // no usable direction at all (shouldn't normally happen)
+          }
+
+          var finalDir = new THREE.Vector3(horizontalDir.x, verticalComponent * KNOCKBACK_VERTICAL_FACTOR, horizontalDir.z);
+          if (finalDir.lengthSq() < 0.0001) return;
+          finalDir.normalize();
+
           var speed = clamp(damage * cubeKnockbackFactor, 0, CUBE_KNOCKBACK_MAX_SPEED);
-          behavior.applyKnockback(dir, speed);
+          behavior.applyKnockback(finalDir, speed);
         },
 
         // Splatters this cube's original (undamaged) color onto the
@@ -1365,7 +1537,9 @@
         updateColor: function () {
           var healthFrac = this.health / this.data.maxHealth;
           this.displayColor.setHSL(this.baseHsl.h, this.baseHsl.s * healthFrac, this.baseHsl.l);
-          this.el.setAttribute('material', 'color', '#' + this.displayColor.getHexString());
+          var hex = '#' + this.displayColor.getHexString();
+          var parts = this.parts();
+          for (var i = 0; i < parts.length; i++) parts[i].setAttribute('material', 'color', hex);
         },
 
         // Non-lethal hit feedback: a quick bright flash + scale pulse,
@@ -1376,7 +1550,8 @@
         // reason pop() below has to remove cube-behavior first (there,
         // the cube really is being removed, so that's fine to do).
         flinch: function () {
-          this.el.setAttribute('material', 'color', '#FFFFFF');
+          var parts = this.parts();
+          for (var i = 0; i < parts.length; i++) parts[i].setAttribute('material', 'color', '#FFFFFF');
           this.el.setAttribute('animation__flinch', {
             property: 'scale',
             from: '1.15 1.15 1.15',
@@ -1403,9 +1578,10 @@
           // frame for the ~150ms it takes to play out.
           this.el.removeAttribute('cube-behavior');
 
-          this.el.setAttribute('material', 'color', '#FFFFFF');
+          var parts = this.parts();
+          for (var i = 0; i < parts.length; i++) parts[i].setAttribute('material', 'color', '#FFFFFF');
 
-          var dir = hitVelocity.clone().normalize();
+          var dir = hitVelocity ? hitVelocity.clone().normalize() : new THREE.Vector3(0, 0.4, -1).normalize();
           if (!isFinite(dir.x)) dir.set(0, 0.4, -1).normalize();
           var p = this.el.object3D.position;
           this.el.setAttribute('animation__knockback', {
@@ -1483,7 +1659,17 @@
           hitRadius: { type: 'number', default: 0.35 },
           popForceSpeed: { type: 'number', default: 1.0 },
           behaviorMode: { type: 'string', default: 'mixed' },
-          cubeHealth: { type: 'number', default: 100 },
+          // Lowered from an earlier 100: playtesting found that a
+          // realistic, *sustainable* punch (not an all-out haymaker —
+          // this is controlled physically, and nobody can throw maximum-
+          // effort punches indefinitely) was only doing a small fraction
+          // of a 100-health bar per hit, so killing one dummy took far
+          // more punches than felt good. At 50, a solid moderate hit
+          // takes a visible chunk out and a real committed swing (or one
+          // solid follow-up impact into a wall/floor) can drop one in a
+          // couple of hits — still not a single tap, but reads as "I am
+          // actually damaging this thing" rather than a slog.
+          cubeHealth: { type: 'number', default: 50 },
         },
 
         init: function () {
@@ -1491,7 +1677,6 @@
           this.leftHand = document.querySelector('#leftHand');
           this.rightHand = document.querySelector('#rightHand');
           this.rig = document.querySelector('#rig');
-          this.locomotion = this.rig.components['punch-locomotion'];
           this.cubes = [];
           this.colors = ['#EF476F', '#FFD166', '#06D6A0', '#118AB2', '#7B2CBF'];
           this.scratch = new THREE.Vector3();
@@ -1547,22 +1732,66 @@
           for (var c = 0; c < this.data.count; c++) this.spawnCube(c);
         },
 
+        // Builds a simple humanoid "cube person" — legs/torso/head boxes
+        // stacked on a container entity whose own position is the
+        // character's feet/ground-contact point (y=0 at rest). Not
+        // meant to be much (a real skeleton/model + ragdoll physics is a
+        // future step) — just enough that these read as combatants
+        // rather than floating balloons, and enough that a punch at any
+        // height (low jab, chest-level cross, high hook) can actually
+        // connect with *something* on the body. punch-target has no
+        // material of its own to recolor as damage accumulates, since
+        // the container carries no geometry — see el.bodyParts below.
         spawnCube: function (colorSeed) {
-          // Wide spread of distance and height so hitting the field
-          // naturally calls for a mix of jabs, lunges, and up/down angled
-          // punches.
+          // Wide spread of distance so hitting the field naturally calls
+          // for a mix of jabs and lunges. No height randomization any
+          // more — cube-people always stand on the floor.
           var angle = (Math.random() - 0.5) * 1.8; // radians
           var radius = 0.9 + Math.random() * 2.1; // 0.9m jab .. 3m lunge
           var x = radius * Math.sin(angle);
           var z = -radius * Math.cos(angle);
-          var y = 0.6 + Math.random() * 1.7; // knee height .. overhead
+
+          var colorHex = this.colors[colorSeed % this.colors.length];
 
           var cube = document.createElement('a-entity');
-          cube.setAttribute('geometry', { primitive: 'box', width: 0.35, height: 0.35, depth: 0.35 });
-          cube.setAttribute('material', { color: this.colors[colorSeed % this.colors.length] });
-          cube.setAttribute('position', { x: x, y: y, z: z });
+          cube.setAttribute('position', { x: x, y: 0, z: z });
           cube.classList.add('cube-target');
-          cube.setAttribute('punch-target', { maxHealth: this.data.cubeHealth });
+
+          var legs = document.createElement('a-box');
+          legs.setAttribute('width', 0.3);
+          legs.setAttribute('height', 0.65);
+          legs.setAttribute('depth', 0.22);
+          legs.setAttribute('position', '0 0.325 0');
+          legs.setAttribute('material', { color: colorHex });
+          legs.classList.add('cube-target');
+          cube.appendChild(legs);
+
+          var torso = document.createElement('a-box');
+          torso.setAttribute('width', 0.4);
+          torso.setAttribute('height', 0.55);
+          torso.setAttribute('depth', 0.26);
+          torso.setAttribute('position', '0 0.925 0');
+          torso.setAttribute('material', { color: colorHex });
+          torso.classList.add('cube-target');
+          cube.appendChild(torso);
+
+          var head = document.createElement('a-box');
+          head.setAttribute('width', 0.24);
+          head.setAttribute('height', 0.26);
+          head.setAttribute('depth', 0.24);
+          head.setAttribute('position', '0 1.33 0');
+          head.setAttribute('material', { color: colorHex });
+          head.classList.add('cube-target');
+          cube.appendChild(head);
+
+          // Plain JS property (not an AFRAME attribute) — read by
+          // punch-target for which meshes to recolor, and by
+          // punch-game.checkHand for per-part hit-radius checks. Not
+          // reactive/observed by A-Frame, which is fine: it's set once
+          // here and never needs to change afterward.
+          cube.bodyParts = [legs, torso, head];
+
+          cube.setAttribute('punch-target', { maxHealth: this.data.cubeHealth, color: colorHex });
           cube.cubeId = this.nextCubeId++;
 
           var mode = this.data.behaviorMode;
@@ -1656,19 +1885,38 @@
           // unrelated swing.
           var handDist = tracker.swinging ? tracker.handTravelDist : 0;
           var headDist = tracker.swinging ? tracker.headTravelDist : 0;
-          var damage = this.locomotion
-            ? this.locomotion.computeMagnitude(tracker.rawSpeed, handDist, headDist)
+          // Looked up fresh here rather than cached in init() — a real
+          // bug found via testing: punch-game's init() can run before
+          // punch-locomotion's own init() has attached to #rig (a
+          // cross-entity component-init race, not guaranteed order by
+          // A-Frame), which silently left this.locomotion permanently
+          // undefined and fell back to raw hand speed with none of the
+          // formula's distance/power scaling for the entire session —
+          // a likely large, invisible contributor to "it takes way too
+          // many punches to kill one of these."
+          var locomotion = this.rig.components['punch-locomotion'];
+          var damage = locomotion
+            ? locomotion.computeMagnitude(tracker.rawSpeed, handDist, headDist)
             : tracker.rawSpeed;
+
+          var playerPos = this.rig.object3D.position;
 
           for (var i = this.cubes.length - 1; i >= 0; i--) {
             var cube = this.cubes[i];
             var target = cube.components['punch-target'];
             if (!target || target.popped) continue;
 
-            cube.object3D.getWorldPosition(this.scratch);
-            if (tracker.worldPos.distanceTo(this.scratch) <= this.data.hitRadius) {
-              target.hit(tracker.velocity, damage);
-              pulseHaptics(handEl, 0.6, 40);
+            // Check every body part independently (head/torso/legs) so
+            // a punch at any height can connect with *something* on the
+            // humanoid, rather than one hit-test against a single point.
+            var parts = cube.bodyParts || [cube];
+            for (var p = 0; p < parts.length; p++) {
+              parts[p].object3D.getWorldPosition(this.scratch);
+              if (tracker.worldPos.distanceTo(this.scratch) <= this.data.hitRadius) {
+                target.hit(tracker.velocity, damage, playerPos);
+                pulseHaptics(handEl, 0.6, 40);
+                break; // one hit per cube per frame — hit()'s own cooldown would dedupe anyway, this just skips the redundant checks
+              }
             }
           }
         },
@@ -1897,8 +2145,8 @@
           foesTab,
           0.22,
           function () { return 'Cube Health: ' + api.getCubeHealth(); },
-          function () { api.setCubeHealth(api.getCubeHealth() - 25); },
-          function () { api.setCubeHealth(api.getCubeHealth() + 25); },
+          function () { api.setCubeHealth(api.getCubeHealth() - 10); },
+          function () { api.setCubeHealth(api.getCubeHealth() + 10); },
           refreshFns
         );
         makeMenuButton(
@@ -2233,7 +2481,7 @@
             },
             getCubeHealth: function () { return self.gameEl.getAttribute('punch-game').cubeHealth; },
             setCubeHealth: function (v) {
-              v = clamp(v, 25, 400);
+              v = clamp(v, 15, 300);
               self.gameEl.setAttribute('punch-game', 'cubeHealth', v);
               self.gameEl.components['punch-game'].reset();
             },
