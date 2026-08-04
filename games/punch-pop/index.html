@@ -92,6 +92,20 @@
       ============================================================ -->
       <a-entity id="room">
         <a-plane id="floor" rotation="-90 0 0" width="30" height="30" position="0 0 0"></a-plane>
+        <!-- Blood-splatter layer: a second plane just above the floor
+             (0.002m, to avoid z-fighting) carrying its own transparent
+             canvas texture that gets painted on as cubes are hit — see
+             paintSplat/paintSplatBurst below. Separate from the floor's
+             own checkerboard texture entirely, so the checkerboard is
+             never touched and shows through around the splats. -->
+        <a-plane
+          id="splat-layer"
+          rotation="-90 0 0"
+          width="30"
+          height="30"
+          position="0 0.002 0"
+          material="shader: flat; transparent: true; alphaTest: 0.01; side: double"
+        ></a-plane>
         <a-plane class="wall" width="30" height="6" position="0 3 -15" rotation="0 0 0" material="side: double; color: #2a3350"></a-plane>
         <a-plane class="wall" width="30" height="6" position="0 3 15" rotation="0 180 0" material="side: double; color: #2a3350"></a-plane>
         <a-plane class="wall" width="30" height="6" position="15 3 0" rotation="0 -90 0" material="side: double; color: #2a3350"></a-plane>
@@ -351,6 +365,117 @@
         }
         if (el.getObject3D('mesh')) apply();
         else el.addEventListener('loaded', apply, { once: true });
+      }
+
+      // ==============================================================
+      // BLOOD SPLATTER
+      // A single high-res canvas painted onto over time and applied as
+      // the #splat-layer plane's texture (see the room markup above).
+      // Each cube's *original*, undamaged color is what gets splattered
+      // — the same color draining out of it via desaturation as it
+      // takes damage ends up on the floor, so the room tells the story
+      // of the fight as you go.
+      //
+      // World-to-canvas-pixel mapping is done by actually raycasting
+      // straight down onto the #splat-layer mesh and reading back the
+      // intersection's UV, rather than hand-deriving a formula from the
+      // plane's rotation — this file has already gotten bitten twice by
+      // wrong assumptions about which way a rotated/oriented object's
+      // axes point (see getForwardDirection's comment), so for this one
+      // the ground truth comes directly from three.js's own raycaster
+      // instead of more manual reasoning about conventions.
+      // ==============================================================
+      var SPLAT_CANVAS_SIZE = 1024;
+      var SPLAT_BASE_RADIUS = 0.18; // meters, before per-hit scaling
+      var SPLAT_BASE_OPACITY = 0.55;
+
+      var splatCanvas = document.createElement('canvas');
+      splatCanvas.width = splatCanvas.height = SPLAT_CANVAS_SIZE;
+      var splatCtx = splatCanvas.getContext('2d');
+      var splatTexture = new THREE.CanvasTexture(splatCanvas);
+
+      var splatRaycaster = new THREE.Raycaster();
+      var _splatRayOrigin = new THREE.Vector3();
+      var _splatRayDir = new THREE.Vector3(0, -1, 0);
+
+      function attachSplatTexture(el) {
+        function apply() {
+          var mesh = el.getObject3D('mesh');
+          if (!mesh || !mesh.material) return;
+          mesh.material.map = splatTexture;
+          mesh.material.transparent = true;
+          mesh.material.needsUpdate = true;
+        }
+        if (el.getObject3D('mesh')) apply();
+        else el.addEventListener('loaded', apply, { once: true });
+      }
+
+      function clearSplatCanvas() {
+        splatCtx.clearRect(0, 0, SPLAT_CANVAS_SIZE, SPLAT_CANVAS_SIZE);
+        splatTexture.needsUpdate = true;
+      }
+
+      // Casts straight down from (worldX, 5, worldZ) onto the splat
+      // layer and returns the canvas pixel that world point corresponds
+      // to, or null if it somehow misses (shouldn't happen for any
+      // point within the room). (1 - uv.y) accounts for CanvasTexture's
+      // default flipY — verified empirically (paint a point, read the
+      // pixel back) rather than assumed.
+      function worldToSplatPixel(worldX, worldZ) {
+        var splatEl = document.querySelector('#splat-layer');
+        var mesh = splatEl && splatEl.getObject3D('mesh');
+        if (!mesh) return null;
+
+        _splatRayOrigin.set(worldX, 5, worldZ);
+        splatRaycaster.set(_splatRayOrigin, _splatRayDir);
+        var hits = splatRaycaster.intersectObject(mesh, true);
+        if (!hits.length || !hits[0].uv) return null;
+
+        return { x: hits[0].uv.x * SPLAT_CANVAS_SIZE, y: (1 - hits[0].uv.y) * SPLAT_CANVAS_SIZE };
+      }
+
+      // One organic-ish blob: a handful of randomly offset, randomly
+      // sized overlapping circles rather than one perfect circle, so it
+      // reads as a splat rather than a sticker.
+      function paintSplat(worldX, worldZ, colorHex, radiusMeters, opacity) {
+        var pixel = worldToSplatPixel(worldX, worldZ);
+        if (!pixel) return;
+
+        var pixelsPerMeter = SPLAT_CANVAS_SIZE / 30; // room is 30m across
+        var pxRadius = radiusMeters * pixelsPerMeter;
+
+        splatCtx.fillStyle = colorHex;
+        splatCtx.globalAlpha = opacity;
+        var blobCount = 4 + Math.floor(Math.random() * 3);
+        for (var i = 0; i < blobCount; i++) {
+          var angle = Math.random() * Math.PI * 2;
+          var dist = Math.random() * pxRadius * 0.6;
+          var bx = pixel.x + Math.cos(angle) * dist;
+          var by = pixel.y + Math.sin(angle) * dist;
+          var br = pxRadius * (0.5 + Math.random() * 0.6);
+          splatCtx.beginPath();
+          splatCtx.arc(bx, by, br, 0, Math.PI * 2);
+          splatCtx.fill();
+        }
+        splatCtx.globalAlpha = 1;
+        splatTexture.needsUpdate = true;
+      }
+
+      // A death burst: several splats scattered around the impact point
+      // rather than one blob, for a bigger "explosion" moment.
+      function paintSplatBurst(worldX, worldZ, colorHex) {
+        var count = 6 + Math.floor(Math.random() * 4);
+        for (var i = 0; i < count; i++) {
+          var angle = Math.random() * Math.PI * 2;
+          var dist = Math.random() * 0.5;
+          paintSplat(
+            worldX + Math.cos(angle) * dist,
+            worldZ + Math.sin(angle) * dist,
+            colorHex,
+            SPLAT_BASE_RADIUS * (0.6 + Math.random() * 0.8),
+            SPLAT_BASE_OPACITY * (0.7 + Math.random() * 0.3)
+          );
+        }
       }
 
       // ==============================================================
@@ -921,12 +1046,35 @@
 
           this.health = clamp(this.health - damage, 0, this.data.maxHealth);
           this.updateColor();
+          this.splatFloor(damage);
 
           if (this.health <= 0) {
             this.pop(hitVelocity);
           } else {
             this.flinch();
           }
+        },
+
+        // Splatters this cube's original (undamaged) color onto the
+        // floor beneath it — a small blob per ordinary hit, a bigger
+        // scattered burst on the killing blow.
+        splatFloor: function (damage) {
+          var worldPos = new THREE.Vector3();
+          this.el.object3D.getWorldPosition(worldPos);
+          var colorHex = '#' + this.baseColor.getHexString();
+
+          if (this.health <= 0) {
+            paintSplatBurst(worldPos.x, worldPos.z, colorHex);
+          } else {
+            var sizeFactor = clamp(damage / this.data.maxHealth, 0.15, 1);
+            paintSplat(worldPos.x, worldPos.z, colorHex, SPLAT_BASE_RADIUS * (0.5 + sizeFactor), SPLAT_BASE_OPACITY);
+          }
+        },
+
+        updateColor: function () {
+          var healthFrac = this.health / this.data.maxHealth;
+          this.displayColor.setHSL(this.baseHsl.h, this.baseHsl.s * healthFrac, this.baseHsl.l);
+          this.el.setAttribute('material', 'color', '#' + this.displayColor.getHexString());
         },
 
         updateColor: function () {
@@ -1094,6 +1242,7 @@
           this.cubes = [];
           this.popped = 0;
           this.updateHud();
+          clearSplatCanvas();
 
           var locomotion = this.rig.components['punch-locomotion'];
           if (locomotion) locomotion.resetPosition();
@@ -1683,6 +1832,7 @@
         for (var i = 0; i < walls.length; i++) {
           applyCheckerTexture(walls[i], '#2a3350', '#242c48', 10, 2);
         }
+        attachSplatTexture(document.querySelector('#splat-layer'));
       });
 
       // Desktop-only simulate buttons: no mouse can produce a real

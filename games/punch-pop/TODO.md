@@ -52,6 +52,20 @@ needs *more* juice than the unified formula gives it, that's a
 candidate for a future targeted addition, not a revert to special-casing.
 
 Other things in place:
+- Cubes have health and take damage from `computeMagnitude` (same
+  formula as player lunge distance) instead of popping in one hit;
+  color desaturates toward gray as health drops (HSL saturation only,
+  hue/lightness held constant), and they die once fully drained.
+- Every hit — lethal or not — paints a splat of the cube's own color
+  onto a shared floor-sized canvas overlay (`#splat-layer`), sized by
+  damage dealt, with a scattered multi-blob burst on the killing blow.
+  Splats accumulate for the whole session (cleared only by Reset
+  Arena), so the floor visibly fills up with color the longer you
+  play. World-position-to-canvas-pixel mapping goes through an actual
+  raycast against the overlay mesh (`worldToSplatPixel`) rather than a
+  hand-derived formula, on purpose — see the README's note on the
+  `getWorldDirection`/`lookAt` bug for why "just derive the axes" was
+  worth avoiding a third time.
 - Cubes have independent movement behavior (bob/chase/patrol/wander),
   though none of it reacts to being hit beyond popping.
 - Gravity is tunable (menu, PUNCH tab) — lower values give a floatier,
