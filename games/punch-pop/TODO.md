@@ -16,63 +16,115 @@ until they're actually asked for.
 
 ## Built so far
 
-The punch → movement pipeline went through a full redesign (previous
-iterations tried a per-frame "is the hand extending away from the
-head" heuristic plus a separate hard-coded uppercut/smash
-classification; both are gone now). Current model, in
-`punch-tracker`/`punch-locomotion`:
+The punch → movement pipeline went through a **second** full redesign
+(the first replaced a per-frame "is the hand extending away from the
+head" heuristic with velocity-threshold swing detection; that's now
+*also* gone, replaced by reach-calibrated extension-fraction
+detection). Playtesting kept landing "either too hard to register or
+way too twitchy" no matter how the velocity thresholds got tuned, and
+Noah's framing of the actual fix was to stop asking what a proper punch
+or uppercut technically *is* and start asking what a player *thinks*
+they're doing: extending their fist forward (a punch) or overhead (an
+uppercut), whatever the speed, cocked back first or not. Current model:
 
-1. A hand swing is tracked start-to-finish as a small state machine
-   (`punch-tracker`): once speed crosses `triggerSpeed`, it accumulates
-   max speed, hand path length, and head path length (via the head's
-   own `punch-tracker` instance) until speed drops back to
-   `resetSpeed` (or a swing runs unreasonably long) — at which point it
-   emits a "punch" with the *net displacement* direction from swing
-   start to swing end, plus those three accumulated stats.
-2. `punch-locomotion` only allows a lunge if that direction is within
-   `lookConeAngle` of the camera's actual look direction — the fix for
-   accidental-backward-punches (a cock-back's net direction essentially
-   never matches where you're looking) and, as a side effect, what
-   makes punching in *any* direction — including straight up — work
-   uniformly, since there's no separate uppercut angle/height gate
-   anymore.
-3. If a live cube is within `lockOnConeAngle` of your aim and close
-   enough (`baseLockRange`, extended a bit by how big the swing was),
-   the punch snaps onto it ("lock-on"); otherwise the movement
-   direction is the punch direction blended halfway with the look
-   direction.
-4. Impulse magnitude combines max hand speed, hand travel distance, and
-   head travel distance (`speedFactor`/`handDistFactor`/`headDistFactor`),
-   scaled by `powerMultiplier` ("Move Speed" in the menu). For a
-   lock-on lunge specifically, the applied magnitude is additionally
-   capped by distance to the target (`LOCK_DISTANCE_FACTOR` /
-   `LOCK_MIN_MAGNITUDE`) — playtesting found that finishing off a cube
-   at point-blank range with the *uncapped* magnitude flung the player
-   past/through it, which read as "the game moves me around
-   unexpectedly" during close-range combos.
+1. **Reach calibration** (`punch-locomotion.startCalibration` /
+   `updateCalibration`, menu REACH tab → Calibrate Reach): ~3s sampling
+   max forward hand-to-torso distance from either hand, then ~3s
+   sampling max overhead distance, against an approximate torso
+   reference point (`TORSO_HEAD_DROP` below head position). Stored as
+   plain globals `reachForward`/`reachOverhead` (sensible defaults
+   until calibrated), clamped to `REACH_MIN`/`REACH_MAX` so a degenerate
+   sample (e.g. barely moving) can't produce a tiny/huge reach. Freezes
+   punching and rig physics for its duration the same way the menu does
+   (`this.calibrating`, checked in `onPunch` and `tick`) — the menu
+   itself is closed first so the player can actually see the prompts
+   and move their arms freely.
+2. **Extension-fraction state machine**, two independent instances per
+   hand (`punch-tracker`'s `fwd`/`up` — one for a forward punch, one for
+   an uppercut): each frame computes the hand's offset from the torso
+   reference point, decomposed into a forward component (dot product
+   with the head's flattened forward direction) and a vertical
+   component, each expressed as a fraction of the calibrated reach.
+   States: `armed` (fraction below `EXT_ARM_THRESHOLD`, 40%) →
+   `extending` (crossed 40%, accumulating max speed / hand travel / head
+   travel same as the old swing tracker) → fires a "punch" event the
+   instant *either* the fraction crosses the full-extension threshold
+   (`EXT_FORWARD_FULL_THRESHOLD` 90% / `EXT_OVERHEAD_FULL_THRESHOLD`
+   80% — "if they cross 90% of their reach, treat it like an abrupt
+   stop, the punch is thrown") *or* the hand's speed drops back near
+   zero (`stopSpeed`, still head-relative-filtered via `headBlend` —
+   see below) → `holdForReset`, ignored until the fraction drops back
+   below 40% to re-arm. Both hands run both axes simultaneously; a
+   diagonal swing crossing both thresholds can fire both a punch and an
+   uppercut from one motion — treated as (and reads as) one bigger
+   compound hit, not something specifically prevented.
+3. This is **structurally immune**, not just empirically patched, to
+   the single biggest false-positive source found last round (turning
+   your body while holding a hand out): rotating hand-offset-from-torso
+   and torso-forward-direction by the same angle (a body turn with a
+   static arm pose) leaves their dot product — what the extension
+   fraction is built from — unchanged. A real reach changes it directly.
+   No threshold-tuning can offer that guarantee the way this
+   construction does by geometry alone. Verified via Playwright: a
+   simulated 90° body turn holding a fixed arm-offset pose fired zero
+   punches and never left the `armed` state (note for future testing:
+   A-Frame's default `look-controls` on `<a-camera>` reasserts its own
+   tracked rotation every tick and will silently fight a
+   manually-set `head.object3D.rotation` across a multi-frame test loop
+   unless explicitly disabled first — cost real debugging time to
+   discover, worth remembering).
+4. **No more look-cone gate.** The old one rejected a swing whose net
+   displacement direction was too far from where the player was
+   looking — structurally unnecessary now, since a pure cock-back/
+   retraction can't cross the extension threshold to begin with (arming
+   requires *starting* below it and moving up past it). Movement
+   direction now leans on **look direction** as the primary intent
+   signal: if a live cube is within `lockOnConeAngle` (widened to 40°)
+   of your aim and within range (`baseLockRange`, widened to 2.0m, plus
+   a swing-size bonus), the punch/uppercut locks onto it, capped by
+   distance-to-target the same way as before (`LOCK_DISTANCE_FACTOR`/
+   `LOCK_MIN_MAGNITUDE`). If your look-direction search comes up empty
+   but you glanced at an enemy within the last ~2s
+   (`RECENT_LOOK_MEMORY_MS`) and it's still roughly in range
+   (`updateRecentLookTarget`, ticks every frame independent of
+   `menuOpen`), that remembered target is used instead — "people
+   reliably turn their head mid-swing, especially winding up, even
+   though their eyes/intent didn't move." With no lock at all,
+   direction is mostly look direction, lightly nudged
+   (`PUNCH_DIR_BLEND`, 0.25) by the swing's own net displacement (which
+   `punch-tracker` may report as `null` if displacement was negligible
+   — falls back to pure look direction).
+5. **Sticky hit-assist** (`hitAssistMode`, menu AIM tab, global not
+   per-entity): `off` is pure physical proximity (`punch-game
+   .checkHand`'s existing hitRadius check, unaffected); `cheat`
+   (default) calls the locked target's `punch-target.hit()` directly
+   the instant the punch fires, regardless of whether the fist's real
+   swept path would have reached it — the direct fix for "I punch
+   toward an enemy and fly right past it, missing entirely"; `turn`
+   does the same guaranteed hit plus a small **instant** (not animated —
+   smooth camera rotation is a worse VR-comfort offender than an
+   instant snap, same reasoning as "snap turn" locomotion) rig-yaw nudge
+   toward the target first (`nudgeYawToward`/`applyYawAroundPoint`,
+   pivoting on the head's actual world position, not the rig's
+   arbitrary translation origin), so the hit visually reads as landed.
+   Both are explicitly framed as an experiment to A/B against each
+   other for motion sickness vs. obviousness, per Noah's ask.
+6. Impulse magnitude is unchanged: max hand speed, hand travel
+   distance, and head travel distance
+   (`speedFactor`/`handDistFactor`/`headDistFactor`), scaled by
+   `powerMultiplier` ("Move Speed"). **New split**: ambient/incidental
+   contact damage (`punch-game.checkHand`, unaffected by whether a
+   deliberate punch/uppercut is in progress) now always feeds zero
+   hand/head distance into that formula — pure velocity-based, per an
+   explicit design note that a graze shouldn't hit as hard as a real
+   committed strike. The "lunging" distance bonus only applies via a
+   *deliberate* triggered punch/uppercut's own accumulated stats
+   (`onPunch`, and — in `cheat`/`turn` hit-assist — direct application
+   to the locked target).
 
-Playtesting also turned up a real detection bug: rig-local hand
-*position* doesn't rotate with the player's physical body (only
-punch-locomotion's own translation moves it), so turning around while
-holding a hand out sweeps that hand through a wide arc in tracking
-space — the same velocity signature as a real swing, causing phantom
-lunges nobody threw. Fixed by comparing the swing-trigger threshold
-against the hand's velocity *relative to the head's own current
-velocity* (`punch-tracker`'s `headBlend` schema field, "Turn Filter" in
-the menu, default 100%) rather than raw hand velocity — a real punch
-still shows a large hand-vs-head differential since the head stays
-roughly still, while a body turn mostly cancels out since hand and head
-sweep through a correlated arc together. Important detail: only the
-*trigger* uses the head-relative speed — `maxSpeed` (and therefore
-impulse magnitude/damage) still accumulates from *raw* hand speed, so a
-real punch thrown while stepping/leaning in doesn't get discounted for
-the crime of the head also moving forward a bit.
-
-Downward swings no longer get a special "smash" boost — a downward
-punch is just a punch whose computed direction happens to point down,
-handled by the same unified system. If that turns out to feel like it
-needs *more* juice than the unified formula gives it, that's a
-candidate for a future targeted addition, not a revert to special-casing.
+Downward swings still don't get a special "smash" boost — a downward
+punch is just a punch/uppercut whose computed direction happens to
+point down, handled by the same unified system.
 
 Other things in place:
 - Enemies are simple humanoids now, not floating cubes: a legs/torso/
@@ -253,15 +305,40 @@ tuning how these moves stack rather than for basic detection.
 The menu itself changed shape too: it's now one bigger panel fixed in
 world space, spawned a couple feet in front of the player and facing
 them, rather than a small per-wrist panel — see the README for why.
+Opens via any face button (A/B right, X/Y left) instead of grip, which
+got pressed by accident too often during normal punching.
 
 - **PUNCH tab**: Move Speed, Gravity, Max Speed, Reset Arena
-- **FOES tab**: Cube Count, Cube Health, Cube Behavior (bob/chase/patrol/wander/mixed)
-- **AIM tab**: Look Cone, Lock-On Cone, Lock Range — tuning for the
-  look-gated/lock-on targeting system described above
+- **FOES tab**: Cube Count, Cube Health, Cube Behavior (idle/chase/patrol/wander/mixed)
+- **AIM tab**: Lock-On Cone, Lock Range, cycle Hit Assist (off/cheat/turn)
+- **REACH tab**: Calibrate Reach, Reach Fwd, Reach Up, Arm Threshold % —
+  the reach-calibrated extension detection described above
 - **SPLAT tab**: Splat Amount, Splat Scatter, Knockback Force, Trail on/off
-- **DEBUG tab**: Live Debug HUD toggle, Trigger Speed, Reset Speed,
-  Turn Filter — punch-detection transparency/tuning, described above
+- **DEBUG tab**: Live Debug HUD toggle, Stop Spd, Turn Filter —
+  punch-detection transparency/tuning, described above
 - **MORE tab**: Resume, Exit VR, Show Stats
+
+Two real bugs behind a round of "the menu doesn't work reliably"
+feedback, both found by reading things rather than guessing, worth
+remembering if you touch UI interaction in this file:
+- A-Frame's `cursor` component only binds to real controller button
+  events (`triggerdown`/`triggerup`) if you explicitly set its
+  `downEvents`/`upEvents` — left at the default (empty arrays), it
+  instead listens for mouse/touch events on the canvas, and a real
+  trigger pull only produced a click via whatever synthetic click a
+  given WebXR browser happens to fire on "select" for accessibility-
+  fallback purposes. Confirmed by reading A-Frame 1.6.0's actual
+  `cursor` component source (`downEvents.length || upEvents.length`
+  gates which listener path gets wired up), not assumed. Both hand
+  entities' `cursor` config now explicitly sets
+  `downEvents: triggerdown; upEvents: triggerup`.
+- The always-on debug line, punch-result label, and opt-in stats/live-
+  debug HUDs are all fixed in front of the camera and were staying
+  visible (and visually competing with) the menu panel while it was
+  open. `world-menu-system.open()`/`close()` now explicitly hide/
+  restore them (respecting whichever opt-in HUDs were actually toggled
+  on, so closing the menu doesn't un-hide one the player had
+  deliberately turned off).
 
 Each new move idea above should probably get its own tab as it's
 built, following the same tabbed-panel pattern already in place

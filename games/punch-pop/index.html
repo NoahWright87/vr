@@ -58,12 +58,13 @@
          touching a headset. -->
     <div id="overlay">
       <p>
-        Punch Pop — punching <em>is</em> movement. A swing only lunges you if it's roughly aimed where you're
-        looking (prevents accidental backward punches); if an enemy is close by and near your aim it locks
-        on, otherwise you move halfway between your punch and look directions. Punch a cube hard enough to
-        pop it — any direction, including up. Press either grip to open the menu, a couple feet in front of
-        you — your other hand gets a laser pointer to click with; press either grip again to close it.
-        Outside the menu, pull either trigger for a quick reset.
+        Punch Pop — punching <em>is</em> movement. Extend a fist forward past ~40% of your reach and a punch
+        starts tracking; extend it overhead past ~40% of your overhead reach for an uppercut. Reach far enough
+        (90% forward / 80% overhead) or slow back down and it fires, sending you toward whatever you're
+        looking at (locking onto a nearby enemy if there is one) — bring your hand back before the threshold
+        to reset for another. Punch a cube hard enough to pop it. Press any face button (A/B/X/Y) to open the
+        menu, a couple feet in front of you — your other hand gets a laser pointer to click with; press a face
+        button again to close it. Outside the menu, pull either trigger for a quick reset.
         <strong>Clear ~2x2m of real space before trying this in a headset.</strong>
         <a href="../../index.html">All prototypes</a>
       </p>
@@ -215,13 +216,26 @@
              time — whichever hand didn't press grip to open the menu —
              so there's never a moment where both hands are live pointers
              at once (that was the root cause of a trigger pull on one
-             hand accidentally registering a click aimed by the other). -->
+             hand accidentally registering a click aimed by the other).
+
+             cursor's downEvents/upEvents matter more than they look: left
+             at their default (empty), the cursor component binds its
+             click handling to *mouse/touch events on the canvas*, not to
+             the controller's own trigger button — real trigger pulls only
+             produced clicks via whatever synthetic click a given WebXR
+             browser happens to fire on "select" for accessibility
+             fallback purposes, which is exactly the kind of thing that
+             would register "some of the time." Binding directly to
+             triggerdown/triggerup (real events oculus-touch-controls
+             already emits, the same ones punch-game's own quick-reset
+             listens to) is unambiguous and confirmed via reading A-Frame
+             1.6.0's cursor component source, not assumed. -->
         <a-entity
           id="leftHand"
           oculus-touch-controls="hand: left; model: false"
           punch-tracker="edgeDetect: true"
           raycaster="objects: .menu-target; far: 5; enabled: false"
-          cursor="fuse: false"
+          cursor="fuse: false; downEvents: triggerdown; upEvents: triggerup"
         >
           <a-sphere radius="0.06" color="#EF476F" shader="flat"></a-sphere>
           <!-- depth starts at 1 (unit length); laser-beam scales/repositions
@@ -244,7 +258,7 @@
           oculus-touch-controls="hand: right; model: false"
           punch-tracker="edgeDetect: true"
           raycaster="objects: .menu-target; far: 5; enabled: false"
-          cursor="fuse: false"
+          cursor="fuse: false; downEvents: triggerdown; upEvents: triggerup"
         >
           <a-sphere radius="0.06" color="#118AB2" shader="flat"></a-sphere>
           <a-box
@@ -339,18 +353,90 @@
       var cubeKnockbackFactor = 0.15; // damage -> knockback speed (m/s per damage point)
       var cubeTrailEnabled = true;
 
-      // A swing that's still "in progress" past this duration force-
-      // finishes rather than tracking forever — guards against e.g. slow
-      // continuous circular hand motion (arm circles) being read as one
-      // enormous, meaningless swing. Not expected to matter for normal
-      // punches, which finish in well under this.
+      // An "extending" swing that never resolves (full extension or a
+      // stop) within this long force-finishes anyway — guards against
+      // e.g. slow continuous circular hand motion (arm circles) getting
+      // stuck extended forever. Not expected to matter for a normal
+      // punch or uppercut, which resolve in well under this.
       var MAX_SWING_MS = 2000;
 
-      // A swing whose net hand displacement is smaller than this (in
-      // meters) is treated as noise rather than a real punch — guards
-      // against tiny hand jitter that technically crosses triggerSpeed
-      // for a single frame and then immediately settles back down.
-      var MIN_SWING_DISPLACEMENT = 0.05;
+      // ==============================================================
+      // REACH CALIBRATION + EXTENSION-BASED PUNCH DETECTION
+      //
+      // Full redesign, replacing the old velocity-threshold swing state
+      // machine (crossing triggerSpeed / falling back to resetSpeed).
+      // Playtesting kept landing "either too hard to register or way too
+      // twitchy," and Noah's framing of the actual fix was: stop asking
+      // what a proper punch or uppercut *is* and start asking what a
+      // player *thinks* they are doing — extending their fist forward
+      // (a punch) or extending it overhead (an uppercut), regardless of
+      // how fast or how far, cocked back or not.
+      //
+      // So detection is now based on how far the hand has physically
+      // reached from an approximate torso reference point, expressed as
+      // a *fraction of the player's own calibrated reach* — not raw
+      // velocity. This is naturally robust to the single biggest false-
+      // positive source discovered last round (turning your body while
+      // holding a hand out): rotating your head/torso by some angle
+      // rotates the hand's offset-from-torso vector by that same angle,
+      // and rotates the torso's own forward direction by that same
+      // angle too, so the *dot product between them* (what the forward-
+      // extension fraction is built from) stays constant through a pure
+      // body turn with a static arm pose. A real reach, by contrast,
+      // changes that dot product directly. No velocity threshold can
+      // offer that guarantee, however it's filtered.
+      //
+      // Reach is calibrated per player (menu, REACH tab -> Calibrate
+      // Reach): a few seconds reaching forward, then a few seconds
+      // reaching overhead, sampling the max hand-to-torso distance
+      // (along the relevant axis) from *either* hand each phase. Until
+      // calibrated, sensible adult-human defaults are used.
+      // ==============================================================
+      var reachForward = 0.55; // meters, calibrated (or default) forward reach from torsoRef
+      var reachOverhead = 0.65; // meters, calibrated (or default) overhead reach from torsoRef
+      var REACH_MIN = 0.25; // clamp on a calibration result that's clearly too small to be real
+      var REACH_MAX = 1.0; // clamp on a calibration result that's clearly too large to be real
+      var CALIBRATION_PHASE_MS = 3000; // how long each of the two calibration phases samples for
+      var TORSO_HEAD_DROP = 0.25; // meters below head position used as an approximate shoulder/chest reference point
+
+      // Extension fractions (0..1 of reachForward / reachOverhead) that
+      // gate the state machine in punch-tracker: below ARM_THRESHOLD is
+      // "not reaching," at/above it starts tracking a punch attempt, and
+      // at/above the FULL threshold that attempt auto-fires regardless
+      // of speed ("if they cross 90% of their reach, treat it like an
+      // abrupt stop — the punch is thrown"). The other way to fire
+      // mid-range is the hand's speed dropping back down (see
+      // punch-tracker's stopSpeed schema field) — a slower, more
+      // deliberate reach that never gets close to full extension still
+      // counts once it visibly stops.
+      var EXT_ARM_THRESHOLD = 0.4;
+      var EXT_FORWARD_FULL_THRESHOLD = 0.9;
+      var EXT_OVERHEAD_FULL_THRESHOLD = 0.8;
+
+      // "Sticky" hit-assist for the locked-on target of a punch/uppercut
+      // — see punch-locomotion.onPunch. 'off' is pure physical proximity
+      // (punch-game.checkHand's own hitRadius check, unaffected by any
+      // of this); 'cheat' guarantees the locked target actually takes
+      // the hit the instant the punch fires, regardless of whether the
+      // fist's real physical path would have reached it; 'turn'
+      // guarantees the same hit but also snaps the rig's yaw a little
+      // toward the target first, so the fist visually reads as landing
+      // rather than the hit just happening invisibly. Exposed in the
+      // menu (AIM tab) as an experiment, per Noah's ask to A/B whether
+      // the turn is too disorienting or the cheat too obvious.
+      var hitAssistMode = 'cheat'; // 'off' | 'cheat' | 'turn'
+      var HIT_ASSIST_MODES = ['off', 'cheat', 'turn'];
+      var TURN_ASSIST_MAX_DEGREES = 35; // cap on the one-shot yaw snap, so a wildly-off target doesn't spin the player
+
+      // How long a glanced-at enemy stays "the thing I was probably
+      // trying to punch" after the player's head turns away from it —
+      // people often turn their head mid-swing, especially while
+      // winding up, even though their eyes (and intent) stayed on the
+      // target. Updated every frame in punch-locomotion.tick(); consumed
+      // in onPunch only when the punch's *own* look-direction lock-on
+      // search comes up empty.
+      var RECENT_LOOK_MEMORY_MS = 1800;
+      var RECENT_LOOK_RANGE_SLACK = 1.3; // extra range tolerance for a remembered (vs. fresh) target
 
       // The four "live" per-cube movement behaviors. Menu's cycle button
       // also offers "mixed", which isn't itself a movement behavior —
@@ -409,6 +495,16 @@
       // on/off cutoff.
       var LOCK_DISTANCE_FACTOR = 3.5;
       var LOCK_MIN_MAGNITUDE = 0.6;
+
+      // When a punch has nothing to lock onto, the lunge direction is
+      // mostly look direction, lightly nudged by the swing's own net
+      // displacement — 0 would be pure look direction (ignore the swing
+      // entirely), 1 would be the old 50/50-ish blend. Kept small
+      // deliberately: "look at the thing you want to punch" is meant to
+      // be the dominant intent signal now, not the swing's exact
+      // trajectory (a fast, wobbly real swing's displacement direction
+      // is a much noisier signal than where the player's eyes are).
+      var PUNCH_DIR_BLEND = 0.25;
 
       // Haptics are a nice-to-have confirmation buzz on hit/punch, not
       // load-bearing — swallow anything unsupported rather than let a
@@ -589,32 +685,35 @@
       // position sidesteps that: your rig can be flying across the arena
       // and a stationary hand still reads as zero velocity.
       //
-      // When edgeDetect is on (hands only, not the head), it runs a
-      // small swing state machine instead of firing the instant speed
-      // crosses `triggerSpeed`:
-      //   - speed rises above triggerSpeed -> a swing begins. Start
-      //     tracking max speed reached, total hand path length
-      //     travelled, and (via the head's own punch-tracker instance)
-      //     total head path length travelled over the same window.
-      //   - speed falls back to/below resetSpeed (or the swing runs
-      //     past MAX_SWING_MS) -> the swing is "finished." Compute the
-      //     net displacement from where the swing started to where the
-      //     hand ended up, and emit a "punch" event carrying that
-      //     direction plus the accumulated stats.
+      // When edgeDetect is on (hands only, not the head), it runs TWO
+      // independent extension-fraction state machines — one for a
+      // forward punch, one for an uppercut — instead of the old single
+      // velocity-threshold swing detector. See the big REACH CALIBRATION
+      // comment block above for the full rationale; in short: each axis
+      // tracks how far the hand has reached from an approximate torso
+      // point, as a fraction of the player's own calibrated reach along
+      // that axis, and moves through three states:
+      //   armed        - fraction below EXT_ARM_THRESHOLD (0.4). Ready.
+      //   extending    - fraction crossed 0.4; accumulating max speed,
+      //                  hand path length, head path length, same swing
+      //                  stats as before. Fires ("punch" event) the
+      //                  instant either (a) fraction crosses the FULL
+      //                  threshold (0.9 forward / 0.8 overhead — treated
+      //                  like an abrupt stop, the punch is thrown) or
+      //                  (b) the hand's (head-relative) speed drops back
+      //                  down near zero — a slower, more deliberate
+      //                  reach that stops without ever fully extending.
+      //   holdForReset - already fired; ignored until the hand comes
+      //                  back behind the arm threshold, at which point
+      //                  it re-arms. This is the whole "extend enough to
+      //                  punch, retract enough to punch again" model —
+      //                  deliberately easy to explain to a player.
       //
-      // Using the *net displacement* as the punch direction, decided
-      // only once the swing is over, is what replaced an earlier "is the
-      // hand currently moving away from the head" per-frame heuristic
-      // that had gotten increasingly hard to tune correctly for every
-      // punch shape (see git history — it went through a few rounds).
-      // punch-locomotion now separately checks that direction against
-      // where the player is looking before allowing any lunge at all,
-      // which handles the original "accidental backward punch" problem
-      // more directly: a fast cock-back followed by a forward throw
-      // nets out roughly forward (whichever phase moved farther
-      // dominates), and even if cocking back alone finishes as its own
-      // separate swing, its direction won't match the look direction and
-      // gets rejected downstream.
+      // Both hands run both axes independently and simultaneously; a
+      // diagonal swing that crosses both thresholds can fire both a
+      // punch and an uppercut event from one physical motion, which
+      // reads as (and is treated as) one bigger compound hit rather than
+      // something to specifically prevent.
       //
       // Also tracks whether the underlying WebXR controller is actually
       // connected, surfaced in punch-locomotion's debug HUD line — a
@@ -624,23 +723,22 @@
       AFRAME.registerComponent('punch-tracker', {
         schema: {
           edgeDetect: { type: 'boolean', default: false },
-          triggerSpeed: { type: 'number', default: 1.2 },
-          resetSpeed: { type: 'number', default: 0.4 },
+          // Hand (head-relative) speed at/below this counts as "the
+          // reach has stopped" while extending — the secondary trigger
+          // for a punch/uppercut that never reaches full extension. Not
+          // a trigger threshold any more (extension fraction owns that
+          // job entirely) — purely "has the motion visibly stopped."
+          stopSpeed: { type: 'number', default: 0.35 },
           // How much of the head's own current velocity to subtract from
-          // this hand's velocity before comparing against
-          // triggerSpeed/resetSpeed — 0 is the old "raw hand velocity"
-          // behavior, 1 fully filters it out. Default 1: turning your
-          // whole body while holding a hand out sweeps that hand through
-          // a wide arc in tracking space (rig-local position, which is
-          // what this component measures, doesn't rotate with you — only
-          // punch-locomotion's own translation moves it), which reads as
-          // exactly the same velocity signal as a real punch. The head
-          // sweeps through a correlated arc during a body turn but stays
-          // roughly still during a real punch, so subtracting its
-          // velocity cancels the false positive without meaningfully
-          // dulling real punches. Exposed in the menu's DEBUG tab as
-          // "Turn Filter" since this is a real behavioral tradeoff worth
-          // being able to dial back live if it ever over-corrects.
+          // this hand's velocity before comparing against stopSpeed — 0
+          // is raw hand velocity, 1 fully filters it out. Extension-
+          // fraction detection is already largely immune to body-turn
+          // false positives by construction (rotating hand and head
+          // offsets by the same angle preserves their dot product), but
+          // this still guards the *stop* check: turning your body while
+          // holding an already-extended pose shouldn't read as "stopped
+          // early" from turn-induced velocity noise. Exposed in the
+          // menu's DEBUG tab as "Turn Filter".
           headBlend: { type: 'number', default: 1.0 },
         },
 
@@ -648,21 +746,18 @@
           this.prevLocal = this.el.object3D.position.clone();
           this.velocity = new THREE.Vector3();
           this.worldPos = new THREE.Vector3();
-          this.speed = 0; // the value actually compared against triggerSpeed/resetSpeed (head-relative when edgeDetect)
-          this.rawSpeed = 0; // unblended hand speed, kept around purely for the debug HUD
+          this.speed = 0; // head-relative speed, used for the "stopped" check
+          this.rawSpeed = 0; // unblended hand speed — used for magnitude/damage, and the debug HUD
           this.hasPrev = false;
           this.connected = false;
           this._relVelocity = new THREE.Vector3();
 
           if (this.data.edgeDetect) {
             this.head = document.querySelector('#head');
-            this.swinging = false;
-            this.maxSpeed = 0;
-            this.handTravelDist = 0;
-            this.headTravelDist = 0;
-            this.swingStartPos = new THREE.Vector3();
-            this.swingStartTime = 0;
-            this.prevHeadPos = new THREE.Vector3();
+            this.torsoRef = new THREE.Vector3();
+            this.headForwardLocal = new THREE.Vector3();
+            this.fwd = this._makeAxisState();
+            this.up = this._makeAxisState();
           }
 
           var self = this;
@@ -673,11 +768,26 @@
             // pose. Without this reseed, that stale pre-connection
             // position leaks into the first tick after connecting as a
             // huge one-frame "velocity" spike, which could look like (or
-            // start) a swing that never really happened.
+            // start) an extension that never really happened.
             self.hasPrev = false;
-            if (self.data.edgeDetect) self.swinging = false;
+            if (self.data.edgeDetect) {
+              self.fwd.state = 'armed';
+              self.up.state = 'armed';
+            }
           });
           this.el.addEventListener('controllerdisconnected', function () { self.connected = false; });
+        },
+
+        _makeAxisState: function () {
+          return {
+            state: 'armed', // 'armed' | 'extending' | 'holdForReset'
+            maxSpeed: 0,
+            handDist: 0,
+            headDist: 0,
+            startTime: 0,
+            startLocalPos: new THREE.Vector3(),
+            prevHeadPos: new THREE.Vector3(),
+          };
         },
 
         tick: function (time, deltaMs) {
@@ -717,58 +827,93 @@
           // rig-relative velocity above.
           this.el.object3D.getWorldPosition(this.worldPos);
 
-          if (!this.data.edgeDetect) return;
+          if (!this.data.edgeDetect || !this.head) return;
 
-          if (!this.swinging) {
-            if (this.speed >= this.data.triggerSpeed) {
-              this.swinging = true;
-              // maxSpeed (and its later accumulation below) deliberately
-              // tracks rawSpeed, not the head-relative speed used to
-              // *detect* the swing — a punch thrown while stepping/
-              // leaning forward should still get full credit for that
-              // commitment in the magnitude formula, only the trigger/
-              // reset edge-detection needs the head-relative filter.
-              this.maxSpeed = this.rawSpeed;
-              this.handTravelDist = 0;
-              this.headTravelDist = 0;
-              this.swingStartPos.copy(localPos);
-              this.swingStartTime = time;
-              if (this.head) this.prevHeadPos.copy(this.head.object3D.position);
+          // Approximate torso/shoulder reference point and this frame's
+          // flattened (horizontal-only) forward direction, both in
+          // rig-local space to stay consistent with localPos above —
+          // local space is used throughout rather than world space
+          // specifically so this still works correctly if the rig ever
+          // gets yaw-rotated (see punch-locomotion's turn-assist hit-
+          // assist mode): a child entity's own *local* position/rotation
+          // never changes just because its parent rotates.
+          var headLocal = this.head.object3D.position;
+          this.torsoRef.set(headLocal.x, headLocal.y - TORSO_HEAD_DROP, headLocal.z);
+          this.headForwardLocal.set(0, 0, -1).applyQuaternion(this.head.object3D.quaternion);
+          this.headForwardLocal.y = 0;
+          if (this.headForwardLocal.lengthSq() > 0.0001) this.headForwardLocal.normalize();
+          else this.headForwardLocal.set(0, 0, -1);
+
+          var offsetX = localPos.x - this.torsoRef.x;
+          var offsetY = localPos.y - this.torsoRef.y;
+          var offsetZ = localPos.z - this.torsoRef.z;
+
+          var forwardExt = offsetX * this.headForwardLocal.x + offsetZ * this.headForwardLocal.z;
+          var forwardFrac = clamp(forwardExt / reachForward, 0, 1.3);
+          var overheadFrac = clamp(offsetY / reachOverhead, 0, 1.3);
+
+          this._updateAxis(this.fwd, 'forward', forwardFrac, EXT_FORWARD_FULL_THRESHOLD, localPos, time, dt);
+          this._updateAxis(this.up, 'overhead', overheadFrac, EXT_OVERHEAD_FULL_THRESHOLD, localPos, time, dt);
+        },
+
+        _updateAxis: function (st, axisName, extFrac, fullThreshold, localPos, time, dt) {
+          if (st.state === 'armed') {
+            if (extFrac >= EXT_ARM_THRESHOLD) {
+              st.state = 'extending';
+              st.maxSpeed = this.rawSpeed;
+              st.handDist = 0;
+              st.headDist = 0;
+              st.startTime = time;
+              st.startLocalPos.copy(localPos);
+              if (this.head) st.prevHeadPos.copy(this.head.object3D.position);
             }
             return;
           }
 
-          // Mid-swing: keep accumulating stats every frame regardless of
-          // instantaneous speed, right up until the swing finishes below.
-          this.maxSpeed = Math.max(this.maxSpeed, this.rawSpeed);
-          this.handTravelDist += this.velocity.length() * dt;
-          if (this.head) {
-            var headPos = this.head.object3D.position;
-            this.headTravelDist += headPos.distanceTo(this.prevHeadPos);
-            this.prevHeadPos.copy(headPos);
+          if (st.state === 'extending') {
+            // maxSpeed (and its accumulation here) deliberately tracks
+            // rawSpeed, not the head-relative speed used for the stop
+            // check below — a punch thrown while stepping/leaning in
+            // should still get full credit for that commitment in the
+            // magnitude formula.
+            st.maxSpeed = Math.max(st.maxSpeed, this.rawSpeed);
+            st.handDist += this.velocity.length() * dt;
+            if (this.head) {
+              var headPos = this.head.object3D.position;
+              st.headDist += headPos.distanceTo(st.prevHeadPos);
+              st.prevHeadPos.copy(headPos);
+            }
+
+            var fullyExtended = extFrac >= fullThreshold;
+            var stopped = this.speed <= this.data.stopSpeed;
+            var timedOut = time - st.startTime > MAX_SWING_MS;
+
+            if (!fullyExtended && !stopped && !timedOut) return;
+
+            st.state = 'holdForReset';
+
+            var displacement = new THREE.Vector3().subVectors(localPos, st.startLocalPos);
+            var dist = displacement.length();
+            var dir = dist > 0.001 ? displacement.divideScalar(dist) : null;
+            if (dir && !isFinite(dir.x)) dir = null;
+
+            this.el.emit(
+              'punch',
+              {
+                direction: dir, // may be null; punch-locomotion falls back to look direction
+                extensionAxis: axisName,
+                maxSpeed: st.maxSpeed,
+                handTravelDist: st.handDist,
+                headTravelDist: st.headDist,
+                fullyExtended: fullyExtended,
+              },
+              true
+            );
+            return;
           }
 
-          var finished = this.speed <= this.data.resetSpeed || time - this.swingStartTime > MAX_SWING_MS;
-          if (!finished) return;
-
-          this.swinging = false;
-          var displacement = new THREE.Vector3().subVectors(localPos, this.swingStartPos);
-          var dist = displacement.length();
-          if (dist <= MIN_SWING_DISPLACEMENT) return; // too small to be a real punch
-
-          var dir = displacement.divideScalar(dist);
-          if (!isFinite(dir.x)) return;
-
-          this.el.emit(
-            'punch',
-            {
-              direction: dir,
-              maxSpeed: this.maxSpeed,
-              handTravelDist: this.handTravelDist,
-              headTravelDist: this.headTravelDist,
-            },
-            true
-          );
+          // st.state === 'holdForReset'
+          if (extFrac < EXT_ARM_THRESHOLD) st.state = 'armed';
         },
       });
 
@@ -817,27 +962,33 @@
       // frame (gravity, ground collision, drag). This is the whole
       // "punch to move" mechanic.
       //
-      // A punch only produces any movement at all if its direction is
-      // within `lookConeAngle` of where the player is currently looking
-      // — this is the direct fix for accidental-backward-punch: a
-      // cock-back's net direction essentially never matches your look
-      // direction, so it's rejected before it can move you at all. There
-      // is deliberately no separate "uppercut" or "smash" special case
-      // any more — punches can send the player in *any* direction their
-      // swing+look combination points toward, including straight up if
-      // you're looking at something above you and punch that way.
+      // There's no look-cone gate any more (see onPunch's own comment for
+      // why the old one — rejecting a punch whose net displacement
+      // direction was too far from where the player was looking — is
+      // structurally unnecessary now: punch-tracker's extension-fraction
+      // trigger physically can't fire from a pure cock-back to begin
+      // with). Movement direction leans on the player's *look* direction
+      // as the primary intent signal instead, per Noah's framing that a
+      // player's real intent is "I'm looking at the thing I want to hit,"
+      // not the exact physical trajectory of their swing:
       //
-      // If a live cube is close enough (`baseLockRange`, extended a bit
-      // by how committed the swing was) and within `lockOnConeAngle` of
-      // your aim, the punch locks onto it and moves you straight toward
-      // it. Otherwise the movement direction is the punch direction
-      // blended halfway with the look direction — so punching with
-      // nothing to aim at still generally sends you where you're
-      // looking, and punching *something* off to the side still nudges
-      // your look direction into it rather than just teleporting your
-      // aim onto a target you only grazed.
+      // If a live cube is within `lockOnConeAngle` of your aim and close
+      // enough (`baseLockRange`, extended a bit by how committed the
+      // swing was — or the "recently looked at" memory if your head has
+      // since turned away, see updateRecentLookTarget), the punch locks
+      // onto it and moves you straight toward it, with the target's
+      // distance capping how big that lunge can be. Sticky hit-assist
+      // (menu, AIM tab) then decides what happens to the locked target
+      // itself — 'off' leaves it to plain physical proximity
+      // (punch-game.checkHand), 'cheat' guarantees the hit lands the
+      // instant the punch fires regardless of physical accuracy, 'turn'
+      // does the same plus a small one-shot view snap toward the target.
+      // Otherwise (no lock) the movement direction is mostly look
+      // direction, lightly nudged by the swing's own net displacement
+      // (PUNCH_DIR_BLEND) — so punching with nothing to aim at still
+      // generally sends you where you're looking.
       //
-      // Impulse magnitude comes from three swing stats togther — how
+      // Impulse magnitude comes from three swing stats together — how
       // fast the hand was moving at its peak, how far the hand
       // travelled, and how far the head travelled over the same window
       // (rewarding leaning/stepping into a punch, not just flicking the
@@ -850,9 +1001,11 @@
           speedFactor: { type: 'number', default: 1.1 },
           handDistFactor: { type: 'number', default: 4.5 },
           headDistFactor: { type: 'number', default: 6.0 },
-          lookConeAngle: { type: 'number', default: 100 }, // degrees
-          lockOnConeAngle: { type: 'number', default: 25 }, // degrees
-          baseLockRange: { type: 'number', default: 1.5 }, // meters
+          // Widened from 25/1.5 — the whole point of the reach-based
+          // redesign is "if I'm even sorta close to the right direction
+          // my attack should hit," so lock-on should trigger liberally.
+          lockOnConeAngle: { type: 'number', default: 40 }, // degrees
+          baseLockRange: { type: 'number', default: 2.0 }, // meters
           lockRangeFactor: { type: 'number', default: 0.15 },
           maxSpeed: { type: 'number', default: 14 },
           gravity: { type: 'number', default: 5.5 },
@@ -879,81 +1032,122 @@
           this.finalDir = new THREE.Vector3();
           this.lastStats = null;
 
+          // "Recently looked at" target memory — see the RECENT_LOOK_*
+          // constants' comment. Refreshed every tick (not gated on
+          // menuOpen the way movement is, so it stays current the
+          // instant the menu closes) whenever a live cube is currently
+          // within a generous glance cone/range of the player's look
+          // direction.
+          this.recentLookTarget = null;
+          this.recentLookTime = 0;
+
+          // Reach calibration state — see startCalibration/updateCalibration.
+          this.calibrating = false;
+          this.calibPhase = 0;
+          this.calibMaxForward = 0;
+          this.calibMaxOverhead = 0;
+          this.calibPhaseEndTime = 0;
+
           this.onPunch = this.onPunch.bind(this);
           this.el.addEventListener('punch', this.onPunch);
         },
 
+        // No more hard look-cone gate ("BLOCKED") — the old one existed
+        // to reject a cock-back's net displacement direction, but that
+        // whole failure mode is now structurally impossible: a pure
+        // retraction never crosses the extension threshold to begin
+        // with (see punch-tracker), since armed->extending requires
+        // *starting* below the threshold and moving up past it. With
+        // that gone, movement direction leans heavily on look direction
+        // (finalDir below, or the locked target's actual position),
+        // only lightly nudged by the swing's own displacement — "look
+        // at the thing you want to punch" is now the primary intent
+        // signal, not the swing's exact trajectory.
         onPunch: function (evt) {
-          if (menuOpen) return; // punching is disabled while the menu is open
+          if (menuOpen || this.calibrating) return;
 
-          var punchDir = evt.detail.direction;
+          var punchDir = evt.detail.direction; // may be null (see punch-tracker)
           var maxSpeed = evt.detail.maxSpeed;
           var handDist = evt.detail.handTravelDist;
           var headDist = evt.detail.headTravelDist || 0;
+          var axis = evt.detail.extensionAxis;
+          var fullyExtended = evt.detail.fullyExtended;
 
           getForwardDirection(this.head, this.lookDir);
-          var angleToLook = punchDir.angleTo(this.lookDir);
-          var lookConeRad = degToRad(this.data.lookConeAngle);
-
-          this.lastStats = {
-            maxSpeed: maxSpeed,
-            handDist: handDist,
-            headDist: headDist,
-            angleDeg: (angleToLook * 180) / Math.PI,
-            lookConeDeg: this.data.lookConeAngle,
-            magnitude: 0,
-            appliedMagnitude: 0,
-            capped: false,
-            distToTarget: 0,
-            locked: false,
-            outcome: 'BLOCKED',
-          };
-
-          if (angleToLook > lookConeRad) {
-            // Punch didn't land anywhere near where you're looking —
-            // pop cubes it physically connects with (unaffected, see
-            // punch-game's own proximity+force check) but no lunge. The
-            // label spells out the actual angle vs. the current cone so
-            // this is readable in-headset without opening the stats HUD
-            // — the direct answer to "why did that just say BLOCKED".
-            this.updateStatsHud();
-            this.showLabel('BLOCKED ' + Math.round(this.lastStats.angleDeg) + 'deg / ' + this.data.lookConeAngle + 'deg cone');
-            return;
-          }
+          this.head.object3D.getWorldPosition(this.headWorldPos);
 
           var magnitude = this.computeMagnitude(maxSpeed, handDist, headDist);
 
-          this.head.object3D.getWorldPosition(this.headWorldPos);
+          // Targeting, in priority order: (1) whatever's currently
+          // dead-ahead within a generous cone/range, (2) the "recently
+          // looked at" memory, for when the head has since turned away
+          // mid-swing (common, especially winding up) even though the
+          // player's intent didn't change, (3) nothing — blended-
+          // direction lunge with no lock.
           var lockRange = this.data.baseLockRange + magnitude * this.data.lockRangeFactor;
           var lockConeRad = degToRad(this.data.lockOnConeAngle);
           var target = findLockOnTarget(this.headWorldPos, this.lookDir, lockRange, lockConeRad);
+          var usedMemory = false;
 
-          // Lock-on lunges are capped by how far away the target actually
-          // is: (distance * LOCK_DISTANCE_FACTOR + LOCK_MIN_MAGNITUDE).
-          // Without this, finishing off a cube you're already standing
-          // next to applies the SAME full magnitude as a lunge from
-          // across the room, flinging the player past/through it instead
-          // of landing a controlled close-range hit — the direct fix for
-          // "the game moves me around unexpectedly" while punching
-          // something at point-blank range repeatedly.
+          if (!target && this.recentLookTarget) {
+            var recentComp = this.recentLookTarget.components['punch-target'];
+            var recentFresh = recentComp && !recentComp.popped && Date.now() - this.recentLookTime < RECENT_LOOK_MEMORY_MS;
+            if (recentFresh) {
+              var memPos = new THREE.Vector3();
+              this.recentLookTarget.object3D.getWorldPosition(memPos);
+              if (memPos.distanceTo(this.headWorldPos) <= lockRange * RECENT_LOOK_RANGE_SLACK) {
+                target = this.recentLookTarget;
+                usedMemory = true;
+              }
+            }
+          }
+
+          // Lock-on lunges are capped by how far away the target
+          // actually is: (distance * LOCK_DISTANCE_FACTOR +
+          // LOCK_MIN_MAGNITUDE). Without this, finishing off a cube
+          // you're already standing next to applies the SAME full
+          // magnitude as a lunge from across the room, flinging the
+          // player past/through it instead of landing a controlled
+          // close-range hit.
           var appliedMagnitude = magnitude;
+          var distToTarget = 0;
+          var hitAssisted = false;
 
           if (target) {
             var targetPos = new THREE.Vector3();
             target.object3D.getWorldPosition(targetPos);
             this.finalDir.subVectors(targetPos, this.headWorldPos);
-            var distToTarget = this.finalDir.length();
+            distToTarget = this.finalDir.length();
             this.finalDir.normalize();
-            this.lastStats.locked = true;
-            this.lastStats.distToTarget = distToTarget;
 
             var cappedMagnitude = distToTarget * LOCK_DISTANCE_FACTOR + LOCK_MIN_MAGNITUDE;
-            if (cappedMagnitude < appliedMagnitude) {
-              appliedMagnitude = cappedMagnitude;
-              this.lastStats.capped = true;
+            if (cappedMagnitude < appliedMagnitude) appliedMagnitude = cappedMagnitude;
+
+            // Sticky hit-assist: guarantee this locked target actually
+            // takes the hit the instant the punch fires, regardless of
+            // whether the fist's real physical path would have reached
+            // it — the direct answer to "I punch towards an enemy and
+            // fly past it, missing entirely." 'turn' additionally snaps
+            // the view a little toward the target so the miss doesn't
+            // look like one; see hitAssistMode's top-of-file comment.
+            if (hitAssistMode !== 'off') {
+              var targetComp = target.components['punch-target'];
+              if (targetComp && !targetComp.popped) {
+                targetComp.hit(this.finalDir.clone(), magnitude, this.headWorldPos.clone());
+                hitAssisted = true;
+                if (hitAssistMode === 'turn') this.nudgeYawToward(target);
+              }
             }
           } else {
-            this.finalDir.addVectors(punchDir, this.lookDir).normalize();
+            // No lock: mostly look direction, only lightly nudged by
+            // the swing's own net displacement (or straight look
+            // direction if punch-tracker couldn't compute one).
+            var swingDir = punchDir || this.lookDir;
+            this.finalDir
+              .copy(this.lookDir)
+              .multiplyScalar(1 - PUNCH_DIR_BLEND)
+              .addScaledVector(swingDir, PUNCH_DIR_BLEND)
+              .normalize();
           }
 
           this.velocity.x += this.finalDir.x * appliedMagnitude;
@@ -965,12 +1159,27 @@
             this.velocity.multiplyScalar(this.data.maxSpeed / totalSpeed);
           }
 
-          this.lastStats.magnitude = magnitude;
-          this.lastStats.appliedMagnitude = appliedMagnitude;
-          this.lastStats.outcome = target ? 'LOCK-ON!' : 'PUNCH!';
+          var outcome = axis === 'overhead' ? 'UPPERCUT!' : 'PUNCH!';
+          if (target) outcome = (axis === 'overhead' ? 'UPPERCUT ' : '') + 'LOCK-ON!' + (usedMemory ? ' (recall)' : '');
+
+          this.lastStats = {
+            axis: axis,
+            fullyExtended: fullyExtended,
+            maxSpeed: maxSpeed,
+            handDist: handDist,
+            headDist: headDist,
+            magnitude: magnitude,
+            appliedMagnitude: appliedMagnitude,
+            capped: appliedMagnitude < magnitude,
+            distToTarget: distToTarget,
+            locked: !!target,
+            usedMemory: usedMemory,
+            hitAssisted: hitAssisted,
+            outcome: outcome,
+          };
           this.updateStatsHud();
-          this.showLabel(this.lastStats.outcome + (this.lastStats.capped ? ' (close)' : ''));
-          pulseHaptics(evt.target, target ? 0.8 : 0.5, 60);
+          this.showLabel(outcome + (this.lastStats.capped ? ' (close)' : ''));
+          pulseHaptics(evt.target, target ? 0.9 : 0.5, target ? 80 : 60);
         },
 
         // Same formula used for both "how far does this punch lunge the
@@ -989,7 +1198,15 @@
 
         tick: function (time, deltaMs) {
           if (!deltaMs) return;
+
+          if (this.calibrating) {
+            this.updateCalibration();
+            return; // frozen during calibration, same as while the menu is open
+          }
           if (menuOpen) return; // freeze in place while the menu is open
+
+          this.updateRecentLookTarget();
+
           var dt = Math.min(deltaMs / 1000, 0.05); // guard against huge steps (tab switch, etc.)
           var pos = this.el.object3D.position;
 
@@ -1040,55 +1257,185 @@
           if (liveDebugOn) this.updateLiveDebugHud();
         },
 
+        // Refreshes the "recently looked at" memory whenever a live
+        // cube is currently within a generous glance cone/range of the
+        // player's look direction — deliberately the same cone/range
+        // lock-on itself uses, since "close enough to lock onto" and
+        // "close enough to remember glancing at" are the same bar.
+        updateRecentLookTarget: function () {
+          getForwardDirection(this.head, this.lookDir);
+          this.head.object3D.getWorldPosition(this.headWorldPos);
+          var glanceRange = this.data.baseLockRange + 3;
+          var glanceConeRad = degToRad(this.data.lockOnConeAngle);
+          var glanced = findLockOnTarget(this.headWorldPos, this.lookDir, glanceRange, glanceConeRad);
+          if (glanced) {
+            this.recentLookTarget = glanced;
+            this.recentLookTime = Date.now();
+          }
+        },
+
+        // Rotates the rig by angleRad around the world Y axis, pivoting
+        // on the given world point (the head's current position) rather
+        // than the rig's own translation origin — so it reads as "you
+        // turned in place" instead of swinging your whole body through
+        // an arc around wherever the rig's origin happens to sit (which,
+        // for a room-scale player who's walked around, may not be
+        // anywhere near them).
+        applyYawAroundPoint: function (angleRad, pivotWorldPos) {
+          var rigPos = this.el.object3D.position;
+          var dx = rigPos.x - pivotWorldPos.x;
+          var dz = rigPos.z - pivotWorldPos.z;
+          var cos = Math.cos(angleRad);
+          var sin = Math.sin(angleRad);
+          rigPos.x = pivotWorldPos.x + (dx * cos - dz * sin);
+          rigPos.z = pivotWorldPos.z + (dx * sin + dz * cos);
+          this.el.object3D.rotation.y += angleRad;
+        },
+
+        // 'turn' hit-assist: snaps the view a little toward the locked
+        // target so a guaranteed hit also *looks* landed. Applied as an
+        // instant one-shot rotation, not an animated turn — smooth/
+        // animated camera rotation is well known to be a worse motion-
+        // sickness offender in VR than an instant snap (the same reason
+        // "snap turn" is usually the comfort-preferred way to turn via
+        // locomotion), and the whole point of offering this as an
+        // alternative to 'cheat' is to be the more comfortable option.
+        nudgeYawToward: function (targetEl) {
+          var targetPos = new THREE.Vector3();
+          targetEl.object3D.getWorldPosition(targetPos);
+          var headPos = new THREE.Vector3();
+          this.head.object3D.getWorldPosition(headPos);
+
+          var toTarget = new THREE.Vector3(targetPos.x - headPos.x, 0, targetPos.z - headPos.z);
+          if (toTarget.lengthSq() < 0.0001) return;
+          toTarget.normalize();
+
+          var lookFlat = new THREE.Vector3();
+          getForwardDirection(this.head, lookFlat);
+          lookFlat.y = 0;
+          if (lookFlat.lengthSq() < 0.0001) return;
+          lookFlat.normalize();
+
+          var angle = Math.atan2(
+            lookFlat.x * toTarget.z - lookFlat.z * toTarget.x,
+            lookFlat.x * toTarget.x + lookFlat.z * toTarget.z
+          );
+          var maxAngle = degToRad(TURN_ASSIST_MAX_DEGREES);
+          angle = clamp(angle, -maxAngle, maxAngle);
+          this.applyYawAroundPoint(angle, headPos);
+        },
+
+        // Kicks off the two-phase reach calibration (menu, REACH tab).
+        // Punching and rig physics are frozen for its duration (tick()
+        // early-returns into updateCalibration instead), and the menu
+        // is expected to already be closed by the caller so the player
+        // can freely see the prompt and move their arms.
+        startCalibration: function () {
+          this.calibrating = true;
+          this.calibPhase = 0;
+          this.calibMaxForward = 0;
+          this.calibMaxOverhead = 0;
+          this.calibPhaseEndTime = Date.now() + CALIBRATION_PHASE_MS;
+          this.showLabel('Reach FORWARD with both arms!', CALIBRATION_PHASE_MS);
+        },
+
+        // Samples both hands' offset from an approximate torso reference
+        // point every frame during calibration, taking the max forward
+        // (phase 0) or vertical (phase 1) component seen from *either*
+        // hand — same torsoRef/forward-direction math as punch-tracker's
+        // live extension-fraction calculation, just computing the raw
+        // calibration numbers rather than a fraction of them.
+        updateCalibration: function () {
+          if (!this._calibTorsoRef) {
+            this._calibTorsoRef = new THREE.Vector3();
+            this._calibForward = new THREE.Vector3();
+          }
+          var headLocal = this.head.object3D.position;
+          this._calibTorsoRef.set(headLocal.x, headLocal.y - TORSO_HEAD_DROP, headLocal.z);
+          this._calibForward.set(0, 0, -1).applyQuaternion(this.head.object3D.quaternion);
+          this._calibForward.y = 0;
+          if (this._calibForward.lengthSq() > 0.0001) this._calibForward.normalize();
+          else this._calibForward.set(0, 0, -1);
+
+          var hands = [this.leftHand, this.rightHand];
+          for (var i = 0; i < hands.length; i++) {
+            var handEl = hands[i];
+            if (!handEl) continue;
+            var handLocal = handEl.object3D.position;
+            var offsetX = handLocal.x - this._calibTorsoRef.x;
+            var offsetY = handLocal.y - this._calibTorsoRef.y;
+            var offsetZ = handLocal.z - this._calibTorsoRef.z;
+            if (this.calibPhase === 0) {
+              var fwd = offsetX * this._calibForward.x + offsetZ * this._calibForward.z;
+              if (fwd > this.calibMaxForward) this.calibMaxForward = fwd;
+            } else if (offsetY > this.calibMaxOverhead) {
+              this.calibMaxOverhead = offsetY;
+            }
+          }
+
+          if (Date.now() < this.calibPhaseEndTime) return;
+
+          if (this.calibPhase === 0) {
+            this.calibPhase = 1;
+            this.calibPhaseEndTime = Date.now() + CALIBRATION_PHASE_MS;
+            this.showLabel('Now reach OVERHEAD with both arms!', CALIBRATION_PHASE_MS);
+          } else {
+            reachForward = clamp(this.calibMaxForward, REACH_MIN, REACH_MAX);
+            reachOverhead = clamp(this.calibMaxOverhead, REACH_MIN, REACH_MAX);
+            this.calibrating = false;
+            this.showLabel('Calibrated! ' + reachForward.toFixed(2) + 'm / ' + reachOverhead.toFixed(2) + 'm', 2000);
+          }
+        },
+
         updateStatsHud: function () {
           if (!this.statsText || !this.lastStats) return;
           var s = this.lastStats;
           this.statsText.setAttribute(
             'value',
-            'MaxSpd ' + s.maxSpeed.toFixed(1) + '  HandDist ' + s.handDist.toFixed(2) + '  HeadDist ' + s.headDist.toFixed(2) +
+            (s.axis === 'overhead' ? 'UPPERCUT' : 'PUNCH') + (s.fullyExtended ? ' full-ext' : ' stopped') +
+              '\nMaxSpd ' + s.maxSpeed.toFixed(1) + '  HandDist ' + s.handDist.toFixed(2) + '  HeadDist ' + s.headDist.toFixed(2) +
               '\nMag ' + s.magnitude.toFixed(1) + (s.capped ? ' -> ' + s.appliedMagnitude.toFixed(1) + ' (capped)' : '') +
-              '  Angle ' + s.angleDeg.toFixed(0) + 'deg/' + s.lookConeDeg + 'deg' +
-              '\n' + s.outcome + (s.locked ? '  dist ' + s.distToTarget.toFixed(2) + 'm' : '')
+              '\n' + s.outcome + (s.locked ? '  dist ' + s.distToTarget.toFixed(2) + 'm' : '') + (s.hitAssisted ? '  [assist]' : '')
           );
         },
 
         // Continuously-updating (not post-punch-snapshot) view of the
-        // handful of raw numbers punch-tracker's swing state machine
+        // handful of raw numbers punch-tracker's extension state machine
         // actually reads every frame — both hands' raw vs. head-relative
-        // speed and current swing state, plus the live trigger/reset
-        // thresholds and turn filter. This is deliberately everything
-        // the detection logic uses to decide "is this a punch" in one
-        // place, so a confusing moment in-headset (a phantom lunge, an
-        // unexpected BLOCKED) can be read directly off this HUD — or
+        // speed and current forward/overhead axis state, the live stop-
+        // speed/turn-filter thresholds, and the calibrated reach values.
+        // This is deliberately everything the detection logic uses to
+        // decide "is this a punch" in one place, so a confusing moment
+        // in-headset can be read directly off this HUD — or
         // screenshotted — instead of guessed at from outside the headset.
         updateLiveDebugHud: function () {
           if (!this.liveDebugText) return;
           var lt = this.leftHand && this.leftHand.components['punch-tracker'];
           var rt = this.rightHand && this.rightHand.components['punch-tracker'];
-          var ht = this.head && this.head.components['punch-tracker'];
 
+          function stateChar(s) { return s === 'armed' ? 'A' : s === 'extending' ? 'E' : 'H'; }
           function handLine(label, t) {
-            if (!t) return label + ' --';
+            if (!t || !t.fwd) return label + ' --';
             return (
               label +
               ' raw ' + t.rawSpeed.toFixed(2) +
               ' rel ' + t.speed.toFixed(2) +
-              ' ' + (t.swinging ? '[SWING]' : '[idle]')
+              ' F:' + stateChar(t.fwd.state) + ' U:' + stateChar(t.up.state)
             );
           }
 
           var lines = [
             handLine('L', lt),
             handLine('R', rt),
-            'trig ' + (lt ? lt.data.triggerSpeed.toFixed(2) : '-') +
-              ' rst ' + (lt ? lt.data.resetSpeed.toFixed(2) : '-') +
-              ' turn ' + (lt ? Math.round(lt.data.headBlend * 100) : '-') + '%',
-            'head spd ' + (ht ? ht.speed.toFixed(2) : '-') + '  rig vel ' + this.velocity.length().toFixed(2),
+            'stop ' + (lt ? lt.data.stopSpeed.toFixed(2) : '-') +
+              ' turn ' + (lt ? Math.round(lt.data.headBlend * 100) : '-') + '%' +
+              ' reach ' + reachForward.toFixed(2) + '/' + reachOverhead.toFixed(2) + 'm',
+            'assist ' + hitAssistMode + '  rig vel ' + this.velocity.length().toFixed(2),
           ];
           this.liveDebugText.setAttribute('value', lines.join('\n'));
         },
 
-        showLabel: function (label) {
+        showLabel: function (label, durationMs) {
           if (!this.labelText) return;
           this.labelText.setAttribute('value', label);
           this.labelText.setAttribute('visible', true);
@@ -1096,11 +1443,12 @@
           var el = this.labelText;
           this.labelTimeout = setTimeout(function () {
             el.setAttribute('visible', false);
-          }, 500);
+          }, durationMs || 500);
         },
 
         resetPosition: function () {
           this.el.object3D.position.set(0, 0, 0);
+          this.el.object3D.rotation.y = 0; // undo any accumulated 'turn' hit-assist yaw
           this.velocity.set(0, 0, 0);
           this.grounded = true;
         },
@@ -1870,21 +2218,20 @@
           if (!tracker || !tracker.hasPrev || tracker.speed < this.data.popForceSpeed) return;
 
           // Same magnitude formula that decides how far a punch lunges
-          // the player (computeMagnitude), fed with this hand's *current*
-          // swing-in-progress stats rather than waiting for the swing to
-          // finish — contact happens mid-swing, well before punch-tracker
-          // would otherwise emit its "punch" event. Uses rawSpeed (not
-          // the head-relative tracker.speed used for the gate above) so
+          // the player (computeMagnitude), but deliberately fed zero
+          // hand/head travel distance — per Noah's explicit note, this
+          // ambient/incidental contact path (any fist-near-enemy-while-
+          // moving-fast-enough touch, whether or not it's part of a
+          // deliberate punch/uppercut) should do plain velocity-based
+          // damage only, never the "lunging" distance bonus a *deliberate*
+          // triggered punch/uppercut gets (that bonus is applied
+          // separately, in punch-locomotion.onPunch, using the full
+          // completed swing's accumulated stats). Uses rawSpeed (not the
+          // head-relative tracker.speed used for the gate above) so
           // damage still reflects true physical force once a hit is
-          // confirmed real — stepping/leaning into a hit should still hit
-          // harder, only the "is this actually a punch" gate needs the
-          // turn-filtered value. If the hand hasn't actually crossed into
-          // a tracked swing yet (a graze below triggerSpeed but still
-          // above popForceSpeed), hand/head distance default to 0 rather
-          // than reusing stale numbers left over from a previous,
-          // unrelated swing.
-          var handDist = tracker.swinging ? tracker.handTravelDist : 0;
-          var headDist = tracker.swinging ? tracker.headTravelDist : 0;
+          // confirmed real.
+          var handDist = 0;
+          var headDist = 0;
           // Looked up fresh here rather than cached in init() — a real
           // bug found via testing: punch-game's init() can run before
           // punch-locomotion's own init() has attached to #rig (a
@@ -1994,7 +2341,15 @@
 
         function makeSmallButton(x, glyph, onClick) {
           var btn = document.createElement('a-entity');
-          btn.setAttribute('geometry', { primitive: 'plane', width: 0.22, height: 0.18 });
+          // Enlarged from an earlier 0.22x0.18 — playtesting found the
+          // small adjust buttons much harder to reliably trigger-click
+          // than the big menu buttons, which (once the cursor's click
+          // binding was fixed to real triggerdown/up events, see the
+          // hand entities' cursor config) points at natural hand tremor
+          // during a trigger pull nudging the raycast off a small target
+          // between press and release — a bigger target directly
+          // compensates for that regardless of the click-binding fix.
+          btn.setAttribute('geometry', { primitive: 'plane', width: 0.34, height: 0.26 });
           btn.setAttribute('material', { color: '#3a4468', shader: 'flat' });
           btn.setAttribute('position', { x: x, y: y, z: 0.01 });
           btn.classList.add('menu-target');
@@ -2097,11 +2452,12 @@
             { id: 'punch', label: 'PUNCH' },
             { id: 'foes', label: 'FOES' },
             { id: 'aim', label: 'AIM' },
+            { id: 'reach', label: 'REACH' },
             { id: 'splat', label: 'SPLAT' },
             { id: 'debug', label: 'DEBUG' },
             { id: 'more', label: 'MORE' },
           ],
-          2.0,
+          2.5,
           0.86
         );
 
@@ -2157,25 +2513,17 @@
           refreshFns
         );
 
-        // Tuning for the look-gated / lock-on punch targeting: how wide
-        // a cone around your look direction still counts as "aimed
-        // roughly where you're looking" (the whole fix for accidental
-        // backward punches), how tight a cone counts as "aimed enough at
-        // a specific enemy" to lock onto it, and the base search radius
-        // for that lock-on (which also scales up a bit with how
-        // committed the swing was — see punch-locomotion's onPunch).
+        // Lock-on targeting tuning: how tight a cone counts as "aimed
+        // enough at a specific enemy" to lock onto it, the base search
+        // radius for that lock-on (which also scales up a bit with how
+        // committed the swing was — see punch-locomotion's onPunch), and
+        // the sticky hit-assist mode that decides what happens once a
+        // target IS locked (see hitAssistMode's top-of-file comment for
+        // what each option actually does).
         var aimTab = panel.getContent('aim');
         makeAdjustRow(
           aimTab,
           0.5,
-          function () { return 'Look Cone: ' + api.getLookCone().toFixed(0) + 'deg'; },
-          function () { api.setLookCone(api.getLookCone() - 5); },
-          function () { api.setLookCone(api.getLookCone() + 5); },
-          refreshFns
-        );
-        makeAdjustRow(
-          aimTab,
-          0.22,
           function () { return 'Lock-On Cone: ' + api.getLockCone().toFixed(0) + 'deg'; },
           function () { api.setLockCone(api.getLockCone() - 5); },
           function () { api.setLockCone(api.getLockCone() + 5); },
@@ -2183,10 +2531,54 @@
         );
         makeAdjustRow(
           aimTab,
-          -0.06,
+          0.22,
           function () { return 'Lock Range: ' + api.getLockRange().toFixed(2) + 'm'; },
           function () { api.setLockRange(api.getLockRange() - 0.25); },
           function () { api.setLockRange(api.getLockRange() + 0.25); },
+          refreshFns
+        );
+        makeMenuButton(
+          aimTab,
+          -0.1,
+          function () { return 'Hit Assist: ' + api.getHitAssist(); },
+          api.cycleHitAssist,
+          refreshFns
+        );
+
+        // Reach calibration + the extension-fraction thresholds that
+        // replaced the old velocity-threshold swing detector — see the
+        // REACH CALIBRATION comment block near the top of this file for
+        // the full rationale.
+        var reachTab = panel.getContent('reach');
+        makeMenuButton(
+          reachTab,
+          0.5,
+          function () { return 'Calibrate Reach'; },
+          api.calibrateReach,
+          refreshFns
+        );
+        makeAdjustRow(
+          reachTab,
+          0.2,
+          function () { return 'Reach Fwd: ' + api.getReachForward().toFixed(2) + 'm'; },
+          function () { api.setReachForward(api.getReachForward() - 0.05); },
+          function () { api.setReachForward(api.getReachForward() + 0.05); },
+          refreshFns
+        );
+        makeAdjustRow(
+          reachTab,
+          -0.1,
+          function () { return 'Reach Up: ' + api.getReachOverhead().toFixed(2) + 'm'; },
+          function () { api.setReachOverhead(api.getReachOverhead() - 0.05); },
+          function () { api.setReachOverhead(api.getReachOverhead() + 0.05); },
+          refreshFns
+        );
+        makeAdjustRow(
+          reachTab,
+          -0.4,
+          function () { return 'Arm Threshold: ' + Math.round(api.getArmThreshold() * 100) + '%'; },
+          function () { api.setArmThreshold(api.getArmThreshold() - 0.05); },
+          function () { api.setArmThreshold(api.getArmThreshold() + 0.05); },
           refreshFns
         );
 
@@ -2232,13 +2624,13 @@
           refreshFns
         );
 
-        // Punch-detection transparency + tuning: the actual thresholds
-        // punch-tracker's swing state machine reads every frame, plus
-        // the head-relative "Turn Filter" that stops a physical body
-        // rotation from reading as a phantom punch (see punch-tracker's
-        // headBlend schema comment), plus a toggle for a continuously-
-        // live readout of the underlying numbers (raw/relative hand
-        // speed, swing state) rather than just a post-punch snapshot.
+        // Punch-detection transparency + tuning: the stop-speed
+        // threshold punch-tracker's extension state machine reads every
+        // frame (see stopSpeed's schema comment), the head-relative
+        // "Turn Filter" that guards that stop check against body-turn
+        // velocity noise, and a toggle for a continuously-live readout
+        // of the underlying numbers rather than just a post-punch
+        // snapshot.
         var debugTab = panel.getContent('debug');
         makeMenuButton(
           debugTab,
@@ -2250,22 +2642,14 @@
         makeAdjustRow(
           debugTab,
           0.2,
-          function () { return 'Trigger Spd: ' + api.getTriggerSpeed().toFixed(2); },
-          function () { api.setTriggerSpeed(api.getTriggerSpeed() - 0.1); },
-          function () { api.setTriggerSpeed(api.getTriggerSpeed() + 0.1); },
+          function () { return 'Stop Spd: ' + api.getStopSpeed().toFixed(2); },
+          function () { api.setStopSpeed(api.getStopSpeed() - 0.05); },
+          function () { api.setStopSpeed(api.getStopSpeed() + 0.05); },
           refreshFns
         );
         makeAdjustRow(
           debugTab,
           -0.1,
-          function () { return 'Reset Spd: ' + api.getResetSpeed().toFixed(2); },
-          function () { api.setResetSpeed(api.getResetSpeed() - 0.05); },
-          function () { api.setResetSpeed(api.getResetSpeed() + 0.05); },
-          refreshFns
-        );
-        makeAdjustRow(
-          debugTab,
-          -0.4,
           function () { return 'Turn Filter: ' + Math.round(api.getTurnFilter() * 100) + '%'; },
           function () { api.setTurnFilter(api.getTurnFilter() - 0.1); },
           function () { api.setTurnFilter(api.getTurnFilter() + 0.1); },
@@ -2295,7 +2679,7 @@
       // menu panel.
       function buildWorldMenu(panelEl, api) {
         var bg = document.createElement('a-plane');
-        bg.setAttribute('width', 2.1);
+        bg.setAttribute('width', 2.6);
         bg.setAttribute('height', 1.9);
         bg.setAttribute('material', 'color: #0d1526; opacity: 0.95; shader: flat; side: double');
         panelEl.appendChild(bg);
@@ -2360,26 +2744,49 @@
           this.isOpen = false;
           this.laserHand = null;
 
+          // The always-on debug line, the punch-result label, and the
+          // opt-in stats/live-debug HUDs all sit fixed in front of the
+          // camera — with the world-fixed menu panel spawning nearby,
+          // they visually compete with (and can occlude/clutter) menu
+          // buttons. Hidden while the menu is open; restored to
+          // whatever they were showing (which may itself be "hidden",
+          // for the opt-in ones) on close.
+          this.overlayEls = [
+            document.querySelector('#hud-text'),
+            document.querySelector('#debug-text'),
+            document.querySelector('#stats-text'),
+            document.querySelector('#live-debug-text'),
+            document.querySelector('#punch-label'),
+          ];
+
           var api = this.buildApi();
           buildWorldMenu(this.panel, api);
 
-          this.onLeftGrip = this.onGrip.bind(this, 'left');
-          this.onRightGrip = this.onGrip.bind(this, 'right');
-          this.leftHand.addEventListener('gripdown', this.onLeftGrip);
-          this.rightHand.addEventListener('gripdown', this.onRightGrip);
+          // Face buttons open/close the menu — grip used to, but got
+          // pressed by accident too often during normal punching/
+          // clenching. Bound on both hands' A/B (right) and X/Y (left)
+          // buttons so either hand can toggle it, same as grip did.
+          this.onMenuButton = this.onMenuButton.bind(this);
+          this.leftHand.addEventListener('xbuttondown', this.onMenuButton);
+          this.leftHand.addEventListener('ybuttondown', this.onMenuButton);
+          this.rightHand.addEventListener('abuttondown', this.onMenuButton);
+          this.rightHand.addEventListener('bbuttondown', this.onMenuButton);
 
-          // Desktop/phone has no grip button, so the overlay's "Menu"
-          // button toggles it instead, using the gaze reticle (widened
-          // below) as its pointer.
+          // Desktop/phone has no controller buttons, so the overlay's
+          // "Menu" button toggles it instead, using the gaze reticle
+          // (widened below) as its pointer.
           this.toggleDesktop = this.toggleDesktop.bind(this);
           document.querySelector('#menu-button-html').addEventListener('click', this.toggleDesktop);
         },
 
-        onGrip: function (hand) {
+        onMenuButton: function (evt) {
           if (this.isOpen) {
             this.close();
           } else {
-            this.open(hand === 'left' ? this.rightHand : this.leftHand);
+            // Whichever hand's face button was pressed keeps punching;
+            // the other hand gets the laser pointer.
+            var pressedHand = evt.target;
+            this.open(pressedHand === this.leftHand ? this.rightHand : this.leftHand);
           }
         },
 
@@ -2398,6 +2805,9 @@
           this.panel.setAttribute('visible', true);
           if (this.laserHand) this.setLaser(this.laserHand, true);
           if (this.cursorEl) this.cursorEl.setAttribute('raycaster', 'objects', '.cube-target, .menu-target');
+          for (var i = 0; i < this.overlayEls.length; i++) {
+            if (this.overlayEls[i]) this.overlayEls[i].setAttribute('visible', false);
+          }
         },
 
         close: function () {
@@ -2408,6 +2818,18 @@
           if (this.laserHand) this.setLaser(this.laserHand, false);
           this.laserHand = null;
           if (this.cursorEl) this.cursorEl.setAttribute('raycaster', 'objects', '.cube-target');
+
+          // hud-text and debug-text are always-on; punch-label re-shows
+          // itself on the next punch regardless. stats-text/live-debug-
+          // text are opt-in (Show Stats / Live Debug HUD) — only restore
+          // those if their toggle is actually on, so closing the menu
+          // doesn't un-hide a HUD the player had deliberately turned off.
+          var statsText = document.querySelector('#stats-text');
+          var liveDebugText = document.querySelector('#live-debug-text');
+          if (document.querySelector('#hud-text')) document.querySelector('#hud-text').setAttribute('visible', true);
+          if (document.querySelector('#debug-text')) document.querySelector('#debug-text').setAttribute('visible', true);
+          if (statsText) statsText.setAttribute('visible', showStatsOn);
+          if (liveDebugText) liveDebugText.setAttribute('visible', liveDebugOn);
         },
 
         // Spawns the panel roughly at eye height, MENU_SPAWN_DISTANCE in
@@ -2457,11 +2879,6 @@
             setMaxSpeed: function (v) {
               v = clamp(Math.round(v), 3, 30);
               self.rig.setAttribute('punch-locomotion', 'maxSpeed', v);
-            },
-            getLookCone: function () { return self.rig.getAttribute('punch-locomotion').lookConeAngle; },
-            setLookCone: function (v) {
-              v = clamp(Math.round(v), 20, 150);
-              self.rig.setAttribute('punch-locomotion', 'lookConeAngle', v);
             },
             getLockCone: function () { return self.rig.getAttribute('punch-locomotion').lockOnConeAngle; },
             setLockCone: function (v) {
@@ -2515,22 +2932,16 @@
             getTrailEnabled: function () { return cubeTrailEnabled; },
             toggleTrail: function () { cubeTrailEnabled = !cubeTrailEnabled; },
 
-            // Trigger/reset speed and the turn filter live on each
-            // hand's own punch-tracker instance, not on punch-locomotion
-            // — both hands are kept in sync by writing the same value to
-            // both on every change, same as how the two hand entities
-            // already mirror every other per-hand setting.
-            getTriggerSpeed: function () { return self.leftHand.getAttribute('punch-tracker').triggerSpeed; },
-            setTriggerSpeed: function (v) {
-              v = clamp(Math.round(v * 100) / 100, 0.3, 4);
-              self.leftHand.setAttribute('punch-tracker', 'triggerSpeed', v);
-              self.rightHand.setAttribute('punch-tracker', 'triggerSpeed', v);
-            },
-            getResetSpeed: function () { return self.leftHand.getAttribute('punch-tracker').resetSpeed; },
-            setResetSpeed: function (v) {
+            // Stop speed and the turn filter live on each hand's own
+            // punch-tracker instance, not on punch-locomotion — both
+            // hands are kept in sync by writing the same value to both
+            // on every change, same as how the two hand entities already
+            // mirror every other per-hand setting.
+            getStopSpeed: function () { return self.leftHand.getAttribute('punch-tracker').stopSpeed; },
+            setStopSpeed: function (v) {
               v = clamp(Math.round(v * 100) / 100, 0.05, 2);
-              self.leftHand.setAttribute('punch-tracker', 'resetSpeed', v);
-              self.rightHand.setAttribute('punch-tracker', 'resetSpeed', v);
+              self.leftHand.setAttribute('punch-tracker', 'stopSpeed', v);
+              self.rightHand.setAttribute('punch-tracker', 'stopSpeed', v);
             },
             getTurnFilter: function () { return self.leftHand.getAttribute('punch-tracker').headBlend; },
             setTurnFilter: function (v) {
@@ -2543,6 +2954,32 @@
               liveDebugOn = !liveDebugOn;
               var el = document.querySelector('#live-debug-text');
               if (el) el.setAttribute('visible', liveDebugOn);
+            },
+
+            // Reach calibration + extension thresholds — reachForward/
+            // reachOverhead/EXT_ARM_THRESHOLD are plain globals (like
+            // splatAmountMultiplier etc. above), not per-entity schema,
+            // since they're read directly by punch-tracker's shared
+            // extension-fraction math for both hands at once.
+            getReachForward: function () { return reachForward; },
+            setReachForward: function (v) { reachForward = clamp(Math.round(v * 100) / 100, REACH_MIN, REACH_MAX); },
+            getReachOverhead: function () { return reachOverhead; },
+            setReachOverhead: function (v) { reachOverhead = clamp(Math.round(v * 100) / 100, REACH_MIN, REACH_MAX); },
+            getArmThreshold: function () { return EXT_ARM_THRESHOLD; },
+            setArmThreshold: function (v) { EXT_ARM_THRESHOLD = clamp(Math.round(v * 100) / 100, 0.1, 0.7); },
+            // Closes the menu first so the player can actually see the
+            // "reach forward" / "reach overhead" prompts and move their
+            // arms freely — calibration would be pointless with the
+            // panel still covering their view.
+            calibrateReach: function () {
+              self.close();
+              var locomotion = self.rig.components['punch-locomotion'];
+              if (locomotion) locomotion.startCalibration();
+            },
+
+            getHitAssist: function () { return hitAssistMode; },
+            cycleHitAssist: function () {
+              hitAssistMode = HIT_ASSIST_MODES[(HIT_ASSIST_MODES.indexOf(hitAssistMode) + 1) % HIT_ASSIST_MODES.length];
             },
           };
         },
@@ -2562,33 +2999,36 @@
 
       // Desktop-only simulate buttons: no mouse can produce a real
       // controller-velocity swing, so these call punch-locomotion's
-      // exact onPunch() path directly with a synthetic direction and
-      // swing stats (a plausible "solid, committed punch"). This is how
-      // the movement physics (gravity, drag, look-gating, lock-on) got
-      // sanity-checked in a plain browser before ever touching a
-      // headset. The up/down-ish directions are angled ~40 degrees off
-      // dead-ahead — steep enough to demonstrate vertical movement, but
-      // still within the default 80-degree look cone from the camera's
-      // straight-ahead starting orientation, so they don't get BLOCKED
-      // just because nothing moved the (simulated) camera to match.
-      function simulatePunch(direction, maxSpeed, handTravelDist, headTravelDist) {
+      // exact onPunch() path directly with a synthetic direction, axis,
+      // and swing stats (a plausible "solid, committed punch"). This is
+      // how the movement physics (gravity, drag, lock-on, hit-assist)
+      // got sanity-checked in a plain browser before ever touching a
+      // headset.
+      function simulatePunch(direction, maxSpeed, handTravelDist, headTravelDist, axis) {
         var rig = document.querySelector('#rig');
         var locomotion = rig && rig.components['punch-locomotion'];
         if (locomotion) {
           locomotion.onPunch({
             target: null,
-            detail: { direction: direction, maxSpeed: maxSpeed, handTravelDist: handTravelDist, headTravelDist: headTravelDist },
+            detail: {
+              direction: direction,
+              maxSpeed: maxSpeed,
+              handTravelDist: handTravelDist,
+              headTravelDist: headTravelDist,
+              extensionAxis: axis || 'forward',
+              fullyExtended: true,
+            },
           });
         }
       }
       document.querySelector('#sim-punch').addEventListener('click', function () {
-        simulatePunch(new THREE.Vector3(0, 0, -1), 3.5, 0.5, 0.1);
+        simulatePunch(new THREE.Vector3(0, 0, -1), 3.5, 0.5, 0.1, 'forward');
       });
       document.querySelector('#sim-up').addEventListener('click', function () {
-        simulatePunch(new THREE.Vector3(0, 0.65, -0.75).normalize(), 3.5, 0.5, 0.1);
+        simulatePunch(new THREE.Vector3(0, 0.65, -0.75).normalize(), 3.5, 0.5, 0.1, 'overhead');
       });
       document.querySelector('#sim-down').addEventListener('click', function () {
-        simulatePunch(new THREE.Vector3(0, -0.65, -0.75).normalize(), 3.5, 0.5, 0.1);
+        simulatePunch(new THREE.Vector3(0, -0.65, -0.75).normalize(), 3.5, 0.5, 0.1, 'forward');
       });
     </script>
   </body>
