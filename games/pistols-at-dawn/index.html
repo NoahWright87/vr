@@ -93,11 +93,14 @@
              where you're pointing" — which is why the first version of
              this file, with the gun parented directly to a
              hand-controls entity, aimed inconsistently.
+
+           proximity-haptics is generic and unrelated to pistols
+           specifically — see its own comment below.
       ============================================================ -->
-      <a-entity oculus-touch-controls="hand: left; model: false" hand-rig></a-entity>
+      <a-entity oculus-touch-controls="hand: left; model: false" hand-rig proximity-haptics></a-entity>
       <a-entity hand-controls="hand: left; handModelStyle: lowPoly; color: #3a3a3a"></a-entity>
 
-      <a-entity oculus-touch-controls="hand: right; model: false" hand-rig></a-entity>
+      <a-entity oculus-touch-controls="hand: right; model: false" hand-rig proximity-haptics></a-entity>
       <a-entity hand-controls="hand: right; handModelStyle: lowPoly; color: #3a3a3a"></a-entity>
 
       <!-- ============================================================
@@ -117,10 +120,13 @@
            Each is a free-standing entity (not nested under a hand) so
            it can be reparented at runtime between a holster, a hand,
            or loose in the world while dangling/falling. See the
-           "pistol" component for the state machine.
+           "pistol" component for the state machine. The "grabbable"
+           class is what makes proximity-haptics notice them — any
+           future interactive prop just needs that same class to get
+           the same buzz-when-in-reach behavior.
       ============================================================ -->
-      <a-entity class="pistol" pistol="holster: #hip-left"></a-entity>
-      <a-entity class="pistol" pistol="holster: #hip-right"></a-entity>
+      <a-entity class="pistol grabbable" pistol="holster: #hip-left"></a-entity>
+      <a-entity class="pistol grabbable" pistol="holster: #hip-right"></a-entity>
 
       <!-- ============================================================
            TARGETS
@@ -146,6 +152,10 @@
       var MAX_ANGULAR_VELOCITY = 40; // rad/s safety clamp so one noisy tracking spike can't fling it into nonsense
       var FALL_DAMPING = 0.99; // per-frame angular velocity decay while tumbling to the ground
       var GROUND_REST_Y = 0.05; // meters — half the gun's resting thickness off the floor
+
+      var PROXIMITY_HAPTIC_RADIUS = 0.2; // meters — a bit past GRAB_RADIUS, so the buzz gives you a heads-up just before you're in range
+      var PROXIMITY_HAPTIC_INTENSITY = 0.15; // 0-1, deliberately light ("slight buzz", not a jolt)
+      var PROXIMITY_HAPTIC_PULSE_MS = 60; // re-issued every tick while in range, so this just needs to outlast one frame
 
       // ==============================================================
       // COMPONENT: boxy-gun
@@ -602,6 +612,60 @@
           });
 
           return nearest;
+        },
+      });
+
+      // ==============================================================
+      // COMPONENT: proximity-haptics
+      // Generic and reusable — has no idea what a pistol is. Buzzes
+      // this hand's controller whenever the nearest ".grabbable"
+      // entity in the scene is within PROXIMITY_HAPTIC_RADIUS. Future
+      // interactive props just need class="grabbable" to opt into the
+      // same behavior; nothing here needs to change for them.
+      //
+      // Two things it skips, so it doesn't buzz misleadingly:
+      //   - whatever this hand is already holding (its object3D is
+      //     currently parented under this hand's object3D — true for
+      //     anything that follows the same "attach to the hand's
+      //     object3D when held" convention pistol.grab() uses)
+      //   - everything, if hand-rig (when present) reports this hand
+      //     as already full, since you can't grab a second thing
+      //     right now anyway
+      // ==============================================================
+      AFRAME.registerComponent('proximity-haptics', {
+        init: function () {
+          this.handPos = new THREE.Vector3();
+          this.targetPos = new THREE.Vector3();
+        },
+
+        tick: function () {
+          var handRig = this.el.components['hand-rig'];
+          if (handRig && handRig.heldGun) return;
+
+          var trackedControls = this.el.components['tracked-controls'];
+          var gamepad = trackedControls && trackedControls.controller;
+          var actuator = gamepad && gamepad.hapticActuators && gamepad.hapticActuators[0];
+          if (!actuator) return;
+
+          this.el.object3D.getWorldPosition(this.handPos);
+
+          var targets = document.querySelectorAll('.grabbable');
+          var inRange = false;
+
+          for (var i = 0; i < targets.length; i++) {
+            var targetEl = targets[i];
+            if (targetEl.object3D.parent === this.el.object3D) continue; // already holding this one
+
+            targetEl.object3D.getWorldPosition(this.targetPos);
+            if (this.handPos.distanceTo(this.targetPos) < PROXIMITY_HAPTIC_RADIUS) {
+              inRange = true;
+              break;
+            }
+          }
+
+          if (inRange) {
+            actuator.pulse(PROXIMITY_HAPTIC_INTENSITY, PROXIMITY_HAPTIC_PULSE_MS);
+          }
         },
       });
 
