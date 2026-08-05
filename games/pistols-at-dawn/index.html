@@ -34,7 +34,7 @@
   </head>
   <body>
     <div id="overlay">
-      <span>Pistols at Dawn — grip near a holstered pistol to draw it, pull the trigger to fire. Let go of the grip while still holding the trigger to let it dangle and spin. <a href="../../index.html">All prototypes</a></span>
+      <span>Pistols at Dawn — grip near a holstered pistol to draw it, pull the trigger to fire. Let go of the grip while your finger still rests on the trigger to let it dangle and spin. <a href="../../index.html">All prototypes</a></span>
     </div>
 
     <a-scene>
@@ -79,20 +79,26 @@
 
       <!-- ============================================================
            HANDS
-           hand-controls gives us an actual animated hand model (fist
-           when gripping, point when triggering) built into A-Frame
-           core — no extra asset pipeline needed. It still fires the
-           same triggerdown/triggerup/gripdown/gripup button events as
-           the raw controller components, which hand-rig listens for.
+           Two entities per hand, deliberately decoupled:
+
+           - oculus-touch-controls (model:false) is the one the gun
+             actually attaches to and the one hand-rig listens to for
+             grip/trigger events. Its forward axis is the same one
+             laser-controls uses for aiming in Cube Pop, so a gun
+             welded to it points where you'd expect.
+           - hand-controls is purely cosmetic: it renders the animated
+             hand mesh (fist on grip, point on trigger) at the same
+             tracked position, but its own orientation convention is
+             tuned for a believable-looking hand pose, not for "-Z is
+             where you're pointing" — which is why the first version of
+             this file, with the gun parented directly to a
+             hand-controls entity, aimed inconsistently.
       ============================================================ -->
-      <a-entity
-        hand-controls="hand: left; handModelStyle: lowPoly; color: #3a3a3a"
-        hand-rig
-      ></a-entity>
-      <a-entity
-        hand-controls="hand: right; handModelStyle: lowPoly; color: #3a3a3a"
-        hand-rig
-      ></a-entity>
+      <a-entity oculus-touch-controls="hand: left; model: false" hand-rig></a-entity>
+      <a-entity hand-controls="hand: left; handModelStyle: lowPoly; color: #3a3a3a"></a-entity>
+
+      <a-entity oculus-touch-controls="hand: right; model: false" hand-rig></a-entity>
+      <a-entity hand-controls="hand: right; handModelStyle: lowPoly; color: #3a3a3a"></a-entity>
 
       <!-- ============================================================
            HOLSTERS
@@ -133,9 +139,11 @@
       var HOLSTER_RADIUS = 0.3; // meters — deliberately generous, see the design discussion
       var HIP_HEIGHT = 0.9; // meters off the ground
       var HIP_SIDE_OFFSET = 0.18; // meters, left/right from body centerline
-      var GRAVITY = 9.8;
-      var DANGLE_DAMPING = 0.985; // per-frame angular velocity decay while swinging
-      var DANGLE_INERTIA_SCALE = 0.6; // how strongly flicking your hand imparts spin
+      var GRAVITY = 9.8; // real-world value, used for the drop/tumble simulation
+      var DANGLE_GRAVITY_TORQUE = 2.5; // how insistently a dangling gun swings back to hanging straight down
+      var DANGLE_INERTIA_SCALE = 6; // how strongly flicking your hand imparts spin — crank this up further if it still feels weak
+      var DANGLE_DAMPING = 0.999; // per-frame angular velocity decay while swinging — close to 1 = low friction, keeps spinning
+      var MAX_ANGULAR_VELOCITY = 40; // rad/s safety clamp so one noisy tracking spike can't fling it into nonsense
       var FALL_DAMPING = 0.99; // per-frame angular velocity decay while tumbling to the ground
       var GROUND_REST_Y = 0.05; // meters — half the gun's resting thickness off the floor
 
@@ -235,12 +243,13 @@
       // ==============================================================
       // COMPONENT: pistol
       // Owns one gun's state machine and physics:
-      //   holstered -> held (grabbed) -> dangling (grip released,
-      //   trigger still down) -> held again (caught) or falling
-      //   (trigger also let go, or grip released with nothing to catch
-      //   it) -> resting (on the ground, grabbable again). Releasing
-      //   near either hip while holding it always holsters it instead,
-      //   regardless of the trigger state — see release() below.
+      //   holstered -> held (grabbed) -> dangling (grip released while
+      //   a finger is still resting on the trigger) -> held again
+      //   (caught) or falling (finger comes off the trigger too, or
+      //   grip released with nothing to catch it) -> resting (on the
+      //   ground, grabbable again). Releasing near either hip while
+      //   holding it always holsters it instead, regardless of trigger
+      //   state — see release() below.
       //
       // Reparenting is done directly on the three.js object3D graph
       // via Object3D.attach(), which reparents while preserving the
@@ -308,9 +317,10 @@
         },
 
         // Called by hand-rig when the hand currently holding this gun
-        // releases its grip. triggerHeld reflects whether that hand's
-        // trigger is still pressed at that moment.
-        release: function (triggerHeld) {
+        // releases its grip. fingerOnTrigger reflects whether that
+        // hand's finger is resting on (not necessarily pulling) the
+        // trigger at that moment.
+        release: function (fingerOnTrigger) {
           this.el.object3D.getWorldPosition(this._worldPos);
           var nearestHolster = this.findNearestHolster(this._worldPos);
 
@@ -321,7 +331,7 @@
             return;
           }
 
-          if (triggerHeld) {
+          if (fingerOnTrigger) {
             this.state = 'dangling';
             this.el.sceneEl.object3D.attach(this.el.object3D);
             this.el.object3D.getWorldPosition(this.prevPivotPos);
@@ -381,13 +391,16 @@
 
           this._comWorld.copy(this._comLocal).applyQuaternion(this.el.object3D.quaternion).normalize();
 
-          this._torque.crossVectors(this._comWorld, this._down).multiplyScalar(GRAVITY);
+          this._torque.crossVectors(this._comWorld, this._down).multiplyScalar(DANGLE_GRAVITY_TORQUE);
           this.angularVelocity.addScaledVector(this._torque, dt);
 
           this._torque.crossVectors(this._comWorld, this._pivotAccel).multiplyScalar(-DANGLE_INERTIA_SCALE);
           this.angularVelocity.addScaledVector(this._torque, dt);
 
           this.angularVelocity.multiplyScalar(DANGLE_DAMPING);
+          if (this.angularVelocity.length() > MAX_ANGULAR_VELOCITY) {
+            this.angularVelocity.setLength(MAX_ANGULAR_VELOCITY);
+          }
 
           this.integrateRotation(dt);
           this.el.object3D.position.copy(this._pivot);
@@ -493,24 +506,27 @@
         init: function () {
           this.heldGun = null; // gun currently rigidly held by this hand, if any
           this.danglingGun = null; // gun currently dangling from this hand's trigger finger, if any
-          this.triggerHeld = false;
+          this.fingerOnTrigger = false; // capacitive touch, not a pull — see triggertouchstart/end below
 
           this.onGripDown = this.onGripDown.bind(this);
           this.onGripUp = this.onGripUp.bind(this);
           this.onTriggerDown = this.onTriggerDown.bind(this);
-          this.onTriggerUp = this.onTriggerUp.bind(this);
+          this.onTriggerTouchStart = this.onTriggerTouchStart.bind(this);
+          this.onTriggerTouchEnd = this.onTriggerTouchEnd.bind(this);
 
           this.el.addEventListener('gripdown', this.onGripDown);
           this.el.addEventListener('gripup', this.onGripUp);
           this.el.addEventListener('triggerdown', this.onTriggerDown);
-          this.el.addEventListener('triggerup', this.onTriggerUp);
+          this.el.addEventListener('triggertouchstart', this.onTriggerTouchStart);
+          this.el.addEventListener('triggertouchend', this.onTriggerTouchEnd);
         },
 
         remove: function () {
           this.el.removeEventListener('gripdown', this.onGripDown);
           this.el.removeEventListener('gripup', this.onGripUp);
           this.el.removeEventListener('triggerdown', this.onTriggerDown);
-          this.el.removeEventListener('triggerup', this.onTriggerUp);
+          this.el.removeEventListener('triggertouchstart', this.onTriggerTouchStart);
+          this.el.removeEventListener('triggertouchend', this.onTriggerTouchEnd);
         },
 
         onGripDown: function () {
@@ -529,18 +545,25 @@
 
           var gun = this.heldGun;
           this.heldGun = null;
-          gun.components.pistol.release(this.triggerHeld);
+          gun.components.pistol.release(this.fingerOnTrigger);
 
           this.danglingGun = gun.components.pistol.state === 'dangling' ? gun : null;
         },
 
+        // An actual pull (past the digital press threshold), not just
+        // a touch — this is what fires the gun.
         onTriggerDown: function () {
-          this.triggerHeld = true;
           if (this.heldGun) this.heldGun.components.pistol.fire();
         },
 
-        onTriggerUp: function () {
-          this.triggerHeld = false;
+        onTriggerTouchStart: function () {
+          this.fingerOnTrigger = true;
+        },
+
+        // Finger fully lifts off the trigger surface. If a gun is
+        // dangling from this hand, that's the last thing holding it up.
+        onTriggerTouchEnd: function () {
+          this.fingerOnTrigger = false;
           if (this.danglingGun) {
             this.danglingGun.components.pistol.startFalling();
             this.danglingGun = null;
