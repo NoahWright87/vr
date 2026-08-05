@@ -558,15 +558,35 @@
       var BUZZ_INTERVAL_MS = 90;
       var BUZZ_PULSE_MS = 55;
 
+      // Set the instant a hand's hapticActuator is first found (or first
+      // confirmed absent), read by the live debug HUD as "haptics: L
+      // yes/no R yes/no" — a real, concrete answer to "is the vibration
+      // just not there, or is something actually broken" instead of
+      // guessing from outside the headset a second time.
+      var hapticActuatorSeen = { left: null, right: null };
+
       // Haptics are a nice-to-have confirmation buzz on hit/punch, not
       // load-bearing — swallow anything unsupported rather than let a
-      // missing hapticActuators API break the game.
+      // missing hapticActuators API break the game. actuator.pulse()
+      // returns a Promise (per the Gamepad Haptic Actuator spec) that
+      // can reject — e.g. if a browser rejects overlapping pulse calls
+      // on the same actuator — and a bare try/catch around a synchronous
+      // call does NOT catch a rejected promise. With the "zoom" buzz
+      // firing pulses on both hands roughly every 90ms during any
+      // sustained fast movement, an unhandled rejection every cycle adds
+      // up over a real play session; explicitly caught here so it can't
+      // accumulate into instability.
       function pulseHaptics(handEl, intensity, durationMs) {
+        var handKey = handEl && handEl.id === 'leftHand' ? 'left' : handEl && handEl.id === 'rightHand' ? 'right' : null;
         try {
           var tracked = handEl && handEl.components['tracked-controls'];
           var controller = tracked && tracked.controller;
           var actuator = controller && controller.hapticActuators && controller.hapticActuators[0];
-          if (actuator) actuator.pulse(intensity, durationMs);
+          if (handKey && hapticActuatorSeen[handKey] === null) hapticActuatorSeen[handKey] = !!actuator;
+          if (actuator) {
+            var result = actuator.pulse(intensity, durationMs);
+            if (result && typeof result.catch === 'function') result.catch(function () {});
+          }
         } catch (e) {
           // ignore
         }
@@ -1357,14 +1377,24 @@
         // smoothed so it doesn't flicker between frames. vignetteSize
         // scales the plane itself rather than repainting the texture —
         // cheaper, and avoids regenerating a canvas on every menu tweak.
+        //
+        // Deliberately mutates the THREE.js mesh/material/object3D
+        // directly rather than going through el.setAttribute() — this
+        // runs every single frame (unlike everything else in this file
+        // that calls setAttribute, which only fires on discrete events
+        // like a punch or a menu click), and setAttribute's schema-diff-
+        // and-fire-update-handlers machinery is real, avoidable overhead
+        // to pay 70-90 times a second for what's just two number writes.
         updateVignette: function (speed, dt) {
           if (!this.vignetteEl) return;
+          var mesh = this.vignetteEl.getObject3D('mesh');
+          if (!mesh || !mesh.material) return; // texture/mesh not attached yet
 
           if (!vignetteEnabled) {
             if (this.vignetteOpacity !== 0) {
               this.vignetteOpacity = 0;
-              this.vignetteEl.setAttribute('material', 'opacity', 0);
-              this.vignetteEl.setAttribute('visible', false);
+              mesh.material.opacity = 0;
+              this.vignetteEl.object3D.visible = false;
             }
             return;
           }
@@ -1381,8 +1411,8 @@
           this.vignetteOpacity = clamp(targetOpacity + (this.vignetteOpacity - targetOpacity) * smoothing, 0, 1);
 
           this.vignetteEl.object3D.scale.setScalar(vignetteSize);
-          this.vignetteEl.setAttribute('material', 'opacity', this.vignetteOpacity);
-          this.vignetteEl.setAttribute('visible', this.vignetteOpacity > 0.01);
+          mesh.material.opacity = this.vignetteOpacity;
+          this.vignetteEl.object3D.visible = this.vignetteOpacity > 0.01;
         },
 
         // "Zoom" haptic buzz: short pulses to both hands, roughly every
@@ -1570,6 +1600,8 @@
             );
           }
 
+          function haptic(v) { return v === null ? '?' : v ? 'yes' : 'no'; }
+
           var lines = [
             handLine('L', lt),
             handLine('R', rt),
@@ -1577,6 +1609,8 @@
               ' turn ' + (lt ? Math.round(lt.data.headBlend * 100) : '-') + '%' +
               ' reach ' + reachForward.toFixed(2) + '/' + reachOverhead.toFixed(2) + 'm',
             'assist ' + hitAssistMode + '  rig vel ' + this.velocity.length().toFixed(2),
+            'haptics L:' + haptic(hapticActuatorSeen.left) + ' R:' + haptic(hapticActuatorSeen.right) +
+              '  vignette ' + this.vignetteOpacity.toFixed(2),
           ];
           this.liveDebugText.setAttribute('value', lines.join('\n'));
         },

@@ -256,6 +256,41 @@ Other things in place:
   outside a headset, and comfort tolerance is personal, so this is
   explicitly meant to be dialed in live rather than shipped at a fixed
   guess.
+- **Crash + "vibration doesn't do anything" fix**, first real-headset
+  playtest of the above turned up both problems, and both had a concrete
+  cause: `pulseHaptics` called `actuator.pulse()` and only wrapped it in a
+  synchronous try/catch — but per the Gamepad Haptic Actuator spec,
+  `pulse()` returns a **Promise** that a browser can reject (e.g. for
+  overlapping pulse calls on the same actuator), and a sync try/catch does
+  not catch a rejected promise. With the zoom buzz firing pulses on both
+  hands roughly every 90ms during any sustained fast movement, that's an
+  unhandled rejection accumulating every cycle of a real play session —
+  fixed by explicitly attaching `.catch(function(){})` to the returned
+  promise. Separately, `updateVignette` was calling
+  `el.setAttribute('material', 'opacity', ...)` and
+  `el.setAttribute('visible', ...)` every single frame (70-90Hz) — real,
+  avoidable overhead, since `setAttribute` runs A-Frame's schema-diff-and-
+  fire-update-handlers machinery meant for discrete events, not a per-
+  frame hot path. Fixed by mutating the underlying THREE.js
+  `mesh.material.opacity` / `object3D.visible` directly instead, which
+  every other frequently-touched per-frame value in this file already
+  does. Also added a `hapticActuatorSeen` diagnostic surfaced in the live
+  debug HUD as `haptics L:yes/no R:yes/no`, set the first time each hand's
+  `pulseHaptics` call runs — so "is vibration unsupported on this
+  hardware, or is something actually broken" has a concrete, in-headset
+  answer instead of a guess. Verified via Playwright with a fake
+  `hapticActuator` whose `pulse()` deliberately rejects 1/3 of calls under
+  sustained high-speed movement (the exact condition that fires buzz
+  continuously): zero `unhandledrejection` events reached `window` with
+  the fix, versus a harness-verified 1-for-1 catch when the same rejection
+  is thrown without a `.catch()`. Also re-verified the vignette's
+  strength/size/off behavior is bit-identical to the pre-rewrite
+  `setAttribute` version (proportional scaling at 50%/100%/200% strength,
+  correct 0-1 clamp at 200%, instant zero+hide when disabled). This is a
+  real, well-justified, verified fix for a real bug — but "crashes" was
+  reported without a specific repro, so if it persists after this, the
+  next debugging step needs more specifics (does it happen on a punch, a
+  menu open, after N minutes, etc.).
 
 ## Ideas for future moves (not yet implemented)
 
