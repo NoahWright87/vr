@@ -824,7 +824,7 @@
           var t = this._catchBlendElapsed / CATCH_SNAP_DUR_MS;
 
           this.el.object3D.position.lerpVectors(this._catchBlendFromPos, this._catchTargetPos, t);
-          THREE.Quaternion.slerp(this._catchBlendFromQuat, this._catchTargetQuat, this.el.object3D.quaternion, t);
+          this.el.object3D.quaternion.slerpQuaternions(this._catchBlendFromQuat, this._catchTargetQuat, t);
         },
 
         // Checked every frame while falling: is either hand positioned
