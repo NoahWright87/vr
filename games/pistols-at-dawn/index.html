@@ -151,20 +151,20 @@
       ============================================================ -->
       <a-entity
         class="grabbable"
-        holsterable="holsterSelector: #hip-left; anchorClass: holster-anchor; holsterRotation: -90 0 0; heldRotation: -90 0 0; comOffset: 0 0.03 -0.08"
+        holsterable="holsterSelector: #hip-left; anchorClass: holster-anchor; holsterRotation: -90 0 0; heldRotation: -90 0 0; heldPosition: 0 0 0; grabRadius: 0.15; comOffset: 0 0.03 -0.08"
         pistol
         boxy-gun
       ></a-entity>
       <a-entity
         class="grabbable"
-        holsterable="holsterSelector: #hip-right; anchorClass: holster-anchor; holsterRotation: -90 0 0; heldRotation: -90 0 0; comOffset: 0 0.03 -0.08"
+        holsterable="holsterSelector: #hip-right; anchorClass: holster-anchor; holsterRotation: -90 0 0; heldRotation: -90 0 0; heldPosition: 0 0 0; grabRadius: 0.15; comOffset: 0 0.03 -0.08"
         pistol
         boxy-gun
       ></a-entity>
 
       <a-entity
         class="grabbable"
-        holsterable="holsterSelector: #head-anchor; anchorClass: head-holster-anchor; holsterRotation: 0 0 0; heldRotation: 0 0 0; holsterPosition: 0.11 0 0; comOffset: -0.11 0.065 0"
+        holsterable="holsterSelector: #head-anchor; anchorClass: head-holster-anchor; holsterRotation: 0 0 0; heldRotation: 90 0 0; holsterPosition: 0.11 0 0; heldPosition: -0.1 0 0; grabRadius: 0.35; comOffset: 0.11 -0.065 0"
         boxy-hat
       ></a-entity>
 
@@ -260,11 +260,12 @@
       // thing your actual aim direction decides.
       var MIN_THROW_UPWARD_SPEED = 0.8; // m/s — vertical hand speed floor to count as a deliberate toss at all; below this, a release just falls/holsters as before
       var OTHER_HAND_DOT_THRESHOLD = 0.3; // m/s of horizontal speed toward the other hand needed to target it instead of yourself
-      var THROW_LAUNCH_VY_MIN = 1.5; // m/s — clamps the arc's height floor so even a weak flick gives a reactable toss
-      var THROW_LAUNCH_VY_MAX = 4; // m/s — clamps the ceiling so a hard flick doesn't send it flying absurdly high
+      var THROW_VELOCITY_MULTIPLIER = 1.6; // exaggerates real hand vy before clamping, so tosses read as more dramatic than your actual flick
+      var THROW_LAUNCH_VY_MIN = 2.2; // m/s — clamps the arc's height floor so even a weak flick gives a reactable toss
+      var THROW_LAUNCH_VY_MAX = 6; // m/s — clamps the ceiling so a hard flick doesn't send it flying absurdly high
       var THROW_CATCH_RADIUS = 0.35; // meters — deliberately wide vs. GRAB_RADIUS(0.15): catching something already falling/flying should be far more forgiving than picking something up at rest
       var THROW_SPIN_RATE = 7; // rad/s — fixed visual tumble given to a fresh throw
-      var CATCH_SNAP_DUR_MS = 130; // ms — how long a grip-catch takes to blend smoothly into the normal held pose, instead of an instant snap
+      var SNAP_BLEND_DUR_MS = 130; // ms — how long any snap-into-place (grab, holster, or catch) takes to blend smoothly into its target pose, instead of an instant pop
 
       // ==============================================================
       // spawnTracer
@@ -436,7 +437,7 @@
 
         var vy = handRig.velocity.y;
         if (vy < MIN_THROW_UPWARD_SPEED) return null;
-        vy = Math.min(Math.max(vy, THROW_LAUNCH_VY_MIN), THROW_LAUNCH_VY_MAX);
+        vy = Math.min(Math.max(vy * THROW_VELOCITY_MULTIPLIER, THROW_LAUNCH_VY_MIN), THROW_LAUNCH_VY_MAX);
 
         var releasePos = new THREE.Vector3();
         handEl.object3D.getWorldPosition(releasePos);
@@ -690,16 +691,25 @@
       // Schema is what makes this reusable rather than gun-specific:
       // anchorClass picks which anchor entities count as "a holster"
       // for this object (hip vs. head); holsterPosition/holsterRotation
-      // are the local pose snapped to when holstered; heldRotation is
-      // the pose snapped to when held; comOffset is where this
-      // object's true center of mass sits relative to its own entity
-      // origin. That origin, per boxy-gun/boxy-hat, is deliberately
-      // NOT the object's geometric center but its natural grip/pivot
-      // point — the trigger guard for a gun, one edge of the inner
-      // brim for a hat — and comOffset (which the dangle physics uses
-      // to work out which way "down" pulls it) is the whole reason the
-      // same twirl mechanic works for a completely different-shaped
-      // object with zero object-specific physics code.
+      // and heldPosition/heldRotation are the local poses snapped to
+      // when holstered/held; grabRadius is how close a hand needs to
+      // be to pick it up (wider than the object's own origin-to-edge
+      // distance for something like the hat, whose origin sits well
+      // inside its visual silhouette — see the hat's markup comment);
+      // comOffset is where this object's true center of mass sits
+      // relative to its own entity origin. That origin, per
+      // boxy-gun/boxy-hat, is deliberately NOT the object's geometric
+      // center but its natural grip/pivot point — the trigger guard
+      // for a gun, one edge of the inner brim for a hat — and comOffset
+      // (which the dangle physics uses to work out which way "down"
+      // pulls it) is the whole reason the same twirl mechanic works
+      // for a completely different-shaped object with zero
+      // object-specific physics code.
+      //
+      // Every "snap into a new spot" transition (grab, holster, catch)
+      // goes through snapTo(), which blends smoothly over
+      // SNAP_BLEND_DUR_MS rather than popping instantly into place —
+      // see snapTo/updatePoseBlend.
       //
       // Visual geometry (boxy-gun, boxy-hat) is a separate component
       // attached alongside this one in markup — this component
@@ -719,7 +729,9 @@
           anchorClass: { type: 'string', default: 'holster-anchor' }, // which anchor entities this object can re-holster to
           holsterPosition: { type: 'vec3', default: { x: 0, y: 0, z: 0 } },
           holsterRotation: { type: 'vec3', default: { x: 0, y: 0, z: 0 } },
+          heldPosition: { type: 'vec3', default: { x: 0, y: 0, z: 0 } },
           heldRotation: { type: 'vec3', default: { x: 0, y: 0, z: 0 } },
+          grabRadius: { type: 'number', default: GRAB_RADIUS },
           comOffset: { type: 'vec3', default: { x: 0, y: 0, z: 0 } }, // center of mass, relative to the entity origin
         },
 
@@ -743,33 +755,35 @@
           this._worldPos = new THREE.Vector3();
           this._holsterPos = new THREE.Vector3();
 
-          // Grip-catch smooth blend (see catchThrown/updateCatchBlend).
-          // Starts "already finished" so a normal grab() never triggers
-          // it — only catchThrown() resets _catchBlendElapsed to 0.
-          this._catchTargetPos = new THREE.Vector3(0, 0, 0);
-          this._catchTargetQuat = new THREE.Quaternion().setFromEuler(
-            new THREE.Euler(
-              (this.data.heldRotation.x * Math.PI) / 180,
-              (this.data.heldRotation.y * Math.PI) / 180,
-              (this.data.heldRotation.z * Math.PI) / 180
-            )
-          );
-          this._catchBlendFromPos = new THREE.Vector3();
-          this._catchBlendFromQuat = new THREE.Quaternion();
-          this._catchBlendElapsed = CATCH_SNAP_DUR_MS;
+          // Smooth pose blend (see snapTo/updatePoseBlend). Starts
+          // "already finished" so nothing plays on scene load.
+          this._poseBlendFromPos = new THREE.Vector3();
+          this._poseBlendFromQuat = new THREE.Quaternion();
+          this._poseBlendToPos = new THREE.Vector3();
+          this._poseBlendToQuat = new THREE.Quaternion();
+          this._poseBlendElapsed = SNAP_BLEND_DUR_MS;
 
           if (this.data.holsterSelector) {
+            // The very first placement, at scene load — instant, via
+            // attachTo directly, since there's nothing meaningful to
+            // blend from before the object has ever been anywhere.
             this.attachTo(this.data.holsterSelector.object3D, this.data.holsterPosition, this.data.holsterRotation);
           }
         },
 
+        // The pose blend runs regardless of state (held or holstered
+        // are both valid snap targets) — cheap to check unconditionally
+        // since it's a no-op once finished.
         tick: function (time, dt) {
           var dtSeconds = Math.min((dt || 16) / 1000, 0.05);
+          this.updatePoseBlend(dtSeconds);
           if (this.state === 'dangling') this.updateDangle(dtSeconds);
           else if (this.state === 'falling') this.updateFall(dtSeconds);
-          else if (this.state === 'held') this.updateCatchBlend(dtSeconds);
         },
 
+        // Instant reparent + pose set, no blend — used only for the
+        // very first placement at scene load. Every runtime transition
+        // uses snapTo() instead.
         attachTo: function (parentObject3D, localPos, localRotDeg) {
           parentObject3D.attach(this.el.object3D);
           if (localPos) this.el.object3D.position.set(localPos.x, localPos.y, localPos.z);
@@ -782,16 +796,54 @@
           }
         },
 
+        // Reparents (preserving current world pose as the blend's
+        // starting local pose, via Object3D.attach), then smoothly
+        // interpolates to the given target local pose over
+        // SNAP_BLEND_DUR_MS instead of popping there instantly. Used
+        // for every runtime "snap into a new spot" moment: grabbing,
+        // holstering, and catching something thrown.
+        snapTo: function (parentObject3D, targetLocalPos, targetLocalRotDeg) {
+          parentObject3D.attach(this.el.object3D);
+          this._poseBlendFromPos.copy(this.el.object3D.position);
+          this._poseBlendFromQuat.copy(this.el.object3D.quaternion);
+
+          this._poseBlendToPos.set(targetLocalPos.x, targetLocalPos.y, targetLocalPos.z);
+          this._poseBlendToQuat.setFromEuler(
+            new THREE.Euler(
+              (targetLocalRotDeg.x * Math.PI) / 180,
+              (targetLocalRotDeg.y * Math.PI) / 180,
+              (targetLocalRotDeg.z * Math.PI) / 180
+            )
+          );
+          this._poseBlendElapsed = 0;
+        },
+
+        // Same direct-object3D-write approach used throughout this
+        // component rather than through A-Frame's animation component,
+        // since that animates the core "rotation" component's own
+        // cached state — which everything here bypasses by writing
+        // object3D.rotation/quaternion directly — and the two caches
+        // falling out of sync is exactly the kind of thing that
+        // produces an object that's rotated wrong for no visible
+        // reason.
+        updatePoseBlend: function (dtSeconds) {
+          if (this._poseBlendElapsed >= SNAP_BLEND_DUR_MS) return;
+
+          this._poseBlendElapsed = Math.min(this._poseBlendElapsed + dtSeconds * 1000, SNAP_BLEND_DUR_MS);
+          var t = this._poseBlendElapsed / SNAP_BLEND_DUR_MS;
+
+          this.el.object3D.position.lerpVectors(this._poseBlendFromPos, this._poseBlendToPos, t);
+          this.el.object3D.quaternion.slerpQuaternions(this._poseBlendFromQuat, this._poseBlendToQuat, t);
+        },
+
         // Called by hand-rig: either a fresh pickup (from a holster or
         // the ground) or catching this same object mid-dangle — both
         // are "snap rigidly into this hand" and need no other
-        // distinction. Always an instant snap — the smooth blend is
-        // reserved for catchThrown() specifically, see updateCatchBlend.
+        // distinction.
         grab: function (handEl) {
           this.state = 'held';
           this.hand = handEl;
-          this._catchBlendElapsed = CATCH_SNAP_DUR_MS; // cancel any in-progress blend, defensively
-          this.attachTo(handEl.object3D, { x: 0, y: 0, z: 0 }, this.data.heldRotation);
+          this.snapTo(handEl.object3D, this.data.heldPosition, this.data.heldRotation);
           this.angularVelocity.set(0, 0, 0);
         },
 
@@ -823,8 +875,17 @@
 
         // Called directly by hand-rig when the finger lifts off the
         // trigger while this object is dangling from that hand — the
-        // moment that decides whether it lands in a holster or falls.
+        // moment that decides whether it lands in a holster, gets
+        // thrown, or falls. Mirrors release()'s own priority order: a
+        // real upward flick while twirling should send it flying,
+        // spin and all, not just drop it straight down.
         endDangle: function () {
+          var throwVelocity = computeThrowVelocity(this.hand);
+          if (throwVelocity) {
+            this.throwWithVelocity(throwVelocity);
+            return;
+          }
+
           this.tryHolsterElse(this.startFalling.bind(this));
         },
 
@@ -835,7 +896,7 @@
           if (nearestHolster) {
             this.state = 'holstered';
             this.hand = null;
-            this.attachTo(nearestHolster.object3D, this.data.holsterPosition, this.data.holsterRotation);
+            this.snapTo(nearestHolster.object3D, this.data.holsterPosition, this.data.holsterRotation);
             return;
           }
 
@@ -865,30 +926,35 @@
         // plus a fixed visual tumble so it reads as a toss rather than
         // an object sliding through the air. updateFall's own gravity
         // integration and catch-check take it from here.
+        // Seeds a fresh throw's spin. If it's already spinning faster
+        // than the fixed toss tumble (e.g. thrown straight out of a
+        // twirl via endDangle), keep the existing spin rather than
+        // clobbering it — a spinning object thrown should keep
+        // spinning, just as hard, not reset to a slower default.
         throwWithVelocity: function (velocity) {
           this.state = 'falling';
           this.hand = null;
           this.el.sceneEl.object3D.attach(this.el.object3D);
           this.fallVelocity.copy(velocity);
-          this.angularVelocity.set(THROW_SPIN_RATE, 0, 0);
+          if (this.angularVelocity.length() < THROW_SPIN_RATE) {
+            this.angularVelocity.set(THROW_SPIN_RATE, 0, 0);
+          }
         },
 
         // Grip-catch: snaps rigidly into handEl, but blends smoothly
-        // into the canonical held pose over CATCH_SNAP_DUR_MS instead
-        // of an instant snap (see updateCatchBlend) — this is the one
-        // reserved for something already falling/flying, deliberately
-        // different from grab()'s instant pickup snap. Also updates
-        // the catching hand's own bookkeeping directly, since this
-        // catch wasn't initiated by that hand's own gripdown handler.
+        // into the canonical held pose over SNAP_BLEND_DUR_MS instead
+        // of an instant snap (see snapTo/updatePoseBlend) — this is
+        // the one reserved for something already falling/flying,
+        // deliberately different from grab()'s instant pickup snap.
+        // Also updates the catching hand's own bookkeeping directly,
+        // since this catch wasn't initiated by that hand's own
+        // gripdown handler.
         catchThrown: function (handEl) {
           this.state = 'held';
           this.hand = handEl;
           this.angularVelocity.set(0, 0, 0);
 
-          handEl.object3D.attach(this.el.object3D); // preserves current world pose as the starting local pose
-          this._catchBlendFromPos.copy(this.el.object3D.position);
-          this._catchBlendFromQuat.copy(this.el.object3D.quaternion);
-          this._catchBlendElapsed = 0;
+          this.snapTo(handEl.object3D, this.data.heldPosition, this.data.heldRotation);
 
           var handRig = handEl.components['hand-rig'];
           if (handRig) handRig.heldObject = this.el;
@@ -908,33 +974,18 @@
           if (handRig) handRig.danglingObject = this.el;
         },
 
-        // Runs every frame while held; only actually does anything for
-        // the CATCH_SNAP_DUR_MS right after catchThrown(). Same
-        // direct-object3D-write approach used throughout this
-        // component rather than through A-Frame's animation component,
-        // since that animates the core "rotation" component's own
-        // cached state — which everything here bypasses by writing
-        // object3D.rotation/quaternion directly — and the two caches
-        // falling out of sync is exactly the kind of thing that
-        // produces an object that's rotated wrong for no visible
-        // reason.
-        updateCatchBlend: function (dtSeconds) {
-          if (this._catchBlendElapsed >= CATCH_SNAP_DUR_MS) return;
-
-          this._catchBlendElapsed = Math.min(this._catchBlendElapsed + dtSeconds * 1000, CATCH_SNAP_DUR_MS);
-          var t = this._catchBlendElapsed / CATCH_SNAP_DUR_MS;
-
-          this.el.object3D.position.lerpVectors(this._catchBlendFromPos, this._catchTargetPos, t);
-          this.el.object3D.quaternion.slerpQuaternions(this._catchBlendFromQuat, this._catchTargetQuat, t);
-        },
-
         // Checked every frame while falling: is either hand positioned
         // and ready (gripping, or fingertip resting on the trigger)
-        // within THROW_CATCH_RADIUS? If so, catch it and report true
-        // so updateFall skips the rest of this frame's fall physics.
+        // within this object's own catch radius? If so, catch it and
+        // report true so updateFall skips the rest of this frame's
+        // fall physics. The radius scales with grabRadius so a bigger
+        // object (like the hat) stays proportionally as generous to
+        // catch as it is to grab, instead of falling back to the
+        // gun-sized default.
         checkCatch: function () {
           this.el.object3D.getWorldPosition(this._worldPos);
-          var match = findCatchingHand(this._worldPos, THROW_CATCH_RADIUS);
+          var radius = this.data.grabRadius + (THROW_CATCH_RADIUS - GRAB_RADIUS);
+          var match = findCatchingHand(this._worldPos, radius);
           if (!match) return false;
 
           if (match.mode === 'grip') this.catchThrown(match.handEl);
@@ -1249,7 +1300,11 @@
         // anything holstered or resting on the ground, or the object
         // already dangling from this specific hand's finger (a
         // "catch"). Any ".grabbable" entity qualifies, regardless of
-        // what it is — guns, hat, or anything added later.
+        // what it is — guns, hat, or anything added later. Each
+        // object's own grabRadius gates its eligibility (a bulky
+        // object like the hat can declare a bigger grab box than a
+        // gun without changing anything here), so nearestDist starts
+        // wide open and lets the per-object check do the filtering.
         findGrabbableObject: function () {
           var handPos = new THREE.Vector3();
           this.el.object3D.getWorldPosition(handPos);
@@ -1257,7 +1312,7 @@
           var objects = Array.prototype.slice.call(document.querySelectorAll('.grabbable'));
           var self = this;
           var nearest = null;
-          var nearestDist = GRAB_RADIUS;
+          var nearestDist = Infinity;
           var objPos = new THREE.Vector3();
 
           objects.forEach(function (objEl) {
@@ -1272,7 +1327,7 @@
 
             objEl.object3D.getWorldPosition(objPos);
             var d = objPos.distanceTo(handPos);
-            if (d < nearestDist) {
+            if (d < holsterable.data.grabRadius && d < nearestDist) {
               nearest = objEl;
               nearestDist = d;
             }
