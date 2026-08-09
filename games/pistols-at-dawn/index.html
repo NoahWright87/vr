@@ -157,6 +157,78 @@
       var PROXIMITY_HAPTIC_INTENSITY = 0.15; // 0-1, deliberately light ("slight buzz", not a jolt)
       var PROXIMITY_HAPTIC_PULSE_MS = 60; // re-issued every tick while in range, so this just needs to outlast one frame
 
+      // The gun's local -Z (barrel forward) is defined relative to the
+      // hand's raw tracked ("grip") orientation, which on Quest Touch
+      // controllers does NOT point where your index finger does — this
+      // is a well-known WebXR quirk (laser-controls gets away with the
+      // same raw orientation because you visually self-correct your
+      // aim by watching the laser line; a rigid gun model has no such
+      // feedback, so the mismatch just looks wrong). This offset
+      // rotates the held gun to compensate. -90° on X is a reasoned
+      // starting estimate (pitching the barrel down out of "grip up"
+      // into "pointing forward"), not a verified value — if the barrel
+      // still doesn't track your finger after this, nudge x in ~15°
+      // steps (or adjust y/z if the mismatch looks like a left/right
+      // twist rather than up/down) and reload.
+      var GRIP_TO_BARREL_OFFSET = { x: -90, y: 0, z: 0 };
+
+      var RECOIL_KICK_DEG = -8; // extra pitch added on top of the offset above when firing
+      var RECOIL_RECOVER_MS = 120; // how long the kick takes to settle back
+
+      var TRACER_COLOR = '#ffe066';
+      var TRACER_RADIUS = 0.004; // meters
+      var TRACER_LIFETIME_MS = 80;
+      var IMPACT_RADIUS = 0.04; // meters
+      var IMPACT_LIFETIME_MS = 150;
+      var MAX_SHOT_RANGE = 20; // meters — both the raycaster's far distance and the tracer's length on a miss
+
+      // ==============================================================
+      // spawnTracer
+      // A quick yellow line from the muzzle to wherever the shot ended
+      // up (a hit point, or MAX_SHOT_RANGE out into the distance on a
+      // miss), plus a small burst at that endpoint. Both are one-shot,
+      // throwaway entities — created, shown briefly, removed — so it's
+      // a plain function rather than a component.
+      // ==============================================================
+      function spawnTracer(origin, endPoint) {
+        var sceneEl = document.querySelector('a-scene');
+
+        var direction = new THREE.Vector3().subVectors(endPoint, origin);
+        var length = direction.length();
+        if (length > 0.001) {
+          var midpoint = new THREE.Vector3().addVectors(origin, endPoint).multiplyScalar(0.5);
+          var quaternion = new THREE.Quaternion().setFromUnitVectors(
+            new THREE.Vector3(0, 1, 0),
+            direction.clone().normalize()
+          );
+
+          var tracer = document.createElement('a-entity');
+          tracer.setAttribute('geometry', { primitive: 'cylinder', radius: TRACER_RADIUS, height: length });
+          tracer.setAttribute('material', 'color: ' + TRACER_COLOR + '; shader: flat; opacity: 0.9; transparent: true');
+          tracer.object3D.position.copy(midpoint);
+          tracer.object3D.quaternion.copy(quaternion);
+          sceneEl.appendChild(tracer);
+          setTimeout(function () {
+            if (tracer.parentNode) tracer.parentNode.removeChild(tracer);
+          }, TRACER_LIFETIME_MS);
+        }
+
+        var impact = document.createElement('a-sphere');
+        impact.setAttribute('radius', IMPACT_RADIUS);
+        impact.setAttribute('material', 'color: ' + TRACER_COLOR + '; shader: flat; opacity: 0.9; transparent: true');
+        impact.object3D.position.copy(endPoint);
+        impact.setAttribute('animation__shrink', {
+          property: 'scale',
+          to: '0.001 0.001 0.001',
+          dur: IMPACT_LIFETIME_MS,
+          easing: 'easeInQuad',
+        });
+        sceneEl.appendChild(impact);
+        setTimeout(function () {
+          if (impact.parentNode) impact.parentNode.removeChild(impact);
+        }, IMPACT_LIFETIME_MS + 20);
+      }
+
       // ==============================================================
       // COMPONENT: boxy-gun
       // Builds a very simple, low-poly pistol out of boxes, sized for a
@@ -274,6 +346,7 @@
         init: function () {
           this.state = 'holstered';
           this.hand = null; // the hand entity currently holding/dangling this gun
+          this.recoilTimer = 0; // ms remaining on the current fire-recoil kick, while held
 
           this.angularVelocity = new THREE.Vector3();
           this.fallVelocity = new THREE.Vector3();
@@ -302,6 +375,7 @@
           var dtSeconds = Math.min((dt || 16) / 1000, 0.05);
           if (this.state === 'dangling') this.updateDangle(dtSeconds);
           else if (this.state === 'falling') this.updateFall(dtSeconds);
+          else if (this.state === 'held') this.updateRecoil(dtSeconds);
         },
 
         attachTo: function (parentObject3D, localPos, localRotDeg) {
@@ -322,8 +396,32 @@
         grab: function (handEl) {
           this.state = 'held';
           this.hand = handEl;
-          this.attachTo(handEl.object3D, { x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: 0 });
+          this.recoilTimer = 0;
+          this.attachTo(handEl.object3D, { x: 0, y: 0, z: 0 }, GRIP_TO_BARREL_OFFSET);
           this.angularVelocity.set(0, 0, 0);
+        },
+
+        // Runs every frame while held, but only actually does anything
+        // for the ~120ms right after a shot: eases the recoil kick back
+        // down to the normal held pose. Written as a direct object3D
+        // write (like the rest of this component) rather than through
+        // A-Frame's animation component, since that animates the core
+        // "rotation" component's own cached state — which everything
+        // else here bypasses by writing object3D.rotation/quaternion
+        // directly — and the two caches falling out of sync is exactly
+        // the kind of thing that produces a gun that's rotated wrong
+        // for no visible reason.
+        updateRecoil: function (dtSeconds) {
+          if (this.recoilTimer <= 0) return;
+
+          this.recoilTimer = Math.max(this.recoilTimer - dtSeconds * 1000, 0);
+          var kick = RECOIL_KICK_DEG * (this.recoilTimer / RECOIL_RECOVER_MS);
+
+          this.el.object3D.rotation.set(
+            ((GRIP_TO_BARREL_OFFSET.x + kick) * Math.PI) / 180,
+            (GRIP_TO_BARREL_OFFSET.y * Math.PI) / 180,
+            (GRIP_TO_BARREL_OFFSET.z * Math.PI) / 180
+          );
         },
 
         // Called by hand-rig when the hand currently holding this gun
@@ -466,7 +564,7 @@
           muzzleEl.object3D.getWorldQuaternion(quat);
           var direction = new THREE.Vector3(0, 0, -1).applyQuaternion(quat).normalize();
 
-          var raycaster = new THREE.Raycaster(origin, direction, 0, 20);
+          var raycaster = new THREE.Raycaster(origin, direction, 0, MAX_SHOT_RANGE);
           var meshes = Array.prototype
             .slice.call(document.querySelectorAll('.target-ring'))
             .map(function (targetEl) { return targetEl.getObject3D('mesh'); })
@@ -475,23 +573,21 @@
 
           this.playMuzzleEffects();
 
+          var endPoint;
           if (hits.length > 0) {
+            endPoint = hits[0].point;
             hits[0].object.el.emit('click', null, true);
           } else {
+            endPoint = origin.clone().addScaledVector(direction, MAX_SHOT_RANGE);
             var manager = document.querySelector('#range-manager');
             if (manager) manager.emit('gun-miss', null, false);
           }
+
+          spawnTracer(origin, endPoint);
         },
 
         playMuzzleEffects: function () {
-          this.el.removeAttribute('animation__recoil');
-          this.el.setAttribute('animation__recoil', {
-            property: 'rotation',
-            from: '-8 0 0',
-            to: '0 0 0',
-            dur: 120,
-            easing: 'easeOutQuad',
-          });
+          this.recoilTimer = RECOIL_RECOVER_MS;
 
           var flash = this.el.querySelector('.muzzle-flash');
           if (flash) {
