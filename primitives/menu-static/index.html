@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Static Menu — WebXR Primitive</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <!-- Same CDN-only setup as the prototypes: no build step. -->
+    <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
+
+    <style>
+      body {
+        margin: 0;
+        font-family: system-ui, sans-serif;
+      }
+      #overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        padding: 0.75rem 1rem;
+        background: rgba(0, 0, 0, 0.55);
+        color: white;
+        z-index: 1;
+        font-size: 0.9rem;
+      }
+      #overlay a {
+        color: #9ad;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="overlay">
+      <span>Static Menu primitive — point at an item and pull the trigger to select. <a href="../../index.html">All prototypes</a></span>
+    </div>
+
+    <a-scene>
+      <a-plane
+        rotation="-90 0 0"
+        width="20"
+        height="20"
+        color="#445"
+        position="0 0 0"
+      ></a-plane>
+      <a-sky color="#0d1526"></a-sky>
+
+      <!-- Gaze reticle so this is testable from desktop/phone with no
+           headset, same pattern as Cube Pop. -->
+      <a-camera>
+        <a-entity
+          cursor="fuse: false"
+          position="0 0 -1"
+          geometry="primitive: ring; radiusInner: 0.005; radiusOuter: 0.008"
+          material="color: #FFFFFF; shader: flat; opacity: 0.8"
+          raycaster="objects: .menu-target; far: 10"
+        ></a-entity>
+      </a-camera>
+
+      <a-entity
+        laser-controls="hand: left"
+        raycaster="objects: .menu-target; far: 10"
+      ></a-entity>
+      <a-entity
+        laser-controls="hand: right"
+        raycaster="objects: .menu-target; far: 10"
+      ></a-entity>
+
+      <!-- ============================================================
+           THE PRIMITIVE
+           A fixed panel in world space. Every clickable row is just an
+           entity with its own geometry/material plus the "menu-item"
+           component below — that component is the reusable part; the
+           background plane and title here are just this demo's dressing.
+      ============================================================ -->
+      <a-entity id="menu-panel" menu-feedback position="0 1.8 -2.5">
+        <a-plane
+          width="1.9"
+          height="2"
+          color="#101827"
+          position="0 -0.15 -0.02"
+        ></a-plane>
+
+        <a-text
+          value="MAIN MENU"
+          align="center"
+          color="#9ad"
+          width="3"
+          position="0 0.65 0"
+        ></a-text>
+
+        <a-entity
+          class="menu-target"
+          geometry="primitive: plane; width: 1.6; height: 0.3"
+          material="color: #182238"
+          menu-item="value: start; label: Start"
+          position="0 0.25 0"
+        >
+          <a-text value="Start" align="center" color="#eee" width="3" position="0 0 0.01"></a-text>
+        </a-entity>
+
+        <a-entity
+          class="menu-target"
+          geometry="primitive: plane; width: 1.6; height: 0.3"
+          material="color: #182238"
+          menu-item="value: options; label: Options"
+          position="0 -0.15 0"
+        >
+          <a-text value="Options" align="center" color="#eee" width="3" position="0 0 0.01"></a-text>
+        </a-entity>
+
+        <a-entity
+          class="menu-target"
+          geometry="primitive: plane; width: 1.6; height: 0.3"
+          material="color: #182238"
+          menu-item="value: quit; label: Quit"
+          position="0 -0.55 0"
+        >
+          <a-text value="Quit" align="center" color="#eee" width="3" position="0 0 0.01"></a-text>
+        </a-entity>
+
+        <a-text
+          id="menu-feedback-text"
+          value="Selected: (none)"
+          align="center"
+          color="#aaa"
+          width="2.2"
+          position="0 -0.95 0"
+        ></a-text>
+      </a-entity>
+    </a-scene>
+
+    <script>
+      // ==============================================================
+      // COMPONENT: menu-item
+      // The reusable primitive. Drop this on any entity that already has
+      // its own geometry + material, and it becomes a clickable menu row:
+      // highlights on hover (mouseenter/mouseleave, fired by the cursor/
+      // raycaster on whatever's aiming at it), and on click emits
+      // "menu-item-select" with {value, label} bubbling up to whatever
+      // manager is listening.
+      // ==============================================================
+      AFRAME.registerComponent('menu-item', {
+        schema: {
+          value: { type: 'string' },
+          label: { type: 'string' },
+          hoverColor: { type: 'color', default: '#2a3a5c' },
+        },
+
+        init: function () {
+          // Remember the color set on the entity's own material so
+          // mouseleave can restore it, without this component having to
+          // know or care what that base color is.
+          this.baseColor = this.el.getAttribute('material').color;
+
+          this.onMouseEnter = this.onMouseEnter.bind(this);
+          this.onMouseLeave = this.onMouseLeave.bind(this);
+          this.onClick = this.onClick.bind(this);
+
+          this.el.addEventListener('mouseenter', this.onMouseEnter);
+          this.el.addEventListener('mouseleave', this.onMouseLeave);
+          this.el.addEventListener('click', this.onClick);
+        },
+
+        onMouseEnter: function () {
+          this.el.setAttribute('material', 'color', this.data.hoverColor);
+          this.el.setAttribute('scale', '1.05 1.05 1.05');
+        },
+
+        onMouseLeave: function () {
+          this.el.setAttribute('material', 'color', this.baseColor);
+          this.el.setAttribute('scale', '1 1 1');
+        },
+
+        onClick: function () {
+          this.el.emit(
+            'menu-item-select',
+            { value: this.data.value, label: this.data.label },
+            true
+          );
+        },
+
+        remove: function () {
+          this.el.removeEventListener('mouseenter', this.onMouseEnter);
+          this.el.removeEventListener('mouseleave', this.onMouseLeave);
+          this.el.removeEventListener('click', this.onClick);
+        },
+      });
+
+      // ==============================================================
+      // COMPONENT: menu-feedback
+      // Demo-only: listens for the bubbled selection event from any
+      // menu-item under this panel and reflects it back in text, so you
+      // can see the primitive actually fired without checking devtools.
+      // ==============================================================
+      AFRAME.registerComponent('menu-feedback', {
+        init: function () {
+          this.feedbackText = this.el.querySelector('#menu-feedback-text');
+          this.el.addEventListener('menu-item-select', (evt) => {
+            this.feedbackText.setAttribute(
+              'text',
+              'value',
+              'Selected: ' + evt.detail.label
+            );
+          });
+        },
+      });
+    </script>
+  </body>
+</html>

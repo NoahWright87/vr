@@ -7,8 +7,9 @@ Deployed as a static site (planned: `vr.noahwright.dev` via Netlify).
 ## Structure
 
 ```
-/index.html              landing page linking to every prototype
-/games/<name>/index.html one folder per prototype, fully self-contained
+/index.html                   landing page linking to every prototype and primitive
+/games/<name>/index.html      one folder per prototype, fully self-contained
+/primitives/<name>/index.html one folder per reusable interaction primitive, fully self-contained
 ```
 
 To add a new prototype: create `games/<name>/index.html`, and add a link to it from the root `index.html`. Nothing else needs to change — each game manages its own A-Frame version, components, and assets.
@@ -16,6 +17,14 @@ To add a new prototype: create `games/<name>/index.html`, and add a link to it f
 ## Prototypes
 
 - **[Cube Pop](games/cube-pop/index.html)** — point a Quest controller at a floating cube and pull the trigger to pop it. Counter tracks progress; popping all cubes shows a win state with an in-VR reset button. Also has a gaze-reticle fallback so you can validate it from a phone or desktop browser without a headset — see below.
+
+## Primitives
+
+Small, reusable interaction building blocks — a design-system for VR, in the Storybook sense. Each one is demoed on its own here, and the reusable piece (an A-Frame component) is meant to be copied into other prototypes as-is rather than reimplemented per game.
+
+- **[Menus — Static](primitives/menu-static/index.html)** — a menu panel fixed in world space. The `menu-item` component is the reusable part: attach it to any entity with its own geometry/material and it becomes a clickable row that highlights on hover and emits a `menu-item-select` event (with `{value, label}`) on click.
+
+Coming soon: wrist/HUD-attached menus, movement (locomotion + turning), vibration/haptics, object manipulation, and spatial audio.
 
 ## Running locally
 
