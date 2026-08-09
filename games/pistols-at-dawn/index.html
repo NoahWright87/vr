@@ -182,6 +182,11 @@
       var IMPACT_LIFETIME_MS = 150;
       var MAX_SHOT_RANGE = 20; // meters — both the raycaster's far distance and the tracer's length on a miss
 
+      var FALL_ROTATION_X = -90; // degrees a hit target tips backward, hinged at its top
+      var FALL_DUR_MS = 220;
+      var STAND_UP_DUR_MS = 350;
+      var RESET_DELAY_MS = 700; // pause after the last target falls, before they all pop back up
+
       // ==============================================================
       // spawnTracer
       // A quick yellow line from the muzzle to wherever the shot ended
@@ -327,11 +332,18 @@
       // Owns one gun's state machine and physics:
       //   holstered -> held (grabbed) -> dangling (grip released while
       //   a finger is still resting on the trigger) -> held again
-      //   (caught) or falling (finger comes off the trigger too, or
-      //   grip released with nothing to catch it) -> resting (on the
-      //   ground, grabbable again). Releasing near either hip while
-      //   holding it always holsters it instead, regardless of trigger
-      //   state — see release() below.
+      //   (caught) or holstered/falling (finger comes off the trigger
+      //   too — holstered if that happens near a hip, falling
+      //   otherwise) -> resting (on the ground, grabbable again).
+      //
+      //   Releasing the grip with NO finger on the trigger checks the
+      //   holster immediately instead (see release()). Releasing the
+      //   grip WITH a finger still on the trigger always dangles,
+      //   deliberately skipping the holster check at that moment — the
+      //   check only happens later, in endDangle(), when the finger
+      //   actually comes off the trigger. That's what lets a dangling,
+      //   spinning gun be aimed into its holster as its own move,
+      //   rather than only ever holstering from a plain grip-release.
       //
       // Reparenting is done directly on the three.js object3D graph
       // via Object3D.attach(), which reparents while preserving the
@@ -427,8 +439,25 @@
         // Called by hand-rig when the hand currently holding this gun
         // releases its grip. fingerOnTrigger reflects whether that
         // hand's finger is resting on (not necessarily pulling) the
-        // trigger at that moment.
+        // trigger at that moment. See the state-machine comment above
+        // for why the holster check is skipped here when a finger is
+        // still on the trigger.
         release: function (fingerOnTrigger) {
+          if (fingerOnTrigger) {
+            this.startDangling();
+            return;
+          }
+          this.tryHolsterElse(this.startFalling.bind(this));
+        },
+
+        // Called directly by hand-rig when the finger lifts off the
+        // trigger while this gun is dangling from that hand — the
+        // moment that decides whether it lands in a holster or falls.
+        endDangle: function () {
+          this.tryHolsterElse(this.startFalling.bind(this));
+        },
+
+        tryHolsterElse: function (fallback) {
           this.el.object3D.getWorldPosition(this._worldPos);
           var nearestHolster = this.findNearestHolster(this._worldPos);
 
@@ -439,20 +468,20 @@
             return;
           }
 
-          if (fingerOnTrigger) {
-            this.state = 'dangling';
-            this.el.sceneEl.object3D.attach(this.el.object3D);
-            this.el.object3D.getWorldPosition(this.prevPivotPos);
-            this.prevPivotVelocity.set(0, 0, 0);
-            return; // this.hand stays set — we're still dangling from it
-          }
-
-          this.startFalling();
+          fallback();
         },
 
-        // Called directly by hand-rig when the trigger lets go while
-        // this gun is dangling from that hand's finger — nothing left
-        // to hold it up.
+        startDangling: function () {
+          this.state = 'dangling';
+          this.el.sceneEl.object3D.attach(this.el.object3D);
+          this.el.object3D.getWorldPosition(this.prevPivotPos);
+          this.prevPivotVelocity.set(0, 0, 0);
+          // this.hand stays set — we're still dangling from it
+        },
+
+        // Called when nothing is left holding this gun up: either
+        // tryHolsterElse's fallback, or updateDangle's own safety net
+        // below if this.hand ever goes missing mid-dangle.
         startFalling: function () {
           this.state = 'falling';
           this.hand = null;
@@ -667,11 +696,12 @@
         },
 
         // Finger fully lifts off the trigger surface. If a gun is
-        // dangling from this hand, that's the last thing holding it up.
+        // dangling from this hand, that's the last thing holding it
+        // up — this is the moment that decides holster vs. fall.
         onTriggerTouchEnd: function () {
           this.fingerOnTrigger = false;
           if (this.danglingGun) {
-            this.danglingGun.components.pistol.startFalling();
+            this.danglingGun.components.pistol.endDangle();
             this.danglingGun = null;
           }
         },
@@ -766,12 +796,51 @@
       });
 
       // ==============================================================
+      // COMPONENT: pop-target
+      // Attached to a target's "hinge" entity — the thing that
+      // physically tips over when the target is hit, carrying its
+      // board and all of its rings along as children (they never get
+      // removed or altered, just rotated as one rigid piece). Ignores
+      // further hits while already fallen; standUp() resets it.
+      // ==============================================================
+      AFRAME.registerComponent('pop-target', {
+        init: function () {
+          this.fallen = false;
+        },
+
+        fall: function () {
+          if (this.fallen) return;
+          this.fallen = true;
+          this.el.setAttribute('animation__fall', {
+            property: 'rotation',
+            to: FALL_ROTATION_X + ' 0 0',
+            dur: FALL_DUR_MS,
+            easing: 'easeInQuad',
+          });
+          this.el.emit('target-fallen', null, true); // bubbles to the range manager
+        },
+
+        standUp: function () {
+          if (!this.fallen) return;
+          this.fallen = false;
+          this.el.setAttribute('animation__fall', {
+            property: 'rotation',
+            to: '0 0 0',
+            dur: STAND_UP_DUR_MS,
+            easing: 'easeOutBack',
+          });
+        },
+      });
+
+      // ==============================================================
       // COMPONENT: scoring-ring
       // Attached to each colored disc of a bullseye. Scores a hit,
-      // flashes white for feedback, and emits "ring-hit" which bubbles
-      // up to the range manager. Fires on the standard "click" event so
-      // it doesn't care whether that click came from a fired shot
-      // (pistol.fire, above) or a desktop/phone reticle tap.
+      // flashes white for feedback, and tips the whole target over via
+      // its parent's pop-target component — the ring itself is never
+      // removed. Fires on the standard "click" event so it doesn't
+      // care whether that click came from a fired shot (pistol.fire,
+      // above) or a desktop/phone reticle tap. Ignores hits once the
+      // target it belongs to is already fallen.
       // ==============================================================
       AFRAME.registerComponent('scoring-ring', {
         schema: {
@@ -790,6 +859,9 @@
         },
 
         onClick: function () {
+          var popTarget = this.el.parentNode.components['pop-target'];
+          if (popTarget && popTarget.fallen) return;
+
           this.el.setAttribute('material', 'color', '#FFFFFF');
           this.el.setAttribute('animation__flash', {
             property: 'material.color',
@@ -803,29 +875,37 @@
             { score: this.data.score, label: this.data.label },
             true
           );
+
+          if (popTarget) popTarget.fall();
         },
       });
 
       // ==============================================================
       // COMPONENT: shooting-range
-      // The range manager. Spawns a few target stands, listens for
-      // "ring-hit" bubbling up from any ring plus "gun-miss" from a
-      // fired shot that hit nothing, and keeps score on the HUD.
+      // The range manager. Spawns a few pop-up target stands, listens
+      // for "ring-hit" bubbling up from any ring, "gun-miss" from a
+      // fired shot that hit nothing, and "target-fallen" from any
+      // target's pop-target component — once every target in
+      // this.targets has fallen, it waits RESET_DELAY_MS and stands
+      // them all back up. Score/shots are cumulative across resets.
       // ==============================================================
       AFRAME.registerComponent('shooting-range', {
         init: function () {
           this.score = 0;
           this.shots = 0;
           this.hud = document.querySelector('#hud-text');
+          this.targets = []; // the hinge entities, one per target stand
 
           this.onRingHit = this.onRingHit.bind(this);
           this.onMiss = this.onMiss.bind(this);
+          this.onTargetFallen = this.onTargetFallen.bind(this);
           this.el.addEventListener('ring-hit', this.onRingHit);
           this.el.addEventListener('gun-miss', this.onMiss);
+          this.el.addEventListener('target-fallen', this.onTargetFallen);
 
-          this.spawnTarget(-1.6, 1.3, -4, 12);
-          this.spawnTarget(0, 1.5, -5, 0);
-          this.spawnTarget(1.6, 1.2, -4.2, -12);
+          this.targets.push(this.spawnTarget(-1.6, 1.3, -4, 12));
+          this.targets.push(this.spawnTarget(0, 1.5, -5, 0));
+          this.targets.push(this.spawnTarget(1.6, 1.2, -4.2, -12));
 
           this.updateHud('Draw a pistol and take aim');
         },
@@ -841,6 +921,23 @@
           this.updateHud('MISS');
         },
 
+        onTargetFallen: function () {
+          var allDown = this.targets.every(function (hingeEl) {
+            return hingeEl.components['pop-target'].fallen;
+          });
+          if (!allDown) return;
+
+          this.updateHud('All down! Resetting...');
+
+          var self = this;
+          setTimeout(function () {
+            self.targets.forEach(function (hingeEl) {
+              hingeEl.components['pop-target'].standUp();
+            });
+            self.updateHud('Reset — take aim');
+          }, RESET_DELAY_MS);
+        },
+
         updateHud: function (message) {
           this.hud.setAttribute(
             'text',
@@ -849,6 +946,10 @@
           );
         },
 
+        // Builds one wooden target stand and returns its "hinge"
+        // entity: the thing pop-target rotates when hit, carrying the
+        // board and rings (positioned relative to the hinge, not the
+        // stand) along with it as one rigid piece.
         spawnTarget: function (x, standHeight, z, rotY) {
           var stand = document.createElement('a-entity');
           stand.setAttribute('position', { x: x, y: 0, z: z });
@@ -862,13 +963,18 @@
           post.setAttribute('color', '#5b4633');
           stand.appendChild(post);
 
+          var hinge = document.createElement('a-entity');
+          hinge.setAttribute('position', { x: 0, y: standHeight, z: 0 });
+          hinge.setAttribute('pop-target', '');
+          stand.appendChild(hinge);
+
           var board = document.createElement('a-box');
           board.setAttribute('width', 1.1);
           board.setAttribute('height', 1.1);
           board.setAttribute('depth', 0.04);
-          board.setAttribute('position', { x: 0, y: standHeight, z: 0 });
+          board.setAttribute('position', { x: 0, y: 0, z: 0 });
           board.setAttribute('color', '#8a6d4b');
-          stand.appendChild(board);
+          hinge.appendChild(board);
 
           var rings = [
             { radius: 0.5, color: '#f4f1de', score: 10, label: 'Outer ring' },
@@ -882,13 +988,14 @@
             var circle = document.createElement('a-circle');
             circle.setAttribute('radius', ring.radius);
             circle.setAttribute('color', ring.color);
-            circle.setAttribute('position', { x: 0, y: standHeight, z: 0.021 + i * 0.002 });
+            circle.setAttribute('position', { x: 0, y: 0, z: 0.021 + i * 0.002 });
             circle.classList.add('target-ring');
             circle.setAttribute('scoring-ring', { score: ring.score, label: ring.label });
-            stand.appendChild(circle);
+            hinge.appendChild(circle);
           });
 
           this.el.appendChild(stand);
+          return hinge;
         },
       });
     </script>
