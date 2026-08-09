@@ -95,12 +95,15 @@
              hand-controls entity, aimed inconsistently.
 
            proximity-haptics is generic and unrelated to pistols
-           specifically — see its own comment below.
+           specifically — see its own comment below. The "hand" class
+           is what lets generic helpers like findOtherHand and
+           findCatchingHand (used for tossing/catching) enumerate both
+           hands without hardcoding left/right.
       ============================================================ -->
-      <a-entity oculus-touch-controls="hand: left; model: false" hand-rig proximity-haptics></a-entity>
+      <a-entity class="hand" oculus-touch-controls="hand: left; model: false" hand-rig proximity-haptics></a-entity>
       <a-entity hand-controls="hand: left; handModelStyle: lowPoly; color: #3a3a3a"></a-entity>
 
-      <a-entity oculus-touch-controls="hand: right; model: false" hand-rig proximity-haptics></a-entity>
+      <a-entity class="hand" oculus-touch-controls="hand: right; model: false" hand-rig proximity-haptics></a-entity>
       <a-entity hand-controls="hand: right; handModelStyle: lowPoly; color: #3a3a3a"></a-entity>
 
       <!-- ============================================================
@@ -210,6 +213,20 @@
 
       var RING_Z_START = 0.03; // meters in front of the board face, to the outermost ring
       var RING_Z_STEP = 0.01; // extra separation per ring stepping inward — small enough to look flat from a few meters out, big enough that the depth buffer doesn't flicker between rings
+
+      // Juggling: an aimed toss, not raw physics. The vertical speed of
+      // your hand at release controls how high/long the arc is; the
+      // horizontal velocity is discarded and replaced with whatever's
+      // needed to land exactly at a target hand's position (see
+      // computeThrowVelocity). Which hand is the target is the only
+      // thing your actual aim direction decides.
+      var MIN_THROW_UPWARD_SPEED = 0.8; // m/s — vertical hand speed floor to count as a deliberate toss at all; below this, a release just falls/holsters as before
+      var OTHER_HAND_DOT_THRESHOLD = 0.3; // m/s of horizontal speed toward the other hand needed to target it instead of yourself
+      var THROW_LAUNCH_VY_MIN = 1.5; // m/s — clamps the arc's height floor so even a weak flick gives a reactable toss
+      var THROW_LAUNCH_VY_MAX = 4; // m/s — clamps the ceiling so a hard flick doesn't send it flying absurdly high
+      var THROW_CATCH_RADIUS = 0.35; // meters — deliberately wide vs. GRAB_RADIUS(0.15): catching something already falling/flying should be far more forgiving than picking something up at rest
+      var THROW_SPIN_RATE = 7; // rad/s — fixed visual tumble given to a fresh throw
+      var CATCH_SNAP_DUR_MS = 130; // ms — how long a grip-catch takes to blend smoothly into the normal held pose, instead of an instant snap
 
       // ==============================================================
       // spawnTracer
@@ -342,6 +359,114 @@
       }
 
       // ==============================================================
+      // findOtherHand
+      // The `.hand` element that isn't handEl — with exactly two hands
+      // in the scene this is just "the other one," found generically
+      // rather than assuming which is left/right.
+      // ==============================================================
+      function findOtherHand(handEl) {
+        var hands = document.querySelectorAll('.hand');
+        for (var i = 0; i < hands.length; i++) {
+          if (hands[i] !== handEl) return hands[i];
+        }
+        return null;
+      }
+
+      // ==============================================================
+      // computeThrowVelocity
+      // Decides whether a grip-release counts as a deliberate upward
+      // toss and, if so, returns the launch velocity to use — or null
+      // if it's just a normal release (too slow, or not upward enough)
+      // that should fall through to the usual holster/drop logic.
+      //
+      // This is an aimed toss, not raw physics: real hand velocity at
+      // release is unreliable for anyone to consistently land a catch
+      // with, so only the vertical component (how hard you flicked
+      // upward, clamped to a reactable range) survives untouched. The
+      // horizontal component is discarded and replaced with whatever's
+      // needed to land exactly on a target hand — your own hand's
+      // current position for a "basically straight up" release, or the
+      // other hand's current position if there's meaningful sideways
+      // velocity toward it. Both targets are fixed at this instant;
+      // the arc doesn't re-aim later if a hand moves (see
+      // pistol.updateFall/checkCatch for how catching still stays
+      // generous regardless of exactly where the arc ends up).
+      // ==============================================================
+      function computeThrowVelocity(handEl) {
+        var handRig = handEl.components['hand-rig'];
+        if (!handRig) return null;
+
+        var vy = handRig.velocity.y;
+        if (vy < MIN_THROW_UPWARD_SPEED) return null;
+        vy = Math.min(Math.max(vy, THROW_LAUNCH_VY_MIN), THROW_LAUNCH_VY_MAX);
+
+        var releasePos = new THREE.Vector3();
+        handEl.object3D.getWorldPosition(releasePos);
+
+        var targetPos = releasePos.clone();
+        var otherHandEl = findOtherHand(handEl);
+
+        if (otherHandEl) {
+          var otherPos = new THREE.Vector3();
+          otherHandEl.object3D.getWorldPosition(otherPos);
+
+          var towardOther = new THREE.Vector3(otherPos.x - releasePos.x, 0, otherPos.z - releasePos.z);
+          if (towardOther.lengthSq() > 0.0001) {
+            towardOther.normalize();
+            var towardOtherSpeed = handRig.velocity.x * towardOther.x + handRig.velocity.z * towardOther.z;
+            if (towardOtherSpeed > OTHER_HAND_DOT_THRESHOLD) {
+              targetPos = otherPos;
+            }
+          }
+        }
+
+        var flightTime = (2 * vy) / GRAVITY; // time to fall back to launch height under gravity
+        return new THREE.Vector3(
+          (targetPos.x - releasePos.x) / flightTime,
+          vy,
+          (targetPos.z - releasePos.z) / flightTime
+        );
+      }
+
+      // ==============================================================
+      // findCatchingHand
+      // Generous catch detection for anything falling/flying (a
+      // dropped or thrown pistol, currently — but this doesn't know
+      // that, it just checks `.hand` elements' public hand-rig state).
+      // A hand can catch by gripping (any grip currently held, not
+      // just a fresh press) within THROW_CATCH_RADIUS, or by resting a
+      // finger on the trigger within that same radius — the two modes
+      // the caller uses to decide "snap into hand" vs. "land on the
+      // finger and dangle." Skips any hand that's already holding or
+      // dangling something.
+      // ==============================================================
+      function findCatchingHand(worldPos, radius) {
+        var hands = document.querySelectorAll('.hand');
+        var handPos = new THREE.Vector3();
+        var best = null;
+        var bestDist = radius;
+
+        for (var i = 0; i < hands.length; i++) {
+          var handEl = hands[i];
+          var handRig = handEl.components['hand-rig'];
+          if (!handRig) continue;
+          if (handRig.heldGun || handRig.danglingGun) continue;
+
+          var mode = handRig.gripHeld ? 'grip' : handRig.fingerOnTrigger ? 'trigger' : null;
+          if (!mode) continue;
+
+          handEl.object3D.getWorldPosition(handPos);
+          var d = handPos.distanceTo(worldPos);
+          if (d < bestDist) {
+            bestDist = d;
+            best = { handEl: handEl, mode: mode };
+          }
+        }
+
+        return best;
+      }
+
+      // ==============================================================
       // COMPONENT: boxy-gun
       // Builds a very simple, low-poly pistol out of boxes, sized for a
       // hand-held scale (roughly 20cm long). Local space is defined so
@@ -443,14 +568,22 @@
       //   too — holstered if that happens near a hip, falling
       //   otherwise) -> resting (on the ground, grabbable again).
       //
-      //   Releasing the grip with NO finger on the trigger checks the
-      //   holster immediately instead (see release()). Releasing the
-      //   grip WITH a finger still on the trigger always dangles,
-      //   deliberately skipping the holster check at that moment — the
-      //   check only happens later, in endDangle(), when the finger
-      //   actually comes off the trigger. That's what lets a dangling,
-      //   spinning gun be aimed into its holster as its own move,
-      //   rather than only ever holstering from a plain grip-release.
+      //   Releasing the grip with NO finger on the trigger and a
+      //   deliberate upward hand speed is a throw instead — same
+      //   "falling" state, just seeded with a real launch velocity
+      //   (see release()/throwWithVelocity()/computeThrowVelocity()).
+      //   A calm release with no throw checks the holster immediately
+      //   (see release()). A release WITH a finger still on the
+      //   trigger always dangles, deliberately skipping both the throw
+      //   and holster checks at that moment — those only happen later,
+      //   in endDangle(), when the finger actually comes off the
+      //   trigger. That's what lets a dangling, spinning gun be aimed
+      //   into its holster as its own move, rather than only ever
+      //   holstering from a plain grip-release.
+      //
+      //   While falling (dropped OR thrown — same state), it's
+      //   generously catchable by either hand: see checkCatch(),
+      //   catchThrown(), and catchIntoDangle().
       //
       // Reparenting is done directly on the three.js object3D graph
       // via Object3D.attach(), which reparents while preserving the
@@ -483,6 +616,21 @@
           this._worldPos = new THREE.Vector3();
           this._holsterPos = new THREE.Vector3();
 
+          // Grip-catch smooth blend (see catchThrown/updateCatchBlend).
+          // Starts "already finished" so a normal grab() never triggers
+          // it — only catchThrown() resets _catchBlendElapsed to 0.
+          this._catchTargetPos = new THREE.Vector3(0, 0, 0);
+          this._catchTargetQuat = new THREE.Quaternion().setFromEuler(
+            new THREE.Euler(
+              (GRIP_TO_BARREL_OFFSET.x * Math.PI) / 180,
+              (GRIP_TO_BARREL_OFFSET.y * Math.PI) / 180,
+              (GRIP_TO_BARREL_OFFSET.z * Math.PI) / 180
+            )
+          );
+          this._catchBlendFromPos = new THREE.Vector3();
+          this._catchBlendFromQuat = new THREE.Quaternion();
+          this._catchBlendElapsed = CATCH_SNAP_DUR_MS;
+
           this.el.setAttribute('boxy-gun', '');
 
           if (this.data.holster) {
@@ -494,7 +642,10 @@
           var dtSeconds = Math.min((dt || 16) / 1000, 0.05);
           if (this.state === 'dangling') this.updateDangle(dtSeconds);
           else if (this.state === 'falling') this.updateFall(dtSeconds);
-          else if (this.state === 'held') this.updateRecoil(dtSeconds);
+          else if (this.state === 'held') {
+            this.updateCatchBlend(dtSeconds);
+            this.updateRecoil(dtSeconds);
+          }
         },
 
         attachTo: function (parentObject3D, localPos, localRotDeg) {
@@ -512,10 +663,13 @@
         // Called by hand-rig: either a fresh pickup (from a holster or
         // the ground) or catching this same gun mid-dangle — both are
         // "snap rigidly into this hand" and need no other distinction.
+        // Always an instant snap — the smooth blend is reserved for
+        // catchThrown() specifically, see updateCatchBlend.
         grab: function (handEl) {
           this.state = 'held';
           this.hand = handEl;
           this.recoilTimer = 0;
+          this._catchBlendElapsed = CATCH_SNAP_DUR_MS; // cancel any in-progress blend, defensively
           this.attachTo(handEl.object3D, { x: 0, y: 0, z: 0 }, GRIP_TO_BARREL_OFFSET);
           this.angularVelocity.set(0, 0, 0);
         },
@@ -547,13 +701,25 @@
         // releases its grip. fingerOnTrigger reflects whether that
         // hand's finger is resting on (not necessarily pulling) the
         // trigger at that moment. See the state-machine comment above
-        // for why the holster check is skipped here when a finger is
-        // still on the trigger.
+        // for why the holster and throw checks are both skipped here
+        // when a finger is still on the trigger.
+        //
+        // A throw takes priority over the holster check — a real flick
+        // upward is a strong, deliberate signal that shouldn't get
+        // reinterpreted as "must be holstering" just because it
+        // happened near a hip.
         release: function (fingerOnTrigger) {
           if (fingerOnTrigger) {
             this.startDangling();
             return;
           }
+
+          var throwVelocity = computeThrowVelocity(this.hand);
+          if (throwVelocity) {
+            this.throwWithVelocity(throwVelocity);
+            return;
+          }
+
           this.tryHolsterElse(this.startFalling.bind(this));
         },
 
@@ -594,6 +760,85 @@
           this.hand = null;
           this.el.sceneEl.object3D.attach(this.el.object3D); // no-op if already world-parented
           this.fallVelocity.set(0, 0, 0);
+        },
+
+        // A throw: the same "falling" state a plain drop uses, just
+        // seeded with a real (aimed) launch velocity instead of zero,
+        // plus a fixed visual tumble so it reads as a toss rather than
+        // an object sliding through the air. updateFall's own gravity
+        // integration and catch-check take it from here.
+        throwWithVelocity: function (velocity) {
+          this.state = 'falling';
+          this.hand = null;
+          this.el.sceneEl.object3D.attach(this.el.object3D);
+          this.fallVelocity.copy(velocity);
+          this.angularVelocity.set(THROW_SPIN_RATE, 0, 0);
+        },
+
+        // Grip-catch: snaps rigidly into handEl, but blends smoothly
+        // into the canonical held pose over CATCH_SNAP_DUR_MS instead
+        // of an instant snap (see updateCatchBlend) — this is the one
+        // reserved for something already falling/flying, deliberately
+        // different from grab()'s instant pickup snap. Also updates
+        // the catching hand's own bookkeeping directly, since this
+        // catch wasn't initiated by that hand's own gripdown handler.
+        catchThrown: function (handEl) {
+          this.state = 'held';
+          this.hand = handEl;
+          this.recoilTimer = 0;
+          this.angularVelocity.set(0, 0, 0);
+
+          handEl.object3D.attach(this.el.object3D); // preserves current world pose as the starting local pose
+          this._catchBlendFromPos.copy(this.el.object3D.position);
+          this._catchBlendFromQuat.copy(this.el.object3D.quaternion);
+          this._catchBlendElapsed = 0;
+
+          var handRig = handEl.components['hand-rig'];
+          if (handRig) handRig.heldGun = this.el;
+        },
+
+        // Catches a falling/flying gun directly onto handEl's trigger
+        // finger, dangling — no grip needed. angularVelocity is
+        // deliberately left alone rather than reset: whatever tumble
+        // it had mid-flight carries straight into the twirl.
+        catchIntoDangle: function (handEl) {
+          this.state = 'dangling';
+          this.hand = handEl;
+          this.el.object3D.getWorldPosition(this.prevPivotPos);
+          this.prevPivotVelocity.set(0, 0, 0);
+
+          var handRig = handEl.components['hand-rig'];
+          if (handRig) handRig.danglingGun = this.el;
+        },
+
+        // Runs every frame while held; only actually does anything for
+        // the CATCH_SNAP_DUR_MS right after catchThrown(). Same
+        // direct-object3D-write approach as updateRecoil, for the same
+        // reason — this and updateRecoil don't fight in practice since
+        // recoilTimer is reset to 0 by catchThrown and only becomes
+        // nonzero from an actual trigger pull afterward.
+        updateCatchBlend: function (dtSeconds) {
+          if (this._catchBlendElapsed >= CATCH_SNAP_DUR_MS) return;
+
+          this._catchBlendElapsed = Math.min(this._catchBlendElapsed + dtSeconds * 1000, CATCH_SNAP_DUR_MS);
+          var t = this._catchBlendElapsed / CATCH_SNAP_DUR_MS;
+
+          this.el.object3D.position.lerpVectors(this._catchBlendFromPos, this._catchTargetPos, t);
+          THREE.Quaternion.slerp(this._catchBlendFromQuat, this._catchTargetQuat, this.el.object3D.quaternion, t);
+        },
+
+        // Checked every frame while falling: is either hand positioned
+        // and ready (gripping, or fingertip resting on the trigger)
+        // within THROW_CATCH_RADIUS? If so, catch it and report true
+        // so updateFall skips the rest of this frame's fall physics.
+        checkCatch: function () {
+          this.el.object3D.getWorldPosition(this._worldPos);
+          var match = findCatchingHand(this._worldPos, THROW_CATCH_RADIUS);
+          if (!match) return false;
+
+          if (match.mode === 'grip') this.catchThrown(match.handEl);
+          else this.catchIntoDangle(match.handEl);
+          return true;
         },
 
         findNearestHolster: function (worldPos) {
@@ -650,14 +895,20 @@
           this.el.object3D.position.copy(this._pivot);
         },
 
-        // Free-fall under gravity, keeping whatever spin it had at the
-        // moment it was dropped so it tumbles rather than just sinking
-        // straight down. Settles once it reaches the ground.
+        // Free-fall under gravity — covers both a plain drop (zero
+        // initial velocity) and a throw (see throwWithVelocity), since
+        // both are just this same integration seeded differently.
+        // Keeps whatever spin it had so it tumbles rather than just
+        // sinking straight down. Checked every frame for a generous
+        // catch (see checkCatch) before falling through to the normal
+        // ground-settle.
         updateFall: function (dt) {
           this.fallVelocity.y -= GRAVITY * dt;
           this.el.object3D.position.addScaledVector(this.fallVelocity, dt);
           this.angularVelocity.multiplyScalar(FALL_DAMPING);
           this.integrateRotation(dt);
+
+          if (this.checkCatch()) return;
 
           if (this.el.object3D.position.y <= GROUND_REST_Y) {
             this.el.object3D.position.y = GROUND_REST_Y;
@@ -742,13 +993,22 @@
       // Listens to one hand's grip/trigger buttons. Owns the "what am
       // I currently holding" bookkeeping and delegates all the actual
       // state/physics work to the pistol component on whatever gun is
-      // involved.
+      // involved. Also tracks this hand's own world-space velocity and
+      // current button state (gripHeld, fingerOnTrigger) as plain
+      // public fields — generic hand-side data that computeThrowVelocity
+      // and findCatchingHand (both reusable, gun-agnostic) read directly
+      // rather than going through pistol-specific accessors.
       // ==============================================================
       AFRAME.registerComponent('hand-rig', {
         init: function () {
           this.heldGun = null; // gun currently rigidly held by this hand, if any
           this.danglingGun = null; // gun currently dangling from this hand's trigger finger, if any
           this.fingerOnTrigger = false; // capacitive touch, not a pull — see triggertouchstart/end below
+          this.gripHeld = false; // true for the whole time the grip is squeezed, not just the initial press
+
+          this.velocity = new THREE.Vector3();
+          this._prevPos = new THREE.Vector3();
+          this.el.object3D.getWorldPosition(this._prevPos); // avoid a garbage first-frame velocity spike
 
           this.onGripDown = this.onGripDown.bind(this);
           this.onGripUp = this.onGripUp.bind(this);
@@ -771,7 +1031,23 @@
           this.el.removeEventListener('triggertouchend', this.onTriggerTouchEnd);
         },
 
+        // Smoothed (50%-blended) world-space velocity, so a single
+        // noisy tracking frame right at release doesn't get read as a
+        // huge spurious throw speed.
+        tick: function (time, dt) {
+          var dtSeconds = Math.min((dt || 16) / 1000, 0.05);
+          if (dtSeconds <= 0) return;
+
+          var currentPos = new THREE.Vector3();
+          this.el.object3D.getWorldPosition(currentPos);
+
+          var instant = currentPos.clone().sub(this._prevPos).divideScalar(dtSeconds);
+          this.velocity.lerp(instant, 0.5);
+          this._prevPos.copy(currentPos);
+        },
+
         onGripDown: function () {
+          this.gripHeld = true;
           if (this.heldGun) return;
 
           var gun = this.findGrabbableGun();
@@ -783,6 +1059,7 @@
         },
 
         onGripUp: function () {
+          this.gripHeld = false;
           if (!this.heldGun) return;
 
           var gun = this.heldGun;
