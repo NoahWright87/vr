@@ -56,13 +56,20 @@
         ></a-entity>
       </a-camera>
 
+      <!-- hand-controls gives us A-Frame's built-in animated hand model
+           instead of a plastic controller replica. It doesn't add a
+           pointer itself, so cursor + raycaster are wired up manually,
+           with downEvents/upEvents mapping the trigger button to the
+           same "click" event menu-item listens for. -->
       <a-entity
-        laser-controls="hand: left"
-        raycaster="objects: .menu-target; far: 10"
+        hand-controls="hand: left"
+        cursor="fuse: false; downEvents: triggerdown; upEvents: triggerup"
+        raycaster="objects: .menu-target; far: 10; showLine: true"
       ></a-entity>
       <a-entity
-        laser-controls="hand: right"
-        raycaster="objects: .menu-target; far: 10"
+        hand-controls="hand: right"
+        cursor="fuse: false; downEvents: triggerdown; upEvents: triggerup"
+        raycaster="objects: .menu-target; far: 10; showLine: true"
       ></a-entity>
 
       <!-- ============================================================

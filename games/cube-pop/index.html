@@ -116,26 +116,28 @@
 
       <!-- ============================================================
            CONTROLLERS
-           laser-controls draws a visible line from the controller and
-           auto-detects the connected controller model (Quest Touch
-           controllers included), so it "just works" on Quest 2 without
-           per-device configuration.
+           hand-controls renders A-Frame's built-in animated hand model
+           (instead of a plastic controller replica) and auto-detects the
+           connected controller (Quest Touch included) to drive its pose.
 
-           raycaster.objects restricts what the laser can hit to just our
-           interactive entities (cubes + the reset button) — otherwise it
-           would also try to intersect the ground/sky, which is wasted
-           work and can pick the wrong target.
-
-           Pulling the trigger fires a "click" event on whatever the laser
-           is currently touching. That's what our components listen for.
+           Unlike laser-controls, hand-controls doesn't add a pointer by
+           itself, so we wire up cursor + raycaster manually:
+           - raycaster.objects restricts what the ray can hit to just our
+             interactive entities (cubes + the reset button) — otherwise
+             it would also try to intersect the ground/sky.
+           - cursor.downEvents/upEvents map the trigger button to the
+             same "click" event our components listen for (these are the
+             same event names laser-controls used under the hood).
       ============================================================ -->
       <a-entity
-        laser-controls="hand: left"
-        raycaster="objects: .cube-target, .reset-target; far: 10"
+        hand-controls="hand: left"
+        cursor="fuse: false; downEvents: triggerdown; upEvents: triggerup"
+        raycaster="objects: .cube-target, .reset-target; far: 10; showLine: true"
       ></a-entity>
       <a-entity
-        laser-controls="hand: right"
-        raycaster="objects: .cube-target, .reset-target; far: 10"
+        hand-controls="hand: right"
+        cursor="fuse: false; downEvents: triggerdown; upEvents: triggerup"
+        raycaster="objects: .cube-target, .reset-target; far: 10; showLine: true"
       ></a-entity>
 
       <!-- ============================================================
