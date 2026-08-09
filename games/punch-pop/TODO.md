@@ -96,19 +96,30 @@ uppercut), whatever the speed, cocked back first or not. Current model:
    — falls back to pure look direction).
 5. **Sticky hit-assist** (`hitAssistMode`, menu AIM tab, global not
    per-entity): `off` is pure physical proximity (`punch-game
-   .checkHand`'s existing hitRadius check, unaffected); `cheat`
-   (default) calls the locked target's `punch-target.hit()` directly
-   the instant the punch fires, regardless of whether the fist's real
-   swept path would have reached it — the direct fix for "I punch
-   toward an enemy and fly right past it, missing entirely"; `turn`
-   does the same guaranteed hit plus a small **instant** (not animated —
-   smooth camera rotation is a worse VR-comfort offender than an
-   instant snap, same reasoning as "snap turn" locomotion) rig-yaw nudge
-   toward the target first (`nudgeYawToward`/`applyYawAroundPoint`,
-   pivoting on the head's actual world position, not the rig's
-   arbitrary translation origin), so the hit visually reads as landed.
-   Both are explicitly framed as an experiment to A/B against each
-   other for motion sickness vs. obviousness, per Noah's ask.
+   .checkHand`'s existing hitRadius check, unaffected); `cheat` calls
+   the locked target's `punch-target.hit()` directly the instant the
+   punch fires, regardless of whether the fist's real swept path would
+   have reached it — the direct fix for "I punch toward an enemy and
+   fly right past it, missing entirely"; `turn` (default) does the same
+   guaranteed hit plus a small **instant** (not animated — smooth
+   camera rotation is a worse VR-comfort offender than an instant snap,
+   same reasoning as "snap turn" locomotion) rig-yaw nudge toward the
+   target first (`nudgeYawToward`/`applyYawAroundPoint`, pivoting on
+   the head's actual world position, not the rig's arbitrary
+   translation origin), so the hit visually reads as landed. All three
+   were explicitly framed as an experiment to A/B against each other
+   for motion sickness vs. obviousness, per Noah's ask — first real
+   playtest settled it: `cheat` alone (the original default) felt
+   wrong, a hit with no visible reason it landed reads as arbitrary, so
+   the default flipped to `turn`. The menu button (AIM tab) now spells
+   out what each mode does inline (`cheat (auto-hit)`, `turn
+   (auto-hit+view)`, `off (real aim only)`) rather than just the bare
+   mode name — the mode was already exposed and working, but "which
+   button does the view-nudge" wasn't answerable just by looking at it,
+   which is its own bug worth fixing regardless of which mode ends up
+   the default. `makeMenuButton` gained an optional width param (this
+   button uses 2.0 instead of the usual 1.3) since the descriptive
+   labels run longer than every other button's bare value string.
 6. Impulse magnitude is unchanged: max hand speed, hand travel
    distance, and head travel distance
    (`speedFactor`/`handDistFactor`/`headDistFactor`), scaled by

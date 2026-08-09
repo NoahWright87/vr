@@ -454,8 +454,12 @@
       // toward the target first, so the fist visually reads as landing
       // rather than the hit just happening invisibly. Exposed in the
       // menu (AIM tab) as an experiment, per Noah's ask to A/B whether
-      // the turn is too disorienting or the cheat too obvious.
-      var hitAssistMode = 'cheat'; // 'off' | 'cheat' | 'turn'
+      // the turn is too disorienting or the cheat too obvious. Defaults
+      // to 'turn': first real playtest found 'cheat' feeling wrong (a
+      // hit registering with no visible reason it landed reads as
+      // arbitrary), and 'turn' is the one built specifically to fix
+      // that by giving the hit something to visibly land on.
+      var hitAssistMode = 'turn'; // 'off' | 'cheat' | 'turn'
       var HIT_ASSIST_MODES = ['off', 'cheat', 'turn'];
       var TURN_ASSIST_MAX_DEGREES = 35; // cap on the one-shot yaw snap, so a wildly-off target doesn't spin the player
 
@@ -2482,9 +2486,9 @@
       // Generic enough to copy-paste alongside createTabbedPanel into a
       // future prototype.
       // ==============================================================
-      function makeMenuButton(parentEl, y, labelFn, onClick, refreshList) {
+      function makeMenuButton(parentEl, y, labelFn, onClick, refreshList, width) {
         var btn = document.createElement('a-entity');
-        btn.setAttribute('geometry', { primitive: 'plane', width: 1.3, height: 0.18 });
+        btn.setAttribute('geometry', { primitive: 'plane', width: width || 1.3, height: 0.18 });
         btn.setAttribute('material', { color: '#2a3350', shader: 'flat' });
         btn.setAttribute('position', { x: 0, y: y, z: 0.01 });
         btn.classList.add('menu-target');
@@ -2718,12 +2722,22 @@
           function () { api.setLockRange(api.getLockRange() + 0.25); },
           refreshFns
         );
+        // Descriptions alongside the mode name, not just the bare word --
+        // "cheat"/"turn" don't explain themselves, and that was a real
+        // discoverability problem: Noah found the option but couldn't
+        // tell what switching it would actually do without asking.
+        var HIT_ASSIST_LABELS = {
+          off: 'off (real aim only)',
+          cheat: 'cheat (auto-hit)',
+          turn: 'turn (auto-hit+view)',
+        };
         makeMenuButton(
           aimTab,
           -0.1,
-          function () { return 'Hit Assist: ' + api.getHitAssist(); },
+          function () { return 'Hit Assist: ' + HIT_ASSIST_LABELS[api.getHitAssist()]; },
           api.cycleHitAssist,
-          refreshFns
+          refreshFns,
+          2.0 // wider than the default 1.3 -- these labels run longer than a bare mode name
         );
 
         // Reach calibration + the extension-fraction thresholds that
