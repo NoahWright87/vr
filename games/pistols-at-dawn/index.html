@@ -130,8 +130,15 @@
 
       <!-- ============================================================
            TARGETS
+           range-manager owns score/shots/HUD only. Three independent
+           target-group entities do the actual spawning, one per
+           distance tier, each resetting on its own once every stand it
+           owns has fallen — see both components' comments below.
       ============================================================ -->
       <a-entity id="range-manager" shooting-range></a-entity>
+      <a-entity target-group="count: 3; distanceScale: 1"></a-entity>
+      <a-entity target-group="count: 4; distanceScale: 2"></a-entity>
+      <a-entity target-group="count: 5; distanceScale: 3"></a-entity>
     </a-scene>
 
     <script>
@@ -182,10 +189,13 @@
       var IMPACT_LIFETIME_MS = 150;
       var MAX_SHOT_RANGE = 20; // meters — both the raycaster's far distance and the tracer's length on a miss
 
-      var FALL_ROTATION_X = -90; // degrees a hit target tips backward, hinged at its top
+      var FALL_ROTATION_X = -90; // degrees a hit target tips backward, hinged at its base
       var FALL_DUR_MS = 220;
       var STAND_UP_DUR_MS = 350;
-      var RESET_DELAY_MS = 700; // pause after the last target falls, before they all pop back up
+      var RESET_DELAY_MS = 700; // pause after a group's last target falls, before that group pops back up
+
+      var RING_Z_START = 0.03; // meters in front of the board face, to the outermost ring
+      var RING_Z_STEP = 0.01; // extra separation per ring stepping inward — small enough to look flat from a few meters out, big enough that the depth buffer doesn't flicker between rings
 
       // ==============================================================
       // spawnTracer
@@ -834,13 +844,17 @@
 
       // ==============================================================
       // COMPONENT: scoring-ring
-      // Attached to each colored disc of a bullseye. Scores a hit,
-      // flashes white for feedback, and tips the whole target over via
-      // its parent's pop-target component — the ring itself is never
-      // removed. Fires on the standard "click" event so it doesn't
-      // care whether that click came from a fired shot (pistol.fire,
-      // above) or a desktop/phone reticle tap. Ignores hits once the
-      // target it belongs to is already fallen.
+      // Attached to each colored disc of a bullseye. Invincible by
+      // design — a hit never changes its appearance or removes it,
+      // just scores it and tips the whole target over via its parent's
+      // pop-target component. Fires on the standard "click" event so
+      // it doesn't care whether that click came from a fired shot
+      // (pistol.fire, above) or a desktop/phone reticle tap. Ignores
+      // hits once the target it belongs to is already fallen.
+      //
+      // Emits "ring-hit" directly at #range-manager rather than
+      // bubbling, since target groups are now siblings of the range
+      // manager (not descendants of it) — bubbling wouldn't reach it.
       // ==============================================================
       AFRAME.registerComponent('scoring-ring', {
         schema: {
@@ -849,7 +863,6 @@
         },
 
         init: function () {
-          this.baseColor = this.el.getAttribute('color');
           this.onClick = this.onClick.bind(this);
           this.el.addEventListener('click', this.onClick);
         },
@@ -862,19 +875,10 @@
           var popTarget = this.el.parentNode.components['pop-target'];
           if (popTarget && popTarget.fallen) return;
 
-          this.el.setAttribute('material', 'color', '#FFFFFF');
-          this.el.setAttribute('animation__flash', {
-            property: 'material.color',
-            type: 'color',
-            to: this.baseColor,
-            dur: 200,
-            easing: 'easeOutQuad',
-          });
-          this.el.emit(
-            'ring-hit',
-            { score: this.data.score, label: this.data.label },
-            true
-          );
+          var manager = document.querySelector('#range-manager');
+          if (manager) {
+            manager.emit('ring-hit', { score: this.data.score, label: this.data.label }, false);
+          }
 
           if (popTarget) popTarget.fall();
         },
@@ -882,30 +886,23 @@
 
       // ==============================================================
       // COMPONENT: shooting-range
-      // The range manager. Spawns a few pop-up target stands, listens
-      // for "ring-hit" bubbling up from any ring, "gun-miss" from a
-      // fired shot that hit nothing, and "target-fallen" from any
-      // target's pop-target component — once every target in
-      // this.targets has fallen, it waits RESET_DELAY_MS and stands
-      // them all back up. Score/shots are cumulative across resets.
+      // The range manager: just score/shots/HUD now. Listens for
+      // "ring-hit" and "gun-miss", both emitted directly at this
+      // entity (not bubbled — see scoring-ring's comment for why).
+      // Target spawning and per-group reset logic live in
+      // target-group, below, since there are now multiple independent
+      // groups of targets sharing this one HUD.
       // ==============================================================
       AFRAME.registerComponent('shooting-range', {
         init: function () {
           this.score = 0;
           this.shots = 0;
           this.hud = document.querySelector('#hud-text');
-          this.targets = []; // the hinge entities, one per target stand
 
           this.onRingHit = this.onRingHit.bind(this);
           this.onMiss = this.onMiss.bind(this);
-          this.onTargetFallen = this.onTargetFallen.bind(this);
           this.el.addEventListener('ring-hit', this.onRingHit);
           this.el.addEventListener('gun-miss', this.onMiss);
-          this.el.addEventListener('target-fallen', this.onTargetFallen);
-
-          this.targets.push(this.spawnTarget(-1.6, 1.3, -4, 12));
-          this.targets.push(this.spawnTarget(0, 1.5, -5, 0));
-          this.targets.push(this.spawnTarget(1.6, 1.2, -4.2, -12));
 
           this.updateHud('Draw a pistol and take aim');
         },
@@ -921,23 +918,6 @@
           this.updateHud('MISS');
         },
 
-        onTargetFallen: function () {
-          var allDown = this.targets.every(function (hingeEl) {
-            return hingeEl.components['pop-target'].fallen;
-          });
-          if (!allDown) return;
-
-          this.updateHud('All down! Resetting...');
-
-          var self = this;
-          setTimeout(function () {
-            self.targets.forEach(function (hingeEl) {
-              hingeEl.components['pop-target'].standUp();
-            });
-            self.updateHud('Reset — take aim');
-          }, RESET_DELAY_MS);
-        },
-
         updateHud: function (message) {
           this.hud.setAttribute(
             'text',
@@ -945,15 +925,88 @@
             'Score: ' + this.score + '   Shots: ' + this.shots + '\n' + message
           );
         },
+      });
+
+      // ==============================================================
+      // COMPONENT: target-group
+      // Spawns one distance-tier's worth of pop-up target stands (see
+      // pop-target) in a shallow arc, and owns resetting just that
+      // group: once every stand it spawned has fallen, it waits
+      // RESET_DELAY_MS and stands them all back up together. Other
+      // groups are unaffected — "target-fallen" only bubbles up to
+      // this entity (the ancestor of the stands it spawned), not to
+      // sibling groups or the range manager.
+      // ==============================================================
+      AFRAME.registerComponent('target-group', {
+        schema: {
+          count: { type: 'number', default: 3 },
+          distanceScale: { type: 'number', default: 1 }, // multiplies how far this group stands from the player
+        },
+
+        init: function () {
+          this.targets = []; // the hinge entities, one per stand in this group
+
+          this.onTargetFallen = this.onTargetFallen.bind(this);
+          this.el.addEventListener('target-fallen', this.onTargetFallen);
+
+          var self = this;
+          this.buildLayout(this.data.count, this.data.distanceScale).forEach(function (spot) {
+            self.targets.push(self.spawnTarget(spot.x, spot.standHeight, spot.z, spot.rotY));
+          });
+        },
+
+        // A shallow arc of `count` stands at a distance scaled by
+        // distanceScale, wider arcs for bigger groups so the stands
+        // don't crowd together at longer range.
+        buildLayout: function (count, distanceScale) {
+          var baseRadius = 4.5 * distanceScale;
+          var totalSpreadDeg = Math.min(14 * count, 60);
+          var positions = [];
+
+          for (var i = 0; i < count; i++) {
+            var t = count === 1 ? 0 : i / (count - 1) - 0.5; // -0.5..0.5 across the group
+            var angleDeg = t * totalSpreadDeg;
+            var angleRad = (angleDeg * Math.PI) / 180;
+            positions.push({
+              x: baseRadius * Math.sin(angleRad),
+              z: -baseRadius * Math.cos(angleRad),
+              standHeight: i % 2 === 0 ? 1.2 : 1.4,
+              rotY: -angleDeg, // angle the board back toward the player
+            });
+          }
+
+          return positions;
+        },
+
+        onTargetFallen: function () {
+          var allDown = this.targets.every(function (hingeEl) {
+            return hingeEl.components['pop-target'].fallen;
+          });
+          if (!allDown) return;
+
+          var self = this;
+          setTimeout(function () {
+            self.targets.forEach(function (hingeEl) {
+              hingeEl.components['pop-target'].standUp();
+            });
+          }, RESET_DELAY_MS);
+        },
 
         // Builds one wooden target stand and returns its "hinge"
-        // entity: the thing pop-target rotates when hit, carrying the
-        // board and rings (positioned relative to the hinge, not the
-        // stand) along with it as one rigid piece.
+        // entity: the thing pop-target rotates when hit. The hinge
+        // sits at the stand's origin (ground level, the base of the
+        // post) and carries the post, board, and rings all as
+        // children, so the whole stand tips over as one rigid piece
+        // rather than just the board flopping at the top of a
+        // stationary post.
         spawnTarget: function (x, standHeight, z, rotY) {
           var stand = document.createElement('a-entity');
           stand.setAttribute('position', { x: x, y: 0, z: z });
           stand.setAttribute('rotation', { x: 0, y: rotY, z: 0 });
+
+          var hinge = document.createElement('a-entity');
+          hinge.setAttribute('pop-target', '');
+          stand.appendChild(hinge);
 
           var post = document.createElement('a-box');
           post.setAttribute('width', 0.08);
@@ -961,18 +1014,13 @@
           post.setAttribute('height', standHeight);
           post.setAttribute('position', { x: 0, y: standHeight / 2, z: 0 });
           post.setAttribute('color', '#5b4633');
-          stand.appendChild(post);
-
-          var hinge = document.createElement('a-entity');
-          hinge.setAttribute('position', { x: 0, y: standHeight, z: 0 });
-          hinge.setAttribute('pop-target', '');
-          stand.appendChild(hinge);
+          hinge.appendChild(post);
 
           var board = document.createElement('a-box');
           board.setAttribute('width', 1.1);
           board.setAttribute('height', 1.1);
           board.setAttribute('depth', 0.04);
-          board.setAttribute('position', { x: 0, y: 0, z: 0 });
+          board.setAttribute('position', { x: 0, y: standHeight, z: 0 });
           board.setAttribute('color', '#8a6d4b');
           hinge.appendChild(board);
 
@@ -988,7 +1036,7 @@
             var circle = document.createElement('a-circle');
             circle.setAttribute('radius', ring.radius);
             circle.setAttribute('color', ring.color);
-            circle.setAttribute('position', { x: 0, y: 0, z: 0.021 + i * 0.002 });
+            circle.setAttribute('position', { x: 0, y: standHeight, z: RING_Z_START + i * RING_Z_STEP });
             circle.classList.add('target-ring');
             circle.setAttribute('scoring-ring', { score: ring.score, label: ring.label });
             hinge.appendChild(circle);
