@@ -42,6 +42,35 @@
         color: #aaa;
         font-size: 0.85rem;
       }
+      h2 {
+        font-size: 1.1rem;
+        font-weight: 600;
+        margin-top: 2.5rem;
+      }
+      .section-desc {
+        max-width: 32rem;
+      }
+      .game-link.disabled {
+        color: #778;
+        cursor: default;
+        position: relative;
+      }
+      .game-link.disabled:hover {
+        border-color: #2a3a5c;
+      }
+      .soon-badge {
+        display: inline-block;
+        margin-left: 0.5rem;
+        padding: 0.1rem 0.5rem;
+        background: #2a3a5c;
+        color: #9ad;
+        border-radius: 1rem;
+        font-size: 0.7rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+        vertical-align: middle;
+      }
     </style>
   </head>
   <body>
@@ -53,6 +82,29 @@
           Cube Pop
           <span class="desc">Point a controller at a floating cube and pull the trigger to pop it. Pop them all to win.</span>
         </a>
+      </li>
+    </ul>
+
+    <h2>Primitives</h2>
+    <p class="section-desc">Reusable interaction building blocks, each demoed on its own here first, then stitched together into the prototypes above &mdash; a small design system for VR interactions.</p>
+    <ul>
+      <li>
+        <span class="game-link disabled">
+          Menus<span class="soon-badge">Coming soon</span>
+          <span class="desc">World-space and wrist-attached UI panels for navigation and settings.</span>
+        </span>
+      </li>
+      <li>
+        <span class="game-link disabled">
+          Movement<span class="soon-badge">Coming soon</span>
+          <span class="desc">Locomotion schemes &mdash; teleport, smooth movement, and snap turning.</span>
+        </span>
+      </li>
+      <li>
+        <span class="game-link disabled">
+          Vibration / Haptics<span class="soon-badge">Coming soon</span>
+          <span class="desc">Controller rumble feedback tied to grabs, collisions, and UI events.</span>
+        </span>
       </li>
     </ul>
   </body>
