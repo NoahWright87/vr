@@ -34,7 +34,7 @@
   </head>
   <body>
     <div id="overlay">
-      <span>Pistols at Dawn — grip near a holstered pistol to draw it, pull the trigger to fire. Let go of the grip while your finger still rests on the trigger to let it dangle and spin. <a href="../../index.html">All prototypes</a></span>
+      <span>Pistols at Dawn — grip near a holstered pistol (or your hat) to draw it. Guns fire on the trigger; let go of the grip while a finger still rests on the trigger to dangle and twirl whatever you're holding. <a href="../../index.html">All prototypes</a></span>
     </div>
 
     <a-scene>
@@ -75,6 +75,14 @@
           material="color: #FFFFFF; shader: flat; opacity: 0.8"
           raycaster="objects: .target-ring; far: 20"
         ></a-entity>
+        <!-- Nested directly under the camera (rather than a hip-anchor-style
+             tick() component) so it inherits full head rotation for free,
+             pitch/roll included — unlike the hips, a worn hat SHOULD tilt
+             with your head. The 0.1m vertical offset is an estimate for
+             "brim just clips the top of view"; real headset FOV isn't
+             something testable from here, so this (and/or boxy-hat's own
+             geometry) will likely need eyes-on tuning. -->
+        <a-entity id="head-anchor" class="head-holster-anchor" position="0 0.1 0"></a-entity>
       </a-camera>
 
       <!-- ============================================================
@@ -119,17 +127,46 @@
       <a-entity id="hip-right" class="holster-anchor" hip-anchor="side: right"></a-entity>
 
       <!-- ============================================================
-           PISTOLS
+           PISTOLS + HAT
            Each is a free-standing entity (not nested under a hand) so
            it can be reparented at runtime between a holster, a hand,
-           or loose in the world while dangling/falling. See the
-           "pistol" component for the state machine. The "grabbable"
-           class is what makes proximity-haptics notice them — any
-           future interactive prop just needs that same class to get
-           the same buzz-when-in-reach behavior.
+           or loose in the world while dangling/falling. All the
+           holster/hold/dangle/fall/throw/catch state machine lives in
+           the generic "holsterable" component, configured per-object
+           below; "pistol" is a small companion that adds firing on top
+           (the hat has no such companion — nothing to fire). The
+           "grabbable" class is what makes proximity-haptics notice
+           them, and is also how hand-rig finds anything pickable —
+           any future interactive prop just needs holsterable (and
+           optionally its own visual-builder component, the way
+           boxy-gun and boxy-hat are separate from holsterable itself)
+           to join in.
+
+           The hat's holsterPosition/comOffset look unusual compared to
+           the guns' — see boxy-hat's comment for why: its origin is
+           deliberately offset to one edge of the inner brim (like a
+           finger hooked under the rim) rather than centered, so the
+           exact same dangle physics that makes a gun swing from the
+           trigger guard makes the hat swing from that point instead.
       ============================================================ -->
-      <a-entity class="pistol grabbable" pistol="holster: #hip-left"></a-entity>
-      <a-entity class="pistol grabbable" pistol="holster: #hip-right"></a-entity>
+      <a-entity
+        class="grabbable"
+        holsterable="holsterSelector: #hip-left; anchorClass: holster-anchor; holsterRotation: -90 0 0; heldRotation: -90 0 0; comOffset: 0 0.03 -0.08"
+        pistol
+        boxy-gun
+      ></a-entity>
+      <a-entity
+        class="grabbable"
+        holsterable="holsterSelector: #hip-right; anchorClass: holster-anchor; holsterRotation: -90 0 0; heldRotation: -90 0 0; comOffset: 0 0.03 -0.08"
+        pistol
+        boxy-gun
+      ></a-entity>
+
+      <a-entity
+        class="grabbable"
+        holsterable="holsterSelector: #head-anchor; anchorClass: head-holster-anchor; holsterRotation: 0 0 0; heldRotation: 0 0 0; holsterPosition: 0.11 0 0; comOffset: -0.11 0.065 0"
+        boxy-hat
+      ></a-entity>
 
       <!-- ============================================================
            TARGET GALLERY
@@ -181,22 +218,23 @@
       var PROXIMITY_HAPTIC_INTENSITY = 0.15; // 0-1, deliberately light ("slight buzz", not a jolt)
       var PROXIMITY_HAPTIC_PULSE_MS = 60; // re-issued every tick while in range, so this just needs to outlast one frame
 
-      // The gun's local -Z (barrel forward) is defined relative to the
+      // A gun's local -Z (barrel forward) is defined relative to the
       // hand's raw tracked ("grip") orientation, which on Quest Touch
       // controllers does NOT point where your index finger does — this
       // is a well-known WebXR quirk (laser-controls gets away with the
       // same raw orientation because you visually self-correct your
       // aim by watching the laser line; a rigid gun model has no such
-      // feedback, so the mismatch just looks wrong). This offset
-      // rotates the held gun to compensate. -90° on X is a reasoned
+      // feedback, so the mismatch just looks wrong). Each pistol's
+      // holsterable="...heldRotation: -90 0 0..." markup attribute
+      // rotates the held gun to compensate — -90° on X is a reasoned
       // starting estimate (pitching the barrel down out of "grip up"
-      // into "pointing forward"), not a verified value — if the barrel
-      // still doesn't track your finger after this, nudge x in ~15°
+      // into "pointing forward"), not a verified value; if the barrel
+      // still doesn't track your finger, nudge that x value in ~15°
       // steps (or adjust y/z if the mismatch looks like a left/right
-      // twist rather than up/down) and reload.
-      var GRIP_TO_BARREL_OFFSET = { x: -90, y: 0, z: 0 };
-
-      var RECOIL_KICK_DEG = -8; // extra pitch added on top of the offset above when firing
+      // twist rather than up/down) and reload. The hat has no such
+      // problem — it isn't aimed at anything, so its heldRotation is
+      // just identity.
+      var RECOIL_KICK_DEG = -8; // extra pitch added on top of heldRotation when firing (see the "pistol" component)
       var RECOIL_RECOVER_MS = 120; // how long the kick takes to settle back
 
       var TRACER_COLOR = '#ffe066';
@@ -431,9 +469,9 @@
       // ==============================================================
       // findCatchingHand
       // Generous catch detection for anything falling/flying (a
-      // dropped or thrown pistol, currently — but this doesn't know
-      // that, it just checks `.hand` elements' public hand-rig state).
-      // A hand can catch by gripping (any grip currently held, not
+      // dropped or thrown holsterable prop — this doesn't know or care
+      // which one, it just checks `.hand` elements' public hand-rig
+      // state). A hand can catch by gripping (any grip currently held, not
       // just a fresh press) within THROW_CATCH_RADIUS, or by resting a
       // finger on the trigger within that same radius — the two modes
       // the caller uses to decide "snap into hand" vs. "land on the
@@ -450,7 +488,7 @@
           var handEl = hands[i];
           var handRig = handEl.components['hand-rig'];
           if (!handRig) continue;
-          if (handRig.heldGun || handRig.danglingGun) continue;
+          if (handRig.heldObject || handRig.danglingObject) continue;
 
           var mode = handRig.gripHeld ? 'grip' : handRig.fingerOnTrigger ? 'trigger' : null;
           if (!mode) continue;
@@ -471,9 +509,11 @@
       // Builds a very simple, low-poly pistol out of boxes, sized for a
       // hand-held scale (roughly 20cm long). Local space is defined so
       // the entity's own origin sits at the grip/trigger-guard area —
-      // that's what lets the dangle physics below treat "pivot around
+      // that's what lets holsterable's dangle physics (a separate
+      // component, attached alongside this one) treat "pivot around
       // the entity origin" as "pivot around the trigger guard" without
-      // needing a separate offset.
+      // needing a separate offset. See boxy-hat, below, for the same
+      // trick applied to a very differently-shaped object.
       // ==============================================================
       AFRAME.registerComponent('boxy-gun', {
         init: function () {
@@ -520,6 +560,66 @@
       });
 
       // ==============================================================
+      // COMPONENT: boxy-hat
+      // A simple cowboy hat: a wide flat brim plus a cylindrical crown,
+      // built the same "very simple, boxy" way as boxy-gun. The one
+      // thing that isn't simple: unlike boxy-gun (whose origin already
+      // sits at a natural grip point, the trigger guard), this hat's
+      // true geometric center is offset from its own entity origin by
+      // -innerRadius on local X. The origin instead sits at one point
+      // along the inner rim of the head-hole — as if a finger were
+      // hooked under that one edge, rather than the hat balanced
+      // centered on a fingertip. That's the whole trick behind "spin
+      // axis like your finger's in the hat, offset to one side": since
+      // holsterable's dangle physics always pivots around the entity
+      // origin, putting the origin there directly (instead of at the
+      // hat's middle) is all it takes — no hat-specific physics code.
+      //
+      // Because of that offset, holsterable's holsterPosition (set in
+      // markup) has to counter it by +innerRadius so the hat renders
+      // centered on your head when worn rather than shifted to one
+      // side. innerRadius/crownHeight here need to stay in sync with
+      // the holsterPosition/comOffset numbers on the hat entity in
+      // markup — there's no shared constant linking them, the same way
+      // boxy-gun's part dimensions and pistol's comOffset/heldRotation
+      // are already just kept consistent by hand.
+      // ==============================================================
+      AFRAME.registerComponent('boxy-hat', {
+        init: function () {
+          var el = this.el;
+          var felt = '#2b2320';
+          var band = '#5b3a29';
+
+          var innerRadius = 0.11; // crown radius / head-hole size
+          var crownHeight = 0.13;
+          var brimRadius = 0.24;
+          var brimThickness = 0.015;
+          var cx = -innerRadius; // local x of the hat's true center, relative to the rim point the origin sits at
+
+          var brim = document.createElement('a-cylinder');
+          brim.setAttribute('radius', brimRadius);
+          brim.setAttribute('height', brimThickness);
+          brim.setAttribute('color', felt);
+          brim.setAttribute('position', { x: cx, y: 0, z: 0 });
+          el.appendChild(brim);
+
+          var crown = document.createElement('a-cylinder');
+          crown.setAttribute('radius', innerRadius);
+          crown.setAttribute('height', crownHeight);
+          crown.setAttribute('color', felt);
+          crown.setAttribute('position', { x: cx, y: crownHeight / 2, z: 0 });
+          el.appendChild(crown);
+
+          var hatBand = document.createElement('a-cylinder');
+          hatBand.setAttribute('radius', innerRadius + 0.004);
+          hatBand.setAttribute('height', 0.03);
+          hatBand.setAttribute('color', band);
+          hatBand.setAttribute('position', { x: cx, y: 0.02, z: 0 });
+          el.appendChild(hatBand);
+        },
+      });
+
+      // ==============================================================
       // COMPONENT: hip-anchor
       // Drives an invisible entity to sit at roughly hip height,
       // offset to one side of the player, following the headset's
@@ -560,13 +660,15 @@
       });
 
       // ==============================================================
-      // COMPONENT: pistol
-      // Owns one gun's state machine and physics:
+      // COMPONENT: holsterable
+      // The shared state machine and physics behind every grabbable
+      // prop in the scene (currently the two pistols and the hat):
       //   holstered -> held (grabbed) -> dangling (grip released while
       //   a finger is still resting on the trigger) -> held again
       //   (caught) or holstered/falling (finger comes off the trigger
-      //   too — holstered if that happens near a hip, falling
-      //   otherwise) -> resting (on the ground, grabbable again).
+      //   too — holstered if that happens near a matching anchor,
+      //   falling otherwise) -> resting (on the ground, grabbable
+      //   again).
       //
       //   Releasing the grip with NO finger on the trigger and a
       //   deliberate upward hand speed is a throw instead — same
@@ -577,28 +679,53 @@
       //   trigger always dangles, deliberately skipping both the throw
       //   and holster checks at that moment — those only happen later,
       //   in endDangle(), when the finger actually comes off the
-      //   trigger. That's what lets a dangling, spinning gun be aimed
-      //   into its holster as its own move, rather than only ever
-      //   holstering from a plain grip-release.
+      //   trigger. That's what lets a dangling, spinning object be
+      //   aimed into its holster as its own move, rather than only
+      //   ever holstering from a plain grip-release.
       //
       //   While falling (dropped OR thrown — same state), it's
       //   generously catchable by either hand: see checkCatch(),
       //   catchThrown(), and catchIntoDangle().
+      //
+      // Schema is what makes this reusable rather than gun-specific:
+      // anchorClass picks which anchor entities count as "a holster"
+      // for this object (hip vs. head); holsterPosition/holsterRotation
+      // are the local pose snapped to when holstered; heldRotation is
+      // the pose snapped to when held; comOffset is where this
+      // object's true center of mass sits relative to its own entity
+      // origin. That origin, per boxy-gun/boxy-hat, is deliberately
+      // NOT the object's geometric center but its natural grip/pivot
+      // point — the trigger guard for a gun, one edge of the inner
+      // brim for a hat — and comOffset (which the dangle physics uses
+      // to work out which way "down" pulls it) is the whole reason the
+      // same twirl mechanic works for a completely different-shaped
+      // object with zero object-specific physics code.
+      //
+      // Visual geometry (boxy-gun, boxy-hat) is a separate component
+      // attached alongside this one in markup — this component
+      // neither knows nor cares what the object looks like. Firing
+      // likewise isn't here: see the small "pistol" companion
+      // component below, attached only to the guns, which reads this
+      // component's state but adds nothing back into it.
       //
       // Reparenting is done directly on the three.js object3D graph
       // via Object3D.attach(), which reparents while preserving the
       // object's current world transform — the DOM tree is left alone,
       // since nothing here depends on DOM nesting.
       // ==============================================================
-      AFRAME.registerComponent('pistol', {
+      AFRAME.registerComponent('holsterable', {
         schema: {
-          holster: { type: 'selector' },
+          holsterSelector: { type: 'selector' }, // starting holster anchor
+          anchorClass: { type: 'string', default: 'holster-anchor' }, // which anchor entities this object can re-holster to
+          holsterPosition: { type: 'vec3', default: { x: 0, y: 0, z: 0 } },
+          holsterRotation: { type: 'vec3', default: { x: 0, y: 0, z: 0 } },
+          heldRotation: { type: 'vec3', default: { x: 0, y: 0, z: 0 } },
+          comOffset: { type: 'vec3', default: { x: 0, y: 0, z: 0 } }, // center of mass, relative to the entity origin
         },
 
         init: function () {
           this.state = 'holstered';
-          this.hand = null; // the hand entity currently holding/dangling this gun
-          this.recoilTimer = 0; // ms remaining on the current fire-recoil kick, while held
+          this.hand = null; // the hand entity currently holding/dangling this object
 
           this.angularVelocity = new THREE.Vector3();
           this.fallVelocity = new THREE.Vector3();
@@ -608,7 +735,7 @@
           this._pivot = new THREE.Vector3();
           this._pivotVelocity = new THREE.Vector3();
           this._pivotAccel = new THREE.Vector3();
-          this._comLocal = new THREE.Vector3(0, 0.03, -0.08); // rough center of mass: up/forward of the grip
+          this._comLocal = new THREE.Vector3(this.data.comOffset.x, this.data.comOffset.y, this.data.comOffset.z);
           this._comWorld = new THREE.Vector3();
           this._down = new THREE.Vector3(0, -1, 0);
           this._torque = new THREE.Vector3();
@@ -622,19 +749,17 @@
           this._catchTargetPos = new THREE.Vector3(0, 0, 0);
           this._catchTargetQuat = new THREE.Quaternion().setFromEuler(
             new THREE.Euler(
-              (GRIP_TO_BARREL_OFFSET.x * Math.PI) / 180,
-              (GRIP_TO_BARREL_OFFSET.y * Math.PI) / 180,
-              (GRIP_TO_BARREL_OFFSET.z * Math.PI) / 180
+              (this.data.heldRotation.x * Math.PI) / 180,
+              (this.data.heldRotation.y * Math.PI) / 180,
+              (this.data.heldRotation.z * Math.PI) / 180
             )
           );
           this._catchBlendFromPos = new THREE.Vector3();
           this._catchBlendFromQuat = new THREE.Quaternion();
           this._catchBlendElapsed = CATCH_SNAP_DUR_MS;
 
-          this.el.setAttribute('boxy-gun', '');
-
-          if (this.data.holster) {
-            this.attachTo(this.data.holster.object3D, { x: 0, y: 0, z: 0 }, { x: -90, y: 0, z: 0 });
+          if (this.data.holsterSelector) {
+            this.attachTo(this.data.holsterSelector.object3D, this.data.holsterPosition, this.data.holsterRotation);
           }
         },
 
@@ -642,10 +767,7 @@
           var dtSeconds = Math.min((dt || 16) / 1000, 0.05);
           if (this.state === 'dangling') this.updateDangle(dtSeconds);
           else if (this.state === 'falling') this.updateFall(dtSeconds);
-          else if (this.state === 'held') {
-            this.updateCatchBlend(dtSeconds);
-            this.updateRecoil(dtSeconds);
-          }
+          else if (this.state === 'held') this.updateCatchBlend(dtSeconds);
         },
 
         attachTo: function (parentObject3D, localPos, localRotDeg) {
@@ -661,53 +783,29 @@
         },
 
         // Called by hand-rig: either a fresh pickup (from a holster or
-        // the ground) or catching this same gun mid-dangle — both are
-        // "snap rigidly into this hand" and need no other distinction.
-        // Always an instant snap — the smooth blend is reserved for
-        // catchThrown() specifically, see updateCatchBlend.
+        // the ground) or catching this same object mid-dangle — both
+        // are "snap rigidly into this hand" and need no other
+        // distinction. Always an instant snap — the smooth blend is
+        // reserved for catchThrown() specifically, see updateCatchBlend.
         grab: function (handEl) {
           this.state = 'held';
           this.hand = handEl;
-          this.recoilTimer = 0;
           this._catchBlendElapsed = CATCH_SNAP_DUR_MS; // cancel any in-progress blend, defensively
-          this.attachTo(handEl.object3D, { x: 0, y: 0, z: 0 }, GRIP_TO_BARREL_OFFSET);
+          this.attachTo(handEl.object3D, { x: 0, y: 0, z: 0 }, this.data.heldRotation);
           this.angularVelocity.set(0, 0, 0);
         },
 
-        // Runs every frame while held, but only actually does anything
-        // for the ~120ms right after a shot: eases the recoil kick back
-        // down to the normal held pose. Written as a direct object3D
-        // write (like the rest of this component) rather than through
-        // A-Frame's animation component, since that animates the core
-        // "rotation" component's own cached state — which everything
-        // else here bypasses by writing object3D.rotation/quaternion
-        // directly — and the two caches falling out of sync is exactly
-        // the kind of thing that produces a gun that's rotated wrong
-        // for no visible reason.
-        updateRecoil: function (dtSeconds) {
-          if (this.recoilTimer <= 0) return;
-
-          this.recoilTimer = Math.max(this.recoilTimer - dtSeconds * 1000, 0);
-          var kick = RECOIL_KICK_DEG * (this.recoilTimer / RECOIL_RECOVER_MS);
-
-          this.el.object3D.rotation.set(
-            ((GRIP_TO_BARREL_OFFSET.x + kick) * Math.PI) / 180,
-            (GRIP_TO_BARREL_OFFSET.y * Math.PI) / 180,
-            (GRIP_TO_BARREL_OFFSET.z * Math.PI) / 180
-          );
-        },
-
-        // Called by hand-rig when the hand currently holding this gun
-        // releases its grip. fingerOnTrigger reflects whether that
-        // hand's finger is resting on (not necessarily pulling) the
-        // trigger at that moment. See the state-machine comment above
-        // for why the holster and throw checks are both skipped here
-        // when a finger is still on the trigger.
+        // Called by hand-rig when the hand currently holding this
+        // object releases its grip. fingerOnTrigger reflects whether
+        // that hand's finger is resting on (not necessarily pulling)
+        // the trigger at that moment. See the state-machine comment
+        // above for why the holster and throw checks are both skipped
+        // here when a finger is still on the trigger.
         //
         // A throw takes priority over the holster check — a real flick
         // upward is a strong, deliberate signal that shouldn't get
         // reinterpreted as "must be holstering" just because it
-        // happened near a hip.
+        // happened near an anchor.
         release: function (fingerOnTrigger) {
           if (fingerOnTrigger) {
             this.startDangling();
@@ -724,7 +822,7 @@
         },
 
         // Called directly by hand-rig when the finger lifts off the
-        // trigger while this gun is dangling from that hand — the
+        // trigger while this object is dangling from that hand — the
         // moment that decides whether it lands in a holster or falls.
         endDangle: function () {
           this.tryHolsterElse(this.startFalling.bind(this));
@@ -737,7 +835,7 @@
           if (nearestHolster) {
             this.state = 'holstered';
             this.hand = null;
-            this.attachTo(nearestHolster.object3D, { x: 0, y: 0, z: 0 }, { x: -90, y: 0, z: 0 });
+            this.attachTo(nearestHolster.object3D, this.data.holsterPosition, this.data.holsterRotation);
             return;
           }
 
@@ -752,7 +850,7 @@
           // this.hand stays set — we're still dangling from it
         },
 
-        // Called when nothing is left holding this gun up: either
+        // Called when nothing is left holding this object up: either
         // tryHolsterElse's fallback, or updateDangle's own safety net
         // below if this.hand ever goes missing mid-dangle.
         startFalling: function () {
@@ -785,7 +883,6 @@
         catchThrown: function (handEl) {
           this.state = 'held';
           this.hand = handEl;
-          this.recoilTimer = 0;
           this.angularVelocity.set(0, 0, 0);
 
           handEl.object3D.attach(this.el.object3D); // preserves current world pose as the starting local pose
@@ -794,13 +891,13 @@
           this._catchBlendElapsed = 0;
 
           var handRig = handEl.components['hand-rig'];
-          if (handRig) handRig.heldGun = this.el;
+          if (handRig) handRig.heldObject = this.el;
         },
 
-        // Catches a falling/flying gun directly onto handEl's trigger
-        // finger, dangling — no grip needed. angularVelocity is
-        // deliberately left alone rather than reset: whatever tumble
-        // it had mid-flight carries straight into the twirl.
+        // Catches a falling/flying object directly onto handEl's
+        // trigger finger, dangling — no grip needed. angularVelocity
+        // is deliberately left alone rather than reset: whatever
+        // tumble it had mid-flight carries straight into the twirl.
         catchIntoDangle: function (handEl) {
           this.state = 'dangling';
           this.hand = handEl;
@@ -808,15 +905,19 @@
           this.prevPivotVelocity.set(0, 0, 0);
 
           var handRig = handEl.components['hand-rig'];
-          if (handRig) handRig.danglingGun = this.el;
+          if (handRig) handRig.danglingObject = this.el;
         },
 
         // Runs every frame while held; only actually does anything for
         // the CATCH_SNAP_DUR_MS right after catchThrown(). Same
-        // direct-object3D-write approach as updateRecoil, for the same
-        // reason — this and updateRecoil don't fight in practice since
-        // recoilTimer is reset to 0 by catchThrown and only becomes
-        // nonzero from an actual trigger pull afterward.
+        // direct-object3D-write approach used throughout this
+        // component rather than through A-Frame's animation component,
+        // since that animates the core "rotation" component's own
+        // cached state — which everything here bypasses by writing
+        // object3D.rotation/quaternion directly — and the two caches
+        // falling out of sync is exactly the kind of thing that
+        // produces an object that's rotated wrong for no visible
+        // reason.
         updateCatchBlend: function (dtSeconds) {
           if (this._catchBlendElapsed >= CATCH_SNAP_DUR_MS) return;
 
@@ -842,7 +943,7 @@
         },
 
         findNearestHolster: function (worldPos) {
-          var holsters = Array.prototype.slice.call(document.querySelectorAll('.holster-anchor'));
+          var holsters = Array.prototype.slice.call(document.querySelectorAll('.' + this.data.anchorClass));
           var nearest = null;
           var nearestDist = HOLSTER_RADIUS;
           for (var i = 0; i < holsters.length; i++) {
@@ -857,14 +958,15 @@
         },
 
         // Spherical-pendulum-ish swing around a moving pivot (the
-        // hand). Because the gun's own origin IS the pivot point (see
-        // the boxy-gun comment above), position just tracks the hand
+        // hand). Because the object's own origin IS the pivot point
+        // (see boxy-gun/boxy-hat), position just tracks the hand
         // exactly each frame — only the orientation swings. Gravity
-        // pulls the gun's center of mass toward hanging straight down;
-        // the pivot's own acceleration (how fast you're flicking your
-        // hand around) injects extra spin, which is what makes a sharp
-        // wrist flick throw the gun into a twirl. This is a tuned-for-
-        // feel approximation, not a rigorous rigid-body simulation.
+        // pulls the center of mass (comOffset) toward hanging straight
+        // down; the pivot's own acceleration (how fast you're flicking
+        // your hand around) injects extra spin, which is what makes a
+        // sharp wrist flick throw the object into a twirl. This is a
+        // tuned-for-feel approximation, not a rigorous rigid-body
+        // simulation.
         updateDangle: function (dt) {
           if (!this.hand) {
             this.startFalling();
@@ -935,12 +1037,56 @@
             q.w + 0.5 * this._deltaQuat.w
           ).normalize();
         },
+      });
+
+      // ==============================================================
+      // COMPONENT: pistol
+      // The one gun-specific behavior: firing. A thin companion to
+      // holsterable, attached alongside it only on the two gun
+      // entities — the hat has no such component, so hand-rig's
+      // trigger-pull handler (which checks for this component before
+      // calling fire()) is naturally a no-op while holding it. Reads
+      // holsterable's state/heldRotation rather than owning any state
+      // machine of its own.
+      // ==============================================================
+      AFRAME.registerComponent('pistol', {
+        init: function () {
+          this.recoilTimer = 0; // ms remaining on the current fire-recoil kick, while held
+        },
+
+        // Only actually does anything for the ~120ms right after a
+        // shot: eases the recoil kick back down to the normal held
+        // pose. Same direct-object3D-write reasoning as holsterable's
+        // own updateCatchBlend — composes on top of holsterable's
+        // heldRotation rather than through A-Frame's animation
+        // component, so it can't fall out of sync with the direct
+        // writes holsterable does elsewhere on this same entity.
+        tick: function (time, dt) {
+          var holsterable = this.el.components.holsterable;
+          if (!holsterable || holsterable.state !== 'held') return;
+          this.updateRecoil(Math.min((dt || 16) / 1000, 0.05));
+        },
+
+        updateRecoil: function (dtSeconds) {
+          if (this.recoilTimer <= 0) return;
+
+          this.recoilTimer = Math.max(this.recoilTimer - dtSeconds * 1000, 0);
+          var kick = RECOIL_KICK_DEG * (this.recoilTimer / RECOIL_RECOVER_MS);
+          var heldRotation = this.el.components.holsterable.data.heldRotation;
+
+          this.el.object3D.rotation.set(
+            ((heldRotation.x + kick) * Math.PI) / 180,
+            (heldRotation.y * Math.PI) / 180,
+            (heldRotation.z * Math.PI) / 180
+          );
+        },
 
         // Raycasts from the muzzle against the targets. Only fires
         // while properly held — not while dangling or mid-air, so a
         // twirl in progress can't accidentally go off.
         fire: function () {
-          if (this.state !== 'held') return;
+          var holsterable = this.el.components.holsterable;
+          if (!holsterable || holsterable.state !== 'held') return;
 
           var muzzleEl = this.el.querySelector('.muzzle');
           if (!muzzleEl || !muzzleEl.object3D) return;
@@ -992,17 +1138,24 @@
       // COMPONENT: hand-rig
       // Listens to one hand's grip/trigger buttons. Owns the "what am
       // I currently holding" bookkeeping and delegates all the actual
-      // state/physics work to the pistol component on whatever gun is
-      // involved. Also tracks this hand's own world-space velocity and
-      // current button state (gripHeld, fingerOnTrigger) as plain
-      // public fields — generic hand-side data that computeThrowVelocity
-      // and findCatchingHand (both reusable, gun-agnostic) read directly
-      // rather than going through pistol-specific accessors.
+      // state/physics work to the holsterable component on whatever
+      // object is involved — completely object-agnostic, it never
+      // checks whether that object is a gun, a hat, or anything else.
+      // Firing is the one exception: onTriggerDown looks specifically
+      // for a co-located "pistol" component and calls fire() only if
+      // one exists, which is naturally a no-op while holding the hat.
+      //
+      // Also tracks this hand's own world-space velocity and current
+      // button state (gripHeld, fingerOnTrigger) as plain public
+      // fields — generic hand-side data that computeThrowVelocity and
+      // findCatchingHand (both reusable, object-agnostic) read
+      // directly rather than going through holsterable-specific
+      // accessors.
       // ==============================================================
       AFRAME.registerComponent('hand-rig', {
         init: function () {
-          this.heldGun = null; // gun currently rigidly held by this hand, if any
-          this.danglingGun = null; // gun currently dangling from this hand's trigger finger, if any
+          this.heldObject = null; // object currently rigidly held by this hand, if any
+          this.danglingObject = null; // object currently dangling from this hand's trigger finger, if any
           this.fingerOnTrigger = false; // capacitive touch, not a pull — see triggertouchstart/end below
           this.gripHeld = false; // true for the whole time the grip is squeezed, not just the initial press
 
@@ -1048,75 +1201,79 @@
 
         onGripDown: function () {
           this.gripHeld = true;
-          if (this.heldGun) return;
+          if (this.heldObject) return;
 
-          var gun = this.findGrabbableGun();
-          if (!gun) return;
+          var obj = this.findGrabbableObject();
+          if (!obj) return;
 
-          gun.components.pistol.grab(this.el);
-          this.heldGun = gun;
-          if (gun === this.danglingGun) this.danglingGun = null;
+          obj.components.holsterable.grab(this.el);
+          this.heldObject = obj;
+          if (obj === this.danglingObject) this.danglingObject = null;
         },
 
         onGripUp: function () {
           this.gripHeld = false;
-          if (!this.heldGun) return;
+          if (!this.heldObject) return;
 
-          var gun = this.heldGun;
-          this.heldGun = null;
-          gun.components.pistol.release(this.fingerOnTrigger);
+          var obj = this.heldObject;
+          this.heldObject = null;
+          obj.components.holsterable.release(this.fingerOnTrigger);
 
-          this.danglingGun = gun.components.pistol.state === 'dangling' ? gun : null;
+          this.danglingObject = obj.components.holsterable.state === 'dangling' ? obj : null;
         },
 
         // An actual pull (past the digital press threshold), not just
-        // a touch — this is what fires the gun.
+        // a touch — this is what fires a gun. No-ops for anything
+        // without a "pistol" companion component, like the hat.
         onTriggerDown: function () {
-          if (this.heldGun) this.heldGun.components.pistol.fire();
+          var pistol = this.heldObject && this.heldObject.components.pistol;
+          if (pistol) pistol.fire();
         },
 
         onTriggerTouchStart: function () {
           this.fingerOnTrigger = true;
         },
 
-        // Finger fully lifts off the trigger surface. If a gun is
+        // Finger fully lifts off the trigger surface. If an object is
         // dangling from this hand, that's the last thing holding it
         // up — this is the moment that decides holster vs. fall.
         onTriggerTouchEnd: function () {
           this.fingerOnTrigger = false;
-          if (this.danglingGun) {
-            this.danglingGun.components.pistol.endDangle();
-            this.danglingGun = null;
+          if (this.danglingObject) {
+            this.danglingObject.components.holsterable.endDangle();
+            this.danglingObject = null;
           }
         },
 
-        // Nearest gun this hand is currently allowed to grab: anything
-        // holstered or resting on the ground, or the gun already
-        // dangling from this specific hand's finger (a "catch").
-        findGrabbableGun: function () {
+        // Nearest object this hand is currently allowed to grab:
+        // anything holstered or resting on the ground, or the object
+        // already dangling from this specific hand's finger (a
+        // "catch"). Any ".grabbable" entity qualifies, regardless of
+        // what it is — guns, hat, or anything added later.
+        findGrabbableObject: function () {
           var handPos = new THREE.Vector3();
           this.el.object3D.getWorldPosition(handPos);
 
-          var guns = Array.prototype.slice.call(document.querySelectorAll('.pistol'));
+          var objects = Array.prototype.slice.call(document.querySelectorAll('.grabbable'));
           var self = this;
           var nearest = null;
           var nearestDist = GRAB_RADIUS;
-          var gunPos = new THREE.Vector3();
+          var objPos = new THREE.Vector3();
 
-          guns.forEach(function (gunEl) {
-            var pistol = gunEl.components.pistol;
-            if (!pistol) return;
+          objects.forEach(function (objEl) {
+            var holsterable = objEl.components.holsterable;
+            if (!holsterable) return;
 
             var eligible =
-              pistol.state === 'holstered' ||
-              pistol.state === 'resting' ||
-              (pistol.state === 'dangling' && pistol.hand === self.el);
+              holsterable.state === 'holstered' ||
+              holsterable.state === 'resting' ||
+              (holsterable.state === 'dangling' && holsterable.hand === self.el);
             if (!eligible) return;
 
-            gunEl.object3D.getWorldPosition(gunPos);
-            var d = gunPos.distanceTo(handPos);
+            objEl.object3D.getWorldPosition(objPos);
+            var d = objPos.distanceTo(handPos);
             if (d < nearestDist) {
-              nearest = gunEl;
+              nearest = objEl;
               nearestDist = d;
             }
           });
@@ -1137,7 +1294,7 @@
       //   - whatever this hand is already holding (its object3D is
       //     currently parented under this hand's object3D — true for
       //     anything that follows the same "attach to the hand's
-      //     object3D when held" convention pistol.grab() uses)
+      //     object3D when held" convention holsterable.grab() uses)
       //   - everything, if hand-rig (when present) reports this hand
       //     as already full, since you can't grab a second thing
       //     right now anyway
@@ -1150,7 +1307,7 @@
 
         tick: function () {
           var handRig = this.el.components['hand-rig'];
-          if (handRig && handRig.heldGun) return;
+          if (handRig && handRig.heldObject) return;
 
           var trackedControls = this.el.components['tracked-controls'];
           var gamepad = trackedControls && trackedControls.controller;
