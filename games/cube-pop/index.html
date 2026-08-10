@@ -6,15 +6,23 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
 
     <!--
-      A-Frame from a CDN. No npm install, no build step: this <script> tag
-      is the entire "install". It defines the <a-scene>, <a-box>, etc. HTML
-      elements used below, and gives us the default "Enter VR" button for
-      free whenever it detects a WebXR-capable browser (like Quest Browser).
+      A-Frame, vendored into /vendor instead of loaded from the CDN. Still
+      no npm install, no build step — just a checked-in file. It defines
+      the <a-scene>, <a-box>, etc. HTML elements used below, and gives us
+      the default "Enter VR" button for free whenever it detects a
+      WebXR-capable browser (like Quest Browser).
+
+      AFRAME_CDN_ROOT must be set before the script loads: a few built-in
+      components (hand-controls' hand models, <a-text>'s default font)
+      fetch their assets from this base path at runtime rather than
+      bundling them, so it needs to point at our vendored copies of those
+      too — see /vendor/README.md.
 
       Pinned to a specific version so this page doesn't break if a future
       A-Frame release changes behavior.
     -->
-    <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
+    <script>window.AFRAME_CDN_ROOT = '../../vendor/aframe-1.6.0/';</script>
+    <script src="../../vendor/aframe-1.6.0/aframe-v1.6.0.min.js"></script>
 
     <style>
       /* This CSS only affects the flat HTML page around the 3D canvas
