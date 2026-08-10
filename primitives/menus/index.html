@@ -2,9 +2,11 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>Hand + Watch — WebXR Primitive</title>
+    <title>Menus — WebXR Primitives</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
 
+    <!-- Same vendored setup as the prototypes: no build step, just a
+         checked-in copy. See /vendor/README.md for why. -->
     <script>window.AFRAME_CDN_ROOT = '../../vendor/aframe-1.6.0/';</script>
     <script src="../../vendor/aframe-1.6.0/aframe-v1.6.0.min.js"></script>
 
@@ -30,8 +32,15 @@
     </style>
   </head>
   <body>
+    <!-- ==============================================================
+         Every menu STYLE this project has built lives in this one
+         experience, same idea as a Storybook page listing every variant
+         of a "Menu" component — walk up to the panel ahead of you for
+         the fixed in-world style, or look at your own wrists for the
+         watch style.
+    ============================================================== -->
     <div id="overlay">
-      <span>Hand + Watch — point with one hand (squeeze grip) and poke the other wrist's watch face to start/stop its stopwatch. <a href="../../index.html">All prototypes</a></span>
+      <span>Menus — panel ahead: point and pull the trigger. Watches on your wrists: point with one hand (squeeze grip), poke the other wrist's face. <a href="../../index.html">All prototypes</a></span>
     </div>
 
     <a-scene>
@@ -40,21 +49,91 @@
       <a-sky color="#0d1526"></a-sky>
       <a-plane rotation="-90 0 0" width="20" height="20" color="#445" position="0 0 0"></a-plane>
 
-      <!-- ============================================================
-           watch-mixin: the reusable piece. A-Frame's built-in hand
-           model (the same low-poly GLB hand-controls uses) has a fixed,
-           known local coordinate frame once loaded raw (no hand-controls
-           corrective rotation applied):
-             -Z = toward fingertips        +Z = toward the wrist
-             +Y = out of the back of hand  -Y = into the palm
-           The wrist's long axis is local Z, which is also a torus's
-           default hole-axis — so the band needs no rotation, only a
-           position. The face sits stacked further along +Y so it can't
-           clip through the band's own geometry.
+      <!-- Gaze reticle so the panel menu is testable from desktop/phone
+           with no headset, same pattern as Cube Pop. The watch style
+           needs two real tracked hands (to point with one and poke the
+           other) so it's headset-only — see the overlay text and the
+           write-up in the repo history. -->
+      <a-camera>
+        <a-entity
+          cursor="fuse: false"
+          position="0 0 -1"
+          geometry="primitive: ring; radiusInner: 0.005; radiusOuter: 0.008"
+          material="color: #FFFFFF; shader: flat; opacity: 0.8"
+          raycaster="objects: .menu-target; far: 10"
+        ></a-entity>
+      </a-camera>
 
-           leftHandLow.glb and rightHandLow.glb are exact mirror images
-           of each other (verified against their bone positions), so the
-           only thing that differs between hands is the sign of X.
+      <!-- ============================================================
+           STYLE 1: fixed in-world panel.
+           Every clickable row is just an entity with its own
+           geometry/material plus the "menu-item" component below —
+           that component is the reusable part; the background plane
+           and title here are just this demo's dressing.
+      ============================================================ -->
+      <a-entity id="menu-panel" menu-feedback position="0 1.8 -2.5">
+        <a-plane
+          width="1.9"
+          height="2"
+          color="#101827"
+          position="0 -0.15 -0.02"
+        ></a-plane>
+
+        <a-text
+          value="MAIN MENU"
+          align="center"
+          color="#9ad"
+          width="3"
+          position="0 0.65 0"
+        ></a-text>
+
+        <a-entity
+          class="menu-target"
+          geometry="primitive: plane; width: 1.6; height: 0.3"
+          material="color: #182238"
+          menu-item="value: start; label: Start"
+          position="0 0.25 0"
+        >
+          <a-text value="Start" align="center" color="#eee" width="3" position="0 0 0.01"></a-text>
+        </a-entity>
+
+        <a-entity
+          class="menu-target"
+          geometry="primitive: plane; width: 1.6; height: 0.3"
+          material="color: #182238"
+          menu-item="value: options; label: Options"
+          position="0 -0.15 0"
+        >
+          <a-text value="Options" align="center" color="#eee" width="3" position="0 0 0.01"></a-text>
+        </a-entity>
+
+        <a-entity
+          class="menu-target"
+          geometry="primitive: plane; width: 1.6; height: 0.3"
+          material="color: #182238"
+          menu-item="value: quit; label: Quit"
+          position="0 -0.55 0"
+        >
+          <a-text value="Quit" align="center" color="#eee" width="3" position="0 0 0.01"></a-text>
+        </a-entity>
+
+        <a-text
+          id="menu-feedback-text"
+          value="Selected: (none)"
+          align="center"
+          color="#aaa"
+          width="2.2"
+          position="0 -0.95 0"
+        ></a-text>
+      </a-entity>
+
+      <!-- ============================================================
+           STYLE 2: wrist-worn watch menu.
+           The same pair of hand entities does double duty: they carry
+           the watch (band + face + poke hitbox — see hand-with-watch
+           below) AND point a laser at the panel above, since cursor/
+           raycaster and obb-collider are independent, non-conflicting
+           components on the same entity.
       ============================================================ -->
       <template id="watch-template">
         <a-entity>
@@ -86,17 +165,97 @@
         </a-entity>
       </template>
 
-      <a-entity id="left-hand" position="-0.16 1.55 -1" hand-with-watch="hand: left"></a-entity>
-      <a-entity id="right-hand" position="0.16 1.55 -1" hand-with-watch="hand: right"></a-entity>
-
-      <a-camera position="0 1.72 -0.6" rotation="-25 0 0" look-controls wasd-controls></a-camera>
+      <a-entity id="left-hand" position="-0.2 1.35 -0.4"
+        hand-with-watch="hand: left"
+        cursor="fuse: false; downEvents: triggerdown; upEvents: triggerup"
+        raycaster="objects: .menu-target; far: 10; showLine: true"
+      ></a-entity>
+      <a-entity id="right-hand" position="0.2 1.35 -0.4"
+        hand-with-watch="hand: right"
+        cursor="fuse: false; downEvents: triggerdown; upEvents: triggerup"
+        raycaster="objects: .menu-target; far: 10; showLine: true"
+      ></a-entity>
     </a-scene>
 
     <script>
+      // ==============================================================
+      // COMPONENT: menu-item
+      // The reusable primitive. Drop this on any entity that already has
+      // its own geometry + material, and it becomes a clickable menu row:
+      // highlights on hover (mouseenter/mouseleave, fired by the cursor/
+      // raycaster on whatever's aiming at it), and on click emits
+      // "menu-item-select" with {value, label} bubbling up to whatever
+      // manager is listening.
+      // ==============================================================
+      AFRAME.registerComponent('menu-item', {
+        schema: {
+          value: { type: 'string' },
+          label: { type: 'string' },
+          hoverColor: { type: 'color', default: '#2a3a5c' },
+        },
+
+        init: function () {
+          // Remember the color set on the entity's own material so
+          // mouseleave can restore it, without this component having to
+          // know or care what that base color is.
+          this.baseColor = this.el.getAttribute('material').color;
+
+          this.onMouseEnter = this.onMouseEnter.bind(this);
+          this.onMouseLeave = this.onMouseLeave.bind(this);
+          this.onClick = this.onClick.bind(this);
+
+          this.el.addEventListener('mouseenter', this.onMouseEnter);
+          this.el.addEventListener('mouseleave', this.onMouseLeave);
+          this.el.addEventListener('click', this.onClick);
+        },
+
+        onMouseEnter: function () {
+          this.el.setAttribute('material', 'color', this.data.hoverColor);
+          this.el.setAttribute('scale', '1.05 1.05 1.05');
+        },
+
+        onMouseLeave: function () {
+          this.el.setAttribute('material', 'color', this.baseColor);
+          this.el.setAttribute('scale', '1 1 1');
+        },
+
+        onClick: function () {
+          this.el.emit(
+            'menu-item-select',
+            { value: this.data.value, label: this.data.label },
+            true
+          );
+        },
+
+        remove: function () {
+          this.el.removeEventListener('mouseenter', this.onMouseEnter);
+          this.el.removeEventListener('mouseleave', this.onMouseLeave);
+          this.el.removeEventListener('click', this.onClick);
+        },
+      });
+
+      // ==============================================================
+      // COMPONENT: menu-feedback
+      // Demo-only: listens for the bubbled selection event from any
+      // menu-item under this panel and reflects it back in text, so you
+      // can see the primitive actually fired without checking devtools.
+      // ==============================================================
+      AFRAME.registerComponent('menu-feedback', {
+        init: function () {
+          this.feedbackText = this.el.querySelector('#menu-feedback-text');
+          this.el.addEventListener('menu-item-select', (evt) => {
+            this.feedbackText.setAttribute(
+              'text',
+              'value',
+              'Selected: ' + evt.detail.label
+            );
+          });
+        },
+      });
+
       // Position/size numbers below came from actually loading the raw
       // GLB and measuring it (bone positions + eyeballing render
-      // screenshots) rather than guessing — see the primitives/hand-watch
-      // write-up in the repo history for how.
+      // screenshots) rather than guessing — see the repo history for how.
       // x is the calibrated offset for the LEFT hand specifically;
       // hand-with-watch flips its sign for the right hand below.
       var WATCH_OFFSET = { x: -0.009, y: -0.006, z: 0.100 };
@@ -122,11 +281,11 @@
 
       // Same vendor controller components hand-controls itself attaches,
       // with model:false so nothing renders from them — they're here only
-      // for real button events (gripdown/gripup) on real hardware. Using
-      // our own gltf-model for the visible mesh (rather than hand-controls
-      // itself) means the hand renders immediately with no dependency on a
-      // real controller ever connecting, which is what let this demo be
-      // measured and screenshotted at all — see the earlier commits.
+      // for real button events (gripdown/gripup/triggerdown/triggerup) on
+      // real hardware. Using our own gltf-model for the visible mesh
+      // (rather than hand-controls itself) means the hand renders
+      // immediately with no dependency on a real controller ever
+      // connecting, which is what lets this demo be screenshotted at all.
       var CONTROL_COMPONENTS = [
         'magicleap-controls', 'vive-controls', 'oculus-touch-controls',
         'pico-controls', 'windows-motion-controls', 'hp-mixed-reality-controls',
@@ -181,7 +340,7 @@
           // Real button state, not simulated: attach the same vendor
           // control components hand-controls uses (muted — model:false —
           // so they contribute no visuals of their own) purely to get
-          // real gripdown/gripup events on actual hardware.
+          // real button events on actual hardware.
           this.isPointing = false;
           CONTROL_COMPONENTS.forEach(function (name) {
             el.setAttribute(name, { hand: self.data.hand, model: false });
@@ -258,7 +417,7 @@
           }
 
           // Flash feedback so a poke is visibly obvious, same idea as the
-          // hover/click feedback in the other primitives.
+          // hover/click feedback of the panel menu above.
           faceEl.setAttribute('material', 'color', '#0f0');
           setTimeout(function () { faceEl.setAttribute('material', 'color', '#111'); }, 120);
         },

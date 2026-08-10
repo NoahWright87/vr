@@ -22,11 +22,13 @@ A-Frame itself is vendored into `/vendor` rather than loaded from the `aframe.io
 
 ## Primitives
 
-Small, reusable interaction building blocks — a design-system for VR, in the Storybook sense. Each one is demoed on its own here, and the reusable piece (an A-Frame component) is meant to be copied into other prototypes as-is rather than reimplemented per game.
+Small, reusable interaction building blocks — a design-system for VR, in the Storybook sense. Rather than one experience per primitive, each primitive category gets ONE demo covering every style/variant, so they can be compared side by side — the equivalent of a Storybook page listing every story for a component. The reusable pieces (A-Frame components) are meant to be copied into other prototypes as-is rather than reimplemented per game.
 
-- **[Menus — Static](primitives/menu-static/index.html)** — a menu panel fixed in world space. The `menu-item` component is the reusable part: attach it to any entity with its own geometry/material and it becomes a clickable row that highlights on hover and emits a `menu-item-select` event (with `{value, label}`) on click.
+- **[Menus](primitives/menus/index.html)** — every menu style in one scene:
+  - **Fixed panel** — a menu fixed in world space. The `menu-item` component is the reusable part: attach it to any entity with its own geometry/material and it becomes a clickable row that highlights on hover and emits a `menu-item-select` event (with `{value, label}`) on click.
+  - **Wrist watch** — a band + face attached to A-Frame's built-in hand model (correctly oriented: band loops the wrist, face flush on the back of the hand), showing a live clock. Point with one hand (squeeze grip) and poke the other wrist's face to start/stop a stopwatch — real button-driven gesture detection plus `obb-collider` (A-Frame core, no physics engine) for the touch, not hand-tracking.
 
-Coming soon: wrist/HUD-attached menus, movement (locomotion + turning), vibration/haptics, object manipulation, and spatial audio.
+Coming soon: movement (locomotion + turning), vibration/haptics, object manipulation, and spatial audio.
 
 ## Running locally
 
