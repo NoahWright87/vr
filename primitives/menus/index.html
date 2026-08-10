@@ -129,11 +129,13 @@
 
       <!-- ============================================================
            STYLE 2: wrist-worn watch menu.
-           The same pair of hand entities does double duty: they carry
-           the watch (band + face + poke hitbox — see hand-with-watch
-           below) AND point a laser at the panel above, since cursor/
-           raycaster and obb-collider are independent, non-conflicting
-           components on the same entity.
+           The logic entities (below, id left-hand/right-hand) carry the
+           watch (band + face + poke hitbox — see hand-with-watch) AND
+           point a laser at the panel above, since cursor/raycaster and
+           obb-collider are independent, non-conflicting components on
+           the same entity. The actual visible/animated hand is a
+           separate, decoupled hand-controls entity — see the big
+           comment above the HTML for both, further down.
       ============================================================ -->
       <template id="watch-template">
         <a-entity>
@@ -165,16 +167,30 @@
         </a-entity>
       </template>
 
+      <!-- Two entities per hand, deliberately decoupled — same pattern
+           Pistols at Dawn uses, for the same reason: hand-controls'
+           rendered mesh applies its own "looks natural" corrective
+           rotation (±90° yaw plus a WebXR-only pitch) that does NOT match
+           "-Z is where you're pointing," so raycasting/aiming needs the
+           RAW uncorrected entity while the visible hand needs the real
+           hand-controls component (which is also the only thing that
+           actually animates — fist on grip, point on trigger, etc.).
+           hand-with-watch reproduces that same corrective rotation on its
+           own watch+fingertip wrapper so they visually track the real
+           rendered mesh instead of the raw entity underneath it. -->
       <a-entity id="left-hand" position="-0.2 1.35 -0.4"
         hand-with-watch="hand: left"
         cursor="fuse: false; downEvents: triggerdown; upEvents: triggerup"
         raycaster="objects: .menu-target; far: 10; showLine: true"
       ></a-entity>
+      <a-entity hand-controls="hand: left; handModelStyle: lowPoly"></a-entity>
+
       <a-entity id="right-hand" position="0.2 1.35 -0.4"
         hand-with-watch="hand: right"
         cursor="fuse: false; downEvents: triggerdown; upEvents: triggerup"
         raycaster="objects: .menu-target; far: 10; showLine: true"
       ></a-entity>
+      <a-entity hand-controls="hand: right; handModelStyle: lowPoly"></a-entity>
     </a-scene>
 
     <script>
@@ -282,10 +298,9 @@
       // Same vendor controller components hand-controls itself attaches,
       // with model:false so nothing renders from them — they're here only
       // for real button events (gripdown/gripup/triggerdown/triggerup) on
-      // real hardware. Using our own gltf-model for the visible mesh
-      // (rather than hand-controls itself) means the hand renders
-      // immediately with no dependency on a real controller ever
-      // connecting, which is what lets this demo be screenshotted at all.
+      // real hardware, on the RAW entity used for aiming/menu-clicking.
+      // The actual visible, animated hand is a separate hand-controls
+      // entity declared in HTML (see the comment above it).
       var CONTROL_COMPONENTS = [
         'magicleap-controls', 'vive-controls', 'oculus-touch-controls',
         'pico-controls', 'windows-motion-controls', 'hp-mixed-reality-controls',
@@ -302,20 +317,26 @@
           var el = this.el;
           var self = this;
           var side = this.data.hand === 'left' ? 1 : -1;
-          var modelUrl =
-            this.data.hand === 'left'
-              ? '../../vendor/aframe-1.6.0/controllers/hands/leftHandLow.glb'
-              : '../../vendor/aframe-1.6.0/controllers/hands/rightHandLow.glb';
 
           this.watch = { mode: 'clock', running: false, elapsedMs: 0, startedAt: 0 };
 
-          var handMesh = document.createElement('a-entity');
-          handMesh.setAttribute('gltf-model', 'url(' + modelUrl + ')');
-          el.appendChild(handMesh);
+          // hand-controls' own mesh gets this exact rotation applied on
+          // top of the entity's real tracked pose (see its source: a ±90°
+          // yaw depending on hand, plus a WebXR-only pitch) so that the
+          // rendered hand looks natural rather than "-Z is forward." Our
+          // watch/fingertip live on a wrapper carrying that same
+          // correction, so their calibrated numbers (measured against the
+          // RAW, uncorrected model) land in the right place relative to
+          // what's actually rendered — not the raw entity underneath it.
+          var correctionZ = side === 1 ? 90 : -90;
+          var correctionX = el.sceneEl.hasWebXR ? -90 : 0;
+          var wrapper = document.createElement('a-entity');
+          wrapper.setAttribute('rotation', correctionX + ' 0 ' + correctionZ);
+          el.appendChild(wrapper);
 
           var template = document.getElementById('watch-template');
           var watch = template.content.cloneNode(true).firstElementChild;
-          el.appendChild(watch);
+          wrapper.appendChild(watch);
 
           var bandX = side * WATCH_OFFSET.x;
           watch
@@ -359,7 +380,7 @@
           );
           fingertip.setAttribute('obb-collider', 'size: ' + FINGERTIP_SIZE);
           fingertip.handComponent = this;
-          el.appendChild(fingertip);
+          wrapper.appendChild(fingertip);
           this.fingertipEl = fingertip;
 
           faceEl.setAttribute('obb-collider', '');
