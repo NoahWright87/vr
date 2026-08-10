@@ -124,7 +124,16 @@
             .querySelector('.watch-face')
             .setAttribute('position', bandX + ' ' + FACE_Y_OFFSET + ' ' + WATCH_OFFSET.z);
 
-          this.textEl = watch.querySelector('.watch-text');
+          // Rotate the text a further 90° around the face's own normal so
+          // "up" reads toward the side of the hand rather than toward the
+          // fingertips — that's how a watch actually gets read: you turn
+          // your wrist so the back of the hand faces you with the fingers
+          // off to one side, not pointing straight up. Left/right mirror
+          // each other (same relative rotation, opposite sign) since the
+          // two hand models are themselves exact mirror images.
+          var textEl = watch.querySelector('.watch-text');
+          textEl.setAttribute('rotation', '-90 0 ' + side * 90);
+          this.textEl = textEl;
         },
       });
 
