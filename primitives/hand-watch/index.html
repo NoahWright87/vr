@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Hand + Watch — WebXR Primitive</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <script>window.AFRAME_CDN_ROOT = '../../vendor/aframe-1.6.0/';</script>
+    <script src="../../vendor/aframe-1.6.0/aframe-v1.6.0.min.js"></script>
+
+    <style>
+      body {
+        margin: 0;
+        font-family: system-ui, sans-serif;
+      }
+      #overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        padding: 0.75rem 1rem;
+        background: rgba(0, 0, 0, 0.55);
+        color: white;
+        z-index: 1;
+        font-size: 0.9rem;
+      }
+      #overlay a {
+        color: #9ad;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="overlay">
+      <span>Hand + Watch — a wearable attached correctly to A-Frame's built-in hand model. <a href="../../index.html">All prototypes</a></span>
+    </div>
+
+    <a-scene>
+      <a-light type="ambient" color="#fff" intensity="0.7"></a-light>
+      <a-light type="directional" position="2 3 2" intensity="0.7"></a-light>
+      <a-sky color="#0d1526"></a-sky>
+      <a-plane rotation="-90 0 0" width="20" height="20" color="#445" position="0 0 0"></a-plane>
+
+      <!-- ============================================================
+           watch-mixin: the reusable piece. A-Frame's built-in hand
+           model (the same low-poly GLB hand-controls uses) has a fixed,
+           known local coordinate frame once loaded raw (no hand-controls
+           corrective rotation applied):
+             -Z = toward fingertips        +Z = toward the wrist
+             +Y = out of the back of hand  -Y = into the palm
+           The wrist's long axis is local Z, which is also a torus's
+           default hole-axis — so the band needs no rotation, only a
+           position. The face sits stacked further along +Y so it can't
+           clip through the band's own geometry.
+
+           leftHandLow.glb and rightHandLow.glb are exact mirror images
+           of each other (verified against their bone positions), so the
+           only thing that differs between hands is the sign of X.
+      ============================================================ -->
+      <template id="watch-template">
+        <a-entity>
+          <a-entity class="watch-band"
+            geometry="primitive: torus; radius: 0.030; radiusTubular: 0.005; segmentsRadial: 24; segmentsTubular: 12"
+            material="color: #ccc; metalness: 0.6; roughness: 0.4"
+          ></a-entity>
+          <a-entity class="watch-face"
+            geometry="primitive: box; width: 0.032; height: 0.007; depth: 0.032"
+            material="color: #111"
+          >
+            <a-text class="watch-text"
+              value="00:00:00"
+              font="sourcecodepro"
+              align="center"
+              color="#0F0"
+              width="0.09"
+              position="0 0.0045 0"
+              rotation="-90 0 0"
+            ></a-text>
+          </a-entity>
+        </a-entity>
+      </template>
+
+      <a-entity id="left-hand" position="-0.16 1.55 -1" hand-with-watch="hand: left"></a-entity>
+      <a-entity id="right-hand" position="0.16 1.55 -1" hand-with-watch="hand: right"></a-entity>
+
+      <a-camera position="0 1.72 -0.6" rotation="-25 0 0" look-controls wasd-controls></a-camera>
+    </a-scene>
+
+    <script>
+      // Position/size numbers below came from actually loading the raw
+      // GLB and measuring it (bone positions + eyeballing render
+      // screenshots) rather than guessing — see the primitives/hand-watch
+      // write-up in the repo history for how.
+      // x is the calibrated offset for the LEFT hand specifically;
+      // hand-with-watch flips its sign for the right hand below.
+      var WATCH_OFFSET = { x: -0.009, y: -0.006, z: 0.100 };
+      var FACE_Y_OFFSET = 0.0345;
+
+      AFRAME.registerComponent('hand-with-watch', {
+        schema: {
+          hand: { default: 'left', oneOf: ['left', 'right'] },
+        },
+
+        init: function () {
+          var el = this.el;
+          var side = this.data.hand === 'left' ? 1 : -1;
+          var modelUrl =
+            this.data.hand === 'left'
+              ? '../../vendor/aframe-1.6.0/controllers/hands/leftHandLow.glb'
+              : '../../vendor/aframe-1.6.0/controllers/hands/rightHandLow.glb';
+
+          var handMesh = document.createElement('a-entity');
+          handMesh.setAttribute('gltf-model', 'url(' + modelUrl + ')');
+          el.appendChild(handMesh);
+
+          var template = document.getElementById('watch-template');
+          var watch = template.content.cloneNode(true).firstElementChild;
+          el.appendChild(watch);
+
+          var bandX = side * WATCH_OFFSET.x;
+          watch
+            .querySelector('.watch-band')
+            .setAttribute('position', bandX + ' ' + WATCH_OFFSET.y + ' ' + WATCH_OFFSET.z);
+          watch
+            .querySelector('.watch-face')
+            .setAttribute('position', bandX + ' ' + FACE_Y_OFFSET + ' ' + WATCH_OFFSET.z);
+
+          this.textEl = watch.querySelector('.watch-text');
+        },
+      });
+
+      function updateClocks () {
+        var d = new Date();
+        var pad = function (n) { return String(n).padStart(2, '0'); };
+        var value = pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+        document.querySelectorAll('.watch-text').forEach(function (el) {
+          el.setAttribute('text', 'value', value);
+        });
+      }
+      updateClocks();
+      setInterval(updateClocks, 1000);
+    </script>
+  </body>
+</html>
