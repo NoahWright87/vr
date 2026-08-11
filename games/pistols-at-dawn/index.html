@@ -34,7 +34,7 @@
   </head>
   <body>
     <div id="overlay">
-      <span>Pistols at Dawn — grip near a holstered pistol, shotgun, or your hat to draw it. Guns fire on the trigger; let go of the grip while a finger still rests on the trigger to dangle and twirl whatever you're holding. Anything can snap into any anchor it's small enough for — glance at the glowing spheres for a hint — so go ahead and wear a gun like a hat, or hide one inside your hat. Turn around for the saloon bar: knock a bottle's cap on the counter edge to open it, then tip it over your face and drink what pours out. Fling a fistful of bottles skyward and shoot them apart. Strike a match on the counter or flip open the lighter and thumb a face button, then light a cigar off either — or off a barrel you just emptied, or a well-aimed bullet. Hold a cigar at your lips to draw on it and again to blow the smoke back out; flick or twirl it to knock the ash off. Let go and re-squeeze the grip quickly to keep hold of what you had and pick up the next thing too. Grab the shotgun's forend with your off hand to steady it. Both meters at the bottom of your view have opinions about your aim. <a href="../../index.html">All prototypes</a></span>
+      <span>Pistols at Dawn — grip near a holstered pistol, shotgun, or your hat to draw it. Guns fire on the trigger; let go of the grip while a finger still rests on the trigger to dangle and twirl whatever you're holding. Anything can snap into any anchor it's small enough for — glance at the glowing spheres for a hint — so go ahead and wear a gun like a hat, or hide one inside your hat. Turn around for the saloon bar: knock a bottle's cap on the counter edge to open it, then tip it over your face and drink what pours out. Fling a fistful of bottles skyward and shoot them apart. Strike a match on the counter or flip open the lighter and thumb a face button, then light a cigar off either — or off a barrel you just emptied, or a well-aimed bullet. Hold a cigar at your lips to draw on it and again to blow the smoke back out; flick or twirl it to knock the ash off. Let go and re-squeeze the grip quickly to keep hold of what you had and pick up the next thing too. Grab the shotgun's forend with your off hand to steady it. Spilled beer pools where it lands and burns if you light it, fire spreads along it and sets light to whatever it reaches, and a smashed bottle spills its own — so a lit puddle and a well-thrown beer make a Molotov out of parts that were already lying about. There's a jug of water for when that goes wrong. Throw overhand and it goes where you're looking; let go early to lob it, late to line-drive it. Both meters at the bottom of your view have opinions about your aim. <a href="../../index.html">All prototypes</a></span>
     </div>
 
     <a-scene>
@@ -243,7 +243,7 @@
 
       <a-entity
         class="grabbable"
-        holsterable="holsterSelector: #back-anchor; itemSize: large; holsterRotation: -90 0 0; heldRotation: -90 0 0; heldPosition: 0 0 0; grabRadius: 0.28; comOffset: 0 0.02 -0.2; supportGrip: 0 0.01 -0.22; supportRadius: 0.22"
+        holsterable="holsterSelector: #back-anchor; itemSize: large; holsterRotation: -90 0 0; heldRotation: -90 0 0; heldPosition: 0 0 0; grabRadius: 0.28; comOffset: 0 0.02 -0.2; supportGrip: 0 0.01 -0.22; supportRadius: 0.22; maxThrowSpeed: 7"
         firearm="pellets: 6; coneDeg: 4; kickDeg: -16; recoverMs: 200; heatPerShot: 0.4"
         ignition-source="tipSelector: .muzzle"
         boxy-shotgun
@@ -297,6 +297,38 @@
     </a-scene>
 
     <script>
+      // ==============================================================
+      // LOW-POLY GEOMETRY DEFAULTS
+      // A-Frame builds a-cylinder at 36 radial x 18 height segments and
+      // a-sphere at 36 x 18, which is ~1300 triangles for a bottle neck
+      // and ~1200 for a puff of smoke. Measured on this scene that was
+      // 276,000 triangles, 97% of it in cylinders and spheres, for an
+      // art style whose entire premise is that everything is a box.
+      //
+      // Patching the registered primitives' schema defaults here — before
+      // the scene initializes — applies to every entity in the file,
+      // including ones created at runtime, without touching a single
+      // creation site. It also makes A-Frame's geometry cache hit far
+      // more often, since fewer distinct parameter sets exist.
+      // ==============================================================
+      (function lowerPolyBudget() {
+        function setDefault(primitive, property, value) {
+          var geometry = AFRAME.geometries[primitive];
+          if (geometry && geometry.schema[property]) geometry.schema[property].default = value;
+        }
+
+        setDefault('cylinder', 'segmentsRadial', 14);
+        setDefault('cylinder', 'segmentsHeight', 1);
+        setDefault('cone', 'segmentsRadial', 14);
+        setDefault('cone', 'segmentsHeight', 1);
+        setDefault('sphere', 'segmentsWidth', 12);
+        setDefault('sphere', 'segmentsHeight', 8);
+        setDefault('circle', 'segments', 20);
+        setDefault('torus', 'segmentsRadial', 12);
+        setDefault('torus', 'segmentsTubular', 8);
+        setDefault('ring', 'segmentsTheta', 20);
+      })();
+
       // ==============================================================
       // TUNING CONSTANTS
       // Everything about "does the twirl feel fun" lives in these few
@@ -627,6 +659,81 @@
       var IGNITE_RADIUS = 0.075; // meters — cigar tip to a hot thing
       var CIGAR_PUFF_INTERVAL_MS = 750; // how often a lit cigar coughs up a wisp
 
+      // ==============================================================
+      // FIRE, FUEL, AND WATER
+      // Fire has fuel, and fuel is time: it burns down at
+      // FIRE_FUEL_PER_S and grows again if something feeds it. What
+      // feeds it is spilled alcohol, which is why pouring is now a
+      // supply line rather than a party trick.
+      // ==============================================================
+      var MAX_FIRES = 14; // hard cap, since each one is two meshes and a light contribution
+      var FIRE_MERGE_RADIUS = 0.22; // meters — new fire this close joins the existing one instead of stacking
+      var FIRE_START_FUEL = 2.2; // seconds of life a fresh fire gets
+      var FIRE_MAX_FUEL = 10;
+      var FIRE_FUEL_PER_S = 1; // burn rate
+      var FIRE_MIN_RADIUS = 0.028; // meters — note this is the SPHERE radius, so the flame is twice this across
+      var FIRE_MAX_RADIUS = 0.115; // meters at full fuel, i.e. ~23cm across and ~45cm tall once stretched — a campfire, not a pyre
+      var FIRE_WIGGLE_HZ = 6.5; // how fast the flame writhes
+      var FIRE_SPREAD_RADIUS = 0.55; // how far a flame reaches to set light to a puddle
+      var FIRE_DAMAGE_RADIUS = 0.5; // meters — targets inside this burn down
+      var FIRE_DAMAGE_DELAY_MS = 600; // exposure before a target actually goes over
+      var FIRE_DAMAGE_SCORE = 50;
+      var FIRE_ASH_MULTIPLIER = 5; // how much faster a burnable ashes while sitting in a flame
+      var FIRE_ASH_RADIUS = 0.3;
+      var FIRE_LIGHT_COLOR = '#ff9a3c';
+      var FIRE_LIGHT_RANGE = 6; // meters of falloff on the shared point light
+      var FIRE_LIGHT_PER_FUEL = 0.35; // intensity per unit of the biggest fire's fuel
+      var FIRE_LIGHT_MAX = 2.4;
+      var DROPLET_IGNITE_RADIUS = 0.14; // alcohol passing this close to anything lit catches
+      var DROPLET_FUEL = 0.5; // seconds of fire one burning droplet is worth
+
+      // ==============================================================
+      // PUDDLES
+      // Spilled liquid stays put for a while instead of vanishing, so
+      // you can pour first and light it afterwards. Nearby drops merge
+      // into one growing disc — both because that's what liquid does
+      // and because otherwise a five-second pour would be four hundred
+      // separate objects.
+      // ==============================================================
+      var MAX_PUDDLES = 26;
+      var PUDDLE_MERGE_RADIUS = 0.3; // meters — a drop landing this close to a puddle joins it
+      var PUDDLE_START_RADIUS = 0.045;
+      var PUDDLE_GROWTH_PER_DROPLET = 0.011; // meters of radius each droplet adds
+      var PUDDLE_MAX_RADIUS = 0.45;
+      var PUDDLE_LIFETIME_MS = 25000; // how long before it soaks away
+      var PUDDLE_FADE_MS = 4000; // the tail end of that, spent shrinking
+      var PUDDLE_BURN_RATE = 0.06; // meters of radius consumed per second while alight
+      var PUDDLE_FUEL_PER_METER = 70; // seconds of fire per meter of radius burnt — comfortably more than FIRE_FUEL_PER_S, so a burning spill builds a real blaze rather than guttering at the minimum size
+      var PUDDLE_SPILL_RADIUS = 0.16; // how much a smashed bottle puts on the floor
+      var PUDDLE_RELIGHT_DELAY_MS = 2500; // a doused puddle stays too wet to catch again for this long
+
+      // ==============================================================
+      // WATER
+      // The jug. Water droplets are the same particles beer is, doing
+      // the opposite job: they take fuel out of fires, they sober you
+      // up a little, and they pool without being flammable.
+      // ==============================================================
+      var WATER_DOUSE_RADIUS = 0.35;
+      var WATER_DOUSE_FUEL = 1.6; // seconds of fire removed per droplet that reaches it
+      var WATER_SOBER_PER_DROPLET = 0.004;
+
+      // ==============================================================
+      // OVERHAND THROWS
+      // Throwing overhand means you're trying to hit something you're
+      // looking at, so the game does the aiming — the same courtesy the
+      // juggling toss already extends, pointed outward instead of back
+      // at your own hand. Where in the swing you let go picks the arc:
+      // release early, on the way up, and it lobs; release near the top
+      // and it goes flat and fast.
+      // ==============================================================
+      var OVERHAND_MIN_HAND_HEIGHT = 0.02; // meters above eye level at release
+      var OVERHAND_MIN_SPEED = 1.5; // m/s of hand speed to count as a throw at all
+      var OVERHAND_STEEP_DEG = 50; // launch angle at the bottom of the upswing
+      var OVERHAND_FLAT_DEG = 12; // launch angle at the top of the arc
+      var OVERHAND_AIM_RANGE = 30; // meters of look-ray used to find what you're aiming at
+      var OVERHAND_SPEED_REFERENCE = 4; // m/s of hand speed that counts as "a full-strength throw"
+      var OVERHAND_MAX_DEFAULT_SPEED = 13; // m/s ceiling for an average object; heavy things override it downward
+
       // Every hard surface a bottle can be cracked open on. The ground
       // plane is here from the start; saloon-bar pushes its counter
       // top on at init. A surface is just a horizontal rectangle —
@@ -905,15 +1012,275 @@
       // (see world-systems.updateParticles), which is the entire
       // drinking mechanic. No fill level, no proximity-plus-tilt
       // check — if the liquid hits your head, you drank it.
-      function spawnDroplet(worldPos, velocity) {
-        return addParticle('sphere', worldPos, '#d99a25', DROPLET_RADIUS * (0.7 + Math.random() * 0.6), {
-          kind: 'liquid',
-          vel: velocity.clone(),
-          angVel: null,
-          life: DROPLET_LIFETIME_MS,
-          opacity: 0.85,
-          restY: 0.01,
-        });
+      function spawnDroplet(worldPos, velocity, liquid) {
+        liquid = liquid || 'beer';
+        return addParticle(
+          'sphere',
+          worldPos,
+          liquid === 'water' ? '#7fb6d4' : '#d99a25',
+          DROPLET_RADIUS * (0.7 + Math.random() * 0.6),
+          {
+            kind: 'liquid',
+            liquid: liquid,
+            vel: velocity.clone(),
+            angVel: null,
+            life: DROPLET_LIFETIME_MS,
+            opacity: 0.85,
+            restY: 0.01,
+          }
+        );
+      }
+
+      // ==============================================================
+      // FIRE AND PUDDLES
+      // Fire is its own kind of object rather than a particle: it has
+      // fuel, it grows and shrinks, it spreads, it sets light to
+      // things, it damages targets, and it lights the room. But it's
+      // pooled and hand-ticked exactly like a particle is, because
+      // there can be a dozen of them and each one is two meshes.
+      //
+      // The interesting half is what it burns. Poured alcohol doesn't
+      // vanish when it lands: it pools on whatever it hits (the floor,
+      // the bar), nearby drops merge into one bigger puddle rather
+      // than piling up hundreds of overlapping discs, and a puddle
+      // that touches fire catches. A burning puddle feeds its own
+      // fire as it's consumed, and that fire reaches far enough to
+      // light the next puddle along — which is the whole of "fire
+      // spreads," with no spread code as such.
+      //
+      // The payoff nobody had to implement: pour a line of beer, light
+      // it, throw a bottle into the middle. The bottle shatters, spills
+      // its own puddle, that puddle is touching flame, and you have
+      // made a Molotov out of parts that were already there.
+      // ==============================================================
+      var FIRES = [];
+      var PUDDLES = [];
+      var FIRE_POOL = [];
+      var PUDDLE_POOL = [];
+      var HOT_POINTS = []; // every lit tip and every fire, refreshed once a frame
+
+      // One shared point light, moved to whichever fire is biggest. Real
+      // per-fire lights would mean recompiling materials and paying
+      // per-fragment cost for each one; a single light that follows the
+      // action gives you the flicker on the bar and the walls for the
+      // price of one. Added as a raw three.js light rather than an
+      // A-Frame light component on purpose: adding an <a-light> makes
+      // A-Frame remove its default lighting rig and the whole scene
+      // changes brightness.
+      var fireLight = null;
+
+      function ensureFireLight(sceneEl) {
+        if (fireLight) return fireLight;
+        fireLight = new THREE.PointLight(FIRE_LIGHT_COLOR, 0, FIRE_LIGHT_RANGE);
+        sceneEl.object3D.add(fireLight);
+        return fireLight;
+      }
+
+      // ---------------------------------------------------------------
+      // Fire
+      // ---------------------------------------------------------------
+      function acquireFireEl() {
+        var el = FIRE_POOL.pop();
+        if (el) {
+          el.object3D.visible = true;
+          var source = el.components['ignition-source'];
+          if (source) source.hot = true;
+          return el;
+        }
+
+        el = document.createElement('a-entity');
+
+        // Two nested elongated spheres: a wide dull-orange body and a
+        // brighter yellow heart. Flat-shaded so they read as emissive
+        // without needing a light of their own.
+        var outer = document.createElement('a-sphere');
+        outer.setAttribute('radius', 1);
+        outer.setAttribute('material', 'color: #ff6a1a; shader: flat; transparent: true; opacity: 0.75; depthWrite: false');
+        outer.classList.add('fire-outer');
+        el.appendChild(outer);
+
+        var inner = document.createElement('a-sphere');
+        inner.setAttribute('radius', 0.55);
+        inner.setAttribute('material', 'color: #ffd84a; shader: flat; transparent: true; opacity: 0.9; depthWrite: false');
+        inner.classList.add('fire-inner');
+        el.appendChild(inner);
+
+        // Fire is an ordinary ignition source, so it lights cigars and
+        // matches through the same proximity check a hot barrel uses.
+        el.setAttribute('ignition-source', '');
+        document.querySelector('a-scene').appendChild(el);
+        return el;
+      }
+
+      function releaseFire(index) {
+        var fire = FIRES[index];
+        fire.el.object3D.visible = false;
+        var source = fire.el.components['ignition-source'];
+        if (source) source.hot = false;
+        FIRE_POOL.push(fire.el);
+        FIRES.splice(index, 1);
+      }
+
+      // Fire merges rather than multiplies: dropping a match on a
+      // puddle that's already alight should make the existing flame
+      // bigger, not stack a second one inside it.
+      function spawnFire(worldPos, fuel) {
+        for (var i = 0; i < FIRES.length; i++) {
+          if (FIRES[i].pos.distanceTo(worldPos) < FIRE_MERGE_RADIUS) {
+            FIRES[i].fuel = Math.min(FIRES[i].fuel + fuel, FIRE_MAX_FUEL);
+            return FIRES[i];
+          }
+        }
+
+        if (FIRES.length >= MAX_FIRES) return null;
+
+        var el = acquireFireEl();
+        el.object3D.position.copy(worldPos);
+
+        var fire = {
+          el: el,
+          // Its own vector, not an alias of the element's position:
+          // the element gets nudged upward every frame so the flame
+          // stands ON its base rather than being centred in it, and
+          // the base is what everything else measures against.
+          pos: worldPos.clone(),
+          baseY: worldPos.y,
+          fuel: Math.min(fuel, FIRE_MAX_FUEL),
+          phase: Math.random() * 100,
+          damageTimer: 0,
+        };
+        FIRES.push(fire);
+        spawnSparks(worldPos, 6);
+        return fire;
+      }
+
+      function nearestFire(worldPos, maxDistance) {
+        var best = null;
+        var bestDist = maxDistance;
+        for (var i = 0; i < FIRES.length; i++) {
+          var d = FIRES[i].pos.distanceTo(worldPos);
+          if (d < bestDist) {
+            bestDist = d;
+            best = FIRES[i];
+          }
+        }
+        return best;
+      }
+
+      // Water's whole job. Puts out the flame AND stops the puddle
+      // underneath it burning — dousing only the fire meant a burning
+      // spill just relit itself from its own fuel the next frame,
+      // which is arguably realistic and definitely infuriating.
+      // Returns true if it hit something, so a droplet can be spent
+      // on it.
+      function douseFires(worldPos, radius, amount) {
+        var doused = false;
+
+        for (var i = FIRES.length - 1; i >= 0; i--) {
+          if (FIRES[i].pos.distanceTo(worldPos) > radius) continue;
+          FIRES[i].fuel -= amount;
+          doused = true;
+          spawnSmoke(FIRES[i].pos, null, 0.5);
+        }
+
+        for (var j = 0; j < PUDDLES.length; j++) {
+          var puddle = PUDDLES[j];
+          if (!puddle.burning) continue;
+          var dx = puddle.x - worldPos.x;
+          var dz = puddle.z - worldPos.z;
+          var reach = radius + puddle.radius;
+          if (dx * dx + dz * dz > reach * reach) continue;
+
+          puddle.burning = false;
+          puddle.dousedUntil = PUDDLE_RELIGHT_DELAY_MS; // wet through, briefly
+          doused = true;
+        }
+
+        return doused;
+      }
+
+      // ---------------------------------------------------------------
+      // Puddles
+      // ---------------------------------------------------------------
+      function acquirePuddleEl() {
+        var el = PUDDLE_POOL.pop();
+        if (el) {
+          el.object3D.visible = true;
+          return el;
+        }
+
+        el = document.createElement('a-circle');
+        el.setAttribute('radius', 1);
+        el.setAttribute('rotation', '-90 0 0');
+        el.setAttribute('material', 'shader: flat; transparent: true; opacity: 0.55; depthWrite: false; side: double');
+        document.querySelector('a-scene').appendChild(el);
+        return el;
+      }
+
+      function releasePuddle(index) {
+        PUDDLES[index].el.object3D.visible = false;
+        PUDDLE_POOL.push(PUDDLES[index].el);
+        PUDDLES.splice(index, 1);
+      }
+
+      // A landed droplet either joins a puddle it's near enough to or
+      // starts one. Merging is what keeps a long pour from becoming
+      // four hundred overlapping discs — the count stays in the dozens
+      // however much you spill.
+      function addToPuddle(worldPos, surfaceY, liquid, amount) {
+        for (var i = 0; i < PUDDLES.length; i++) {
+          var p = PUDDLES[i];
+          if (p.liquid !== liquid) continue;
+          if (Math.abs(p.y - surfaceY) > 0.05) continue; // a puddle on the bar isn't the same puddle as one on the floor
+          var dx = p.x - worldPos.x;
+          var dz = p.z - worldPos.z;
+          if (dx * dx + dz * dz > PUDDLE_MERGE_RADIUS * PUDDLE_MERGE_RADIUS) continue;
+
+          p.radius = Math.min(p.radius + amount, PUDDLE_MAX_RADIUS);
+          p.age = 0;
+          // The puddle creeps toward whatever is feeding it, so a
+          // moving pour draws a trail rather than growing one blob.
+          p.x += (worldPos.x - p.x) * 0.12;
+          p.z += (worldPos.z - p.z) * 0.12;
+          return p;
+        }
+
+        if (PUDDLES.length >= MAX_PUDDLES) return null;
+
+        var el = acquirePuddleEl();
+        var puddle = {
+          el: el,
+          x: worldPos.x,
+          y: surfaceY,
+          z: worldPos.z,
+          radius: PUDDLE_START_RADIUS + amount,
+          liquid: liquid,
+          burning: false,
+          dousedUntil: 0,
+          age: 0,
+        };
+
+        var mesh = el.getObject3D('mesh');
+        if (mesh) mesh.material.color.set(liquid === 'water' ? '#7fb6d4' : '#c8871f');
+        else puddle.needsColor = true;
+
+        PUDDLES.push(puddle);
+        return puddle;
+      }
+
+      // Everything a puddle can be hit with, in one place: a bottle
+      // smashing spills one, a jug smashing spills water, and pouring
+      // just trickles into one.
+      function spillPuddle(worldPos, liquid, amount) {
+        var surfaceY = 0;
+        for (var i = 0; i < HARD_SURFACES.length; i++) {
+          var s = HARD_SURFACES[i];
+          if (worldPos.y < s.y - 0.05 || worldPos.y > s.y + 0.6) continue;
+          if (worldPos.x < s.minX || worldPos.x > s.maxX) continue;
+          if (worldPos.z < s.minZ || worldPos.z > s.maxZ) continue;
+          if (s.y > surfaceY) surfaceY = s.y;
+        }
+        return addToPuddle(worldPos, surfaceY, liquid, amount);
       }
 
       // ==============================================================
@@ -1301,9 +1668,14 @@
       // overlapping clump. This is the entire implementation of "toss
       // a handful of bottles up and shoot them before they land."
       // ==============================================================
-      function computeThrowVelocity(handEl, stackIndex, stackCount) {
+      function computeThrowVelocity(handEl, stackIndex, stackCount, holsterable) {
         var handRig = handEl.components['hand-rig'];
         if (!handRig) return null;
+
+        // Checked first: an overhand throw is the most deliberate of
+        // the three and the only one that involves aiming at the world.
+        var overhand = computeOverhandVelocity(handEl, handRig, holsterable);
+        if (overhand) return overhand;
 
         var hurl = computeHurlVelocity(handRig, stackIndex, stackCount);
         if (hurl) return hurl;
@@ -1351,6 +1723,104 @@
         }
 
         return velocity;
+      }
+
+      // ==============================================================
+      // computeOverhandVelocity
+      // The aimed throw. Bringing your hand up past your own eyeline
+      // and swinging it forward means you're trying to hit something
+      // you're looking at, so the game does what the juggling toss
+      // already does — solves for a velocity that lands where you
+      // want — except pointed out at the world instead of back at your
+      // own hand.
+      //
+      // Two things you actually control. Where you're LOOKING picks
+      // the target: a ray from the camera against everything
+      // shootable, falling back to the ground. And WHEN in the swing
+      // you let go picks the arc: release early, while your hand is
+      // still rising, and it lobs high; release near the top, where
+      // your hand is moving forward rather than up, and it goes flat
+      // and fast. How hard you threw scales the speed cap, so a gentle
+      // lob stays gentle and something heavy can't be rifled.
+      //
+      // The physics is the standard "hit a point at a fixed angle"
+      // solve: for a launch angle theta, horizontal distance d and
+      // height difference h,
+      //     v^2 = g*d^2 / (2*cos^2(theta) * (d*tan(theta) - h))
+      // and where that has no solution (the target is too high for
+      // this angle) or wants more speed than you've got, it throws as
+      // hard as it can and lets it fall short honestly.
+      // ==============================================================
+      function computeOverhandVelocity(handEl, handRig, holsterable) {
+        var cameraEl = document.querySelector('#head-camera');
+        if (!cameraEl) return null;
+
+        var speed = handRig.velocity.length();
+        if (speed < OVERHAND_MIN_SPEED) return null;
+
+        var handPos = new THREE.Vector3();
+        var headPos = new THREE.Vector3();
+        handEl.object3D.getWorldPosition(handPos);
+        cameraEl.object3D.getWorldPosition(headPos);
+        if (handPos.y < headPos.y + OVERHAND_MIN_HAND_HEIGHT) return null;
+
+        var target = findLookTarget(cameraEl, headPos);
+        if (!target) return null;
+
+        // Where in the swing: +1 still going up, -1 already coming
+        // down. Rising means a lob, level-or-falling means a bullet.
+        var rise = handRig.velocity.y / speed;
+        var steepness = Math.min(Math.max((rise + 0.35) / 1.1, 0), 1);
+        var angle = ((OVERHAND_FLAT_DEG + (OVERHAND_STEEP_DEG - OVERHAND_FLAT_DEG) * steepness) * Math.PI) / 180;
+
+        var flat = new THREE.Vector3(target.x - handPos.x, 0, target.z - handPos.z);
+        var d = flat.length();
+        if (d < 0.4) return null;
+        flat.divideScalar(d);
+
+        var h = target.y - handPos.y;
+        var g = GRAVITY * (holsterable ? holsterable.data.gravityScale : 1);
+        var maxSpeed = (holsterable ? holsterable.data.maxThrowSpeed : OVERHAND_MAX_DEFAULT_SPEED) *
+          Math.min(speed / OVERHAND_SPEED_REFERENCE, 1.15);
+
+        var denominator = 2 * Math.cos(angle) * Math.cos(angle) * (d * Math.tan(angle) - h);
+        var launchSpeed;
+        if (denominator <= 0.0001) {
+          launchSpeed = maxSpeed; // can't reach it at this angle; throw as hard as you can
+        } else {
+          launchSpeed = Math.sqrt((g * d * d) / denominator);
+          if (!isFinite(launchSpeed)) launchSpeed = maxSpeed;
+        }
+        launchSpeed = Math.min(launchSpeed, maxSpeed);
+
+        var velocity = new THREE.Vector3(
+          flat.x * Math.cos(angle) * launchSpeed,
+          Math.sin(angle) * launchSpeed,
+          flat.z * Math.cos(angle) * launchSpeed
+        );
+        velocity.isHurl = true; // same catch suppression a hurl gets
+        return velocity;
+      }
+
+      // What you're looking at: the first shootable thing along the
+      // camera's forward ray, or failing that the point where that ray
+      // meets the ground. Never null unless you're staring at the sky
+      // from below, in which case the caller falls through to a normal
+      // throw.
+      function findLookTarget(cameraEl, headPos) {
+        var quat = new THREE.Quaternion();
+        cameraEl.object3D.getWorldQuaternion(quat);
+        var forward = new THREE.Vector3(0, 0, -1).applyQuaternion(quat).normalize();
+
+        var hit = castShot(headPos, forward);
+        if (hit) return hit.point;
+
+        if (forward.y < -0.02) {
+          var t = -headPos.y / forward.y; // where the ray crosses y = 0
+          if (t > 0 && t < OVERHAND_AIM_RANGE) return headPos.clone().addScaledVector(forward, t);
+        }
+
+        return headPos.clone().addScaledVector(forward, OVERHAND_AIM_RANGE);
       }
 
       // ==============================================================
@@ -1997,6 +2467,7 @@
           heldRotation: { type: 'vec3', default: { x: 0, y: 0, z: 0 } },
           grabRadius: { type: 'number', default: GRAB_RADIUS },
           comOffset: { type: 'vec3', default: { x: 0, y: 0, z: 0 } }, // center of mass, relative to the entity origin
+          maxThrowSpeed: { type: 'number', default: OVERHAND_MAX_DEFAULT_SPEED }, // how hard this particular object can be thrown, whatever your arm does
           gravityScale: { type: 'number', default: 1 }, // multiplies gravity while falling — under 1 keeps a thrown object up longer, which is what makes shooting bottles out of the air possible
           supportGrip: { type: 'vec3', default: { x: 0, y: 0, z: 0 } }, // local position of a second place to hold this, if any
           supportRadius: { type: 'number', default: 0 }, // 0 disables the second grip entirely
@@ -2366,7 +2837,7 @@
             return;
           }
 
-          var throwVelocity = computeThrowVelocity(this.hand, this.stackIndex, this.stackCount);
+          var throwVelocity = computeThrowVelocity(this.hand, this.stackIndex, this.stackCount, this);
           if (throwVelocity) {
             this.wasThrown = true;
             this.throwWithVelocity(throwVelocity);
@@ -2384,7 +2855,7 @@
         // spin and all, not just drop it straight down.
         endDangle: function () {
           this.wasThrown = false;
-          var throwVelocity = computeThrowVelocity(this.hand, this.stackIndex, this.stackCount);
+          var throwVelocity = computeThrowVelocity(this.hand, this.stackIndex, this.stackCount, this);
           if (throwVelocity) {
             this.wasThrown = true;
             this.throwWithVelocity(throwVelocity);
@@ -3984,11 +4455,17 @@
       });
 
       // ==============================================================
-      // COMPONENT: bottle
-      // The drinkable behavior, in the same relationship to holsterable
-      // that firearm is: it reads state, owns a little state of its
-      // own (capped or not), and knows nothing about hands, slots, or
-      // throwing.
+      // COMPONENT: pourable
+      // Anything with liquid in it, which is now a beer bottle and a
+      // water jug. Same relationship to holsterable that firearm has:
+      // it reads state, owns a little of its own (capped or not), and
+      // knows nothing about hands, slots, or throwing.
+      //
+      // What the liquid DOES isn't here either — the droplets it emits
+      // carry their kind, and the world decides what beer and water
+      // mean when they land on you, on the floor, or on a fire. That's
+      // why a jug of water needed no new pouring code, only a
+      // different word in its markup.
       //
       // Two physical moves, no buttons:
       //   - Knock the CAP against something solid — the edge of the
@@ -4005,9 +4482,14 @@
       //     separate mechanic: the droplets are real particles, and
       //     world-systems swallows any that reach your mouth.
       // ==============================================================
-      AFRAME.registerComponent('bottle', {
+      AFRAME.registerComponent('pourable', {
+        schema: {
+          liquid: { type: 'string', default: 'beer' }, // 'beer' burns and gets you drunk; 'water' puts fires out
+          capped: { type: 'boolean', default: true }, // a jug has no cap to knock off
+        },
+
         init: function () {
-          this.capped = true;
+          this.capped = this.data.capped;
           this.pourAccumulator = 0; // fractional droplets carried between frames
 
           this.capEl = this.el.querySelector('.bottle-cap');
@@ -4023,6 +4505,13 @@
           this._dropVel = new THREE.Vector3();
           this._jitter = new THREE.Vector3();
           this._hasPrev = false;
+
+          this.onShattered = this.onShattered.bind(this);
+          this.el.addEventListener('shattered', this.onShattered);
+        },
+
+        remove: function () {
+          this.el.removeEventListener('shattered', this.onShattered);
         },
 
         tick: function (time, dt) {
@@ -4131,14 +4620,23 @@
             var age = count > 1 ? (dtSeconds * k) / count : 0;
             this._jitter.copy(this._spoutWorld).addScaledVector(this._dropVel, age);
             this._jitter.y -= 0.5 * GRAVITY * age * age;
-            spawnDroplet(this._jitter, this._dropVel);
+            spawnDroplet(this._jitter, this._dropVel, this.data.liquid);
           }
+        },
+
+        // A smashed bottle doesn't just make glass: it puts its
+        // contents on the floor. That's the missing half of the
+        // Molotov — throw a beer into a lit puddle and the spill it
+        // leaves is already touching flame.
+        onShattered: function (evt) {
+          var point = (evt.detail && evt.detail.point) || this._spoutWorld;
+          spillPuddle(point, this.data.liquid, PUDDLE_SPILL_RADIUS);
         },
 
         // Called by breakable when a shattered bottle comes back as a
         // fresh one — a respawned beer is a capped beer.
         recap: function () {
-          this.capped = true;
+          this.capped = this.data.capped;
           if (this.capEl) this.capEl.setAttribute('visible', true);
           this._hasPrev = false;
         },
@@ -4250,6 +4748,11 @@
           this.el.classList.remove('shootable');
           this.el.classList.remove('grabbable');
 
+          // Announced rather than acted on, the same way holsterable
+          // emits "landed": breakable has no idea some things are full
+          // of liquid.
+          this.el.emit('shattered', { point: this._world.clone() }, false);
+
           if (scored) {
             var manager = document.querySelector('#range-manager');
             if (manager) {
@@ -4275,8 +4778,8 @@
           this.el.classList.add('grabbable');
           this.el.object3D.visible = true;
 
-          var bottle = this.el.components.bottle;
-          if (bottle) bottle.recap();
+          var pourable = this.el.components.pourable;
+          if (pourable) pourable.recap();
           var cigar = this.el.components.cigar;
           if (cigar) cigar.restore();
 
@@ -4582,7 +5085,14 @@
           this.checkShake(dtSeconds);
           if (!lit) return;
 
-          var rate = this.data.ashRate * this.burnMultiplier;
+          // Sitting in a flame burns it down far faster than smoking
+          // it does. Asked of the fire list directly rather than
+          // routed through ignition, since this is about being IN a
+          // fire rather than being lit by one.
+          this.tipWorldPosition(this._tip);
+          var inFire = nearestFire(this._tip, FIRE_ASH_RADIUS) ? FIRE_ASH_MULTIPLIER : 1;
+
+          var rate = this.data.ashRate * this.burnMultiplier * inFire;
           this.ash = Math.min(this.ash + rate * dtSeconds, this.length);
           this.applyLayout();
 
@@ -4904,6 +5414,64 @@
 
 
       // ==============================================================
+      // COMPONENT: boxy-jug
+      // A water jug: a fat stoneware body with a handle and an open
+      // neck. Origin at the neck like a bottle's, so it grips, dangles
+      // and pours through exactly the same code — the only thing that
+      // makes it a jug rather than a beer is the word "water" in its
+      // pourable, and the fact it was born with no cap.
+      // ==============================================================
+      var JUG_BASE_Y = -0.28;
+
+      AFRAME.registerComponent('boxy-jug', {
+        init: function () {
+          var el = this.el;
+          var clay = '#9c8466';
+
+          function cylinder(radius, height, y, color) {
+            var c = document.createElement('a-cylinder');
+            c.setAttribute('radius', radius);
+            c.setAttribute('height', height);
+            c.setAttribute('position', { x: 0, y: y, z: 0 });
+            c.setAttribute('color', color);
+            el.appendChild(c);
+            return c;
+          }
+
+          cylinder(0.075, 0.19, -0.185, clay); // body
+          cylinder(0.03, 0.08, -0.05, clay); // neck
+
+          var shoulder = document.createElement('a-entity');
+          shoulder.setAttribute('geometry', { primitive: 'cone', radiusBottom: 0.075, radiusTop: 0.03, height: 0.06 });
+          shoulder.setAttribute('material', 'color: ' + clay);
+          shoulder.setAttribute('position', { x: 0, y: -0.06, z: 0 });
+          el.appendChild(shoulder);
+
+          var handle = document.createElement('a-torus');
+          handle.setAttribute('radius', 0.045);
+          handle.setAttribute('radius-tubular', 0.008);
+          handle.setAttribute('color', clay);
+          handle.setAttribute('rotation', '0 90 0');
+          handle.setAttribute('position', { x: 0.075, y: -0.1, z: 0 });
+          el.appendChild(handle);
+
+          var band = document.createElement('a-cylinder');
+          band.setAttribute('radius', 0.077);
+          band.setAttribute('height', 0.03);
+          band.setAttribute('position', { x: 0, y: -0.16, z: 0 });
+          band.setAttribute('color', '#5d7fa0');
+          el.appendChild(band);
+
+          var spout = document.createElement('a-entity');
+          spout.setAttribute('position', { x: 0, y: -0.008, z: 0 });
+          spout.classList.add('spout');
+          el.appendChild(spout);
+
+          el.appendChild(createHitbox(0.1, 0.34, { x: 0, y: -0.15, z: 0 }));
+        },
+      });
+
+      // ==============================================================
       // COMPONENT: boxy-zippo
       // A lighter, built the same "pile of primitives" way as
       // everything else. The lid is a separate entity hinged along the
@@ -5161,6 +5729,7 @@
           this.buildCigarBox();
           this.buildMatchbox();
           this.buildLighter();
+          this.buildWaterJug();
 
           // Two spare sockets on the bar for whatever you're carrying —
           // a place to set your gun down, or your hat, while you drink.
@@ -5215,9 +5784,10 @@
             // before you've drawn, and the whole point of throwing one
             // is to shoot it down. Slowing its fall buys that time.
             gravityScale: 0.6,
+            maxThrowSpeed: 15,
           });
           el.setAttribute('boxy-bottle', { glass: color });
-          el.setAttribute('bottle', '');
+          el.setAttribute('pourable', '');
           el.setAttribute('breakable', { color: color });
           this.el.sceneEl.appendChild(el);
           return el;
@@ -5349,6 +5919,31 @@
             });
             this.el.sceneEl.appendChild(el);
           }
+        },
+
+        // The jug of water, for when the saloon is on fire. Declared
+        // almost identically to a beer — same pourable, same
+        // breakable, different liquid — which is the point.
+        buildWaterJug: function () {
+          var slotId = this.addSlot({ x: -0.85, y: BAR_TOP_Y, z: BAR_BOTTLE_Z }, 'medium', {});
+
+          var el = document.createElement('a-entity');
+          el.classList.add('grabbable');
+          el.classList.add('shootable');
+          el.setAttribute('holsterable', {
+            holsterSelector: '#' + slotId,
+            itemSize: 'medium',
+            holsterPosition: { x: 0, y: -JUG_BASE_Y, z: 0 },
+            holsterRotation: { x: 0, y: 0, z: 0 },
+            heldRotation: { x: -90, y: 0, z: 0 },
+            grabRadius: 0.19,
+            comOffset: { x: 0, y: -0.16, z: 0 },
+            gravityScale: 0.8,
+          });
+          el.setAttribute('boxy-jug', '');
+          el.setAttribute('pourable', { liquid: 'water', capped: false });
+          el.setAttribute('breakable', { color: '#9c8466', shards: 12 });
+          this.el.sceneEl.appendChild(el);
         },
 
         // One Zippo, sitting on the bar. Unlike the matches it never
@@ -5572,6 +6167,8 @@
           this._quat = new THREE.Quaternion();
           this._delta = new THREE.Vector3();
           this._heldPool = []; // reused entries behind HELD_ITEMS
+          this._hotPool = []; // reused entries behind HOT_POINTS
+          this._scratch = new THREE.Vector3();
           this._blowing = {}; // per-hand latch, so one raise of the barrel is one gust
         },
 
@@ -5580,9 +6177,180 @@
           this.updateHeldItems();
           this.updateWind();
           if (this.mouthEl) this.mouthEl.object3D.getWorldPosition(this._mouthPos);
+          // Hot points first: fires, lit tips, hot barrels. Droplets,
+          // puddles and lightables all ask the same question this
+          // frame, so it gets answered once.
+          this.updateHotPoints();
+          this.updateFires(time, dtSeconds);
+          this.updatePuddles(dtSeconds);
           this.updateParticles(dtSeconds);
           this.updateIgnition();
           this.updateBlow();
+        },
+
+        // Every source of ignition in the world, in one flat list of
+        // positions. Fires are in here alongside lit cigars and hot
+        // barrels, which is why fire lights things without fire
+        // knowing what a cigar is.
+        updateHotPoints: function () {
+          HOT_POINTS.length = 0;
+
+          var sources = document.querySelectorAll('[ignition-source]');
+          for (var i = 0; i < sources.length; i++) {
+            var source = sources[i].components['ignition-source'];
+            if (!source || !source.hot) continue;
+
+            if (!this._hotPool[HOT_POINTS.length]) this._hotPool[HOT_POINTS.length] = { pos: new THREE.Vector3(), el: null };
+            var entry = this._hotPool[HOT_POINTS.length];
+            source.tipObject().getWorldPosition(entry.pos);
+            entry.el = sources[i];
+            HOT_POINTS.push(entry);
+          }
+        },
+
+        // Fire: burn down, writhe, spread to anything flammable
+        // nearby, scorch any target standing in it, and drive the one
+        // shared light.
+        updateFires: function (time, dtSeconds) {
+          var brightest = null;
+
+          for (var i = FIRES.length - 1; i >= 0; i--) {
+            var fire = FIRES[i];
+            fire.fuel -= FIRE_FUEL_PER_S * dtSeconds;
+            if (fire.fuel <= 0) {
+              spawnSmoke(fire.pos, null, 0.7);
+              releaseFire(i);
+              continue;
+            }
+
+            // Re-asserted every frame rather than at spawn: a pooled
+            // fire entity's component may not have initialized yet the
+            // instant it was handed out.
+            var source = fire.el.components['ignition-source'];
+            if (source) source.hot = true;
+
+            var t = Math.min(fire.fuel / FIRE_MAX_FUEL, 1);
+            var radius = FIRE_MIN_RADIUS + (FIRE_MAX_RADIUS - FIRE_MIN_RADIUS) * Math.sqrt(t);
+
+            // The writhe: a tall narrow teardrop whose height and lean
+            // wander on a couple of out-of-phase sines. Cheap, and
+            // enough to stop it reading as a glowing ball.
+            var phase = (time / 1000) * FIRE_WIGGLE_HZ + fire.phase;
+            var stretch = 1.7 + 0.35 * Math.sin(phase);
+            var lean = 0.12 * Math.sin(phase * 0.7);
+
+            fire.el.object3D.scale.set(radius * (1 + 0.12 * Math.sin(phase * 1.3)), radius * stretch, radius);
+            fire.el.object3D.rotation.set(lean, phase * 0.2, lean * 0.6);
+            // Sits on its own base rather than centred, so a flame on
+            // the floor looks like it's standing on the floor.
+            fire.el.object3D.position.set(fire.pos.x, fire.baseY + radius * stretch * 0.75, fire.pos.z);
+
+            this.burnTargets(fire, dtSeconds);
+
+            if (!brightest || fire.fuel > brightest.fuel) brightest = fire;
+          }
+
+          var light = ensureFireLight(this.el.sceneEl);
+          if (brightest) {
+            light.position.copy(brightest.pos);
+            light.intensity = Math.min(brightest.fuel * FIRE_LIGHT_PER_FUEL, FIRE_LIGHT_MAX) *
+              (0.82 + 0.18 * Math.sin((time / 1000) * FIRE_WIGGLE_HZ * 1.7));
+          } else {
+            light.intensity = 0;
+          }
+        },
+
+        // Anything that can be knocked down can be burnt down. A
+        // target standing in a flame for FIRE_DAMAGE_DELAY_MS goes
+        // over exactly as if it had been shot, through pop-target's
+        // own fall() — fire has no idea what a target is beyond that.
+        burnTargets: function (fire, dtSeconds) {
+          fire.damageTimer -= dtSeconds * 1000;
+          if (fire.damageTimer > 0) return;
+          fire.damageTimer = FIRE_DAMAGE_DELAY_MS;
+
+          var hinges = document.querySelectorAll('[pop-target]');
+          for (var i = 0; i < hinges.length; i++) {
+            var popTarget = hinges[i].components['pop-target'];
+            if (!popTarget || popTarget.fallen) continue;
+
+            hinges[i].object3D.getWorldPosition(this._scratch);
+            if (this._scratch.distanceTo(fire.pos) > FIRE_DAMAGE_RADIUS) continue;
+
+            var manager = document.querySelector('#range-manager');
+            if (manager) manager.emit('ring-hit', { score: FIRE_DAMAGE_SCORE, label: 'BURNED' }, false);
+            popTarget.fall();
+          }
+        },
+
+        // Alcohol catches from anything hot enough to be in
+        // HOT_POINTS — a dropped match, a lit cigar, a hot barrel, or
+        // another fire. Fires being ignition sources themselves is
+        // what makes fire "spread": a burning puddle makes a fire, and
+        // that fire is what lights the next puddle along. There is no
+        // spreading code, only this.
+        checkPuddleIgnition: function (puddle) {
+          if (puddle.liquid === 'water') return;
+          if (puddle.dousedUntil > 0) return;
+
+          var reach = FIRE_SPREAD_RADIUS + puddle.radius;
+          for (var i = 0; i < HOT_POINTS.length; i++) {
+            var pos = HOT_POINTS[i].pos;
+            var dx = pos.x - puddle.x;
+            var dz = pos.z - puddle.z;
+            if (dx * dx + dz * dz > reach * reach) continue;
+            if (pos.y - puddle.y > FIRE_SPREAD_RADIUS || pos.y < puddle.y - 0.3) continue;
+
+            puddle.burning = true;
+            return;
+          }
+        },
+
+        // Puddles evaporate slowly, and burn quickly. A burning one
+        // hands its volume to a fire directly above it as fuel, which
+        // is the entire economy: how long a fire lasts is how much you
+        // spilled.
+        updatePuddles: function (dtSeconds) {
+          for (var i = PUDDLES.length - 1; i >= 0; i--) {
+            var puddle = PUDDLES[i];
+            puddle.age += dtSeconds * 1000;
+
+            if (puddle.dousedUntil > 0) puddle.dousedUntil -= dtSeconds * 1000;
+            if (!puddle.burning) this.checkPuddleIgnition(puddle);
+
+            if (puddle.burning) {
+              var consumed = Math.min(PUDDLE_BURN_RATE * dtSeconds, puddle.radius);
+              puddle.radius -= consumed;
+
+              this._scratch.set(puddle.x, puddle.y, puddle.z);
+              var fire = spawnFire(this._scratch, consumed * PUDDLE_FUEL_PER_METER);
+              if (fire) fire.baseY = puddle.y;
+              if (Math.random() < dtSeconds * 3) spawnSmoke(this._scratch, null, 0.6);
+            }
+
+            var fade = 1;
+            if (puddle.age > PUDDLE_LIFETIME_MS - PUDDLE_FADE_MS) {
+              fade = Math.max((PUDDLE_LIFETIME_MS - puddle.age) / PUDDLE_FADE_MS, 0);
+            }
+
+            if (puddle.radius <= 0.005 || fade <= 0) {
+              releasePuddle(i);
+              continue;
+            }
+
+            var obj = puddle.el.object3D;
+            obj.position.set(puddle.x, puddle.y + 0.004, puddle.z);
+            obj.scale.setScalar(puddle.radius);
+
+            var mesh = puddle.el.getObject3D('mesh');
+            if (mesh && mesh.material) {
+              if (puddle.needsColor) {
+                mesh.material.color.set(puddle.liquid === 'water' ? '#7fb6d4' : '#c8871f');
+                puddle.needsColor = false;
+              }
+              mesh.material.opacity = 0.55 * fade;
+            }
+          }
         },
 
         // One scan of the scene per frame, shared by every anchor-slot
@@ -5658,14 +6426,19 @@
               // "am I drinking" check anywhere, just beer and a head
               // in the way of it.
               if (this.mouthEl && obj.position.distanceTo(this._mouthPos) < DROPLET_SWALLOW_RADIUS) {
-                addAlcohol(ALCOHOL_PER_DROPLET);
+                if (p.liquid === 'water') VICES.alcohol = Math.max(VICES.alcohol - WATER_SOBER_PER_DROPLET, 0);
+                else addAlcohol(ALCOHOL_PER_DROPLET);
                 this.glug();
                 this.retireParticle(i);
                 continue;
               }
 
-              if (obj.position.y <= p.restY) {
-                spawnDebris(obj.position, { count: 2, color: '#d99a25', size: 0.008, speed: 0.5, life: 500 });
+              if (this.updateLiquidContact(p, obj)) {
+                this.retireParticle(i);
+                continue;
+              }
+
+              if (this.landLiquid(p, obj)) {
                 this.retireParticle(i);
                 continue;
               }
@@ -5692,6 +6465,58 @@
               mesh.material.opacity = p.kind === 'smoke' ? p.opacity * (1 - t * t) : p.opacity * Math.min((1 - t) * 4, 1);
             }
           }
+        },
+
+        // Alcohol in mid-air catches from anything lit and becomes a
+        // small fire where it is — which is what makes pouring onto a
+        // flame set the stream itself alight, and what turns "pour on
+        // a lit cigar" into an accident. Water does the reverse.
+        updateLiquidContact: function (p, obj) {
+          if (p.liquid === 'water') {
+            return douseFires(obj.position, WATER_DOUSE_RADIUS, WATER_DOUSE_FUEL);
+          }
+
+          for (var i = 0; i < HOT_POINTS.length; i++) {
+            if (obj.position.distanceTo(HOT_POINTS[i].pos) > DROPLET_IGNITE_RADIUS) continue;
+            var fire = spawnFire(obj.position, DROPLET_FUEL);
+            if (fire) fire.baseY = obj.position.y;
+            return true;
+          }
+          return false;
+        },
+
+        // Where liquid ends up. Any registered hard surface counts, not
+        // just the floor, so you can pour a puddle along the bar and
+        // set the bar on fire.
+        landLiquid: function (p, obj) {
+          var surfaceY = null;
+
+          if (obj.position.y <= p.restY) {
+            surfaceY = 0;
+          } else {
+            for (var i = 0; i < HARD_SURFACES.length; i++) {
+              var s = HARD_SURFACES[i];
+              if (s.y <= 0) continue; // the ground is handled above, by restY
+              if (obj.position.y > s.y + 0.02 || obj.position.y < s.y - 0.12) continue;
+              if (obj.position.x < s.minX || obj.position.x > s.maxX) continue;
+              if (obj.position.z < s.minZ || obj.position.z > s.maxZ) continue;
+              surfaceY = s.y;
+              break;
+            }
+          }
+
+          if (surfaceY === null) return false;
+
+          var puddle = addToPuddle(obj.position, surfaceY, p.liquid || 'beer', PUDDLE_GROWTH_PER_DROPLET);
+          // Liquid landing in something already alight feeds it rather
+          // than pooling next to it.
+          if (puddle && puddle.burning) {
+            this._scratch.set(puddle.x, puddle.y, puddle.z);
+            var fire = spawnFire(this._scratch, DROPLET_FUEL);
+            if (fire) fire.baseY = puddle.y;
+          }
+          spawnDebris(obj.position, { count: 1, color: p.liquid === 'water' ? '#7fb6d4' : '#d99a25', size: 0.008, speed: 0.4, life: 400 });
+          return true;
         },
 
         retireParticle: function (index) {
@@ -5728,21 +6553,16 @@
         // and neither side knows what the other is.
         updateIgnition: function () {
           var lightables = document.querySelectorAll('[lightable]');
-          var sources = document.querySelectorAll('[ignition-source]');
-          if (!lightables.length || !sources.length) return;
+          if (!lightables.length || !HOT_POINTS.length) return;
 
           for (var i = 0; i < lightables.length; i++) {
             var lightable = lightables[i].components.lightable;
             if (!lightable || lightable.lit || lightable.blocked) continue;
             lightable.tipObject().getWorldPosition(this._tipA);
 
-            for (var j = 0; j < sources.length; j++) {
-              if (sources[j] === lightables[i]) continue;
-              var source = sources[j].components['ignition-source'];
-              if (!source || !source.hot) continue;
-
-              source.tipObject().getWorldPosition(this._tipB);
-              if (this._tipA.distanceTo(this._tipB) < IGNITE_RADIUS) {
+            for (var j = 0; j < HOT_POINTS.length; j++) {
+              if (HOT_POINTS[j].el === lightables[i]) continue;
+              if (this._tipA.distanceTo(HOT_POINTS[j].pos) < IGNITE_RADIUS) {
                 lightable.ignite();
                 break;
               }
