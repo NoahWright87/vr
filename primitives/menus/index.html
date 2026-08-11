@@ -40,7 +40,7 @@
          watch style.
     ============================================================== -->
     <div id="overlay">
-      <span>Menus — panel ahead: point and pull the trigger. Watches on your wrists: point with one hand (squeeze grip), poke the other wrist's face. <a href="../../index.html">All prototypes</a></span>
+      <span>Menus — panel ahead: point and pull the trigger. Watches on your wrists: point with one hand (squeeze grip) and poke the other wrist's face to project a menu outward from it. Tilt that wrist toward your own face to poke its options directly; turn the face up instead and it grows bigger and turns to face you, so your other hand's laser can select from it. Poke the ❌ (or just lower the wrist) to close it. <a href="../../index.html">All prototypes</a></span>
     </div>
 
     <a-scene>
@@ -53,9 +53,15 @@
            with no headset, same pattern as Cube Pop. The watch style
            needs two real tracked hands (to point with one and poke the
            other) so it's headset-only — see the overlay text and the
-           write-up in the repo history. -->
+           write-up in the repo history. Disabled the moment a real
+           controller connects (see disableGazeOnControllers below) — with
+           real hands present it was possible to have the gaze reticle
+           hovering one item while a controller laser hovered another,
+           highlighting two at once and letting a stray glance select the
+           wrong item. -->
       <a-camera>
         <a-entity
+          id="gaze-cursor"
           cursor="fuse: false"
           position="0 0 -1"
           geometry="primitive: ring; radiusInner: 0.005; radiusOuter: 0.008"
@@ -167,6 +173,61 @@
         </a-entity>
       </template>
 
+      <!-- ============================================================
+           The menu the watch projects outward from its face when
+           poked. Authored in a "design unit" space (background ~1
+           wide) and scaled up/down wholesale by hand-with-watch —
+           small (poke mode, ~4x the watch face) or large and
+           billboarded to face the player (laser mode) — see the big
+           comment on hand-with-watch below for how it picks between
+           them. ".wm-target" marks every row hand-with-watch wires up
+           for poke (always) and laser click (only in laser mode, via
+           the shared ".menu-target" class toggled dynamically).
+      ============================================================ -->
+      <template id="watch-menu-template">
+        <a-entity class="watch-menu-panel" visible="false">
+          <a-plane width="1" height="1.3" color="#101827" position="0 -0.05 -0.01"></a-plane>
+
+          <a-text class="watch-menu-time" value="00:00:00" font="sourcecodepro" align="center" color="#9ad" width="2.4" position="0 0.5 0"></a-text>
+
+          <a-entity class="wm-target"
+            geometry="primitive: plane; width: 0.16; height: 0.16"
+            material="color: #182238"
+            menu-item="value: close; label: Close; hoverColor: #5c2a2a"
+            position="0.4 0.5 0"
+          >
+            <a-text value="X" align="center" color="#f66" width="6" position="0 0 0.01"></a-text>
+          </a-entity>
+
+          <a-entity class="wm-target"
+            geometry="primitive: plane; width: 0.85; height: 0.2"
+            material="color: #182238"
+            menu-item="value: stopwatch; label: Stopwatch"
+            position="0 0.22 0"
+          >
+            <a-text class="watch-menu-stopwatch-label" value="Stopwatch" align="center" color="#eee" width="2.6" position="0 0 0.01"></a-text>
+          </a-entity>
+
+          <a-entity class="wm-target"
+            geometry="primitive: plane; width: 0.85; height: 0.2"
+            material="color: #182238"
+            menu-item="value: haptics; label: Haptics Test"
+            position="0 -0.05 0"
+          >
+            <a-text value="Haptics Test" align="center" color="#eee" width="2.6" position="0 0 0.01"></a-text>
+          </a-entity>
+
+          <a-entity class="wm-target"
+            geometry="primitive: plane; width: 0.85; height: 0.2"
+            material="color: #182238"
+            menu-item="value: about; label: About"
+            position="0 -0.32 0"
+          >
+            <a-text class="watch-menu-about-label" value="About" align="center" color="#eee" width="2.6" position="0 0 0.01"></a-text>
+          </a-entity>
+        </a-entity>
+      </template>
+
       <!-- Two entities per hand, deliberately decoupled — same pattern
            Pistols at Dawn uses, for the same reason: hand-controls'
            rendered mesh applies its own "looks natural" corrective
@@ -181,14 +242,14 @@
       <a-entity id="left-hand" position="-0.2 1.35 -0.4"
         hand-with-watch="hand: left"
         cursor="fuse: false; downEvents: triggerdown; upEvents: triggerup"
-        raycaster="objects: .menu-target; far: 10; showLine: true"
+        raycaster="objects: .menu-target; far: 10"
       ></a-entity>
       <a-entity hand-controls="hand: left; handModelStyle: lowPoly"></a-entity>
 
       <a-entity id="right-hand" position="0.2 1.35 -0.4"
         hand-with-watch="hand: right"
         cursor="fuse: false; downEvents: triggerdown; upEvents: triggerup"
-        raycaster="objects: .menu-target; far: 10; showLine: true"
+        raycaster="objects: .menu-target; far: 10"
       ></a-entity>
       <a-entity hand-controls="hand: right; handModelStyle: lowPoly"></a-entity>
     </a-scene>
@@ -295,6 +356,20 @@
       var PROXIMITY_MAX_INNER_RADIUS = 0.013;
       var PROXIMITY_MIN_INNER_RADIUS = 0.001;
 
+      // The projected menu's two sizes: "poke" is ~4x the small watch
+      // face's own width (0.032), aligned flush with it; "laser" is
+      // bigger still and billboards to face the player instead. Both are
+      // overall-scale multipliers on the template's ~1-wide design space.
+      var MENU_SCALE_POKE = 0.12;
+      var MENU_SCALE_LASER = 0.26;
+      var MENU_LERP = 0.15; // per-tick approach speed for scale/rotation
+
+      // Orientation thresholds (dot products, so 1 = dead-on) for picking
+      // which mode the open menu should be in each frame — checked in
+      // this order since "face-up" is the narrower, more deliberate pose.
+      var FACEUP_DOT_THRESHOLD = 0.6;
+      var FACECAM_DOT_THRESHOLD = 0.45;
+
       // Same vendor controller components hand-controls itself attaches,
       // with model:false so nothing renders from them — they're here only
       // for real button events (gripdown/gripup/triggerdown/triggerup) on
@@ -308,6 +383,21 @@
         'generic-tracked-controller-controls',
       ];
 
+      function degToRad (d) { return (d * Math.PI) / 180; }
+
+      // Once any real controller connects, the gaze reticle can no longer
+      // be the only way to select something, but it doesn't turn itself
+      // off — so it kept "helping," letting a stray glance highlight (or
+      // select) an item independently of whatever a controller laser was
+      // pointed at. Disabling its raycaster is enough; cursor depends on
+      // it and goes inert too.
+      function disableGazeCursor () {
+        var gaze = document.querySelector('#gaze-cursor');
+        if (!gaze) return;
+        gaze.setAttribute('raycaster', 'enabled', false);
+        gaze.setAttribute('visible', false);
+      }
+
       AFRAME.registerComponent('hand-with-watch', {
         schema: {
           hand: { default: 'left', oneOf: ['left', 'right'] },
@@ -318,13 +408,11 @@
           var self = this;
           var side = this.data.hand === 'left' ? 1 : -1;
 
-          this.watch = { mode: 'clock', running: false, elapsedMs: 0, startedAt: 0 };
-
           // hand-controls' own mesh gets this exact rotation applied on
           // top of the entity's real tracked pose (see its source: a ±90°
           // yaw depending on hand, plus a WebXR-only pitch) so that the
           // rendered hand looks natural rather than "-Z is forward." Our
-          // watch/fingertip live on a wrapper carrying that same
+          // watch/fingertip/menu live on a wrapper carrying that same
           // correction, so their calibrated numbers (measured against the
           // RAW, uncorrected model) land in the right place relative to
           // what's actually rendered — not the raw entity underneath it.
@@ -333,6 +421,7 @@
           var wrapper = document.createElement('a-entity');
           wrapper.setAttribute('rotation', correctionX + ' 0 ' + correctionZ);
           el.appendChild(wrapper);
+          this.wrapperEl = wrapper;
 
           var template = document.getElementById('watch-template');
           var watch = template.content.cloneNode(true).firstElementChild;
@@ -357,22 +446,31 @@
           this.textEl = textEl;
           this.ringEl = watch.querySelector('.watch-proximity-ring');
 
-          // ----- Poke detection -----
-          // Real button state, not simulated: attach the same vendor
-          // control components hand-controls uses (muted — model:false —
-          // so they contribute no visuals of their own) purely to get
-          // real button events on actual hardware.
+          // ----- Button state -----
+          // Real events, not simulated: attach the same vendor control
+          // components hand-controls uses (muted — model:false — so they
+          // contribute no visuals of their own) purely to get real button
+          // events on actual hardware. Also drives the laser: it now only
+          // shows while actually pointing, rather than sitting there
+          // permanently — see the "gripdown"/"gripup" handlers.
           this.isPointing = false;
           CONTROL_COMPONENTS.forEach(function (name) {
             el.setAttribute(name, { hand: self.data.hand, model: false });
           });
-          el.addEventListener('gripdown', function () { self.isPointing = true; });
-          el.addEventListener('gripup', function () { self.isPointing = false; });
+          el.addEventListener('controllerconnected', disableGazeCursor);
+          el.addEventListener('gripdown', function () {
+            self.isPointing = true;
+            el.setAttribute('raycaster', 'showLine', true);
+          });
+          el.addEventListener('gripup', function () {
+            self.isPointing = false;
+            el.setAttribute('raycaster', 'showLine', false);
+          });
 
           // Invisible hitbox at the fingertip. obb-collider does the
           // actual overlap test (oriented-bounding-box, no physics engine
-          // involved) against anything else carrying obb-collider — here,
-          // just the watch face.
+          // involved) against anything else carrying obb-collider — the
+          // watch face (to open the menu) and, once open, its items.
           var fingertip = document.createElement('a-entity');
           fingertip.setAttribute(
             'position',
@@ -391,9 +489,54 @@
           // never reach its own watch face anyway.
           faceEl.addEventListener('obbcollisionstarted', function (evt) {
             var poker = evt.detail.withEl;
-            if (poker.handComponent && poker.handComponent.isPointing) {
-              self.poke(faceEl);
+            if (poker.handComponent && poker.handComponent.isPointing && !self.menuActive) {
+              self.openMenu();
             }
+          });
+
+          // ----- The projected menu -----
+          this.menuActive = false; // set by openMenu()/closeMenu(); tick() derives menuMode from it each frame
+          this.menuMode = 'closed'; // 'closed' | 'poke' | 'laser'
+          this.panelVisible = false;
+          this.panelScale = 0.0001; // never literally 0 — keeps scale/rotation math well-defined
+          this.lastItemsMode = null;
+          this.stopwatch = { running: false, elapsedMs: 0, startedAt: 0 };
+
+          var pokeEuler = new AFRAME.THREE.Euler(degToRad(-90), 0, degToRad(side * 90), 'XYZ');
+          this.pokeQuat = new AFRAME.THREE.Quaternion().setFromEuler(pokeEuler);
+
+          var panelTemplate = document.getElementById('watch-menu-template');
+          var panel = panelTemplate.content.cloneNode(true).firstElementChild;
+          panel.setAttribute('position', bandX + ' ' + FACE_Y_OFFSET + ' ' + WATCH_OFFSET.z);
+          wrapper.appendChild(panel); // must attach before touching object3D — it doesn't exist until then
+          panel.object3D.quaternion.copy(this.pokeQuat);
+          panel.object3D.scale.setScalar(this.panelScale);
+          this.panelEl = panel;
+          this.panelTimeEl = panel.querySelector('.watch-menu-time');
+          this.stopwatchLabelEl = panel.querySelector('.watch-menu-stopwatch-label');
+
+          // Every row: poke always works (gated on menuMode==='poke' so a
+          // stray touch while the menu is mid-transition or in laser mode
+          // doesn't fire); laser only works while wearing the
+          // ".menu-target" class, toggled on/off with the mode by
+          // setItemsMode() so the OTHER hand's raycaster only ever picks
+          // these up in laser mode.
+          this.wmTargets = Array.prototype.slice.call(panel.querySelectorAll('.wm-target'));
+          this.wmTargets.forEach(function (item) {
+            item.setAttribute('obb-collider', 'size: 0.035');
+            item.addEventListener('obbcollisionstarted', function (evt) {
+              var poker = evt.detail.withEl;
+              if (self.menuMode === 'poke' && poker.handComponent && poker.handComponent.isPointing) {
+                item.emit('click');
+              }
+            });
+          });
+
+          panel.addEventListener('menu-item-select', function (evt) {
+            if (evt.detail.value === 'close') self.closeMenu();
+            else if (evt.detail.value === 'stopwatch') self.toggleStopwatch();
+            else if (evt.detail.value === 'haptics') self.triggerHaptics();
+            else if (evt.detail.value === 'about') self.showAbout();
           });
         },
 
@@ -408,53 +551,189 @@
           }
           if (!this.otherHand) return;
 
-          if (!this.otherHand.isPointing) {
-            this.ringEl.setAttribute('visible', false);
-            return;
+          // The proximity ring is only a "should I poke to open" hint —
+          // irrelevant once the menu is already open (and the face it
+          // lives on is hidden then anyway).
+          if (!this.menuActive) {
+            if (!this.otherHand.isPointing) {
+              this.ringEl.setAttribute('visible', false);
+            } else {
+              var facePos = new AFRAME.THREE.Vector3();
+              var tipPos = new AFRAME.THREE.Vector3();
+              this.faceEl.object3D.getWorldPosition(facePos);
+              this.otherHand.fingertipEl.object3D.getWorldPosition(tipPos);
+              var dist = facePos.distanceTo(tipPos);
+              var t = Math.min(1, Math.max(0, dist / PROXIMITY_MAX_DIST));
+              var innerRadius = PROXIMITY_MIN_INNER_RADIUS + t * (PROXIMITY_MAX_INNER_RADIUS - PROXIMITY_MIN_INNER_RADIUS);
+              this.ringEl.setAttribute('visible', true);
+              this.ringEl.setAttribute('geometry', 'radiusInner', innerRadius);
+            }
           }
 
-          var facePos = new AFRAME.THREE.Vector3();
-          var tipPos = new AFRAME.THREE.Vector3();
-          this.faceEl.object3D.getWorldPosition(facePos);
-          this.otherHand.fingertipEl.object3D.getWorldPosition(tipPos);
-          var dist = facePos.distanceTo(tipPos);
-
-          var t = Math.min(1, Math.max(0, dist / PROXIMITY_MAX_DIST));
-          var innerRadius = PROXIMITY_MIN_INNER_RADIUS + t * (PROXIMITY_MAX_INNER_RADIUS - PROXIMITY_MIN_INNER_RADIUS);
-
-          this.ringEl.setAttribute('visible', true);
-          this.ringEl.setAttribute('geometry', 'radiusInner', innerRadius);
+          if (this.menuActive) {
+            var mode = this.computeMenuMode();
+            if (!mode) this.menuActive = false; // neither pose held — e.g. the watch got lowered
+            this.menuMode = mode || 'closed';
+          } else {
+            this.menuMode = 'closed';
+          }
+          this.updateMenuPanel();
         },
 
-        poke: function (faceEl) {
-          var w = this.watch;
-          if (!w.running) {
-            w.mode = 'stopwatch';
-            w.startedAt = performance.now();
-            w.running = true;
+        // Which of the two projected-menu poses (if either) the wrist is
+        // currently in. Checked against the WRAPPER's world rotation
+        // (the true physical wrist orientation) rather than the panel's
+        // own — the panel's rotation is what we're actively animating
+        // toward a target, not a reliable read of where the wrist itself
+        // is pointed.
+        computeMenuMode: function () {
+          var THREE = AFRAME.THREE;
+          var wrapperWorldQuat = new THREE.Quaternion();
+          this.wrapperEl.object3D.getWorldQuaternion(wrapperWorldQuat);
+          var faceNormal = new THREE.Vector3(0, 1, 0).applyQuaternion(wrapperWorldQuat);
+
+          var facePos = new THREE.Vector3();
+          this.faceEl.object3D.getWorldPosition(facePos);
+          var camPos = new THREE.Vector3();
+          document.querySelector('a-camera').object3D.getWorldPosition(camPos);
+          var toCam = camPos.clone().sub(facePos).normalize();
+
+          var dotUp = faceNormal.dot(new THREE.Vector3(0, 1, 0));
+          var dotCam = faceNormal.dot(toCam);
+
+          if (dotUp > FACEUP_DOT_THRESHOLD) return 'laser';
+          if (dotCam > FACECAM_DOT_THRESHOLD) return 'poke';
+          return null;
+        },
+
+        // The local quaternion that makes the panel's front face the
+        // camera, computed via Object3D.lookAt() rather than hand-derived
+        // matrix math — lookAt() already correctly accounts for the
+        // panel's current parent (wrapper) rotation, which is exactly the
+        // step easiest to get backwards doing it by hand. Verified
+        // directly (not just by eye): with the panel's own +Z as "front"
+        // and no extra flip, its world-space front vector dots to ~+1
+        // against the direction toward the camera.
+        computeLaserLocalQuat: function () {
+          var THREE = AFRAME.THREE;
+          this.panelEl.object3D.updateMatrixWorld(true);
+          var camPos = new THREE.Vector3();
+          document.querySelector('a-camera').object3D.getWorldPosition(camPos);
+
+          var savedQuat = this.panelEl.object3D.quaternion.clone();
+          this.panelEl.object3D.lookAt(camPos);
+          var lookQuat = this.panelEl.object3D.quaternion.clone();
+          this.panelEl.object3D.quaternion.copy(savedQuat);
+          return lookQuat;
+        },
+
+        updateMenuPanel: function () {
+          var targetScale;
+          var targetQuat;
+          if (this.menuMode === 'poke') {
+            targetScale = MENU_SCALE_POKE;
+            targetQuat = this.pokeQuat;
+          } else if (this.menuMode === 'laser') {
+            targetScale = MENU_SCALE_LASER;
+            targetQuat = this.computeLaserLocalQuat();
           } else {
-            w.elapsedMs += performance.now() - w.startedAt;
-            w.running = false;
+            targetScale = 0.0001;
+            targetQuat = null; // freeze rotation while shrinking closed
           }
 
-          // Flash feedback so a poke is visibly obvious, same idea as the
-          // hover/click feedback of the panel menu above.
-          faceEl.setAttribute('material', 'color', '#0f0');
-          setTimeout(function () { faceEl.setAttribute('material', 'color', '#111'); }, 120);
+          this.panelScale += (targetScale - this.panelScale) * MENU_LERP;
+          this.panelEl.object3D.scale.setScalar(this.panelScale);
+          if (targetQuat) this.panelEl.object3D.quaternion.slerp(targetQuat, MENU_LERP);
+
+          if (this.menuMode === 'closed') {
+            if (this.panelScale < 0.005 && this.panelVisible) {
+              this.panelEl.setAttribute('visible', false);
+              this.faceEl.setAttribute('visible', true);
+              this.panelVisible = false;
+              this.setItemsMode('closed');
+            }
+          } else {
+            if (!this.panelVisible) {
+              this.panelEl.setAttribute('visible', true);
+              this.faceEl.setAttribute('visible', false);
+              this.panelVisible = true;
+            }
+            this.setItemsMode(this.menuMode);
+          }
+        },
+
+        // Toggles the shared ".menu-target" class (the OTHER hand's
+        // raycaster is already scoped to it) on every row, so they're
+        // laser-clickable only in laser mode — poke keeps working
+        // regardless, gated separately inside each row's own collision
+        // handler by checking menuMode there instead.
+        setItemsMode: function (mode) {
+          if (mode === this.lastItemsMode) return;
+          this.lastItemsMode = mode;
+          this.wmTargets.forEach(function (item) {
+            if (mode === 'laser') item.classList.add('menu-target');
+            else item.classList.remove('menu-target');
+          });
+        },
+
+        openMenu: function () {
+          if (this.menuActive) return;
+          this.menuActive = true;
+        },
+
+        closeMenu: function () {
+          this.menuActive = false;
+        },
+
+        toggleStopwatch: function () {
+          var s = this.stopwatch;
+          if (!s.running) {
+            s.startedAt = performance.now();
+            s.running = true;
+          } else {
+            s.elapsedMs += performance.now() - s.startedAt;
+            s.running = false;
+          }
+        },
+
+        // A real haptic pulse (Gamepad API, same mechanism discussed for
+        // the future Vibration/Haptics primitive) on the hand actually
+        // wearing this watch — a genuinely working "trivial option," not
+        // just a placeholder.
+        triggerHaptics: function () {
+          var tracked = this.el.components['tracked-controls'];
+          var actuators = tracked && tracked.controller && tracked.controller.hapticActuators;
+          if (actuators && actuators[0]) actuators[0].pulse(1.0, 200);
+        },
+
+        showAbout: function () {
+          var label = this.panelEl.querySelector('.watch-menu-about-label');
+          var original = label.getAttribute('text').value;
+          label.setAttribute('text', 'value', 'WebXR Primitives');
+          setTimeout(function () {
+            label.setAttribute('text', 'value', original);
+          }, 1500);
         },
 
         updateDisplay: function () {
           var pad = function (n) { return String(n).padStart(2, '0'); };
-          var value;
-          if (this.watch.mode === 'clock') {
-            var d = new Date();
-            value = pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
-          } else {
-            var ms = this.watch.elapsedMs + (this.watch.running ? performance.now() - this.watch.startedAt : 0);
+          var d = new Date();
+          var clockValue = pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+          this.textEl.setAttribute('text', 'value', clockValue);
+          this.panelTimeEl.setAttribute('text', 'value', clockValue);
+
+          var s = this.stopwatch;
+          var label;
+          if (s.running || s.elapsedMs > 0) {
+            var ms = s.elapsedMs + (s.running ? performance.now() - s.startedAt : 0);
             var totalSec = Math.floor(ms / 1000);
-            value = pad(Math.floor(totalSec / 3600)) + ':' + pad(Math.floor(totalSec / 60) % 60) + ':' + pad(totalSec % 60);
+            label =
+              (s.running ? 'Stop ' : 'Resume ') +
+              pad(Math.floor(totalSec / 3600)) + ':' + pad(Math.floor(totalSec / 60) % 60) + ':' + pad(totalSec % 60);
+          } else {
+            label = 'Stopwatch';
           }
-          this.textEl.setAttribute('text', 'value', value);
+          this.stopwatchLabelEl.setAttribute('text', 'value', label);
         },
       });
 
