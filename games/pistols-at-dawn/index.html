@@ -34,7 +34,7 @@
   </head>
   <body>
     <div id="overlay">
-      <span>Pistols at Dawn — grip near a holstered pistol, shotgun, or your hat to draw it. Guns fire on the trigger; let go of the grip while a finger still rests on the trigger to dangle and twirl whatever you're holding. Anything can snap into any anchor it's small enough for — glance at the glowing spheres for a hint — so go ahead and wear a gun like a hat, or hide one inside your hat. <a href="../../index.html">All prototypes</a></span>
+      <span>Pistols at Dawn — grip near a holstered pistol, shotgun, or your hat to draw it. Guns fire on the trigger; let go of the grip while a finger still rests on the trigger to dangle and twirl whatever you're holding. Anything can snap into any anchor it's small enough for — glance at the glowing spheres for a hint — so go ahead and wear a gun like a hat, or hide one inside your hat. Turn around for the saloon bar: slam a bottle on the counter to pop the cap, tip it up to your mouth to drink, or fling a fistful of them skyward and shoot them out of the air. Cigars light off a lit cigar, a hot barrel, or a well-aimed bullet. Grip again with a full hand to hold more of anything at once. <a href="../../index.html">All prototypes</a></span>
     </div>
 
     <a-scene>
@@ -68,12 +68,20 @@
           width="2"
           position="0 -0.35 -1"
         ></a-text>
+        <a-text
+          id="vice-text"
+          value=""
+          align="center"
+          color="#ffd9a0"
+          width="1.6"
+          position="0 -0.46 -1"
+        ></a-text>
         <a-entity
           cursor="fuse: false"
           position="0 0 -1"
           geometry="primitive: ring; radiusInner: 0.005; radiusOuter: 0.008"
           material="color: #FFFFFF; shader: flat; opacity: 0.8"
-          raycaster="objects: .target-ring; far: 20"
+          raycaster="objects: .shootable; far: 20"
         ></a-entity>
         <!-- Nested directly under the camera (rather than a body-anchor-style
              tick() component) so it inherits full head rotation for free,
@@ -84,6 +92,20 @@
              geometry) will likely need eyes-on tuning. A medium anchor-slot
              — yes, you can wear a gun on your head like a hat. -->
         <a-entity id="head-anchor" class="anchor-slot" anchor-slot="size: medium" position="0 0.1 0"></a-entity>
+
+        <!-- Your mouth: an ordinary small anchor-slot that happens to
+             sit under the camera, with capacity for five. Nothing about
+             it is cigar-specific — it's the same socket as a hip
+             holster, so a pistol clenched in your teeth is a perfectly
+             legal thing to do. idleHidden keeps its indicator sphere
+             out of your eyeline until you're actually carrying
+             something that would fit. -->
+        <a-entity
+          id="mouth-anchor"
+          class="anchor-slot"
+          anchor-slot="size: small; capacity: 5; fanSpread: 0.022; fanYaw: 13; idleHidden: true"
+          position="0 -0.07 -0.08"
+        ></a-entity>
       </a-camera>
 
       <!-- ============================================================
@@ -147,9 +169,10 @@
            loose in the world while dangling/falling. All the holster/
            hold/dangle/fall/throw/catch state machine lives in the
            generic "holsterable" component, configured per-object
-           below; "pistol"/"shotgun" are small companions that add
-           firing on top (the hat has no such companion — nothing to
-           fire). The "grabbable" class is what makes proximity-haptics
+           below; "firearm" is a small companion that adds firing on
+           top, configured from a pistol's single ball to the shotgun's
+           spread by schema alone (the hat has no such companion —
+           nothing to fire). The "grabbable" class is what makes proximity-haptics
            notice them, and is also how hand-rig finds anything
            pickable — any future interactive prop just needs
            holsterable (and optionally its own visual-builder
@@ -175,13 +198,15 @@
       <a-entity
         class="grabbable"
         holsterable="holsterSelector: #hip-left; itemSize: small; holsterRotation: -90 0 0; heldRotation: -90 0 0; heldPosition: 0 0 0; grabRadius: 0.15; comOffset: 0 0.03 -0.08"
-        pistol
+        firearm
+        ignition-source="tipSelector: .muzzle"
         boxy-gun
       ></a-entity>
       <a-entity
         class="grabbable"
         holsterable="holsterSelector: #hip-right; itemSize: small; holsterRotation: -90 0 0; heldRotation: -90 0 0; heldPosition: 0 0 0; grabRadius: 0.15; comOffset: 0 0.03 -0.08"
-        pistol
+        firearm
+        ignition-source="tipSelector: .muzzle"
         boxy-gun
       ></a-entity>
 
@@ -194,9 +219,30 @@
       <a-entity
         class="grabbable"
         holsterable="holsterSelector: #back-anchor; itemSize: large; holsterRotation: -90 0 0; heldRotation: -90 0 0; heldPosition: 0 0 0; grabRadius: 0.2; comOffset: 0 0.02 -0.2"
-        shotgun
+        firearm="pellets: 6; coneDeg: 4; kickDeg: -16; recoverMs: 200; heatPerShot: 0.4; smokePerShot: 5"
+        ignition-source="tipSelector: .muzzle"
         boxy-shotgun
       ></a-entity>
+
+      <!-- ============================================================
+           THE SALOON
+           Everything the bar adds is built at runtime by saloon-bar
+           (counter, back shelf, wall) — including a row of ordinary
+           anchor-slots along the counter top that the bottles and
+           cigars start "holstered" in. That's the whole trick: the bar
+           is just furniture with sockets, so a bottle can go back on
+           the bar, into your hip holster, into your hat, or into your
+           mouth, and a pistol can be set down on the bar, with no code
+           anywhere that knows bottles belong on bars.
+
+           vice-meter and world-systems are the two scene-level
+           bookkeepers: how drunk/shaky you currently are, and the
+           per-frame particle/wind/ignition simulation shared by gun
+           smoke, cigar smoke, and shattering glass.
+      ============================================================ -->
+      <a-entity saloon-bar></a-entity>
+      <a-entity id="vices" vice-meter></a-entity>
+      <a-entity world-systems></a-entity>
 
       <!-- ============================================================
            TARGET GALLERY
@@ -265,13 +311,11 @@
       // twist rather than up/down) and reload. The hat has no such
       // problem — it isn't aimed at anything, so its heldRotation is
       // just identity.
-      var RECOIL_KICK_DEG = -8; // extra pitch added on top of heldRotation when firing (see the "pistol" component)
+      // Defaults for the "firearm" component — a pistol's numbers.
+      // Anything bigger (the shotgun) overrides them in its own markup
+      // rather than getting its own set of constants here.
+      var RECOIL_KICK_DEG = -8; // extra pitch added on top of heldRotation when firing
       var RECOIL_RECOVER_MS = 120; // how long the kick takes to settle back
-
-      var SHOTGUN_PELLET_COUNT = 6;
-      var SHOTGUN_CONE_DEG = 4; // half-angle of the pellet spread cone
-      var SHOTGUN_RECOIL_KICK_DEG = -16; // a much bigger kick than a pistol's
-      var SHOTGUN_RECOIL_RECOVER_MS = 200;
 
       var TRACER_COLOR = '#ffe066';
       var TRACER_RADIUS = 0.004; // meters
@@ -323,6 +367,142 @@
       var SLOT_CLICK_DUR_MS = 220; // ms — fast "click into place" indicator bounce: overshoot, undershoot, settle
 
       // ==============================================================
+      // STACKS (holding more than one of anything)
+      // A hand and an anchor-slot turn out to be the same idea wearing
+      // different hats: a place that can hold several things at once.
+      // Both fan their contents out so N items read as N items instead
+      // of one item z-fighting with itself. The offsets are applied in
+      // the *parent's* frame (lateral on x, yaw on y), which is what
+      // makes one set of numbers mean something sensible for every
+      // object: two pistols in one fist splay into a V, five cigars in
+      // your mouth fan out like a hand of cards, four bottles bunch
+      // together like you're carrying a round.
+      //
+      // Nothing below is per-object — an object opts into all of it by
+      // existing, which is why "can I hold two guns in one hand?" and
+      // "can I grab an armful of bottles?" have the same answer without
+      // either being implemented specifically.
+      // ==============================================================
+      var HAND_CAPACITY = 4; // items one hand can hold at once
+      var HAND_STACK_SPREAD = 0.055; // meters between stacked items in a hand
+      var HAND_STACK_YAW = 8; // degrees of splay per step out from center
+      var THROW_STACK_SPREAD = 0.75; // m/s of extra sideways launch velocity per step, so a thrown handful fans apart in the air instead of flying as one clump
+      var DANGLE_STACK_KICK = 3.5; // rad/s of random spin given to the 2nd+ item dangling off one finger, so they don't swing as identical clones
+
+      // ==============================================================
+      // SALOON
+      // The bar sits directly behind the player (+Z, opposite the
+      // target gallery). There's no locomotion in this prototype, so
+      // the counter's near edge is deliberately within arm's reach of
+      // someone standing at the origin — turn around and the bottles
+      // are right there. If teleport/stick movement ever lands, push
+      // BAR_NEAR_EDGE_Z out to something more room-like (2m+) and the
+      // rest of the layout follows it.
+      // ==============================================================
+      var BAR_WIDTH = 3.4;
+      var BAR_DEPTH = 0.6;
+      var BAR_TOP_Y = 1.05; // counter surface height
+      var BAR_NEAR_EDGE_Z = 0.62; // meters behind the player, to the player-facing edge of the counter
+      var BAR_BOTTLE_COUNT = 5;
+      var BAR_BOTTLE_SPACING = 0.3; // meters between bottles standing on the counter — wide enough that grabbing picks the one you meant, tight enough that the row stays inside one reach
+      var BAR_BOTTLE_Z = 0.86; // where along the counter's depth the bottles stand
+      var BAR_NEAR_ROW_Z = 0.72; // the cigar tray and the two spare sockets sit in front of the bottles, where they're easiest to reach
+      var BAR_CIGAR_COUNT = 4;
+      var SHELF_Z = 1.9; // back-bar shelf: out of reach on purpose, so those bottles are for shooting
+      var SHELF_HEIGHTS = [1.02, 1.46];
+      var SHELF_BOTTLES_PER_ROW = 5;
+
+      // ==============================================================
+      // BOTTLES, DRINKING, AND VICE
+      // A bottle starts capped and full. Slam it down on any hard
+      // surface (the bar top or the floor — see HARD_SURFACES) and the
+      // cap pops off; tip an open one up to your mouth and you drink
+      // it. Drunkenness decays slowly and, along with lit cigars,
+      // feeds the one shared "unsteady hands" wobble that every held
+      // object reads (see viceWobble) — which is why five cigars and
+      // five beers are the same mechanic with different numbers.
+      // ==============================================================
+      var BOTTLE_STRIKE_SPEED = 1.1; // m/s downward needed for a cap-popping whack
+      var BOTTLE_STRIKE_TOLERANCE = 0.08; // meters — how close to the surface counts as a strike
+      var DRINK_RADIUS = 0.2; // meters from the bottle's spout to your mouth
+      var DRINK_TILT_DOT = 0.15; // how far the neck has to be tipped downward (toward your mouth) to count as drinking rather than just holding it near your face
+      var DRINK_RATE = 0.55; // fraction of a bottle drained per second
+      var DRUNK_PER_BOTTLE = 0.34; // how much of the meter one whole bottle fills
+      var DRUNK_DECAY_PER_S = 0.012; // sober up slowly
+      var DRUNK_SWAY_DEG = 7; // peak slow sway added to a held object's aim at full drunkenness
+      var CIGAR_SHAKE_DEG = 1.7; // fast shake added per lit cigar you're currently smoking
+      var MAX_JITTER_CIGARS = 5; // cigars past this stop making it worse (you have run out of mouth)
+      var BOTTLE_RESPAWN_MS = 5000; // a shattered bottle reappears on its home slot after this
+      var WOBBLE_EASE_MS = 320; // ms after a grab before wobble reaches full strength, so nothing pops the instant a snap-blend finishes
+
+      // ==============================================================
+      // PARTICLES, SMOKE, AND WIND
+      // One pool, three flavors: 'debris' (glass shards, bottle caps —
+      // gravity + bounce), 'smoke' (gun and cigar — buoyant, grows,
+      // pushed around by wind), and 'spark'. All of them are ticked in
+      // a single loop by world-systems rather than as one component
+      // per particle.
+      //
+      // Wind comes from two places, both of which are just "the player
+      // moved something through the air": a hand sweeping past a puff
+      // drags it along, and bringing a hot muzzle up in front of your
+      // face triggers a gust — the classic blow-the-smoke-off-the-
+      // barrel move. (A real breath detector would want mic input;
+      // that's a permission prompt and a headset-specific gamble, so
+      // the gesture stands in for it.)
+      // ==============================================================
+      var MAX_PARTICLES = 160; // oldest get culled past this, so a shotgun into a shelf of bottles can't tank the framerate
+      var SHARD_COUNT = 16;
+      var SHARD_SPEED = 2.8; // m/s initial burst speed
+      var SHARD_SIZE = 0.022;
+      var SHARD_LIFETIME_MS = 1700;
+      var SPARK_LIFETIME_MS = 420;
+      var SMOKE_LIFETIME_MS = 2600;
+      var SMOKE_START_RADIUS = 0.035;
+      var SMOKE_RISE = 0.5; // m/s^2 of buoyancy
+      var SMOKE_DRAG = 1.3; // per-second velocity decay
+      var SMOKE_GROWTH = 2.4; // how many times its starting size a puff reaches by the end of its life
+      var GUN_HEAT_DECAY_PER_S = 0.32; // how fast a barrel cools; firing faster than this is what builds a real cloud
+      var MUZZLE_HOT_THRESHOLD = 0.18; // heat above which the barrel will light a cigar
+      var WIND_HAND_RADIUS = 0.45; // meters — how close a moving hand has to be to shove a puff
+      var WIND_HAND_MIN_SPEED = 0.9; // m/s — below this you're not waving, you're just standing there
+      var WIND_HAND_FACTOR = 5; // how strongly a sweeping hand drags smoke with it
+      var BLOW_RADIUS = 0.3; // meters from muzzle to mouth to arm the gust
+      var BLOW_UP_DOT = 0.3; // how upright the barrel has to be pointed (so raising it to your lips reads differently from just holding it near your chin)
+      var BLOW_GUST_RADIUS = 1; // meters of smoke cleared by one puff of breath
+      var BLOW_GUST_SPEED = 3.5; // m/s imparted to it
+      var IGNITE_RADIUS = 0.075; // meters — cigar tip to a hot thing
+      var CIGAR_PUFF_INTERVAL_MS = 750; // how often a lit cigar coughs up a wisp
+
+      // Every hard surface a bottle can be cracked open on. The ground
+      // plane is here from the start; saloon-bar pushes its counter
+      // top on at init. A surface is just a horizontal rectangle —
+      // enough for "did I whack this down onto something solid," and
+      // nothing in the scene needs real collision beyond that.
+      var HARD_SURFACES = [
+        { y: 0, minX: -15, maxX: 15, minZ: -15, maxZ: 15 },
+      ];
+
+      // Live wobble sources, written once per frame by vice-meter and
+      // read by every held object (see viceWobble). A plain module
+      // object rather than a component lookup because it's read by
+      // everything, every frame.
+      var VICES = { drunk: 0, jitter: 0 };
+
+      // The particle pool and the per-frame wind snapshot, both owned
+      // by world-systems.
+      var PARTICLES = [];
+      var WIND_HANDS = [];
+
+      // Every currently-held grabbable, refreshed once a frame by
+      // world-systems. Each anchor-slot used to scan the whole scene
+      // itself every frame to decide how bright its indicator should
+      // be, which was fine with four props and five slots and is not
+      // fine with thirty of each. The list is nearly always empty or
+      // one or two items long, since "held" means literally in a hand.
+      var HELD_ITEMS = [];
+
+      // ==============================================================
       // spawnTracer
       // A quick yellow line from the muzzle to wherever the shot ended
       // up (a hit point, or MAX_SHOT_RANGE out into the distance on a
@@ -370,6 +550,239 @@
       }
 
       // ==============================================================
+      // castShot / resolveShootable
+      // The single "what did this bullet hit" primitive, shared by
+      // every gun. Anything with class "shootable" is fair game — a
+      // scoring ring, a bottle on the shelf, a cigar clenched in your
+      // own teeth — and each one decides for itself what a hit means
+      // by listening for the "shot" event. That's the only contract:
+      // guns know nothing about targets, bottles, or cigars.
+      //
+      // Raycasts recursively into each shootable's whole subtree (a
+      // ring is a single mesh, but a bottle is a pile of them), then
+      // walks back up from the hit mesh to the entity that actually
+      // carries the class. Objects can therefore include an invisible
+      // oversized "hitbox" child to be generous about being hit —
+      // which is exactly how you can plausibly shoot a thrown bottle
+      // out of the air, or a cigar as thin as a pencil.
+      // ==============================================================
+      function resolveShootable(hitObject) {
+        var node = hitObject;
+        while (node) {
+          if (node.el && node.el.classList && node.el.classList.contains('shootable')) return node.el;
+          node = node.parent;
+        }
+        return null;
+      }
+
+      function gatherShootableRoots() {
+        var shootables = document.querySelectorAll('.shootable');
+        var roots = [];
+        for (var i = 0; i < shootables.length; i++) {
+          if (shootables[i].object3D && shootables[i].object3D.visible) roots.push(shootables[i].object3D);
+        }
+        return roots;
+      }
+
+      // `roots` is optional; a shotgun gathers the list once and hands
+      // it to all six pellets rather than re-querying the whole scene
+      // per pellet.
+      function castShot(origin, direction, roots) {
+        roots = roots || gatherShootableRoots();
+
+        var raycaster = new THREE.Raycaster(origin, direction, 0, MAX_SHOT_RANGE);
+        var hits = raycaster.intersectObjects(roots, true);
+        for (var h = 0; h < hits.length; h++) {
+          var el = resolveShootable(hits[h].object);
+          if (el) return { el: el, point: hits[h].point };
+        }
+        return null;
+      }
+
+      // ==============================================================
+      // PARTICLES
+      // One pool for glass, sparks, and smoke — see the constants
+      // block for why. spawn* below only creates and seeds them;
+      // world-systems.tick does all the integrating in one loop.
+      //
+      // Materials are mutated directly (particle.el.getObject3D('mesh')
+      // .material.opacity) rather than through setAttribute, for the
+      // same reason the physics in holsterable writes object3D
+      // directly: this runs on up to a hundred entities every frame,
+      // and A-Frame's attribute path allocates on each call.
+      // ==============================================================
+      function addParticle(el, particle) {
+        document.querySelector('a-scene').appendChild(el);
+        particle.el = el;
+        particle.age = 0;
+        PARTICLES.push(particle);
+        while (PARTICLES.length > MAX_PARTICLES) {
+          var oldest = PARTICLES.shift();
+          if (oldest.el.parentNode) oldest.el.parentNode.removeChild(oldest.el);
+        }
+        return particle;
+      }
+
+      function randomUnitVector() {
+        var v = new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5);
+        if (v.lengthSq() < 0.0001) v.set(0, 1, 0);
+        return v.normalize();
+      }
+
+      // A burst of little tumbling chips: broken glass, a bottle cap
+      // spinning away, whatever else wants to physically come apart.
+      function spawnDebris(worldPos, options) {
+        var count = options.count || 8;
+        var color = options.color || '#cfd8d0';
+        var size = options.size || SHARD_SIZE;
+        var speed = options.speed || SHARD_SPEED;
+        var life = options.life || SHARD_LIFETIME_MS;
+
+        for (var i = 0; i < count; i++) {
+          var el = document.createElement('a-box');
+          el.setAttribute('width', size * (0.5 + Math.random()));
+          el.setAttribute('height', size * (0.5 + Math.random()));
+          el.setAttribute('depth', size * (0.3 + Math.random() * 0.4));
+          el.setAttribute('material', 'color: ' + color + '; opacity: 0.95; transparent: true; depthWrite: false');
+          el.object3D.position.copy(worldPos);
+
+          var dir = randomUnitVector();
+          dir.y = Math.abs(dir.y) * 0.8 + 0.25; // bias upward and outward, so a break sprays rather than sinks
+          addParticle(el, {
+            kind: 'debris',
+            vel: dir.multiplyScalar(speed * (0.4 + Math.random() * 0.9)),
+            angVel: randomUnitVector().multiplyScalar(6 + Math.random() * 10),
+            life: life * (0.7 + Math.random() * 0.6),
+            opacity: 0.95,
+            restY: GROUND_REST_Y * 0.4,
+          });
+        }
+      }
+
+      function spawnSparks(worldPos, count) {
+        for (var i = 0; i < count; i++) {
+          var el = document.createElement('a-sphere');
+          el.setAttribute('radius', 0.006 + Math.random() * 0.005);
+          el.setAttribute('material', 'color: #ffcf5c; shader: flat; opacity: 1; transparent: true; depthWrite: false');
+          el.object3D.position.copy(worldPos);
+
+          addParticle(el, {
+            kind: 'debris',
+            vel: randomUnitVector().multiplyScalar(1.2 + Math.random() * 1.8),
+            angVel: new THREE.Vector3(),
+            life: SPARK_LIFETIME_MS * (0.6 + Math.random() * 0.8),
+            opacity: 1,
+            restY: GROUND_REST_Y * 0.2,
+          });
+        }
+      }
+
+      // A single puff. `drift` seeds it with some initial motion (a
+      // gun pushes its smoke out along the barrel; a cigar just lets
+      // it curl upward), and `scale` makes a shotgun's cloud read as
+      // heavier than a cigar's wisp without needing a second system.
+      function spawnSmoke(worldPos, drift, scale) {
+        scale = scale || 1;
+        var el = document.createElement('a-sphere');
+        el.setAttribute('radius', SMOKE_START_RADIUS * scale * (0.7 + Math.random() * 0.6));
+        el.setAttribute(
+          'material',
+          'color: #d9d5cc; shader: flat; opacity: 0.32; transparent: true; depthWrite: false'
+        );
+        el.object3D.position.copy(worldPos);
+        el.object3D.position.addScaledVector(randomUnitVector(), 0.02 * scale);
+
+        var vel = randomUnitVector().multiplyScalar(0.12);
+        if (drift) vel.add(drift);
+
+        return addParticle(el, {
+          kind: 'smoke',
+          vel: vel,
+          angVel: null,
+          life: SMOKE_LIFETIME_MS * (0.7 + Math.random() * 0.6),
+          opacity: 0.32,
+          startScale: 1,
+        });
+      }
+
+      // ==============================================================
+      // findHardSurfaceStrike
+      // "Did this point just get whacked down onto something solid?" —
+      // used by bottles to pop their caps, and deliberately generic
+      // enough that anything else wanting a satisfying physical slam
+      // can ask the same question. Surfaces are plain horizontal
+      // rectangles registered in HARD_SURFACES; there's no real
+      // collision anywhere in this scene and this doesn't add any.
+      // ==============================================================
+      function findHardSurfaceStrike(worldPos, downwardSpeed) {
+        if (downwardSpeed < BOTTLE_STRIKE_SPEED) return null;
+
+        for (var i = 0; i < HARD_SURFACES.length; i++) {
+          var s = HARD_SURFACES[i];
+          if (worldPos.x < s.minX || worldPos.x > s.maxX) continue;
+          if (worldPos.z < s.minZ || worldPos.z > s.maxZ) continue;
+          if (worldPos.y > s.y + BOTTLE_STRIKE_TOLERANCE) continue;
+          if (worldPos.y < s.y - BOTTLE_STRIKE_TOLERANCE * 2) continue;
+          return s;
+        }
+        return null;
+      }
+
+      // ==============================================================
+      // fanOffset / viceWobble
+      // The two tiny bits of math that make "more than one of a thing"
+      // and "too much of a good thing" work everywhere at once.
+      //
+      // fanOffset spreads item `index` of `count` symmetrically around
+      // its parent's origin — used for both hand stacks and slot
+      // stacks, on position and on yaw.
+      //
+      // viceWobble is the single unsteady-hands signal every HELD
+      // object adds to its own pose: a slow sway that scales with how
+      // drunk you are, plus a fast tremor that scales with how many
+      // cigars you're smoking. Both feed the same output, so the
+      // combination stacks the way you'd hope. Note it perturbs held
+      // OBJECTS and never the camera — a swaying view is a
+      // motion-sickness generator, while a swaying pistol barrel is
+      // just funny and still entirely your own fault.
+      // ==============================================================
+      function fanOffset(index, count, step) {
+        if (!count || count < 2) return 0;
+        return (index - (count - 1) / 2) * step;
+      }
+
+      function viceWobble(seed, timeMs, out) {
+        var t = timeMs / 1000;
+        var sway = VICES.drunk * DRUNK_SWAY_DEG;
+        var shake = VICES.jitter * CIGAR_SHAKE_DEG;
+
+        out.x = sway * Math.sin(t * 1.3 + seed) + shake * Math.sin(t * 21.7 + seed * 3);
+        out.y = sway * Math.sin(t * 0.9 + seed * 2) + shake * Math.sin(t * 27.3 + seed);
+        out.z = sway * 0.6 * Math.sin(t * 1.7 + seed) + shake * 0.5 * Math.sin(t * 31.1 + seed * 5);
+        return out;
+      }
+
+      // ==============================================================
+      // createHitbox
+      // An invisible, deliberately oversized collider child. Fully
+      // transparent rather than visible:false, because three.js skips
+      // invisible objects when raycasting but happily hits a
+      // zero-opacity one — and depthWrite:false keeps it from
+      // occluding what's behind it. This is what makes small or
+      // fast-moving shootables (a thrown bottle, a cigar) hittable
+      // without making the guns any more forgiving in general.
+      // ==============================================================
+      function createHitbox(radius, height, position, rotation) {
+        var box = document.createElement('a-cylinder');
+        box.setAttribute('radius', radius);
+        box.setAttribute('height', height);
+        box.setAttribute('material', 'opacity: 0; transparent: true; depthWrite: false');
+        box.setAttribute('position', position);
+        if (rotation) box.setAttribute('rotation', rotation);
+        return box;
+      }
+
+      // ==============================================================
       // createTargetFace
       // The reusable "bullseye" visual: a board plus five scored rings,
       // with no pop-target/hit-reaction logic of its own and no
@@ -405,7 +818,7 @@
           circle.setAttribute('radius', ring.radius * scale);
           circle.setAttribute('color', ring.color);
           circle.setAttribute('position', { x: 0, y: 0, z: RING_Z_START + i * RING_Z_STEP });
-          circle.classList.add('target-ring');
+          circle.classList.add('shootable');
           circle.setAttribute('scoring-ring', { score: ring.score, label: ring.label });
           face.appendChild(circle);
         });
@@ -483,10 +896,18 @@
       // other hand's current position if there's meaningful sideways
       // velocity toward it. Both targets are fixed at this instant;
       // the arc doesn't re-aim later if a hand moves (see
-      // pistol.updateFall/checkCatch for how catching still stays
+      // holsterable.updateFall/checkCatch for how catching still stays
       // generous regardless of exactly where the arc ends up).
+      //
+      // stackIndex/stackCount handle a whole fistful released at once
+      // (see HAND_CAPACITY): each item gets a nudge of sideways
+      // velocity out from the center of the arc and a slightly
+      // different launch height, so five bottles thrown together
+      // separate into five shootable targets in the air instead of one
+      // overlapping clump. This is the entire implementation of "toss
+      // a handful of bottles up and shoot them before they land."
       // ==============================================================
-      function computeThrowVelocity(handEl) {
+      function computeThrowVelocity(handEl, stackIndex, stackCount) {
         var handRig = handEl.components['hand-rig'];
         if (!handRig) return null;
 
@@ -514,12 +935,25 @@
           }
         }
 
+        var spread = fanOffset(stackIndex || 0, stackCount || 1, THROW_STACK_SPREAD);
+        vy *= 1 + fanOffset(stackIndex || 0, stackCount || 1, 0.09); // vary the arc heights too, so they don't all peak at once
+
         var flightTime = (2 * vy) / GRAVITY; // time to fall back to launch height under gravity
-        return new THREE.Vector3(
+        var velocity = new THREE.Vector3(
           (targetPos.x - releasePos.x) / flightTime,
           vy,
           (targetPos.z - releasePos.z) / flightTime
         );
+
+        if (spread) {
+          // Sideways relative to the throw itself, so a handful fans
+          // out across your view rather than always along world X.
+          var lateral = new THREE.Vector3(-velocity.z, 0, velocity.x);
+          if (lateral.lengthSq() < 0.0001) lateral.set(1, 0, 0);
+          velocity.addScaledVector(lateral.normalize(), spread);
+        }
+
+        return velocity;
       }
 
       // ==============================================================
@@ -531,8 +965,10 @@
       // just a fresh press) within THROW_CATCH_RADIUS, or by resting a
       // finger on the trigger within that same radius — the two modes
       // the caller uses to decide "snap into hand" vs. "land on the
-      // finger and dangle." Skips any hand that's already holding or
-      // dangling something.
+      // finger and dangle." Skips any hand with no room left, which
+      // since hands hold several things now means catching a second
+      // pistol into the fist already holding one is a legal (and
+      // strongly encouraged) move.
       // ==============================================================
       function findCatchingHand(worldPos, radius) {
         var hands = document.querySelectorAll('.hand');
@@ -544,7 +980,7 @@
           var handEl = hands[i];
           var handRig = handEl.components['hand-rig'];
           if (!handRig) continue;
-          if (handRig.heldObject || handRig.danglingObject) continue;
+          if (handRig.isFull()) continue;
 
           var mode = handRig.gripHeld ? 'grip' : handRig.fingerOnTrigger ? 'trigger' : null;
           if (!mode) continue;
@@ -604,7 +1040,7 @@
         for (var i = 0; i < slots.length; i++) {
           var slotEl = slots[i];
           var slotComp = slotEl.components['anchor-slot'];
-          if (!slotComp || slotComp.occupant) continue;
+          if (!slotComp || slotComp.isFull()) continue;
 
           var slotRank = SLOT_SIZE_RANK[slotComp.data.size];
           if (slotRank < itemRank) continue;
@@ -913,19 +1349,30 @@
       // large) plus a translucent sphere that visually marks the spot
       // and reacts as a compatible carried item approaches; the actual
       // matching/snapping logic lives in holsterable (findNearestSlot)
-      // and the free functions above (findCatchingSlot). `occupant` is
-      // the one piece of real state here: whichever holsterable
-      // component currently has this slot claimed, so two items can't
-      // pile into the same spot and so the indicator hides itself
-      // while something's already resting here.
+      // and the free functions above (findCatchingSlot). `occupants`
+      // is the one piece of real state here: the holsterable
+      // components currently claiming this slot, so items can't pile
+      // invisibly into the same spot and so the indicator hides itself
+      // once the slot is full.
+      //
+      // Capacity is what turns "your mouth" into a place five cigars
+      // can go at once (see the mouth-anchor in markup) without a
+      // single line of cigar-specific code — the occupants are simply
+      // fanned out around the slot's origin by fanSpread/fanYaw, and
+      // reflow() re-fans everything whenever one arrives or leaves, so
+      // pulling the middle cigar out closes the gap.
       // ==============================================================
       AFRAME.registerComponent('anchor-slot', {
         schema: {
           size: { type: 'string', default: 'small' }, // 'small' | 'medium' | 'large'
+          capacity: { type: 'number', default: 1 },
+          fanSpread: { type: 'number', default: 0.045 }, // meters between stacked occupants
+          fanYaw: { type: 'number', default: 0 }, // degrees of splay per step — only meaningful for things with a long axis, like cigars or barrels
+          idleHidden: { type: 'boolean', default: false }, // hide the indicator entirely until a compatible item is on the way in
         },
 
         init: function () {
-          this.occupant = null;
+          this.occupants = [];
           this.wasInRange = false;
           this.clickElapsed = null; // ms into the click bounce, or null when idle
 
@@ -941,18 +1388,45 @@
           this._itemPos = new THREE.Vector3();
         },
 
+        isFull: function () {
+          return this.occupants.length >= this.data.capacity;
+        },
+
+        // Called by holsterable whenever this slot's contents change.
+        // Re-poses every occupant for its new index in the fan; each
+        // one blends there via its own snapTo, so items shuffle over
+        // to make room rather than teleporting.
+        reflow: function () {
+          var self = this;
+          this.occupants.forEach(function (holsterable, i) {
+            holsterable.setSlotStack(i, self.occupants.length);
+            holsterable.applySlotPose(self.el);
+          });
+        },
+
         tick: function (time, dt) {
-          if (this.occupant) {
+          if (this.isFull()) {
             this.sphere.setAttribute('visible', false);
             this.wasInRange = false;
             this.clickElapsed = null;
             return;
           }
-          this.sphere.setAttribute('visible', true);
 
           var nearestDist = this.findNearestCompatibleHeldDistance();
           var snapRadius = SLOT_SNAP_RADIUS[this.data.size];
           var approachRadius = SLOT_APPROACH_RADIUS[this.data.size];
+
+          // A slot sitting right in front of your eyes (the mouth)
+          // would otherwise be a permanent floating dot in your
+          // vision, so it stays dark until you're actually bringing
+          // something toward it.
+          if (this.data.idleHidden && nearestDist > approachRadius && this.clickElapsed === null) {
+            this.sphere.setAttribute('visible', false);
+            this.wasInRange = false;
+            return;
+          }
+          this.sphere.setAttribute('visible', true);
+
           var baseR = SLOT_SPHERE_BASE_RADIUS[this.data.size];
           var maxR = SLOT_SPHERE_MAX_RADIUS[this.data.size];
 
@@ -986,19 +1460,18 @@
         // that's a twirl in progress, not "aiming for a slot")
         // grabbable item whose itemSize actually fits this slot.
         // Infinity if nothing qualifies, which reads as "stay idle."
+        // Reads the shared HELD_ITEMS snapshot rather than searching
+        // the scene itself — see that list's comment.
         findNearestCompatibleHeldDistance: function () {
+          if (!HELD_ITEMS.length) return Infinity;
+
           var slotRank = SLOT_SIZE_RANK[this.data.size];
-          var items = document.querySelectorAll('.grabbable');
           var best = Infinity;
           this.el.object3D.getWorldPosition(this._slotPos);
 
-          for (var i = 0; i < items.length; i++) {
-            var holsterable = items[i].components.holsterable;
-            if (!holsterable || holsterable.state !== 'held') continue;
-            if (SLOT_SIZE_RANK[holsterable.data.itemSize] > slotRank) continue;
-
-            items[i].object3D.getWorldPosition(this._itemPos);
-            var d = this._itemPos.distanceTo(this._slotPos);
+          for (var i = 0; i < HELD_ITEMS.length; i++) {
+            if (HELD_ITEMS[i].rank > slotRank) continue;
+            var d = HELD_ITEMS[i].pos.distanceTo(this._slotPos);
             if (d < best) best = d;
           }
 
@@ -1064,12 +1537,15 @@
       // SNAP_BLEND_DUR_MS rather than popping instantly into place —
       // see snapTo/updatePoseBlend.
       //
-      // Visual geometry (boxy-gun, boxy-hat) is a separate component
-      // attached alongside this one in markup — this component
-      // neither knows nor cares what the object looks like. Firing
-      // likewise isn't here: see the small "pistol" companion
-      // component below, attached only to the guns, which reads this
-      // component's state but adds nothing back into it.
+      // Visual geometry (boxy-gun, boxy-hat, boxy-bottle, boxy-cigar)
+      // is a separate component attached alongside this one in markup
+      // — this component neither knows nor cares what the object looks
+      // like. Behavior isn't here either: firing (firearm), drinking
+      // (bottle), and lighting (cigar) are all small companion
+      // components that read this one's state and, at most, write into
+      // its extraPitchDeg. That's why a bottle is a gun that can't
+      // shoot and a cigar is a bottle you can't drink — they're the
+      // same object with different companions bolted on.
       //
       // Reparenting is done directly on the three.js object3D graph
       // via Object3D.attach(), which reparents while preserving the
@@ -1092,6 +1568,25 @@
           this.state = 'holstered';
           this.hand = null; // the hand entity currently holding/dangling this object
           this.currentSlotEl = null; // the anchor-slot entity this object currently occupies, if holstered
+
+          // Where this object sits in whatever stack currently holds
+          // it — a hand's fistful or a slot's fan. Both default to
+          // "the only one here," which is the single-item behavior
+          // this component had before stacks existed.
+          this.stackIndex = 0;
+          this.stackCount = 1;
+          this.slotIndex = 0;
+          this.slotCount = 1;
+
+          // Composed on top of the held pose every frame by whatever
+          // else has an opinion about it: firearm writes recoil kick
+          // here, and viceWobble adds drink/cigar unsteadiness. Both
+          // used to be per-component rotation writes that fought over
+          // the same object3D — see applyHeldPose.
+          this.extraPitchDeg = 0;
+          this._wobbleSeed = Math.random() * 100;
+          this._wobble = { x: 0, y: 0, z: 0 };
+          this._heldElapsed = 0;
 
           this.angularVelocity = new THREE.Vector3();
           this.fallVelocity = new THREE.Vector3();
@@ -1156,6 +1651,70 @@
           this.updatePoseBlend(dtSeconds);
           if (this.state === 'dangling') this.updateDangle(dtSeconds);
           else if (this.state === 'falling') this.updateFall(dtSeconds);
+          else if (this.state === 'held') this.applyHeldPose(time, dtSeconds);
+          else this._heldElapsed = 0;
+        },
+
+        // The one place a held object's pose is written. Base held
+        // pose + its offset in the hand's fan + whatever recoil kick
+        // firearm has asked for + however unsteady your hands
+        // currently are. Skipped entirely while a snap blend is
+        // running (the blend owns the pose until it finishes), and
+        // wobble eases in over WOBBLE_EASE_MS afterward so a drunk
+        // grab doesn't start with a jolt.
+        applyHeldPose: function (time, dtSeconds) {
+          this._heldElapsed += dtSeconds * 1000;
+          if (this._poseBlendElapsed < SNAP_BLEND_DUR_MS) return;
+
+          var d = this.data;
+          var ease = Math.min(this._heldElapsed / (SNAP_BLEND_DUR_MS + WOBBLE_EASE_MS), 1);
+          var w = viceWobble(this._wobbleSeed, time, this._wobble);
+
+          this.el.object3D.position.set(
+            d.heldPosition.x + fanOffset(this.stackIndex, this.stackCount, HAND_STACK_SPREAD),
+            d.heldPosition.y,
+            d.heldPosition.z
+          );
+          this.el.object3D.rotation.set(
+            ((d.heldRotation.x + this.extraPitchDeg + w.x * ease) * Math.PI) / 180,
+            ((d.heldRotation.y + fanOffset(this.stackIndex, this.stackCount, HAND_STACK_YAW) + w.y * ease) * Math.PI) / 180,
+            ((d.heldRotation.z + w.z * ease) * Math.PI) / 180
+          );
+        },
+
+        setHandStack: function (index, count) {
+          this.stackIndex = index;
+          this.stackCount = count;
+        },
+
+        setSlotStack: function (index, count) {
+          this.slotIndex = index;
+          this.slotCount = count;
+        },
+
+        // Snap (blended) into the given slot at this object's current
+        // place in that slot's fan. Split out from tryHolsterElse so
+        // anchor-slot.reflow can re-pose occupants when the fan
+        // changes shape around them.
+        applySlotPose: function (slotEl) {
+          var slotComp = slotEl.components['anchor-slot'];
+          var spread = slotComp ? slotComp.data.fanSpread : 0;
+          var yaw = slotComp ? slotComp.data.fanYaw : 0;
+          var d = this.data;
+
+          this.snapTo(
+            slotEl.object3D,
+            {
+              x: d.holsterPosition.x + fanOffset(this.slotIndex, this.slotCount, spread),
+              y: d.holsterPosition.y,
+              z: d.holsterPosition.z,
+            },
+            {
+              x: d.holsterRotation.x,
+              y: d.holsterRotation.y + fanOffset(this.slotIndex, this.slotCount, yaw),
+              z: d.holsterRotation.z,
+            }
+          );
         },
 
         // Instant reparent + pose set, no blend — used only for the
@@ -1224,8 +1783,31 @@
           this.state = 'held';
           this.hand = handEl;
           this.vacateSlot();
-          this.snapTo(handEl.object3D, this.data.heldPosition, this.data.heldRotation);
+          this.applyHandPose(handEl);
           this.angularVelocity.set(0, 0, 0);
+          this.extraPitchDeg = 0;
+          this._heldElapsed = 0;
+        },
+
+        // The held-hand equivalent of applySlotPose: snap into this
+        // hand at whatever place in its fistful this object currently
+        // holds. hand-rig calls it again for every item whenever that
+        // fistful changes size.
+        applyHandPose: function (handEl) {
+          var d = this.data;
+          this.snapTo(
+            handEl.object3D,
+            {
+              x: d.heldPosition.x + fanOffset(this.stackIndex, this.stackCount, HAND_STACK_SPREAD),
+              y: d.heldPosition.y,
+              z: d.heldPosition.z,
+            },
+            {
+              x: d.heldRotation.x,
+              y: d.heldRotation.y + fanOffset(this.stackIndex, this.stackCount, HAND_STACK_YAW),
+              z: d.heldRotation.z,
+            }
+          );
         },
 
         // Called by hand-rig when the hand currently holding this
@@ -1245,7 +1827,7 @@
             return;
           }
 
-          var throwVelocity = computeThrowVelocity(this.hand);
+          var throwVelocity = computeThrowVelocity(this.hand, this.stackIndex, this.stackCount);
           if (throwVelocity) {
             this.throwWithVelocity(throwVelocity);
             return;
@@ -1261,7 +1843,7 @@
         // real upward flick while twirling should send it flying,
         // spin and all, not just drop it straight down.
         endDangle: function () {
-          var throwVelocity = computeThrowVelocity(this.hand);
+          var throwVelocity = computeThrowVelocity(this.hand, this.stackIndex, this.stackCount);
           if (throwVelocity) {
             this.throwWithVelocity(throwVelocity);
             return;
@@ -1277,19 +1859,25 @@
           if (nearestSlot) {
             this.state = 'holstered';
             this.hand = null;
-            this.snapTo(nearestSlot.object3D, this.data.holsterPosition, this.data.holsterRotation);
-            this.occupySlot(nearestSlot);
+            this.occupySlot(nearestSlot); // claims a place in the fan, then poses to it
             return;
           }
 
           fallback();
         },
 
+        // Several items released off one finger at once all pivot
+        // around the same point, so anything past the first gets a
+        // random spin kick — otherwise they'd swing as perfectly
+        // synchronized clones and read as one object.
         startDangling: function () {
           this.state = 'dangling';
           this.el.sceneEl.object3D.attach(this.el.object3D);
           this.el.object3D.getWorldPosition(this.prevPivotPos);
           this.prevPivotVelocity.set(0, 0, 0);
+          if (this.stackCount > 1) {
+            this.angularVelocity.addScaledVector(randomUnitVector(), DANGLE_STACK_KICK);
+          }
           // this.hand stays set — we're still dangling from it
         },
 
@@ -1335,11 +1923,12 @@
           this.state = 'held';
           this.hand = handEl;
           this.angularVelocity.set(0, 0, 0);
-
-          this.snapTo(handEl.object3D, this.data.heldPosition, this.data.heldRotation);
+          this.extraPitchDeg = 0;
+          this._heldElapsed = 0;
+          this.applyHandPose(handEl);
 
           var handRig = handEl.components['hand-rig'];
-          if (handRig) handRig.heldObject = this.el;
+          if (handRig) handRig.take(this.el);
         },
 
         // Catches a falling/flying object directly onto handEl's
@@ -1353,7 +1942,7 @@
           this.prevPivotVelocity.set(0, 0, 0);
 
           var handRig = handEl.components['hand-rig'];
-          if (handRig) handRig.danglingObject = this.el;
+          if (handRig) handRig.takeDangling(this.el);
         },
 
         // Passively caught by a slot belonging to something another
@@ -1365,21 +1954,30 @@
           this.state = 'holstered';
           this.hand = null;
           this.angularVelocity.set(0, 0, 0);
-          this.snapTo(slotEl.object3D, this.data.holsterPosition, this.data.holsterRotation);
           this.occupySlot(slotEl);
         },
 
+        // Claiming and releasing a place in a slot's fan. Both end in
+        // a reflow, so the slot's other occupants shuffle over to make
+        // room (or close the gap) rather than staying where they were.
         occupySlot: function (slotEl) {
           this.currentSlotEl = slotEl;
           var slotComp = slotEl.components['anchor-slot'];
-          if (slotComp) slotComp.occupant = this;
+          if (!slotComp) return;
+          if (slotComp.occupants.indexOf(this) === -1) slotComp.occupants.push(this);
+          slotComp.reflow();
         },
 
         vacateSlot: function () {
           if (!this.currentSlotEl) return;
           var slotComp = this.currentSlotEl.components['anchor-slot'];
-          if (slotComp && slotComp.occupant === this) slotComp.occupant = null;
           this.currentSlotEl = null;
+
+          if (!slotComp) return;
+          var i = slotComp.occupants.indexOf(this);
+          if (i !== -1) slotComp.occupants.splice(i, 1);
+          this.setSlotStack(0, 1);
+          slotComp.reflow();
         },
 
         // Checked every frame while falling: is either hand positioned
@@ -1435,7 +2033,7 @@
             var slotEl = slots[i];
             var slotComp = slotEl.components['anchor-slot'];
             if (!slotComp) continue;
-            if (slotComp.occupant && slotComp.occupant !== this) continue;
+            if (slotComp.isFull() && slotComp.occupants.indexOf(this) === -1) continue;
 
             var slotRank = SLOT_SIZE_RANK[slotComp.data.size];
             if (slotRank < itemRank) continue;
@@ -1503,6 +2101,7 @@
 
           this.integrateRotation(dt);
           this.el.object3D.position.copy(this._pivot);
+          this.el.object3D.position.x += fanOffset(this.stackIndex, this.stackCount, HAND_STACK_SPREAD);
         },
 
         // Free-fall under gravity — covers both a plain drop (zero
@@ -1521,10 +2120,15 @@
           if (this.checkCatch()) return;
 
           if (this.el.object3D.position.y <= GROUND_REST_Y) {
+            var impactSpeed = this.fallVelocity.length();
             this.el.object3D.position.y = GROUND_REST_Y;
             this.fallVelocity.set(0, 0, 0);
             this.angularVelocity.set(0, 0, 0);
             this.state = 'resting';
+            // Announced rather than acted on: this component has no
+            // opinion about what landing hard means. A gun ignores it;
+            // a bottle (see breakable) does not.
+            this.el.emit('landed', { speed: impactSpeed }, false);
           }
         },
 
@@ -1548,50 +2152,100 @@
       });
 
       // ==============================================================
-      // COMPONENT: pistol
-      // The one gun-specific behavior: firing. A thin companion to
-      // holsterable, attached alongside it only on the two gun
-      // entities — the hat has no such component, so hand-rig's
-      // trigger-pull handler (which checks for this component before
-      // calling fire()) is naturally a no-op while holding it. Reads
-      // holsterable's state/heldRotation rather than owning any state
-      // machine of its own.
+      // COMPONENT: firearm
+      // Everything that can be fired, in one component. This used to
+      // be two nearly identical components ("pistol" and "shotgun")
+      // that differed only in a handful of numbers, so it's now one
+      // with those numbers in its schema — a single-ball pistol is
+      // just pellets:1, coneDeg:0. Any new gun is a markup line.
+      //
+      // A thin companion to holsterable, attached alongside it only on
+      // the guns — the hat, bottles, and cigars have no such
+      // component, so hand-rig's trigger-pull handler (which looks for
+      // this component before calling fire()) is naturally a no-op
+      // while holding them. It reads holsterable's state and writes
+      // its recoil kick into holsterable.extraPitchDeg rather than
+      // touching the object's rotation itself, so recoil, the hand's
+      // fan offset, and drunken sway all compose in one place instead
+      // of three components fighting over one object3D.
+      //
+      // `heat` is the other bit of state, and it's what makes rapid
+      // fire visibly different from careful shooting: every shot adds
+      // some, it bleeds off at GUN_HEAT_DECAY_PER_S, and it drives
+      // both how much smoke a shot produces and whether the barrel is
+      // hot enough to light a cigar off (see world-systems).
       // ==============================================================
-      AFRAME.registerComponent('pistol', {
+      AFRAME.registerComponent('firearm', {
+        schema: {
+          pellets: { type: 'number', default: 1 }, // rays per shot
+          coneDeg: { type: 'number', default: 0 }, // half-angle of the spread cone
+          kickDeg: { type: 'number', default: RECOIL_KICK_DEG },
+          recoverMs: { type: 'number', default: RECOIL_RECOVER_MS },
+          heatPerShot: { type: 'number', default: 0.22 },
+          smokePerShot: { type: 'number', default: 2 },
+        },
+
         init: function () {
-          this.recoilTimer = 0; // ms remaining on the current fire-recoil kick, while held
+          this.recoilTimer = 0; // ms remaining on the current fire-recoil kick
+          this.heat = 0; // 0..1 barrel temperature
+          this.wispTimer = 0;
+
+          this._origin = new THREE.Vector3();
+          this._quat = new THREE.Quaternion();
+          this._forward = new THREE.Vector3();
+          this._right = new THREE.Vector3();
+          this._up = new THREE.Vector3();
         },
 
-        // Only actually does anything for the ~120ms right after a
-        // shot: eases the recoil kick back down to the normal held
-        // pose. Same direct-object3D-write reasoning as holsterable's
-        // own updateCatchBlend — composes on top of holsterable's
-        // heldRotation rather than through A-Frame's animation
-        // component, so it can't fall out of sync with the direct
-        // writes holsterable does elsewhere on this same entity.
         tick: function (time, dt) {
-          var holsterable = this.el.components.holsterable;
-          if (!holsterable || holsterable.state !== 'held') return;
-          this.updateRecoil(Math.min((dt || 16) / 1000, 0.05));
+          var dtSeconds = Math.min((dt || 16) / 1000, 0.05);
+          this.heat = Math.max(this.heat - GUN_HEAT_DECAY_PER_S * dtSeconds, 0);
+          this.updateRecoil(dtSeconds);
+          this.updateBarrelWisps(dtSeconds);
+
+          // A barrel that's just been fired is hot enough to light a
+          // cigar off. firearm doesn't know what a cigar is — it only
+          // publishes "this tip is hot right now" (see
+          // ignition-source) and lets world-systems do the matching.
+          var source = this.el.components['ignition-source'];
+          if (source) source.hot = this.heat > MUZZLE_HOT_THRESHOLD;
         },
 
+        // Eases the kick back down to zero. The kick itself is handed
+        // to holsterable, which composes it into the held pose — a
+        // gun that's been dropped or holstered mid-recovery just stops
+        // having its pose written at all, which is exactly right.
         updateRecoil: function (dtSeconds) {
           if (this.recoilTimer <= 0) return;
 
           this.recoilTimer = Math.max(this.recoilTimer - dtSeconds * 1000, 0);
-          var kick = RECOIL_KICK_DEG * (this.recoilTimer / RECOIL_RECOVER_MS);
-          var heldRotation = this.el.components.holsterable.data.heldRotation;
-
-          this.el.object3D.rotation.set(
-            ((heldRotation.x + kick) * Math.PI) / 180,
-            (heldRotation.y * Math.PI) / 180,
-            (heldRotation.z * Math.PI) / 180
-          );
+          var holsterable = this.el.components.holsterable;
+          if (holsterable) {
+            holsterable.extraPitchDeg = this.data.kickDeg * (this.recoilTimer / this.data.recoverMs);
+          }
         },
 
-        // Raycasts from the muzzle against the targets. Only fires
-        // while properly held — not while dangling or mid-air, so a
-        // twirl in progress can't accidentally go off.
+        // A barrel that's still hot keeps smoking on its own, so
+        // emptying a gun leaves you standing in your own cloud rather
+        // than a few puffs that vanish between shots.
+        updateBarrelWisps: function (dtSeconds) {
+          if (this.heat < 0.25) return;
+
+          this.wispTimer -= dtSeconds * 1000;
+          if (this.wispTimer > 0) return;
+          this.wispTimer = 180;
+
+          var muzzleEl = this.el.querySelector('.muzzle');
+          if (!muzzleEl || !muzzleEl.object3D) return;
+          muzzleEl.object3D.getWorldPosition(this._origin);
+          spawnSmoke(this._origin, null, 0.6 + this.heat * 0.5);
+        },
+
+        // Raycasts from the muzzle at everything wearing the
+        // "shootable" class (see castShot) — targets, bottles, cigars,
+        // whatever gets added next. Only fires while properly held —
+        // not while dangling or mid-air, so a twirl in progress can't
+        // accidentally go off.
         fire: function () {
           var holsterable = this.el.components.holsterable;
           if (!holsterable || holsterable.state !== 'held') return;
@@ -1599,130 +2253,41 @@
           var muzzleEl = this.el.querySelector('.muzzle');
           if (!muzzleEl || !muzzleEl.object3D) return;
 
-          var origin = new THREE.Vector3();
-          var quat = new THREE.Quaternion();
-          muzzleEl.object3D.getWorldPosition(origin);
-          muzzleEl.object3D.getWorldQuaternion(quat);
-          var direction = new THREE.Vector3(0, 0, -1).applyQuaternion(quat).normalize();
-
-          var raycaster = new THREE.Raycaster(origin, direction, 0, MAX_SHOT_RANGE);
-          var meshes = Array.prototype
-            .slice.call(document.querySelectorAll('.target-ring'))
-            .map(function (targetEl) { return targetEl.getObject3D('mesh'); })
-            .filter(Boolean);
-          var hits = raycaster.intersectObjects(meshes, false);
+          muzzleEl.object3D.getWorldPosition(this._origin);
+          muzzleEl.object3D.getWorldQuaternion(this._quat);
+          this._forward.set(0, 0, -1).applyQuaternion(this._quat).normalize();
+          this._right.set(1, 0, 0).applyQuaternion(this._quat).normalize();
+          this._up.set(0, 1, 0).applyQuaternion(this._quat).normalize();
 
           this.playMuzzleEffects();
 
-          var endPoint;
-          if (hits.length > 0) {
-            endPoint = hits[0].point;
-            hits[0].object.el.emit('click', null, true);
-          } else {
-            endPoint = origin.clone().addScaledVector(direction, MAX_SHOT_RANGE);
-            var manager = document.querySelector('#range-manager');
-            if (manager) manager.emit('gun-miss', null, false);
-          }
-
-          spawnTracer(origin, endPoint);
-        },
-
-        playMuzzleEffects: function () {
-          this.recoilTimer = RECOIL_RECOVER_MS;
-
-          var flash = this.el.querySelector('.muzzle-flash');
-          if (flash) {
-            flash.setAttribute('visible', true);
-            clearTimeout(this.flashTimeout);
-            var flashEl = flash;
-            this.flashTimeout = setTimeout(function () {
-              flashEl.setAttribute('visible', false);
-            }, 80);
-          }
-        },
-      });
-
-      // ==============================================================
-      // COMPONENT: shotgun
-      // Same firing companion as pistol, structurally, just with a
-      // spread instead of a single ray: SHOTGUN_PELLET_COUNT
-      // independent raycasts jittered within a narrow cone around the
-      // muzzle's forward direction, each one able to score its own
-      // target ring — a wide spread can plausibly ding several stands
-      // at once. scoring-ring's own "ignore hits once this target's
-      // already fallen" guard means multiple pellets landing on the
-      // same still-standing target only score/tip it once, so no
-      // special dedup logic is needed here.
-      // ==============================================================
-      AFRAME.registerComponent('shotgun', {
-        init: function () {
-          this.recoilTimer = 0;
-        },
-
-        tick: function (time, dt) {
-          var holsterable = this.el.components.holsterable;
-          if (!holsterable || holsterable.state !== 'held') return;
-          this.updateRecoil(Math.min((dt || 16) / 1000, 0.05));
-        },
-
-        updateRecoil: function (dtSeconds) {
-          if (this.recoilTimer <= 0) return;
-
-          this.recoilTimer = Math.max(this.recoilTimer - dtSeconds * 1000, 0);
-          var kick = SHOTGUN_RECOIL_KICK_DEG * (this.recoilTimer / SHOTGUN_RECOIL_RECOVER_MS);
-          var heldRotation = this.el.components.holsterable.data.heldRotation;
-
-          this.el.object3D.rotation.set(
-            ((heldRotation.x + kick) * Math.PI) / 180,
-            (heldRotation.y * Math.PI) / 180,
-            (heldRotation.z * Math.PI) / 180
-          );
-        },
-
-        fire: function () {
-          var holsterable = this.el.components.holsterable;
-          if (!holsterable || holsterable.state !== 'held') return;
-
-          var muzzleEl = this.el.querySelector('.muzzle');
-          if (!muzzleEl || !muzzleEl.object3D) return;
-
-          var origin = new THREE.Vector3();
-          var quat = new THREE.Quaternion();
-          muzzleEl.object3D.getWorldPosition(origin);
-          muzzleEl.object3D.getWorldQuaternion(quat);
-          var forward = new THREE.Vector3(0, 0, -1).applyQuaternion(quat).normalize();
-          var right = new THREE.Vector3(1, 0, 0).applyQuaternion(quat).normalize();
-          var up = new THREE.Vector3(0, 1, 0).applyQuaternion(quat).normalize();
-          var coneRad = (SHOTGUN_CONE_DEG * Math.PI) / 180;
-
-          var meshes = Array.prototype
-            .slice.call(document.querySelectorAll('.target-ring'))
-            .map(function (targetEl) { return targetEl.getObject3D('mesh'); })
-            .filter(Boolean);
-
-          this.playMuzzleEffects();
-
+          var coneRad = (this.data.coneDeg * Math.PI) / 180;
           var hitCount = 0;
-          for (var i = 0; i < SHOTGUN_PELLET_COUNT; i++) {
-            var direction = forward
-              .clone()
-              .applyAxisAngle(right, (Math.random() - 0.5) * 2 * coneRad)
-              .applyAxisAngle(up, (Math.random() - 0.5) * 2 * coneRad)
-              .normalize();
+          var roots = gatherShootableRoots();
 
-            var raycaster = new THREE.Raycaster(origin, direction, 0, MAX_SHOT_RANGE);
-            var hits = raycaster.intersectObjects(meshes, false);
-
-            var endPoint;
-            if (hits.length > 0) {
-              endPoint = hits[0].point;
-              hits[0].object.el.emit('click', null, true);
-              hitCount++;
-            } else {
-              endPoint = origin.clone().addScaledVector(direction, MAX_SHOT_RANGE);
+          for (var i = 0; i < this.data.pellets; i++) {
+            var direction = this._forward.clone();
+            if (coneRad > 0) {
+              direction
+                .applyAxisAngle(this._right, (Math.random() - 0.5) * 2 * coneRad)
+                .applyAxisAngle(this._up, (Math.random() - 0.5) * 2 * coneRad)
+                .normalize();
             }
 
-            spawnTracer(origin, endPoint);
+            var hit = castShot(this._origin, direction, roots);
+            var endPoint;
+            if (hit) {
+              endPoint = hit.point;
+              // Non-bubbling and aimed straight at the thing that was
+              // hit: what a hit MEANS is entirely up to the target
+              // (score and tip over, shatter, catch light).
+              hit.el.emit('shot', { point: hit.point.clone(), direction: direction.clone() }, false);
+              hitCount++;
+            } else {
+              endPoint = this._origin.clone().addScaledVector(direction, MAX_SHOT_RANGE);
+            }
+
+            spawnTracer(this._origin, endPoint);
           }
 
           if (hitCount === 0) {
@@ -1732,7 +2297,8 @@
         },
 
         playMuzzleEffects: function () {
-          this.recoilTimer = SHOTGUN_RECOIL_RECOVER_MS;
+          this.recoilTimer = this.data.recoverMs;
+          this.heat = Math.min(this.heat + this.data.heatPerShot, 1);
 
           var flash = this.el.querySelector('.muzzle-flash');
           if (flash) {
@@ -1743,6 +2309,17 @@
               flashEl.setAttribute('visible', false);
             }, 80);
           }
+
+          // Smoke scales with how hot the barrel already is, so the
+          // first shot is a wisp and the sixth in three seconds is a
+          // proper cloud you have to deal with (see the blow-gust and
+          // hand-sweep wind in world-systems).
+          var puffs = Math.round(this.data.smokePerShot * (1 + this.heat * 1.8));
+          var drift = this._forward.clone().multiplyScalar(0.9);
+          for (var i = 0; i < puffs; i++) {
+            spawnSmoke(this._origin, drift, 0.8 + this.heat);
+          }
+          spawnSparks(this._origin, 3);
         },
       });
 
@@ -1754,21 +2331,29 @@
       // object is involved — completely object-agnostic, it never
       // checks whether that object is a gun, a hat, or anything else.
       // Firing is the one exception: onTriggerDown looks specifically
-      // for a co-located "pistol" or "shotgun" component and calls
-      // fire() only if one exists, which is naturally a no-op while
-      // holding the hat.
+      // for co-located "firearm" components and calls fire() on each,
+      // which is naturally a no-op while holding anything that isn't
+      // a gun.
+      //
+      // A hand holds up to HAND_CAPACITY things at once rather than
+      // one, which is where a lot of the ridiculousness comes from:
+      // grip again with a full-ish hand and you pick up another
+      // thing. Two pistols in one fist both fire on one trigger pull.
+      // An armful of bottles all launch together on one throw. None of
+      // that is special-cased anywhere — items just get fanned out
+      // (see holsterable.applyHandPose) and every operation loops.
       //
       // Also tracks this hand's own world-space velocity and current
       // button state (gripHeld, fingerOnTrigger) as plain public
-      // fields — generic hand-side data that computeThrowVelocity and
-      // findCatchingHand (both reusable, object-agnostic) read
-      // directly rather than going through holsterable-specific
-      // accessors.
+      // fields — generic hand-side data that computeThrowVelocity,
+      // findCatchingHand, and the smoke wind simulation (all reusable,
+      // object-agnostic) read directly rather than going through
+      // holsterable-specific accessors.
       // ==============================================================
       AFRAME.registerComponent('hand-rig', {
         init: function () {
-          this.heldObject = null; // object currently rigidly held by this hand, if any
-          this.danglingObject = null; // object currently dangling from this hand's trigger finger, if any
+          this.heldObjects = []; // objects currently rigidly held by this hand
+          this.danglingObjects = []; // objects currently dangling from this hand's trigger finger
           this.fingerOnTrigger = false; // capacitive touch, not a pull — see triggertouchstart/end below
           this.gripHeld = false; // true for the whole time the grip is squeezed, not just the initial press
 
@@ -1812,51 +2397,118 @@
           this._prevPos.copy(currentPos);
         },
 
+        isFull: function () {
+          return this.heldObjects.length >= HAND_CAPACITY;
+        },
+
+        // Public "this hand now holds that" used both by this
+        // component's own grip handler and by holsterable.catchThrown,
+        // which catches things this hand never deliberately grabbed.
+        take: function (objEl) {
+          if (this.heldObjects.indexOf(objEl) === -1) this.heldObjects.push(objEl);
+          var d = this.danglingObjects.indexOf(objEl);
+          if (d !== -1) this.danglingObjects.splice(d, 1);
+          this.reflowHeld();
+        },
+
+        takeDangling: function (objEl) {
+          if (this.danglingObjects.indexOf(objEl) === -1) this.danglingObjects.push(objEl);
+          this.reflowStack(this.danglingObjects);
+        },
+
+        // Something left this hand without going through a normal
+        // release — a bottle shattering in your fist, mostly.
+        forget: function (objEl) {
+          var h = this.heldObjects.indexOf(objEl);
+          if (h !== -1) {
+            this.heldObjects.splice(h, 1);
+            this.reflowHeld();
+          }
+          var d = this.danglingObjects.indexOf(objEl);
+          if (d !== -1) {
+            this.danglingObjects.splice(d, 1);
+            this.reflowStack(this.danglingObjects);
+          }
+        },
+
+        // Re-tells every item where it sits in the fistful. Same idea
+        // (and same reason) as anchor-slot.reflow: the fan has to
+        // re-shape itself whenever it gains or loses a member.
+        reflowStack: function (list) {
+          list.forEach(function (objEl, i) {
+            var holsterable = objEl.components.holsterable;
+            if (holsterable) holsterable.setHandStack(i, list.length);
+          });
+        },
+
+        reflowHeld: function () {
+          var self = this;
+          this.reflowStack(this.heldObjects);
+          this.heldObjects.forEach(function (objEl) {
+            var holsterable = objEl.components.holsterable;
+            if (holsterable) holsterable.applyHandPose(self.el);
+          });
+        },
+
         onGripDown: function () {
           this.gripHeld = true;
-          if (this.heldObject) return;
+          if (this.isFull()) return;
 
           var obj = this.findGrabbableObject();
           if (!obj) return;
 
           obj.components.holsterable.grab(this.el);
-          this.heldObject = obj;
-          if (obj === this.danglingObject) this.danglingObject = null;
+          this.take(obj);
         },
 
+        // Lets go of everything at once. Each item runs its own
+        // release() and therefore makes its own decision — dangle,
+        // throw, holster, or fall — which is how a fistful of bottles
+        // released over the bar can have some of them land back in
+        // their slots while the rest hit the floor.
         onGripUp: function () {
           this.gripHeld = false;
-          if (!this.heldObject) return;
+          if (!this.heldObjects.length) return;
 
-          var obj = this.heldObject;
-          this.heldObject = null;
-          obj.components.holsterable.release(this.fingerOnTrigger);
+          var objs = this.heldObjects;
+          var self = this;
+          this.heldObjects = [];
 
-          this.danglingObject = obj.components.holsterable.state === 'dangling' ? obj : null;
+          objs.forEach(function (obj) {
+            obj.components.holsterable.release(self.fingerOnTrigger);
+            if (obj.components.holsterable.state === 'dangling') self.danglingObjects.push(obj);
+          });
+          this.reflowStack(this.danglingObjects);
         },
 
         // An actual pull (past the digital press threshold), not just
-        // a touch — this is what fires a gun. No-ops for anything
-        // without a "pistol" companion component, like the hat.
+        // a touch. Every firearm in this hand goes off — hold two
+        // pistols in one fist and one squeeze fires both, with two
+        // recoils and two lots of smoke.
         onTriggerDown: function () {
-          if (!this.heldObject) return;
-          var firearm = this.heldObject.components.pistol || this.heldObject.components.shotgun;
-          if (firearm) firearm.fire();
+          this.heldObjects.forEach(function (objEl) {
+            var firearm = objEl.components.firearm;
+            if (firearm) firearm.fire();
+          });
         },
 
         onTriggerTouchStart: function () {
           this.fingerOnTrigger = true;
         },
 
-        // Finger fully lifts off the trigger surface. If an object is
-        // dangling from this hand, that's the last thing holding it
-        // up — this is the moment that decides holster vs. fall.
+        // Finger fully lifts off the trigger surface. Anything
+        // dangling from this hand has just lost the only thing holding
+        // it up — this is the moment that decides holster vs. fall,
+        // per item.
         onTriggerTouchEnd: function () {
           this.fingerOnTrigger = false;
-          if (this.danglingObject) {
-            this.danglingObject.components.holsterable.endDangle();
-            this.danglingObject = null;
-          }
+          if (!this.danglingObjects.length) return;
+
+          var objs = this.danglingObjects;
+          this.danglingObjects = [];
+          objs.forEach(function (obj) {
+            obj.components.holsterable.endDangle();
+          });
         },
 
         // Nearest object this hand is currently allowed to grab:
@@ -1925,7 +2577,7 @@
 
         tick: function () {
           var handRig = this.el.components['hand-rig'];
-          if (handRig && handRig.heldObject) return;
+          if (handRig && handRig.isFull()) return;
 
           var trackedControls = this.el.components['tracked-controls'];
           var gamepad = trackedControls && trackedControls.controller;
@@ -2240,9 +2892,9 @@
       // Attached to each colored disc of a bullseye. Invincible by
       // design — a hit never changes its appearance or removes it,
       // just scores it and tips the whole target over via its parent
-      // pop-target component. Fires on the standard "click" event so
-      // it doesn't care whether that click came from a fired shot
-      // (pistol.fire, above) or a desktop/phone reticle tap. Ignores
+      // pop-target component. Listens for both "shot" (a fired round —
+      // see castShot) and the standard "click" (a desktop/phone
+      // reticle tap), since it doesn't care which one it was. Ignores
       // hits once the target it belongs to is already fallen.
       //
       // Looks up its owning pop-target via closest() rather than
@@ -2263,10 +2915,12 @@
         init: function () {
           this.onClick = this.onClick.bind(this);
           this.el.addEventListener('click', this.onClick);
+          this.el.addEventListener('shot', this.onClick);
         },
 
         remove: function () {
           this.el.removeEventListener('click', this.onClick);
+          this.el.removeEventListener('shot', this.onClick);
         },
 
         onClick: function () {
@@ -2407,6 +3061,1032 @@
 
           this.el.appendChild(stand);
           return hinge;
+        },
+      });
+
+      // ==============================================================
+      // COMPONENT: boxy-bottle
+      // A beer bottle, built the same "pile of primitives" way as
+      // boxy-gun, and following the same origin convention for the
+      // same reason: the entity's origin sits at the NECK, where your
+      // hand would actually close around it, not at the bottle's
+      // center. That one choice is what lets holsterable's existing
+      // dangle physics swing a bottle from your trigger finger exactly
+      // like a pistol, with no bottle-specific physics anywhere.
+      //
+      // The liquid is a separate cylinder that the "bottle" component
+      // scales down as you drink it; the cap is a separate piece it
+      // hides when you knock it off; the spout marks the drinking end
+      // the way ".muzzle" marks the shooting end of a gun.
+      // ==============================================================
+      var BOTTLE_BASE_Y = -0.2225; // local y of the bottom of the bottle
+      var BOTTLE_CAP_Y = 0.049;
+      var BOTTLE_SPOUT_Y = 0.043;
+      var BOTTLE_LIQUID_BOTTOM = -0.213;
+      var BOTTLE_LIQUID_HEIGHT = 0.125; // height of a completely full bottle's liquid column
+
+      AFRAME.registerComponent('boxy-bottle', {
+        schema: {
+          glass: { type: 'color', default: '#3f6b3a' },
+          label: { type: 'color', default: '#d9c27a' },
+        },
+
+        init: function () {
+          var el = this.el;
+          var glass = this.data.glass;
+
+          function addCylinder(radius, height, y, color, opacity) {
+            var c = document.createElement('a-cylinder');
+            c.setAttribute('radius', radius);
+            c.setAttribute('height', height);
+            c.setAttribute('position', { x: 0, y: y, z: 0 });
+            c.setAttribute(
+              'material',
+              'color: ' + color + '; opacity: ' + (opacity === undefined ? 1 : opacity) + '; transparent: true'
+            );
+            el.appendChild(c);
+            return c;
+          }
+
+          addCylinder(0.042, 0.135, -0.155, glass, 0.85); // body
+          addCylinder(0.0425, 0.05, -0.16, this.data.label, 1); // paper label
+          addCylinder(0.018, 0.075, 0.005, glass, 0.85); // neck
+
+          var shoulder = document.createElement('a-entity');
+          shoulder.setAttribute('geometry', {
+            primitive: 'cone',
+            radiusBottom: 0.042,
+            radiusTop: 0.018,
+            height: 0.055,
+          });
+          shoulder.setAttribute('material', 'color: ' + glass + '; opacity: 0.85; transparent: true');
+          shoulder.setAttribute('position', { x: 0, y: -0.06, z: 0 });
+          el.appendChild(shoulder);
+
+          var cap = addCylinder(0.021, 0.014, BOTTLE_CAP_Y, '#c9a227', 1);
+          cap.classList.add('bottle-cap');
+
+          var liquid = document.createElement('a-cylinder');
+          liquid.setAttribute('radius', 0.035);
+          liquid.setAttribute('height', BOTTLE_LIQUID_HEIGHT);
+          liquid.setAttribute('material', 'color: #c8871f; opacity: 0.95; transparent: true');
+          liquid.classList.add('bottle-liquid');
+          el.appendChild(liquid);
+
+          var spout = document.createElement('a-entity');
+          spout.setAttribute('position', { x: 0, y: BOTTLE_SPOUT_Y, z: 0 });
+          spout.classList.add('spout');
+          el.appendChild(spout);
+
+          // Generous, invisible, and the whole reason shooting a
+          // tumbling bottle out of the air is satisfying rather than
+          // maddening — see createHitbox.
+          el.appendChild(createHitbox(0.075, 0.3, { x: 0, y: -0.09, z: 0 }));
+        },
+      });
+
+      // ==============================================================
+      // COMPONENT: bottle
+      // The drinkable behavior, in the same relationship to holsterable
+      // that firearm is: it reads state, owns a little state of its
+      // own (capped / how full), and knows nothing about hands, slots,
+      // or throwing.
+      //
+      // Two physical moves, no buttons:
+      //   - Whack a capped bottle down onto anything solid (the bar
+      //     top, the floor — see HARD_SURFACES) and the cap pops off
+      //     and spins away.
+      //   - Tip an open one up to your mouth and it drains, one
+      //     gulp-per-frame, straight into the drunkenness meter.
+      // Both are checked from the object's own tick against its own
+      // world position, which means they work identically whether the
+      // bottle is in your hand, in your other hand, or one of four in
+      // the same fist.
+      // ==============================================================
+      AFRAME.registerComponent('bottle', {
+        init: function () {
+          this.capped = true;
+          this.fill = 1;
+
+          this.capEl = this.el.querySelector('.bottle-cap');
+          this.liquidEl = this.el.querySelector('.bottle-liquid');
+          this.spoutEl = this.el.querySelector('.spout');
+          this.mouthEl = document.querySelector('#mouth-anchor');
+
+          this._world = new THREE.Vector3();
+          this._prevWorld = new THREE.Vector3();
+          this._point = new THREE.Vector3();
+          this._mouthPos = new THREE.Vector3();
+          this._neck = new THREE.Vector3();
+          this._quat = new THREE.Quaternion();
+          this._hasPrev = false;
+
+          this.applyFill();
+        },
+
+        tick: function (time, dt) {
+          var holsterable = this.el.components.holsterable;
+          if (!holsterable) return;
+
+          var dtSeconds = Math.min((dt || 16) / 1000, 0.05);
+          this.el.object3D.getWorldPosition(this._world);
+
+          var fallSpeed = 0;
+          if (this._hasPrev && dtSeconds > 0) {
+            fallSpeed = (this._prevWorld.y - this._world.y) / dtSeconds; // positive = moving down
+          }
+          this._prevWorld.copy(this._world);
+          this._hasPrev = true;
+
+          if (holsterable.state !== 'held') return;
+
+          if (this.capped) this.checkStrike(fallSpeed);
+          else if (this.fill > 0) this.checkDrink(dtSeconds);
+        },
+
+        // Did either end of the bottle just get slammed down onto
+        // something hard? Both ends count, so hooking the cap on the
+        // edge of the bar and banging the whole thing down flat are
+        // equally valid ways to open a beer.
+        checkStrike: function (fallSpeed) {
+          var ends = [BOTTLE_CAP_Y, BOTTLE_BASE_Y];
+          for (var i = 0; i < ends.length; i++) {
+            this._point.set(0, ends[i], 0);
+            this.el.object3D.localToWorld(this._point);
+            if (findHardSurfaceStrike(this._point, fallSpeed)) {
+              this.popCap();
+              return;
+            }
+          }
+        },
+
+        popCap: function () {
+          if (!this.capped) return;
+          this.capped = false;
+          if (this.capEl) this.capEl.setAttribute('visible', false);
+
+          this._point.set(0, BOTTLE_CAP_Y, 0);
+          this.el.object3D.localToWorld(this._point);
+          spawnDebris(this._point, { count: 1, color: '#c9a227', size: 0.03, speed: 3.2, life: 2200 });
+          spawnSparks(this._point, 4);
+        },
+
+        // Drinking is "the spout is at your mouth and the bottle is
+        // tipped up," nothing more. The tilt check is what keeps you
+        // from chugging a beer just by holding it near your chin.
+        checkDrink: function (dtSeconds) {
+          if (!this.spoutEl || !this.mouthEl) return;
+
+          this.spoutEl.object3D.getWorldPosition(this._point);
+          this.mouthEl.object3D.getWorldPosition(this._mouthPos);
+          if (this._point.distanceTo(this._mouthPos) > DRINK_RADIUS) return;
+
+          // Local +Y is up the neck; drinking means it's pointed down
+          // toward you, with the body of the bottle raised.
+          this.el.object3D.getWorldQuaternion(this._quat);
+          this._neck.set(0, 1, 0).applyQuaternion(this._quat);
+          if (this._neck.y > -DRINK_TILT_DOT) return;
+
+          var gulp = Math.min(DRINK_RATE * dtSeconds, this.fill);
+          this.fill -= gulp;
+          this.applyFill();
+          addDrunk(gulp * DRUNK_PER_BOTTLE);
+        },
+
+        applyFill: function () {
+          if (!this.liquidEl) return;
+          var f = Math.max(this.fill, 0.0001);
+          this.liquidEl.object3D.scale.set(1, f, 1);
+          this.liquidEl.object3D.position.set(0, BOTTLE_LIQUID_BOTTOM + (BOTTLE_LIQUID_HEIGHT * f) / 2, 0);
+          this.liquidEl.setAttribute('visible', this.fill > 0.001);
+        },
+
+        // Called by breakable when a shattered bottle comes back as a
+        // fresh one — a respawned beer is a full, capped beer.
+        refill: function () {
+          this.capped = true;
+          this.fill = 1;
+          if (this.capEl) this.capEl.setAttribute('visible', true);
+          this.applyFill();
+          this._hasPrev = false;
+        },
+      });
+
+      // ==============================================================
+      // COMPONENT: breakable
+      // Generic "this comes apart when something hits it hard enough."
+      // It listens for the same "shot" event a scoring ring does, plus
+      // the "landed" event holsterable emits when something it was
+      // simulating hits the ground — so a bottle you shoot out of the
+      // air and a bottle you simply throw at the floor both shatter,
+      // through two completely different code paths that neither know
+      // about bottles.
+      //
+      // Nothing is destroyed permanently: the entity hides, stops
+      // being grabbable/shootable, and comes back on its home slot
+      // after respawnMs, the same way a knocked-down target stands
+      // back up. That's what keeps the bar stocked while you work
+      // through it.
+      // ==============================================================
+      AFRAME.registerComponent('breakable', {
+        schema: {
+          color: { type: 'color', default: '#3f6b3a' },
+          shards: { type: 'number', default: SHARD_COUNT },
+          respawnMs: { type: 'number', default: BOTTLE_RESPAWN_MS },
+          score: { type: 'number', default: 25 },
+          label: { type: 'string', default: 'BOTTLE' },
+          impactSpeed: { type: 'number', default: 3.5 }, // m/s of landing that counts as "dropped hard enough"
+        },
+
+        init: function () {
+          this.broken = false;
+          this.respawnTimer = 0;
+          this.popTimer = 0;
+          this._world = new THREE.Vector3();
+
+          this.onShot = this.onShot.bind(this);
+          this.onLanded = this.onLanded.bind(this);
+          this.el.addEventListener('shot', this.onShot);
+          this.el.addEventListener('click', this.onShot);
+          this.el.addEventListener('landed', this.onLanded);
+        },
+
+        remove: function () {
+          this.el.removeEventListener('shot', this.onShot);
+          this.el.removeEventListener('click', this.onShot);
+          this.el.removeEventListener('landed', this.onLanded);
+        },
+
+        onShot: function () {
+          this.shatter(true);
+        },
+
+        onLanded: function (evt) {
+          if (evt.detail && evt.detail.speed >= this.data.impactSpeed) this.shatter(false);
+        },
+
+        tick: function (time, dt) {
+          if (this.popTimer > 0) {
+            this.popTimer = Math.max(this.popTimer - (dt || 16), 0);
+            var t = 1 - this.popTimer / 260;
+            this.el.object3D.scale.setScalar(0.35 + 0.65 * t * (2 - t)); // ease-out toward full size
+            return;
+          }
+
+          if (!this.broken) return;
+          this.respawnTimer -= dt || 16;
+          if (this.respawnTimer <= 0) this.respawn();
+        },
+
+        shatter: function (scored) {
+          if (this.broken) return;
+          this.broken = true;
+          this.respawnTimer = this.data.respawnMs;
+
+          this.el.object3D.getWorldPosition(this._world);
+          spawnDebris(this._world, { count: this.data.shards, color: this.data.color, size: SHARD_SIZE });
+          spawnDebris(this._world, { count: 4, color: '#e8e4d8', size: SHARD_SIZE * 0.7, speed: SHARD_SPEED * 1.3 });
+
+          var holsterable = this.el.components.holsterable;
+          if (holsterable) {
+            // Prised out of whatever was holding it, without going
+            // through a normal release — a bottle that explodes in
+            // your fist doesn't get holstered or thrown.
+            if (holsterable.hand) {
+              var handRig = holsterable.hand.components['hand-rig'];
+              if (handRig) handRig.forget(this.el);
+            }
+            holsterable.vacateSlot();
+            holsterable.hand = null;
+            holsterable.state = 'broken';
+            holsterable.angularVelocity.set(0, 0, 0);
+            holsterable.fallVelocity.set(0, 0, 0);
+            this.el.sceneEl.object3D.attach(this.el.object3D);
+          }
+
+          this.el.object3D.visible = false;
+          this.el.classList.remove('shootable');
+          this.el.classList.remove('grabbable');
+
+          if (scored) {
+            var manager = document.querySelector('#range-manager');
+            if (manager) {
+              manager.emit('ring-hit', { score: this.data.score, label: this.data.label }, false);
+            }
+          }
+        },
+
+        respawn: function () {
+          var holsterable = this.el.components.holsterable;
+          var homeSlot = holsterable && holsterable.data.holsterSelector;
+          var slotComp = homeSlot && homeSlot.components['anchor-slot'];
+
+          // Somebody parked something else in its spot; wait it out
+          // rather than double-stacking or popping in mid-air.
+          if (slotComp && slotComp.isFull()) {
+            this.respawnTimer = this.data.respawnMs;
+            return;
+          }
+
+          this.broken = false;
+          this.el.classList.add('shootable');
+          this.el.classList.add('grabbable');
+          this.el.object3D.visible = true;
+
+          var bottle = this.el.components.bottle;
+          if (bottle) bottle.refill();
+
+          if (holsterable && homeSlot) {
+            holsterable.state = 'holstered';
+            // Placed instantly first, so the blend inside occupySlot
+            // starts from the shelf instead of from wherever this
+            // bottle happened to be standing when it was shot.
+            holsterable.attachTo(homeSlot.object3D, holsterable.data.holsterPosition, holsterable.data.holsterRotation);
+            holsterable.occupySlot(homeSlot);
+          } else if (holsterable) {
+            // Nothing declared a home for it — leave it where it broke,
+            // as an ordinary pick-up-off-the-ground object.
+            holsterable.state = 'resting';
+          }
+
+          this.popTimer = 260;
+          this.el.object3D.scale.setScalar(0.35);
+        },
+      });
+
+      // ==============================================================
+      // COMPONENT: ignition-source / lightable
+      // The smallest possible "one thing can set another thing on
+      // fire" contract, deliberately split from anything that knows
+      // what a cigar is. A source publishes a tip position and a
+      // public `hot` flag that its owning component sets (a firearm
+      // from barrel heat, a cigar from being lit); a lightable
+      // publishes a tip position and fires an "ignite" event when a
+      // hot tip touches it. world-systems does the matching.
+      //
+      // The payoff is that the ways to light a cigar were never
+      // enumerated anywhere: off another lit cigar, off the barrel of
+      // a gun you just emptied, or by shooting it (cigar's own "shot"
+      // handler just calls ignite). Adding a lantern or a stick of
+      // dynamite is two attributes.
+      // ==============================================================
+      AFRAME.registerComponent('ignition-source', {
+        schema: {
+          tipSelector: { type: 'string', default: '' }, // empty = the entity's own origin
+        },
+
+        init: function () {
+          this.hot = false;
+        },
+
+        tipObject: function () {
+          if (!this.data.tipSelector) return this.el.object3D;
+          var tip = this.el.querySelector(this.data.tipSelector);
+          return tip ? tip.object3D : this.el.object3D;
+        },
+      });
+
+      AFRAME.registerComponent('lightable', {
+        schema: {
+          tipSelector: { type: 'string', default: '' },
+        },
+
+        init: function () {
+          this.lit = false;
+        },
+
+        tipObject: function () {
+          if (!this.data.tipSelector) return this.el.object3D;
+          var tip = this.el.querySelector(this.data.tipSelector);
+          return tip ? tip.object3D : this.el.object3D;
+        },
+
+        ignite: function () {
+          if (this.lit) return;
+          this.lit = true;
+          this.el.emit('ignite', null, false);
+        },
+
+        extinguish: function () {
+          if (!this.lit) return;
+          this.lit = false;
+          this.el.emit('extinguish', null, false);
+        },
+      });
+
+      // ==============================================================
+      // COMPONENT: boxy-cigar
+      // Long axis along local -Z, the same convention as a gun barrel,
+      // with the origin at the end you put in your mouth. That's what
+      // makes "cigar in the mouth slot" and "pistol in the mouth slot"
+      // the same operation, and it means a cigar held in your fist
+      // points the same way a barrel would.
+      // ==============================================================
+      var CIGAR_LENGTH = 0.13;
+
+      AFRAME.registerComponent('boxy-cigar', {
+        init: function () {
+          var el = this.el;
+
+          var body = document.createElement('a-cylinder');
+          body.setAttribute('radius', 0.011);
+          body.setAttribute('height', CIGAR_LENGTH);
+          body.setAttribute('color', '#5a3a1e');
+          body.setAttribute('rotation', '90 0 0'); // stand the cylinder's axis up along Z
+          body.setAttribute('position', { x: 0, y: 0, z: -CIGAR_LENGTH / 2 });
+          el.appendChild(body);
+
+          var band = document.createElement('a-cylinder');
+          band.setAttribute('radius', 0.0118);
+          band.setAttribute('height', 0.018);
+          band.setAttribute('color', '#b8892f');
+          band.setAttribute('rotation', '90 0 0');
+          band.setAttribute('position', { x: 0, y: 0, z: -0.03 });
+          el.appendChild(band);
+
+          var ember = document.createElement('a-sphere');
+          ember.setAttribute('radius', 0.0115);
+          ember.setAttribute('material', 'color: #2a1a10; shader: flat');
+          ember.setAttribute('position', { x: 0, y: 0, z: -CIGAR_LENGTH });
+          ember.classList.add('ember');
+          el.appendChild(ember);
+
+          el.appendChild(
+            createHitbox(0.045, CIGAR_LENGTH + 0.04, { x: 0, y: 0, z: -CIGAR_LENGTH / 2 }, '90 0 0')
+          );
+        },
+      });
+
+      // ==============================================================
+      // COMPONENT: cigar
+      // What being lit actually does: the ember glows, it puffs smoke
+      // into the same particle pool the guns use, and it becomes an
+      // ignition source itself so you can chain-light the next one.
+      //
+      // Shooting a cigar is handled here rather than by breakable —
+      // an unlit one catches light (that is the intended way to do it
+      // and yes, it means pointing a loaded pistol at your own face),
+      // and a lit one gets knocked clean out of your teeth.
+      // ==============================================================
+      AFRAME.registerComponent('cigar', {
+        init: function () {
+          this.emberEl = this.el.querySelector('.ember');
+          this.puffTimer = 0;
+          this._tip = new THREE.Vector3();
+
+          this.onIgnite = this.onIgnite.bind(this);
+          this.onShot = this.onShot.bind(this);
+          this.el.addEventListener('ignite', this.onIgnite);
+          this.el.addEventListener('shot', this.onShot);
+          this.el.addEventListener('click', this.onShot);
+        },
+
+        remove: function () {
+          this.el.removeEventListener('ignite', this.onIgnite);
+          this.el.removeEventListener('shot', this.onShot);
+          this.el.removeEventListener('click', this.onShot);
+        },
+
+        isLit: function () {
+          var lightable = this.el.components.lightable;
+          return !!(lightable && lightable.lit);
+        },
+
+        onIgnite: function () {
+          if (this.emberEl) this.emberEl.setAttribute('material', 'color: #ff7a1a; shader: flat');
+          this.tipWorldPosition(this._tip);
+          spawnSparks(this._tip, 6);
+        },
+
+        // A lit cigar shot out of your mouth: it goes out, leaves your
+        // teeth, and tumbles away — which, since it's an ordinary
+        // holsterable, means it's catchable on the way down.
+        onShot: function () {
+          var lightable = this.el.components.lightable;
+          if (!lightable) return;
+
+          if (!lightable.lit) {
+            lightable.ignite();
+            return;
+          }
+
+          lightable.extinguish();
+          if (this.emberEl) this.emberEl.setAttribute('material', 'color: #2a1a10; shader: flat');
+
+          var holsterable = this.el.components.holsterable;
+          if (holsterable && holsterable.state !== 'falling') {
+            if (holsterable.hand) {
+              var handRig = holsterable.hand.components['hand-rig'];
+              if (handRig) handRig.forget(this.el);
+            }
+            holsterable.vacateSlot();
+            holsterable.startFalling();
+            holsterable.fallVelocity.set((Math.random() - 0.5) * 1.5, 1.2, (Math.random() - 0.5) * 1.5);
+            holsterable.angularVelocity.set(Math.random() * 8, Math.random() * 8, 0);
+          }
+
+          this.tipWorldPosition(this._tip);
+          spawnSparks(this._tip, 10);
+        },
+
+        tick: function (time, dt) {
+          var source = this.el.components['ignition-source'];
+          var lit = this.isLit();
+          if (source) source.hot = lit;
+          if (!lit) return;
+
+          this.puffTimer -= dt || 16;
+          if (this.puffTimer > 0) return;
+          this.puffTimer = CIGAR_PUFF_INTERVAL_MS * (0.7 + Math.random() * 0.6);
+
+          this.tipWorldPosition(this._tip);
+          spawnSmoke(this._tip, null, 0.55);
+        },
+
+        tipWorldPosition: function (out) {
+          if (this.emberEl) this.emberEl.object3D.getWorldPosition(out);
+          else this.el.object3D.getWorldPosition(out);
+          return out;
+        },
+      });
+
+      // ==============================================================
+      // COMPONENT: saloon-bar
+      // Furniture, and then a row of ordinary anchor-slots on top of
+      // it. Nothing here knows that bottles belong on bars — it builds
+      // sockets and puts things in them, exactly the way the hips and
+      // the bandolier do, which is why you can just as well set a
+      // pistol on the bar, stand a bottle in your hip holster, or
+      // stash a cigar in your hat.
+      //
+      // Reachability, not realism, sets the layout: this prototype has
+      // no locomotion, so the counter's near edge is a lean away from
+      // someone standing at the origin (see BAR_NEAR_EDGE_Z). The back
+      // shelf is deliberately out of reach — those bottles are there
+      // to be shot, not picked up.
+      // ==============================================================
+      AFRAME.registerComponent('saloon-bar', {
+        init: function () {
+          this.slotSerial = 0;
+          var centerZ = BAR_NEAR_EDGE_Z + BAR_DEPTH / 2;
+
+          this.addBox(BAR_WIDTH, 0.07, BAR_DEPTH + 0.08, { x: 0, y: BAR_TOP_Y - 0.035, z: centerZ }, '#6b4429'); // counter top
+          this.addBox(BAR_WIDTH, BAR_TOP_Y - 0.07, BAR_DEPTH, { x: 0, y: (BAR_TOP_Y - 0.07) / 2, z: centerZ }, '#4a2f1c'); // counter body
+          this.addBox(BAR_WIDTH, 0.05, 0.05, { x: 0, y: 0.14, z: BAR_NEAR_EDGE_Z - 0.09 }, '#8a7a45'); // brass foot rail
+          this.addBox(BAR_WIDTH + 1.6, 3, 0.12, { x: 0, y: 1.5, z: SHELF_Z + 0.35 }, '#3c2a1c'); // back wall
+
+          var self = this;
+          SHELF_HEIGHTS.forEach(function (y) {
+            self.addBox(BAR_WIDTH - 0.4, 0.06, 0.28, { x: 0, y: y, z: SHELF_Z }, '#5b3a29');
+          });
+
+          // The counter surface, registered as somewhere a bottle can
+          // be cracked open. This is the only "collision" in the
+          // scene and it exists purely for that one move.
+          HARD_SURFACES.push({
+            y: BAR_TOP_Y,
+            minX: -BAR_WIDTH / 2,
+            maxX: BAR_WIDTH / 2,
+            minZ: BAR_NEAR_EDGE_Z - 0.04,
+            maxZ: BAR_NEAR_EDGE_Z + BAR_DEPTH + 0.04,
+          });
+
+          this.buildCounterBottles();
+          this.buildShelfBottles();
+          this.buildCigarBox();
+
+          // Two spare sockets on the bar for whatever you're carrying —
+          // a place to set your gun down, or your hat, while you drink.
+          this.addSlot({ x: -0.92, y: BAR_TOP_Y, z: BAR_NEAR_ROW_Z }, 'medium', {});
+          this.addSlot({ x: 0.92, y: BAR_TOP_Y, z: BAR_NEAR_ROW_Z }, 'medium', {});
+        },
+
+        addBox: function (w, h, d, pos, color) {
+          var box = document.createElement('a-box');
+          box.setAttribute('width', w);
+          box.setAttribute('height', h);
+          box.setAttribute('depth', d);
+          box.setAttribute('position', pos);
+          box.setAttribute('color', color);
+          this.el.appendChild(box);
+          return box;
+        },
+
+        // Slots are created (and given ids) before the things that
+        // start in them, so each item's holsterable="holsterSelector:
+        // #..." resolves the moment it initializes.
+        addSlot: function (pos, size, extra) {
+          var id = 'bar-slot-' + this.slotSerial++;
+          var slot = document.createElement('a-entity');
+          slot.setAttribute('id', id);
+          slot.classList.add('anchor-slot');
+
+          var config = { size: size };
+          Object.keys(extra || {}).forEach(function (k) {
+            config[k] = extra[k];
+          });
+          slot.setAttribute('anchor-slot', config);
+          slot.setAttribute('position', pos);
+          this.el.appendChild(slot);
+          return id;
+        },
+
+        spawnBottle: function (slotId, color) {
+          var el = document.createElement('a-entity');
+          el.classList.add('grabbable');
+          el.classList.add('shootable');
+          el.setAttribute('holsterable', {
+            holsterSelector: '#' + slotId,
+            itemSize: 'small',
+            holsterPosition: { x: 0, y: -BOTTLE_BASE_Y, z: 0 }, // stand it on the surface, not through it
+            holsterRotation: { x: 0, y: 0, z: 0 },
+            heldPosition: { x: 0, y: 0, z: 0 },
+            heldRotation: { x: -90, y: 0, z: 0 }, // same convention as the guns — see the RECOIL comment block
+            grabRadius: 0.16,
+            comOffset: { x: 0, y: -0.12, z: 0 },
+          });
+          el.setAttribute('boxy-bottle', { glass: color });
+          el.setAttribute('bottle', '');
+          el.setAttribute('breakable', { color: color });
+          this.el.sceneEl.appendChild(el);
+          return el;
+        },
+
+        buildCounterBottles: function () {
+          var colors = ['#3f6b3a', '#6b4a1f', '#2f5b6b', '#5a2f3f', '#3f6b3a'];
+          var startX = -((BAR_BOTTLE_COUNT - 1) * BAR_BOTTLE_SPACING) / 2;
+
+          for (var i = 0; i < BAR_BOTTLE_COUNT; i++) {
+            var slotId = this.addSlot(
+              { x: startX + i * BAR_BOTTLE_SPACING, y: BAR_TOP_Y, z: BAR_BOTTLE_Z },
+              'small',
+              {}
+            );
+            this.spawnBottle(slotId, colors[i % colors.length]);
+          }
+        },
+
+        buildShelfBottles: function () {
+          var colors = ['#2f5b6b', '#5a2f3f', '#3f6b3a', '#6b4a1f', '#4a3f6b'];
+          var self = this;
+          var spacing = (BAR_WIDTH - 0.8) / (SHELF_BOTTLES_PER_ROW - 1);
+
+          SHELF_HEIGHTS.forEach(function (y, row) {
+            for (var i = 0; i < SHELF_BOTTLES_PER_ROW; i++) {
+              var slotId = self.addSlot(
+                { x: -(BAR_WIDTH - 0.8) / 2 + i * spacing, y: y + 0.03, z: SHELF_Z },
+                'small',
+                {}
+              );
+              self.spawnBottle(slotId, colors[(i + row * 2) % colors.length]);
+            }
+          });
+        },
+
+        buildCigarBox: function () {
+          var trayX = 0.5;
+          this.addBox(0.26, 0.05, 0.2, { x: trayX, y: BAR_TOP_Y + 0.025, z: BAR_NEAR_ROW_Z }, '#3a2a18');
+
+          var spacing = 0.055;
+          var startX = trayX - ((BAR_CIGAR_COUNT - 1) * spacing) / 2;
+
+          for (var i = 0; i < BAR_CIGAR_COUNT; i++) {
+            var slotId = this.addSlot(
+              { x: startX + i * spacing, y: BAR_TOP_Y + 0.06, z: BAR_NEAR_ROW_Z },
+              'small',
+              {}
+            );
+
+            var el = document.createElement('a-entity');
+            el.classList.add('grabbable');
+            el.classList.add('shootable');
+            el.setAttribute('holsterable', {
+              holsterSelector: '#' + slotId,
+              itemSize: 'small',
+              holsterPosition: { x: 0, y: 0, z: 0 },
+              holsterRotation: { x: 0, y: 0, z: 0 }, // points forward: out of the tray, or out of your mouth
+              heldPosition: { x: 0, y: 0, z: 0 },
+              heldRotation: { x: -90, y: 0, z: 0 },
+              grabRadius: 0.11,
+              comOffset: { x: 0, y: 0, z: -0.065 },
+            });
+            el.setAttribute('boxy-cigar', '');
+            el.setAttribute('cigar', '');
+            el.setAttribute('lightable', { tipSelector: '.ember' });
+            el.setAttribute('ignition-source', { tipSelector: '.ember' });
+            this.el.sceneEl.appendChild(el);
+          }
+        },
+      });
+
+      // ==============================================================
+      // COMPONENT: vice-meter
+      // Owns the two numbers in VICES that every held object reads
+      // through viceWobble, and the HUD line that tells you how much
+      // trouble you're in.
+      //
+      // Drunkenness comes from bottles and bleeds off slowly; jitter
+      // is simply how many lit cigars you currently have on you. They
+      // feed the same wobble on purpose — the discovery that a fifth
+      // cigar ruins your aim as thoroughly as a second beer is the
+      // whole joke, and neither the bottle nor the cigar component
+      // knows the other exists.
+      // ==============================================================
+      var SOBER_SKY = '#7d6b8f';
+      var DRUNK_SKY = '#9c5f79';
+
+      function addDrunk(amount) {
+        VICES.drunk = Math.min(VICES.drunk + amount, 1);
+      }
+
+      AFRAME.registerComponent('vice-meter', {
+        init: function () {
+          VICES.drunk = 0;
+          VICES.jitter = 0;
+
+          this.hud = document.querySelector('#vice-text');
+          this.sky = document.querySelector('a-sky');
+          this.mouthEl = document.querySelector('#mouth-anchor');
+          this.refreshTimer = 0;
+
+          this._soberColor = new THREE.Color(SOBER_SKY);
+          this._drunkColor = new THREE.Color(DRUNK_SKY);
+          this._skyColor = new THREE.Color();
+        },
+
+        tick: function (time, dt) {
+          var dtSeconds = Math.min((dt || 16) / 1000, 0.05);
+          VICES.drunk = Math.max(VICES.drunk - DRUNK_DECAY_PER_S * dtSeconds, 0);
+
+          this.refreshTimer -= dt || 16;
+          if (this.refreshTimer > 0) return;
+          this.refreshTimer = 150;
+
+          VICES.jitter = Math.min(this.countLitCigars(), MAX_JITTER_CIGARS);
+          this.updateHud();
+          this.updateSky();
+        },
+
+        // Cigars count only while they're on you — in your mouth or in
+        // a hand. One left burning on the bar is somebody else's
+        // problem.
+        countLitCigars: function () {
+          var cigars = document.querySelectorAll('[cigar]');
+          var count = 0;
+
+          for (var i = 0; i < cigars.length; i++) {
+            var cigar = cigars[i].components.cigar;
+            var holsterable = cigars[i].components.holsterable;
+            if (!cigar || !holsterable || !cigar.isLit()) continue;
+
+            var onPlayer =
+              holsterable.state === 'held' ||
+              holsterable.state === 'dangling' ||
+              holsterable.currentSlotEl === this.mouthEl;
+            if (onPlayer) count++;
+          }
+
+          return count;
+        },
+
+        updateHud: function () {
+          if (!this.hud) return;
+
+          var parts = [];
+          if (VICES.drunk > 0.02) {
+            var pips = Math.round(VICES.drunk * 8);
+            parts.push('Whiskey courage ' + new Array(pips + 1).join('|') + new Array(9 - pips).join('.'));
+          }
+          if (VICES.jitter > 0) parts.push(VICES.jitter + ' lit');
+
+          this.hud.setAttribute('text', 'value', parts.join('    '));
+        },
+
+        updateSky: function () {
+          if (!this.sky) return;
+          this._skyColor.copy(this._soberColor).lerp(this._drunkColor, VICES.drunk);
+          this.sky.setAttribute('material', 'color', '#' + this._skyColor.getHexString());
+        },
+      });
+
+      // ==============================================================
+      // COMPONENT: world-systems
+      // One scene-level tick that owns everything shared between props:
+      // the particle pool, the wind that pushes smoke around, and the
+      // "hot thing touched a flammable thing" matching. It's a single
+      // component rather than one per particle both for the obvious
+      // reason (a hundred component ticks a frame is a lot of
+      // overhead) and a less obvious one: wind and ignition are
+      // inherently pairwise, and doing them in one place means each
+      // hand's position is read once per frame instead of once per
+      // particle.
+      // ==============================================================
+      AFRAME.registerComponent('world-systems', {
+        init: function () {
+          this.mouthEl = document.querySelector('#mouth-anchor');
+          this.cameraEl = document.querySelector('#head-camera');
+
+          this._handPos = new THREE.Vector3();
+          this._mouthPos = new THREE.Vector3();
+          this._tipA = new THREE.Vector3();
+          this._tipB = new THREE.Vector3();
+          this._muzzlePos = new THREE.Vector3();
+          this._muzzleDir = new THREE.Vector3();
+          this._headDir = new THREE.Vector3();
+          this._quat = new THREE.Quaternion();
+          this._delta = new THREE.Vector3();
+          this._heldPool = []; // reused entries behind HELD_ITEMS
+          this._blowing = {}; // per-hand latch, so one raise of the barrel is one gust
+        },
+
+        tick: function (time, dt) {
+          var dtSeconds = Math.min((dt || 16) / 1000, 0.05);
+          this.updateHeldItems();
+          this.updateWind();
+          this.updateParticles(dtSeconds);
+          this.updateIgnition();
+          this.updateBlow();
+        },
+
+        // One scan of the scene per frame, shared by every anchor-slot
+        // indicator. Vectors are pooled rather than reallocated, since
+        // this runs every frame forever.
+        updateHeldItems: function () {
+          var items = document.querySelectorAll('.grabbable');
+          var count = 0;
+          HELD_ITEMS.length = 0;
+
+          for (var i = 0; i < items.length; i++) {
+            var holsterable = items[i].components.holsterable;
+            if (!holsterable || holsterable.state !== 'held') continue;
+
+            if (!this._heldPool[count]) this._heldPool[count] = { rank: 0, pos: new THREE.Vector3() };
+            var entry = this._heldPool[count];
+            items[i].object3D.getWorldPosition(entry.pos);
+            entry.rank = SLOT_SIZE_RANK[holsterable.data.itemSize];
+            HELD_ITEMS.push(entry);
+            count++;
+          }
+        },
+
+        // A snapshot of where the hands are and how fast they're
+        // moving, taken once and reused by every puff.
+        updateWind: function () {
+          var hands = document.querySelectorAll('.hand');
+          WIND_HANDS.length = 0;
+
+          for (var i = 0; i < hands.length; i++) {
+            var handRig = hands[i].components['hand-rig'];
+            if (!handRig) continue;
+            if (handRig.velocity.length() < WIND_HAND_MIN_SPEED) continue;
+
+            hands[i].object3D.getWorldPosition(this._handPos);
+            WIND_HANDS.push({ pos: this._handPos.clone(), vel: handRig.velocity.clone() });
+          }
+        },
+
+        updateParticles: function (dtSeconds) {
+          for (var i = PARTICLES.length - 1; i >= 0; i--) {
+            var p = PARTICLES[i];
+            p.age += dtSeconds * 1000;
+
+            if (p.age >= p.life || !p.el.parentNode) {
+              if (p.el.parentNode) p.el.parentNode.removeChild(p.el);
+              PARTICLES.splice(i, 1);
+              continue;
+            }
+
+            var t = p.age / p.life;
+            var obj = p.el.object3D;
+
+            if (p.kind === 'debris') {
+              p.vel.y -= GRAVITY * dtSeconds;
+              obj.position.addScaledVector(p.vel, dtSeconds);
+              if (obj.position.y <= p.restY) {
+                obj.position.y = p.restY;
+                p.vel.y *= -0.35; // a shard bounces once or twice, then gives up
+                p.vel.x *= 0.6;
+                p.vel.z *= 0.6;
+              }
+              if (p.angVel) {
+                obj.rotation.x += p.angVel.x * dtSeconds;
+                obj.rotation.y += p.angVel.y * dtSeconds;
+                obj.rotation.z += p.angVel.z * dtSeconds;
+              }
+            } else {
+              p.vel.y += SMOKE_RISE * dtSeconds;
+              this.applyWind(p, dtSeconds);
+              p.vel.multiplyScalar(Math.max(1 - SMOKE_DRAG * dtSeconds, 0));
+              obj.position.addScaledVector(p.vel, dtSeconds);
+              obj.scale.setScalar(1 + SMOKE_GROWTH * t);
+            }
+
+            var mesh = p.el.getObject3D('mesh');
+            if (mesh && mesh.material) {
+              // Smoke holds its opacity most of its life and then goes;
+              // debris fades only at the very end so shards read as
+              // solid glass while they're bouncing.
+              mesh.material.opacity = p.kind === 'smoke' ? p.opacity * (1 - t * t) : p.opacity * Math.min((1 - t) * 4, 1);
+            }
+          }
+        },
+
+        // Sweeping a hand through a cloud drags it along. This is the
+        // reliable way to clear your own gun smoke; the blow gust
+        // below is the showy one.
+        applyWind: function (p, dtSeconds) {
+          for (var i = 0; i < WIND_HANDS.length; i++) {
+            this._delta.copy(p.el.object3D.position).sub(WIND_HANDS[i].pos);
+            var d = this._delta.length();
+            if (d > WIND_HAND_RADIUS) continue;
+
+            var falloff = 1 - d / WIND_HAND_RADIUS;
+            p.vel.addScaledVector(WIND_HANDS[i].vel, WIND_HAND_FACTOR * falloff * dtSeconds);
+          }
+        },
+
+        // Every unlit lightable checked against every hot ignition
+        // source. Both lists are tiny (a handful of cigars, two guns),
+        // and neither side knows what the other is.
+        updateIgnition: function () {
+          var lightables = document.querySelectorAll('[lightable]');
+          var sources = document.querySelectorAll('[ignition-source]');
+          if (!lightables.length || !sources.length) return;
+
+          for (var i = 0; i < lightables.length; i++) {
+            var lightable = lightables[i].components.lightable;
+            if (!lightable || lightable.lit) continue;
+            lightable.tipObject().getWorldPosition(this._tipA);
+
+            for (var j = 0; j < sources.length; j++) {
+              if (sources[j] === lightables[i]) continue;
+              var source = sources[j].components['ignition-source'];
+              if (!source || !source.hot) continue;
+
+              source.tipObject().getWorldPosition(this._tipB);
+              if (this._tipA.distanceTo(this._tipB) < IGNITE_RADIUS) {
+                lightable.ignite();
+                break;
+              }
+            }
+          }
+        },
+
+        // Raising a gun barrel up in front of your face blows the
+        // smoke off it. There's no breath sensor on a headset, so the
+        // gesture is the input — bring the muzzle to your mouth,
+        // pointed up, and the cloud in front of you scatters.
+        updateBlow: function () {
+          if (!this.mouthEl || !this.cameraEl) return;
+          this.mouthEl.object3D.getWorldPosition(this._mouthPos);
+
+          var hands = document.querySelectorAll('.hand');
+          for (var i = 0; i < hands.length; i++) {
+            var handRig = hands[i].components['hand-rig'];
+            if (!handRig) continue;
+
+            var armed = false;
+            for (var j = 0; j < handRig.heldObjects.length; j++) {
+              var muzzleEl = handRig.heldObjects[j].querySelector('.muzzle');
+              if (!muzzleEl || !handRig.heldObjects[j].components.firearm) continue;
+
+              muzzleEl.object3D.getWorldPosition(this._muzzlePos);
+              if (this._muzzlePos.distanceTo(this._mouthPos) > BLOW_RADIUS) continue;
+
+              muzzleEl.object3D.getWorldQuaternion(this._quat);
+              this._muzzleDir.set(0, 0, -1).applyQuaternion(this._quat);
+              if (this._muzzleDir.y < BLOW_UP_DOT) continue;
+
+              armed = true;
+              break;
+            }
+
+            var key = 'hand' + i;
+            if (armed && !this._blowing[key]) this.blow();
+            this._blowing[key] = armed;
+          }
+        },
+
+        blow: function () {
+          this.cameraEl.object3D.getWorldQuaternion(this._quat);
+          this._headDir.set(0, 0, -1).applyQuaternion(this._quat).normalize();
+
+          for (var i = 0; i < PARTICLES.length; i++) {
+            var p = PARTICLES[i];
+            if (p.kind !== 'smoke') continue;
+            if (p.el.object3D.position.distanceTo(this._mouthPos) > BLOW_GUST_RADIUS) continue;
+
+            p.vel.addScaledVector(this._headDir, BLOW_GUST_SPEED);
+            p.vel.y += 0.6;
+            p.age += p.life * 0.25; // blown smoke also thins out faster than it would on its own
+          }
+
+          // A visible breath, so the gesture reads even when there's
+          // nothing to clear.
+          this._delta.copy(this._mouthPos).addScaledVector(this._headDir, 0.12);
+          for (var k = 0; k < 2; k++) {
+            spawnSmoke(this._delta, this._headDir.clone().multiplyScalar(2.2), 0.5);
+          }
         },
       });
     </script>
