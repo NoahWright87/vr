@@ -34,7 +34,7 @@
   </head>
   <body>
     <div id="overlay">
-      <span>Pistols at Dawn — grip near a holstered pistol, shotgun, or your hat to draw it. Guns fire on the trigger; let go of the grip while a finger still rests on the trigger to dangle and twirl whatever you're holding. Anything can snap into any anchor it's small enough for — glance at the glowing spheres for a hint — so go ahead and wear a gun like a hat, or hide one inside your hat. Turn around for the saloon bar: knock a bottle's cap on the counter edge to open it, then tip it over your face and drink what pours out. Fling a fistful of bottles skyward and shoot them apart. Cigars light off another cigar, off a barrel you just emptied, or off a well-aimed bullet; hold one at your lips to draw on it and again to blow the smoke back out, and flick your wrist to knock the ash off. Let go and re-squeeze the grip quickly to keep hold of what you had and pick up the next thing too. Both meters at the bottom of your view have opinions about your aim. <a href="../../index.html">All prototypes</a></span>
+      <span>Pistols at Dawn — grip near a holstered pistol, shotgun, or your hat to draw it. Guns fire on the trigger; let go of the grip while a finger still rests on the trigger to dangle and twirl whatever you're holding. Anything can snap into any anchor it's small enough for — glance at the glowing spheres for a hint — so go ahead and wear a gun like a hat, or hide one inside your hat. Turn around for the saloon bar: knock a bottle's cap on the counter edge to open it, then tip it over your face and drink what pours out. Fling a fistful of bottles skyward and shoot them apart. Strike a match on the counter or flip open the lighter and thumb a face button, then light a cigar off either — or off a barrel you just emptied, or a well-aimed bullet. Hold a cigar at your lips to draw on it and again to blow the smoke back out; flick or twirl it to knock the ash off. Let go and re-squeeze the grip quickly to keep hold of what you had and pick up the next thing too. Grab the shotgun's forend with your off hand to steady it. Both meters at the bottom of your view have opinions about your aim. <a href="../../index.html">All prototypes</a></span>
     </div>
 
     <a-scene>
@@ -137,17 +137,23 @@
              this file, with the gun parented directly to a
              hand-controls entity, aimed inconsistently.
 
+           Because the two are separate entities, anything that
+           perturbs "your hand" (drink and cigar shakes — see
+           hand-rig.updateGrip) has to be applied to both, or the gun
+           would visibly detach from the fist holding it. hand-rig
+           takes a selector to its own cosmetic twin for exactly that.
+
            proximity-haptics is generic and unrelated to pistols
            specifically — see its own comment below. The "hand" class
            is what lets generic helpers like findOtherHand and
            findCatchingHand (used for tossing/catching) enumerate both
            hands without hardcoding left/right.
       ============================================================ -->
-      <a-entity class="hand" oculus-touch-controls="hand: left; model: false" hand-rig proximity-haptics></a-entity>
-      <a-entity hand-controls="hand: left; handModelStyle: lowPoly; color: #3a3a3a"></a-entity>
+      <a-entity class="hand" oculus-touch-controls="hand: left; model: false" hand-rig="visual: #hand-visual-left" proximity-haptics></a-entity>
+      <a-entity id="hand-visual-left" hand-controls="hand: left; handModelStyle: lowPoly; color: #3a3a3a"></a-entity>
 
-      <a-entity class="hand" oculus-touch-controls="hand: right; model: false" hand-rig proximity-haptics></a-entity>
-      <a-entity hand-controls="hand: right; handModelStyle: lowPoly; color: #3a3a3a"></a-entity>
+      <a-entity class="hand" oculus-touch-controls="hand: right; model: false" hand-rig="visual: #hand-visual-right" proximity-haptics></a-entity>
+      <a-entity id="hand-visual-right" hand-controls="hand: right; handModelStyle: lowPoly; color: #3a3a3a"></a-entity>
 
       <!-- ============================================================
            BODY ANCHORS
@@ -198,6 +204,13 @@
            bandolier — NOT a hip holster, it's too big), the shotgun is
            large (only the bandolier fits it).
 
+           The shotgun additionally declares a supportGrip at its
+           forend: grip near that with your other hand and you're
+           holding it in two, at which point the barrel points along
+           the line between your hands instead of wherever one wrist
+           happens to be. Steadier by geometry rather than by damping.
+           Only the hand on the actual grip can fire it.
+
            The hat's holsterPosition/comOffset look unusual compared to
            the guns' — see boxy-hat's comment for why: its origin is
            deliberately offset to one edge of the inner brim (like a
@@ -230,8 +243,8 @@
 
       <a-entity
         class="grabbable"
-        holsterable="holsterSelector: #back-anchor; itemSize: large; holsterRotation: -90 0 0; heldRotation: -90 0 0; heldPosition: 0 0 0; grabRadius: 0.2; comOffset: 0 0.02 -0.2"
-        firearm="pellets: 6; coneDeg: 4; kickDeg: -16; recoverMs: 200; heatPerShot: 0.4; smokePerShot: 5"
+        holsterable="holsterSelector: #back-anchor; itemSize: large; holsterRotation: -90 0 0; heldRotation: -90 0 0; heldPosition: 0 0 0; grabRadius: 0.28; comOffset: 0 0.02 -0.2; supportGrip: 0 0.01 -0.22; supportRadius: 0.22"
+        firearm="pellets: 6; coneDeg: 4; kickDeg: -16; recoverMs: 200; heatPerShot: 0.4"
         ignition-source="tipSelector: .muzzle"
         boxy-shotgun
       ></a-entity>
@@ -294,7 +307,7 @@
       var HIP_HEIGHT = 0.9; // meters off the ground
       var HIP_SIDE_OFFSET = 0.18; // meters, left/right from body centerline
       var BACK_HEIGHT = 1.3; // meters off the ground — the bandolier's anchor sits higher up the torso than the hips
-      var BACK_DEPTH_OFFSET = 0.12; // meters behind the body centerline
+      var BACK_DEPTH_OFFSET = 0.3; // meters behind the body centerline — the headset sits at the FRONT of your head, so a small offset puts the bandolier inside your chest and makes the shotgun nearly impossible to reach
       var GRAVITY = 9.8; // real-world value, used for the drop/tumble simulation
       var DANGLE_GRAVITY_TORQUE = 2.5; // how insistently a dangling gun swings back to hanging straight down
       var DANGLE_INERTIA_SCALE = 6; // how strongly flicking your hand imparts spin — crank this up further if it still feels weak
@@ -356,6 +369,21 @@
       var THROW_LAUNCH_VY_MIN = 2.2; // m/s — clamps the arc's height floor so even a weak flick gives a reactable toss
       var THROW_LAUNCH_VY_MAX = 6; // m/s — clamps the ceiling so a hard flick doesn't send it flying absurdly high
       var THROW_CATCH_RADIUS = 0.35; // meters — deliberately wide vs. GRAB_RADIUS(0.15): catching something already falling/flying should be far more forgiving than picking something up at rest
+
+      // A hurl is the other kind of throw: not a juggle toss aimed
+      // back at a hand, but genuinely getting rid of something —
+      // pitching a bottle out over the range to shoot at. It's told
+      // apart from a toss purely by direction: move your hand
+      // decisively sideways/forward rather than straight up and the
+      // aiming is skipped entirely in favour of your real velocity.
+      // Without this there was no way to throw anything AWAY, because
+      // every release was re-aimed to land back in a hand.
+      var HURL_MIN_HORIZONTAL_SPEED = 1; // m/s of sideways hand speed to count as a hurl at all
+      var HURL_HORIZONTAL_RATIO = 0.7; // horizontal speed must be at least this much of the vertical, or it's a toss
+      var HURL_MULTIPLIER = 1.9; // exaggerates the real flick, since hand speed alone throws disappointingly short
+      var HURL_MAX_SPEED = 9; // m/s ceiling
+      var HURL_MIN_UP = 1.4; // m/s of loft added if you threw flat, so a hurled bottle arcs instead of skidding
+      var HURL_CATCH_COOLDOWN_MS = 500; // catching is suppressed this long after a hurl, or the generous catch radius snatches it straight back out of the air
       var THROW_SPIN_RATE = 7; // rad/s — fixed visual tumble given to a fresh throw
       var SNAP_BLEND_DUR_MS = 130; // ms — how long any snap-into-place (grab, holster, or catch) takes to blend smoothly into its target pose, instead of an instant pop
 
@@ -465,7 +493,7 @@
       // or rolls independently of your head is a vestibular conflict
       // and a reliable way to make someone genuinely ill; a gun barrel
       // that swims is just funny. So alcohol gets: aim drift and
-      // overshoot (holsterable.updateAimDrift), a head-locked vignette
+      // overshoot (hand-rig.updateGrip), a head-locked vignette
       // and warm tint that pulse (booze-overlay), and butterfingers —
       // graded so a twirling object slips out well before a properly
       // gripped one does.
@@ -478,9 +506,11 @@
       var ALCOHOL_SWAY_DEG = 6; // peak slow sway at 100% alcohol
       var WOBBLE_EASE_MS = 320; // ms after a grab before wobble reaches full strength, so nothing pops the instant a snap-blend finishes
 
-      // Aim drift: the held object chases a spring-damped ghost of your
-      // hand instead of tracking it rigidly. Low damping is what makes
-      // it overshoot and swim past where you meant to stop.
+      // Aim drift: your hand chases a spring-damped ghost of itself
+      // instead of tracking the controller rigidly. Low damping is
+      // what makes it overshoot and swim past where you meant to stop.
+      // Applied to the hand rather than to what it's holding, so the
+      // two never come apart.
       var DRIFT_STIFFNESS = 42; // spring constant of the ghost hand
       var DRIFT_DAMPING = 5.5; // deliberately under-damped
       var DRIFT_MAX_LAG = 0.15; // meters — clamped, because an unclamped fast wave produced 60 degrees of barrel swing, which isn't drunk, it's broken
@@ -511,7 +541,7 @@
       // you're drawing it in. Pull it away and you exhale everything
       // you banked.
       // ==============================================================
-      var CIGAR_PUFF_INTERVAL_MS = 750; // how often a lit, un-inhaled cigar coughs up a wisp
+      var CIGAR_PUFF_INTERVAL_MS = 1100; // how often a lit, un-inhaled cigar coughs up a wisp — five lit at once shouldn't fog the room
       var CIGAR_ASH_RATE = 0.0016; // meters of tip turning to ash per second while lit
       var CIGAR_ASH_INHALE_MULTIPLIER = 6; // how much faster it ashes while you're drawing on it
       var CIGAR_MIN_LENGTH = 0.045; // meters — below this it's a stub and goes out
@@ -519,7 +549,34 @@
       var CIGAR_SHAKE_SPEED = 1.1; // m/s of tip speed needed for a flick to count
       var CIGAR_SHAKE_REVERSAL = -0.15; // dot product of successive velocities — negative means the direction snapped back, i.e. a shake and not a sweep
       var CIGAR_EXHALE_MAX_PUFFS = 9; // cap on how much banked smoke one exhale can produce
+      var CIGAR_TWIRL_ASH_RATE = 11; // rad/s of dangle spin that flings the ash off — a twirl has no velocity reversal for the flick detector to catch, so spinning gets asked about directly
       var CIGAR_RESPAWN_MS = 6000;
+
+      // ==============================================================
+      // FIRE-STARTERS
+      // Two ways to light something that aren't "borrow a lit cigar"
+      // or "point a gun at your own face."
+      //
+      // A match is a burnable whose head has its own collider, struck
+      // the same way a bottle cap is knocked off — the machinery is
+      // already there, so a match is barely any new code. It burns
+      // fast and doesn't last.
+      //
+      // A Zippo is the reusable one: flip the lid (trigger, or a flick
+      // of the wrist), press a face button to strike it, and the flame
+      // is an ignition-source for as long as the lid stays open.
+      // ==============================================================
+      var MATCH_HEAD_RADIUS = 0.016; // the collider you have to strike against something
+      var MATCH_ASH_RATE = 0.011; // meters/sec — a match is gone in a few seconds
+      var MATCH_MIN_LENGTH = 0.018;
+      var MATCH_COUNT = 4;
+      var MATCH_RESPAWN_MS = 5000;
+
+      var ZIPPO_LID_OPEN_DEG = -125; // how far the lid swings back
+      var ZIPPO_LID_SPEED_DEG = 900; // degrees/second — a Zippo lid snaps, it doesn't ease
+      var ZIPPO_FLICK_SPEED = 1.6; // m/s at the lid for a wrist-flick to open it
+      var ZIPPO_FLICK_REVERSAL = -0.1;
+      var ZIPPO_FLAME_FLICKER_HZ = 9;
 
       // ==============================================================
       // PARTICLES, SMOKE, AND WIND
@@ -537,18 +594,28 @@
       // that's a permission prompt and a headset-specific gamble, so
       // the gesture stands in for it.)
       // ==============================================================
-      var MAX_PARTICLES = 160; // oldest get culled past this, so a shotgun into a shelf of bottles can't tank the framerate
+      var MAX_PARTICLES = 110; // oldest get recycled past this, so a shotgun into a shelf of bottles can't tank the framerate
       var SHARD_COUNT = 16;
       var SHARD_SPEED = 2.8; // m/s initial burst speed
       var SHARD_SIZE = 0.022;
       var SHARD_LIFETIME_MS = 1700;
       var SPARK_LIFETIME_MS = 420;
-      var SMOKE_LIFETIME_MS = 2600;
+      var SMOKE_LIFETIME_MS = 2200;
       var SMOKE_START_RADIUS = 0.035;
       var SMOKE_RISE = 0.5; // m/s^2 of buoyancy
       var SMOKE_DRAG = 1.3; // per-second velocity decay
-      var SMOKE_GROWTH = 2.4; // how many times its starting size a puff reaches by the end of its life
-      var GUN_HEAT_DECAY_PER_S = 0.32; // how fast a barrel cools; firing faster than this is what builds a real cloud
+      var SMOKE_GROWTH = 1.9; // how many times its starting size a puff reaches by the end of its life
+      var GUN_HEAT_DECAY_PER_S = 0.32; // how fast a barrel cools; firing faster than this is what builds a bigger curl afterwards
+      // Firing produces NO smoke at the moment of the shot. The first
+      // version puffed on every trigger pull, which buried the targets
+      // in cloud and cost frames. Instead the barrel remembers how hard
+      // it's been worked, and once you stop shooting for a beat, that
+      // much smoke curls up out of the muzzle — which is both the
+      // cheaper option and the one that actually looks like a western.
+      var BARREL_SMOKE_DELAY_MS = 420; // quiet time after the last shot before the curl starts
+      var BARREL_SMOKE_INTERVAL_MS = 130; // spacing between puffs in the curl, so it rises rather than bursting
+      var BARREL_SMOKE_MIN_HEAT = 0.12; // one casual shot barely smokes at all
+      var BARREL_SMOKE_MAX_PUFFS = 7; // emptying a gun as fast as you can pull
       var MUZZLE_HOT_THRESHOLD = 0.18; // heat above which the barrel will light a cigar
       var WIND_HAND_RADIUS = 0.45; // meters — how close a moving hand has to be to shove a puff
       var WIND_HAND_MIN_SPEED = 0.9; // m/s — below this you're not waving, you're just standing there
@@ -687,24 +754,75 @@
 
       // ==============================================================
       // PARTICLES
-      // One pool for glass, sparks, and smoke — see the constants
-      // block for why. spawn* below only creates and seeds them;
+      // One pool for glass, sparks, smoke, and beer — see the constants
+      // block for why. spawn* below only acquires and seeds them;
       // world-systems.tick does all the integrating in one loop.
       //
-      // Materials are mutated directly (particle.el.getObject3D('mesh')
-      // .material.opacity) rather than through setAttribute, for the
-      // same reason the physics in holsterable writes object3D
-      // directly: this runs on up to a hundred entities every frame,
-      // and A-Frame's attribute path allocates on each call.
+      // Entities are RECYCLED rather than created and destroyed. The
+      // first version made a fresh a-sphere per puff and removed it on
+      // expiry, and creating A-Frame entities is expensive enough that
+      // a couple of seconds of sustained fire visibly hitched the
+      // frame. Now there are two free lists (one per shape), every
+      // particle is built once at unit size with a deliberately
+      // low-poly sphere, and size comes from object3D.scale — so
+      // nothing allocates geometry, nothing touches the DOM, and a
+      // "dead" particle is just an invisible entity waiting to be
+      // handed back out.
+      //
+      // Materials are mutated directly (mesh.material.opacity) rather
+      // than through setAttribute, for the same reason the physics in
+      // holsterable writes object3D directly: this runs on dozens of
+      // entities every frame and A-Frame's attribute path allocates on
+      // each call.
       // ==============================================================
-      function addParticle(el, particle) {
+      var PARTICLE_POOL = { box: [], sphere: [] };
+
+      function acquireParticleEl(shape) {
+        var el = PARTICLE_POOL[shape].pop();
+        if (el) {
+          el.object3D.visible = true;
+          return el;
+        }
+
+        el = document.createElement(shape === 'box' ? 'a-box' : 'a-sphere');
+        if (shape === 'box') {
+          el.setAttribute('geometry', { primitive: 'box', width: 1, height: 1, depth: 1 });
+        } else {
+          // 6x4 segments: a faceted blob, which is all a 3cm puff of
+          // smoke or a droplet of beer ever needs to be, and a
+          // fraction of the vertices of A-Frame's default sphere.
+          el.setAttribute('geometry', { primitive: 'sphere', radius: 1, segmentsWidth: 6, segmentsHeight: 4 });
+        }
+        el.setAttribute('material', 'shader: flat; transparent: true; depthWrite: false; opacity: 1');
         document.querySelector('a-scene').appendChild(el);
+        return el;
+      }
+
+      function releaseParticleEl(el, shape) {
+        el.object3D.visible = false;
+        PARTICLE_POOL[shape].push(el);
+      }
+
+      // Seeds one particle and hands back the record world-systems
+      // will integrate. `scale` is a Vector3-ish or a number.
+      function addParticle(shape, worldPos, color, scale, particle) {
+        var el = acquireParticleEl(shape);
+        el.object3D.position.copy(worldPos);
+        el.object3D.rotation.set(0, 0, 0);
+        if (typeof scale === 'number') el.object3D.scale.setScalar(scale);
+        else el.object3D.scale.set(scale.x, scale.y, scale.z);
+
         particle.el = el;
+        particle.shape = shape;
+        particle.color = color;
         particle.age = 0;
+        particle.baseScale = typeof scale === 'number' ? scale : 1;
+        particle.needsColor = true;
+
         PARTICLES.push(particle);
         while (PARTICLES.length > MAX_PARTICLES) {
           var oldest = PARTICLES.shift();
-          if (oldest.el.parentNode) oldest.el.parentNode.removeChild(oldest.el);
+          releaseParticleEl(oldest.el, oldest.shape);
         }
         return particle;
       }
@@ -725,37 +843,36 @@
         var life = options.life || SHARD_LIFETIME_MS;
 
         for (var i = 0; i < count; i++) {
-          var el = document.createElement('a-box');
-          el.setAttribute('width', size * (0.5 + Math.random()));
-          el.setAttribute('height', size * (0.5 + Math.random()));
-          el.setAttribute('depth', size * (0.3 + Math.random() * 0.4));
-          el.setAttribute('material', 'color: ' + color + '; opacity: 0.95; transparent: true; depthWrite: false');
-          el.object3D.position.copy(worldPos);
-
           var dir = randomUnitVector();
           dir.y = Math.abs(dir.y) * 0.8 + 0.25; // bias upward and outward, so a break sprays rather than sinks
-          addParticle(el, {
-            kind: 'debris',
-            vel: dir.multiplyScalar(speed * (0.4 + Math.random() * 0.9)),
-            angVel: randomUnitVector().multiplyScalar(6 + Math.random() * 10),
-            life: life * (0.7 + Math.random() * 0.6),
-            opacity: 0.95,
-            restY: GROUND_REST_Y * 0.4,
-          });
+
+          addParticle(
+            'box',
+            worldPos,
+            color,
+            {
+              x: size * (0.5 + Math.random()),
+              y: size * (0.5 + Math.random()),
+              z: size * (0.3 + Math.random() * 0.4),
+            },
+            {
+              kind: 'debris',
+              vel: dir.multiplyScalar(speed * (0.4 + Math.random() * 0.9)),
+              angVel: randomUnitVector().multiplyScalar(6 + Math.random() * 10),
+              life: life * (0.7 + Math.random() * 0.6),
+              opacity: 0.95,
+              restY: GROUND_REST_Y * 0.4,
+            }
+          );
         }
       }
 
       function spawnSparks(worldPos, count) {
         for (var i = 0; i < count; i++) {
-          var el = document.createElement('a-sphere');
-          el.setAttribute('radius', 0.006 + Math.random() * 0.005);
-          el.setAttribute('material', 'color: #ffcf5c; shader: flat; opacity: 1; transparent: true; depthWrite: false');
-          el.object3D.position.copy(worldPos);
-
-          addParticle(el, {
+          addParticle('sphere', worldPos, '#ffcf5c', 0.006 + Math.random() * 0.005, {
             kind: 'debris',
             vel: randomUnitVector().multiplyScalar(1.2 + Math.random() * 1.8),
-            angVel: new THREE.Vector3(),
+            angVel: null,
             life: SPARK_LIFETIME_MS * (0.6 + Math.random() * 0.8),
             opacity: 1,
             restY: GROUND_REST_Y * 0.2,
@@ -764,30 +881,22 @@
       }
 
       // A single puff. `drift` seeds it with some initial motion (a
-      // gun pushes its smoke out along the barrel; a cigar just lets
-      // it curl upward), and `scale` makes a shotgun's cloud read as
-      // heavier than a cigar's wisp without needing a second system.
+      // barrel pushes its smoke up and out; a cigar just lets it
+      // curl), and `scale` makes a shotgun's cloud read as heavier
+      // than a cigar's wisp without needing a second system.
       function spawnSmoke(worldPos, drift, scale) {
         scale = scale || 1;
-        var el = document.createElement('a-sphere');
-        el.setAttribute('radius', SMOKE_START_RADIUS * scale * (0.7 + Math.random() * 0.6));
-        el.setAttribute(
-          'material',
-          'color: #d9d5cc; shader: flat; opacity: 0.32; transparent: true; depthWrite: false'
-        );
-        el.object3D.position.copy(worldPos);
-        el.object3D.position.addScaledVector(randomUnitVector(), 0.02 * scale);
-
         var vel = randomUnitVector().multiplyScalar(0.12);
         if (drift) vel.add(drift);
 
-        return addParticle(el, {
+        var pos = worldPos.clone().addScaledVector(randomUnitVector(), 0.02 * scale);
+
+        return addParticle('sphere', pos, '#d9d5cc', SMOKE_START_RADIUS * scale * (0.7 + Math.random() * 0.6), {
           kind: 'smoke',
           vel: vel,
           angVel: null,
           life: SMOKE_LIFETIME_MS * (0.7 + Math.random() * 0.6),
-          opacity: 0.32,
-          startScale: 1,
+          opacity: 0.26,
         });
       }
 
@@ -797,12 +906,7 @@
       // drinking mechanic. No fill level, no proximity-plus-tilt
       // check — if the liquid hits your head, you drank it.
       function spawnDroplet(worldPos, velocity) {
-        var el = document.createElement('a-sphere');
-        el.setAttribute('radius', DROPLET_RADIUS * (0.7 + Math.random() * 0.6));
-        el.setAttribute('material', 'color: #d99a25; opacity: 0.85; transparent: true; depthWrite: false');
-        el.object3D.position.copy(worldPos);
-
-        return addParticle(el, {
+        return addParticle('sphere', worldPos, '#d99a25', DROPLET_RADIUS * (0.7 + Math.random() * 0.6), {
           kind: 'liquid',
           vel: velocity.clone(),
           angVel: null,
@@ -1080,6 +1184,81 @@
         };
       }
 
+      // Every face button on both Touch controllers, since they all do
+      // the same thing here and nothing needs to care which is which.
+      var FACE_BUTTON_EVENTS = ['abuttondown', 'bbuttondown', 'xbuttondown', 'ybuttondown'];
+
+      // ==============================================================
+      // useHeldObject
+      // Generic "the player pressed something while holding this."
+      // Rather than hand-rig knowing about guns and lighters, it calls
+      // a named method on every component of the held entity that
+      // happens to implement it — firearm.onTriggerUse fires,
+      // zippo.onTriggerUse flips the lid, zippo.onFaceButtonUse
+      // strikes it. A new prop opts in by defining the method.
+      // ==============================================================
+      function useHeldObject(el, method) {
+        var components = el.components;
+        for (var name in components) {
+          var component = components[name];
+          if (component && typeof component[method] === 'function') component[method]();
+        }
+      }
+
+      // ==============================================================
+      // createFlickDetector
+      // "Did the player just snap their wrist?" — a sharp reversal in
+      // the tracked speed of some point, which is what a flick is and
+      // a sweep isn't. Shared by knocking ash off a cigar and by
+      // flipping a Zippo's lid open, since they're the same gesture
+      // wanting the same answer.
+      // ==============================================================
+      function createFlickDetector(minSpeed, reversalDot) {
+        var prevPos = new THREE.Vector3();
+        var vel = new THREE.Vector3();
+        var prevVel = new THREE.Vector3();
+        var seeded = false;
+
+        return {
+          reset: function () {
+            seeded = false;
+          },
+          update: function (worldPos, dtSeconds) {
+            if (!seeded || dtSeconds <= 0) {
+              prevPos.copy(worldPos);
+              seeded = true;
+              return false;
+            }
+
+            prevVel.copy(vel);
+            vel.copy(worldPos).sub(prevPos).divideScalar(dtSeconds);
+            prevPos.copy(worldPos);
+
+            var speed = vel.length();
+            var prevSpeed = prevVel.length();
+            if (speed < minSpeed || prevSpeed < minSpeed) return false;
+
+            // Normalized dot of successive velocities: strongly
+            // negative means the direction snapped back.
+            return vel.dot(prevVel) / (speed * prevSpeed) < reversalDot;
+          },
+        };
+      }
+
+      // ==============================================================
+      // gripObjectOf
+      // Where an object held by this hand should actually hang. Not
+      // the hand entity itself: hand-rig keeps a child "grip" that
+      // carries the drink sway, the cigar tremor and the drunk aim
+      // drift (see hand-rig.updateGrip), so that a wobbling hand takes
+      // whatever it's holding along with it instead of the object
+      // swimming inside a steady fist.
+      // ==============================================================
+      function gripObjectOf(handEl) {
+        var handRig = handEl && handEl.components['hand-rig'];
+        return handRig ? handRig.gripObject3D() : handEl.object3D;
+      }
+
       // ==============================================================
       // findOtherHand
       // The `.hand` element that isn't handEl — with exactly two hands
@@ -1126,6 +1305,9 @@
         var handRig = handEl.components['hand-rig'];
         if (!handRig) return null;
 
+        var hurl = computeHurlVelocity(handRig, stackIndex, stackCount);
+        if (hurl) return hurl;
+
         var vy = handRig.velocity.y;
         if (vy < MIN_THROW_UPWARD_SPEED) return null;
         vy = Math.min(Math.max(vy * THROW_VELOCITY_MULTIPLIER, THROW_LAUNCH_VY_MIN), THROW_LAUNCH_VY_MAX);
@@ -1168,6 +1350,39 @@
           velocity.addScaledVector(lateral.normalize(), spread);
         }
 
+        return velocity;
+      }
+
+      // ==============================================================
+      // computeHurlVelocity
+      // The "get rid of it" throw, checked before the juggle toss. If
+      // your hand is moving decisively across rather than up, the
+      // aiming is abandoned and your actual velocity is used, scaled
+      // up (bare hand speed throws disappointingly short) and given a
+      // little loft if you threw flat. Returns null when the release
+      // doesn't look like a hurl, which lets computeThrowVelocity fall
+      // through to the aimed toss it always had.
+      // ==============================================================
+      function computeHurlVelocity(handRig, stackIndex, stackCount) {
+        var v = handRig.velocity;
+        var horizontalSpeed = Math.sqrt(v.x * v.x + v.z * v.z);
+
+        if (horizontalSpeed < HURL_MIN_HORIZONTAL_SPEED) return null;
+        if (horizontalSpeed < Math.abs(v.y) * HURL_HORIZONTAL_RATIO) return null;
+
+        var velocity = v.clone().multiplyScalar(HURL_MULTIPLIER);
+        if (velocity.length() > HURL_MAX_SPEED) velocity.setLength(HURL_MAX_SPEED);
+        if (velocity.y < HURL_MIN_UP) velocity.y = HURL_MIN_UP;
+
+        // A whole handful hurled at once fans out across the throw, so
+        // they separate into several targets rather than one clump.
+        var spread = fanOffset(stackIndex || 0, stackCount || 1, THROW_STACK_SPREAD);
+        if (spread) {
+          var lateral = new THREE.Vector3(-velocity.z, 0, velocity.x);
+          if (lateral.lengthSq() > 0.0001) velocity.addScaledVector(lateral.normalize(), spread);
+        }
+
+        velocity.isHurl = true;
         return velocity;
       }
 
@@ -1782,11 +1997,15 @@
           heldRotation: { type: 'vec3', default: { x: 0, y: 0, z: 0 } },
           grabRadius: { type: 'number', default: GRAB_RADIUS },
           comOffset: { type: 'vec3', default: { x: 0, y: 0, z: 0 } }, // center of mass, relative to the entity origin
+          gravityScale: { type: 'number', default: 1 }, // multiplies gravity while falling — under 1 keeps a thrown object up longer, which is what makes shooting bottles out of the air possible
+          supportGrip: { type: 'vec3', default: { x: 0, y: 0, z: 0 } }, // local position of a second place to hold this, if any
+          supportRadius: { type: 'number', default: 0 }, // 0 disables the second grip entirely
         },
 
         init: function () {
           this.state = 'holstered';
           this.hand = null; // the hand entity currently holding/dangling this object
+          this.supportHand = null; // a SECOND hand steadying it by its support grip, if it has one
           this.currentSlotEl = null; // the anchor-slot entity this object currently occupies, if holstered
 
           // Where this object sits in whatever stack currently holds
@@ -1798,27 +2017,14 @@
           this.slotIndex = 0;
           this.slotCount = 1;
 
-          // Composed on top of the held pose every frame by whatever
-          // else has an opinion about it: firearm writes recoil kick
-          // here, and viceWobble adds drink/cigar unsteadiness. Both
-          // used to be per-component rotation writes that fought over
-          // the same object3D — see applyHeldPose.
+          // Composed on top of the held pose every frame by firearm,
+          // which writes its recoil kick here rather than fighting
+          // over the same object3D. Unsteady hands are NOT applied
+          // here any more — they belong to the hand (see
+          // hand-rig.updateGrip), and this object inherits them by
+          // being parented to it.
           this.extraPitchDeg = 0;
-          this._wobbleSeed = Math.random() * 100;
-          this._wobble = { x: 0, y: 0, z: 0 };
           this._heldElapsed = 0;
-
-          // Drunk aim drift: a spring-damped "ghost hand" that chases
-          // the real one. What the object actually tracks is the
-          // ghost, so at zero alcohol it's rigid and at high alcohol
-          // it lags behind your motion and then swings past where you
-          // stopped. See updateAimDrift.
-          this._ghostHand = new THREE.Vector3();
-          this._ghostVel = new THREE.Vector3();
-          this._handWorld = new THREE.Vector3();
-          this._driftLocal = new THREE.Vector3();
-          this._handQuat = new THREE.Quaternion();
-          this._ghostSeeded = false;
 
           // Whether the last release was a real throw. hand-rig's
           // quick-re-grip window reads this so that re-gripping right
@@ -1828,6 +2034,7 @@
 
           this.angularVelocity = new THREE.Vector3();
           this.fallVelocity = new THREE.Vector3();
+          this.catchCooldown = 0; // ms left during which this can't be caught — see throwWithVelocity
           this.prevPivotPos = new THREE.Vector3();
           this.prevPivotVelocity = new THREE.Vector3();
 
@@ -1841,6 +2048,12 @@
           this._deltaQuat = new THREE.Quaternion();
           this._worldPos = new THREE.Vector3();
           this._holsterPos = new THREE.Vector3();
+          this._gripWorld = new THREE.Vector3();
+          this._supportWorld = new THREE.Vector3();
+          this._aimUp = new THREE.Vector3();
+          this._aimMatrix = new THREE.Matrix4();
+          this._aimQuat = new THREE.Quaternion();
+          this._parentQuat = new THREE.Quaternion();
 
           // Smooth pose blend (see snapTo/updatePoseBlend). Starts
           // "already finished" so nothing plays on scene load.
@@ -1897,91 +2110,33 @@
             this.checkSlip(dtSeconds, SLIP_GRIP_THRESHOLD, SLIP_GRIP_CHANCE_PER_S);
           } else {
             this._heldElapsed = 0;
-            this._ghostSeeded = false;
           }
         },
 
-        // The one place a held object's pose is written. Base held
-        // pose + its offset in the hand's fan + whatever recoil kick
-        // firearm has asked for + drunken aim drift + however unsteady
-        // your hands currently are. Skipped entirely while a snap
-        // blend is running (the blend owns the pose until it
-        // finishes), and both wobble and drift ease in over
-        // WOBBLE_EASE_MS afterward so a drunk grab doesn't start with
-        // a jolt.
+        // The one place a held object's pose is written: the base held
+        // pose, its offset in the hand's fan, and whatever recoil kick
+        // firearm has asked for. Unsteadiness doesn't appear here at
+        // all — the grip this object is parented to is already
+        // wobbling (see hand-rig.updateGrip), so it comes along for
+        // free and, crucially, the hand and the gun move together.
+        // Skipped entirely while a snap blend is running, since the
+        // blend owns the pose until it finishes.
         applyHeldPose: function (time, dtSeconds) {
           this._heldElapsed += dtSeconds * 1000;
-          if (this._poseBlendElapsed < SNAP_BLEND_DUR_MS) {
-            this._ghostSeeded = false; // the ghost hand re-seeds once the object is actually where it belongs
-            return;
-          }
+          if (this._poseBlendElapsed < SNAP_BLEND_DUR_MS) return;
+          if (this.supportHand) return this.applyTwoHandedPose();
 
           var d = this.data;
-          var ease = Math.min(this._heldElapsed / (SNAP_BLEND_DUR_MS + WOBBLE_EASE_MS), 1);
-          var w = viceWobble(this._wobbleSeed, time, this._wobble);
-          var drift = this.updateAimDrift(dtSeconds, ease);
-
           this.el.object3D.position.set(
-            d.heldPosition.x + fanOffset(this.stackIndex, this.stackCount, HAND_STACK_SPREAD) + drift.x * DRIFT_POSITION_GAIN,
-            d.heldPosition.y + drift.y * DRIFT_POSITION_GAIN,
-            d.heldPosition.z + drift.z * DRIFT_POSITION_GAIN
+            d.heldPosition.x + fanOffset(this.stackIndex, this.stackCount, HAND_STACK_SPREAD),
+            d.heldPosition.y,
+            d.heldPosition.z
           );
           this.el.object3D.rotation.set(
-            ((d.heldRotation.x + this.extraPitchDeg + w.x * ease - drift.y * DRIFT_ROTATION_GAIN) * Math.PI) / 180,
-            ((d.heldRotation.y +
-              fanOffset(this.stackIndex, this.stackCount, HAND_STACK_YAW) +
-              w.y * ease +
-              drift.x * DRIFT_ROTATION_GAIN) *
-              Math.PI) /
-              180,
-            ((d.heldRotation.z + w.z * ease) * Math.PI) / 180
+            ((d.heldRotation.x + this.extraPitchDeg) * Math.PI) / 180,
+            ((d.heldRotation.y + fanOffset(this.stackIndex, this.stackCount, HAND_STACK_YAW)) * Math.PI) / 180,
+            (d.heldRotation.z * Math.PI) / 180
           );
-        },
-
-        // Alcohol's headline effect. A "ghost hand" chases your real
-        // hand as an under-damped spring; the object is posed relative
-        // to the GHOST, so at speed it trails behind you and then
-        // swings past the point where you stopped. The lag vector is
-        // converted into the hand's own frame and applied as both a
-        // small translation and (the part that actually ruins your
-        // aim) a barrel swing.
-        //
-        // Deliberately not a random walk: it's driven entirely by your
-        // own motion, so holding still settles down and whipping the
-        // gun around is what punishes you.
-        updateAimDrift: function (dtSeconds, ease) {
-          this._driftLocal.set(0, 0, 0);
-          if (!this.hand) return this._driftLocal;
-
-          this.hand.object3D.getWorldPosition(this._handWorld);
-
-          if (!this._ghostSeeded) {
-            this._ghostHand.copy(this._handWorld);
-            this._ghostVel.set(0, 0, 0);
-            this._ghostSeeded = true;
-            return this._driftLocal;
-          }
-
-          // Spring the ghost toward the real hand. Under-damped on
-          // purpose — that's where the overshoot comes from.
-          this._driftLocal.copy(this._handWorld).sub(this._ghostHand);
-          this._ghostVel.addScaledVector(this._driftLocal, DRIFT_STIFFNESS * dtSeconds);
-          this._ghostVel.multiplyScalar(Math.max(1 - DRIFT_DAMPING * dtSeconds, 0));
-          this._ghostHand.addScaledVector(this._ghostVel, dtSeconds);
-
-          if (VICES.alcohol <= 0.001) return this._driftLocal.set(0, 0, 0);
-
-          // How far the ghost is lagging, expressed in the hand's own
-          // frame so "left" means left of the barrel regardless of
-          // which way you're facing.
-          this._driftLocal.copy(this._ghostHand).sub(this._handWorld);
-          if (this._driftLocal.lengthSq() > DRIFT_MAX_LAG * DRIFT_MAX_LAG) {
-            this._driftLocal.setLength(DRIFT_MAX_LAG);
-          }
-          this.hand.object3D.getWorldQuaternion(this._handQuat);
-          this._driftLocal.applyQuaternion(this._handQuat.invert());
-          this._driftLocal.multiplyScalar(VICES.alcohol * ease);
-          return this._driftLocal;
         },
 
         // Butterfingers. Something dangling off one finger is barely
@@ -2001,6 +2156,68 @@
             if (handRig) handRig.forget(this.el);
           }
           this.startFalling();
+        },
+
+        // Two hands on one gun. The near hand still owns the position
+        // — the object stays exactly where your trigger hand is — but
+        // the ORIENTATION comes from the line between the two hands,
+        // so the barrel points wherever your off hand puts it. That's
+        // what makes it steadier: a shotgun braced at two points can't
+        // wander the way one on a single wrist does, and the effect
+        // falls out of the geometry rather than from any damping.
+        //
+        // Roll comes from the near hand, so twisting your grip still
+        // rolls the gun. Only the near hand can fire it (see
+        // hand-rig.onTriggerDown) — the support hand is holding a
+        // forend, not a trigger.
+        applyTwoHandedPose: function () {
+          var d = this.data;
+          this.el.object3D.position.set(d.heldPosition.x, d.heldPosition.y, d.heldPosition.z);
+
+          var parent = this.el.object3D.parent;
+          if (!parent) return;
+
+          parent.getWorldPosition(this._gripWorld);
+          this.supportHand.object3D.getWorldPosition(this._supportWorld);
+          if (this._gripWorld.distanceToSquared(this._supportWorld) < 0.0004) return;
+
+          // Matrix4.lookAt builds a rotation whose -Z points from eye
+          // to target, and the object's own -Z is its barrel, so this
+          // aims the gun straight down the line between your hands.
+          this._aimUp.set(0, 1, 0).applyQuaternion(parent.getWorldQuaternion(this._parentQuat));
+          this._aimMatrix.lookAt(this._gripWorld, this._supportWorld, this._aimUp);
+          this._aimQuat.setFromRotationMatrix(this._aimMatrix);
+
+          // Into the parent's frame, since that's where local
+          // rotations are expressed.
+          parent.getWorldQuaternion(this._parentQuat);
+          this.el.object3D.quaternion.copy(this._parentQuat.invert()).multiply(this._aimQuat);
+
+          if (this.extraPitchDeg) this.el.object3D.rotateX((this.extraPitchDeg * Math.PI) / 180);
+        },
+
+        // World position of this object's second grip, if it declares
+        // one. Used both to decide whether an off hand is close enough
+        // to take hold and to draw the marker showing where it is.
+        supportGripWorldPosition: function (out) {
+          out.set(this.data.supportGrip.x, this.data.supportGrip.y, this.data.supportGrip.z);
+          this.el.object3D.localToWorld(out);
+          return out;
+        },
+
+        canSupport: function (handEl) {
+          if (this.data.supportRadius <= 0) return false;
+          if (this.state !== 'held') return false;
+          if (this.supportHand || this.hand === handEl) return false;
+          return true;
+        },
+
+        grabSupport: function (handEl) {
+          this.supportHand = handEl;
+        },
+
+        releaseSupport: function () {
+          this.supportHand = null;
         },
 
         setHandStack: function (index, count) {
@@ -2117,7 +2334,7 @@
         applyHandPose: function (handEl) {
           var d = this.data;
           this.snapTo(
-            handEl.object3D,
+            gripObjectOf(handEl),
             {
               x: d.heldPosition.x + fanOffset(this.stackIndex, this.stackCount, HAND_STACK_SPREAD),
               y: d.heldPosition.y,
@@ -2229,8 +2446,14 @@
         throwWithVelocity: function (velocity) {
           this.state = 'falling';
           this.hand = null;
+          this.releaseSupport();
           this.el.sceneEl.object3D.attach(this.el.object3D);
           this.fallVelocity.copy(velocity);
+          // Catching is generous by design, which is exactly wrong for
+          // the throw where you're trying to get the thing away from
+          // you — without this pause a hurled bottle is plucked back
+          // out of the air by the hand that just let go of it.
+          this.catchCooldown = velocity.isHurl ? HURL_CATCH_COOLDOWN_MS : 0;
           if (VICES.alcohol > 0) {
             // Drunk throws scatter. Same butterfingers idea as
             // checkSlip, applied to the one moment where your aim was
@@ -2411,7 +2634,7 @@
             return;
           }
 
-          this.hand.object3D.getWorldPosition(this._pivot);
+          gripObjectOf(this.hand).getWorldPosition(this._pivot);
 
           this._pivotVelocity.copy(this._pivot).sub(this.prevPivotPos).divideScalar(dt);
           this._pivotAccel.copy(this._pivotVelocity).sub(this.prevPivotVelocity).divideScalar(dt);
@@ -2444,12 +2667,16 @@
         // catch (see checkCatch) before falling through to the normal
         // ground-settle.
         updateFall: function (dt) {
-          this.fallVelocity.y -= GRAVITY * dt;
+          this.fallVelocity.y -= GRAVITY * this.data.gravityScale * dt;
           this.el.object3D.position.addScaledVector(this.fallVelocity, dt);
           this.angularVelocity.multiplyScalar(FALL_DAMPING);
           this.integrateRotation(dt);
 
-          if (this.checkCatch()) return;
+          if (this.catchCooldown > 0) {
+            this.catchCooldown -= dt * 1000;
+          } else if (this.checkCatch()) {
+            return;
+          }
 
           if (this.el.object3D.position.y <= GROUND_REST_Y) {
             var impactSpeed = this.fallVelocity.length();
@@ -2514,13 +2741,14 @@
           kickDeg: { type: 'number', default: RECOIL_KICK_DEG },
           recoverMs: { type: 'number', default: RECOIL_RECOVER_MS },
           heatPerShot: { type: 'number', default: 0.22 },
-          smokePerShot: { type: 'number', default: 2 },
         },
 
         init: function () {
           this.recoilTimer = 0; // ms remaining on the current fire-recoil kick
-          this.heat = 0; // 0..1 barrel temperature
-          this.wispTimer = 0;
+          this.heat = 0; // 0..1 barrel temperature — how hard this barrel has been worked lately
+          this.sinceLastShot = Infinity;
+          this.curlRemaining = 0; // puffs still to come in the post-shooting curl
+          this.curlTimer = 0;
 
           this._origin = new THREE.Vector3();
           this._quat = new THREE.Quaternion();
@@ -2531,9 +2759,10 @@
 
         tick: function (time, dt) {
           var dtSeconds = Math.min((dt || 16) / 1000, 0.05);
+          this.sinceLastShot += dtSeconds * 1000;
           this.heat = Math.max(this.heat - GUN_HEAT_DECAY_PER_S * dtSeconds, 0);
           this.updateRecoil(dtSeconds);
-          this.updateBarrelWisps(dtSeconds);
+          this.updateBarrelSmoke(dtSeconds);
 
           // A barrel that's just been fired is hot enough to light a
           // cigar off. firearm doesn't know what a cigar is — it only
@@ -2557,20 +2786,44 @@
           }
         },
 
-        // A barrel that's still hot keeps smoking on its own, so
-        // emptying a gun leaves you standing in your own cloud rather
-        // than a few puffs that vanish between shots.
-        updateBarrelWisps: function (dtSeconds) {
-          if (this.heat < 0.25) return;
+        // Smoke happens after the shooting, not during it. Once the
+        // barrel has been quiet for BARREL_SMOKE_DELAY_MS, however hot
+        // it got is converted into a curl of puffs released one at a
+        // time so they rise out of the muzzle in a column. Fire again
+        // mid-curl and it's cancelled and re-armed — you only get the
+        // smoke when you're actually done.
+        updateBarrelSmoke: function (dtSeconds) {
+          if (this.curlRemaining > 0) {
+            this.curlTimer -= dtSeconds * 1000;
+            if (this.curlTimer <= 0) {
+              this.curlTimer = BARREL_SMOKE_INTERVAL_MS;
+              this.curlRemaining--;
+              this.emitBarrelPuff();
+            }
+            return;
+          }
 
-          this.wispTimer -= dtSeconds * 1000;
-          if (this.wispTimer > 0) return;
-          this.wispTimer = 180;
+          if (this.sinceLastShot < BARREL_SMOKE_DELAY_MS) return;
+          if (this.heat < BARREL_SMOKE_MIN_HEAT) return;
 
+          this.curlRemaining = Math.max(Math.round(this.heat * BARREL_SMOKE_MAX_PUFFS), 1);
+          this.curlTimer = 0;
+          this.heat = 0; // spent — the curl IS the heat leaving the barrel
+        },
+
+        emitBarrelPuff: function () {
           var muzzleEl = this.el.querySelector('.muzzle');
           if (!muzzleEl || !muzzleEl.object3D) return;
+
           muzzleEl.object3D.getWorldPosition(this._origin);
-          spawnSmoke(this._origin, null, 0.6 + this.heat * 0.5);
+          this._forward.set(0, 0.55, 0); // up and out of the barrel, not down the firing line
+          spawnSmoke(this._origin, this._forward, 0.75);
+        },
+
+        // hand-rig's generic press dispatch (see useHeldObject) — a
+        // trigger pull on a held gun means fire.
+        onTriggerUse: function () {
+          this.fire();
         },
 
         // Raycasts from the muzzle at everything wearing the
@@ -2631,6 +2884,8 @@
         playMuzzleEffects: function () {
           this.recoilTimer = this.data.recoverMs;
           this.heat = Math.min(this.heat + this.data.heatPerShot, 1);
+          this.sinceLastShot = 0;
+          this.curlRemaining = 0; // still shooting — the curl waits
 
           var flash = this.el.querySelector('.muzzle-flash');
           if (flash) {
@@ -2642,15 +2897,6 @@
             }, 80);
           }
 
-          // Smoke scales with how hot the barrel already is, so the
-          // first shot is a wisp and the sixth in three seconds is a
-          // proper cloud you have to deal with (see the blow-gust and
-          // hand-sweep wind in world-systems).
-          var puffs = Math.round(this.data.smokePerShot * (1 + this.heat * 1.8));
-          var drift = this._forward.clone().multiplyScalar(0.9);
-          for (var i = 0; i < puffs; i++) {
-            spawnSmoke(this._origin, drift, 0.8 + this.heat);
-          }
           spawnSparks(this._origin, 3);
         },
       });
@@ -2675,6 +2921,19 @@
       // that is special-cased anywhere — items just get fanned out
       // (see holsterable.applyHandPose) and every operation loops.
       //
+      // It also owns where your hand actually IS, which is not the
+      // same thing as where the controller is once you've been
+      // drinking. Everything held hangs off a child "grip" entity
+      // rather than off this one, and updateGrip below moves that grip
+      // around with the drink sway, the cigar tremor, and the drunk
+      // aim drift. That's why those effects had to live here rather
+      // than in holsterable: a wobble applied per-object made the gun
+      // swim inside a perfectly steady fist. Applied to the grip, the
+      // hand and everything in it move together, which is what being
+      // unsteady actually looks like. The offset goes on a CHILD
+      // because tracked-controls rewrites this entity's own pose from
+      // the headset every frame and would erase anything written here.
+      //
       // Also tracks this hand's own world-space velocity and current
       // button state (gripHeld, fingerOnTrigger) as plain public
       // fields — generic hand-side data that computeThrowVelocity,
@@ -2683,8 +2942,13 @@
       // holsterable-specific accessors.
       // ==============================================================
       AFRAME.registerComponent('hand-rig', {
+        schema: {
+          visual: { type: 'selector' }, // this hand's cosmetic twin, so the rendered hand shakes too
+        },
+
         init: function () {
           this.heldObjects = []; // objects currently rigidly held by this hand
+          this.supportObjects = []; // objects this hand is steadying by their second grip — held, but not by the trigger hand
           this.danglingObjects = []; // objects currently dangling from this hand's trigger finger
           this.stash = []; // what the last release let go of, briefly reclaimable — see reclaimStash
           this.stashTime = 0;
@@ -2695,17 +2959,38 @@
           this._prevPos = new THREE.Vector3();
           this.el.object3D.getWorldPosition(this._prevPos); // avoid a garbage first-frame velocity spike
 
+          // The grip: a child entity that everything held attaches to,
+          // carrying however unsteady this hand currently is.
+          this.gripEl = document.createElement('a-entity');
+          this.el.appendChild(this.gripEl);
+
+          this._wobbleSeed = Math.random() * 100;
+          this._wobble = { x: 0, y: 0, z: 0 };
+          this._ghostHand = new THREE.Vector3();
+          this._ghostVel = new THREE.Vector3();
+          this._handWorld = new THREE.Vector3();
+          this._drift = new THREE.Vector3();
+          this._handQuat = new THREE.Quaternion();
+          this._ghostSeeded = false;
+          this._visualBase = null; // the cosmetic hand mesh's own resting transform, captured once
+
           this.onGripDown = this.onGripDown.bind(this);
           this.onGripUp = this.onGripUp.bind(this);
           this.onTriggerDown = this.onTriggerDown.bind(this);
           this.onTriggerTouchStart = this.onTriggerTouchStart.bind(this);
           this.onTriggerTouchEnd = this.onTriggerTouchEnd.bind(this);
+          this.onFaceButton = this.onFaceButton.bind(this);
 
           this.el.addEventListener('gripdown', this.onGripDown);
           this.el.addEventListener('gripup', this.onGripUp);
           this.el.addEventListener('triggerdown', this.onTriggerDown);
           this.el.addEventListener('triggertouchstart', this.onTriggerTouchStart);
           this.el.addEventListener('triggertouchend', this.onTriggerTouchEnd);
+          // Both face buttons on both controllers do the same thing,
+          // so there's nothing to remember about which is which.
+          FACE_BUTTON_EVENTS.forEach(function (name) {
+            this.el.addEventListener(name, this.onFaceButton);
+          }, this);
         },
 
         remove: function () {
@@ -2714,6 +2999,9 @@
           this.el.removeEventListener('triggerdown', this.onTriggerDown);
           this.el.removeEventListener('triggertouchstart', this.onTriggerTouchStart);
           this.el.removeEventListener('triggertouchend', this.onTriggerTouchEnd);
+          FACE_BUTTON_EVENTS.forEach(function (name) {
+            this.el.removeEventListener(name, this.onFaceButton);
+          }, this);
         },
 
         // Smoothed (50%-blended) world-space velocity, so a single
@@ -2723,12 +3011,104 @@
           var dtSeconds = Math.min((dt || 16) / 1000, 0.05);
           if (dtSeconds <= 0) return;
 
-          var currentPos = new THREE.Vector3();
-          this.el.object3D.getWorldPosition(currentPos);
+          this.el.object3D.getWorldPosition(this._handWorld);
+          this._drift.copy(this._handWorld).sub(this._prevPos).divideScalar(dtSeconds);
+          this.velocity.lerp(this._drift, 0.5);
+          this._prevPos.copy(this._handWorld);
 
-          var instant = currentPos.clone().sub(this._prevPos).divideScalar(dtSeconds);
-          this.velocity.lerp(instant, 0.5);
-          this._prevPos.copy(currentPos);
+          this.updateGrip(time, dtSeconds);
+        },
+
+        // Where your hand really is this frame. Two contributions,
+        // both from VICES and both applied to the grip child:
+        //
+        //   - the tremor/sway, straight out of viceWobble, as a small
+        //     rotation (nicotine is fast and tight, alcohol slow and
+        //     wide);
+        //   - drunk aim drift, a spring-damped "ghost hand" chasing
+        //     your real one. It's deliberately under-damped, so at
+        //     speed your hand trails behind you and then swings past
+        //     where you stopped. Driven entirely by your own motion —
+        //     hold still and it settles; whip the gun around and it
+        //     punishes you.
+        updateGrip: function (time, dtSeconds) {
+          var w = viceWobble(this._wobbleSeed, time, this._wobble);
+          this.updateGhostHand(dtSeconds);
+
+          var grip = this.gripEl.object3D;
+          grip.position.set(
+            this._drift.x * DRIFT_POSITION_GAIN,
+            this._drift.y * DRIFT_POSITION_GAIN,
+            this._drift.z * DRIFT_POSITION_GAIN
+          );
+          grip.rotation.set(
+            ((w.x - this._drift.y * DRIFT_ROTATION_GAIN) * Math.PI) / 180,
+            ((w.y + this._drift.x * DRIFT_ROTATION_GAIN) * Math.PI) / 180,
+            (w.z * Math.PI) / 180
+          );
+
+          this.applyToVisual(grip);
+        },
+
+        updateGhostHand: function (dtSeconds) {
+          this._drift.set(0, 0, 0);
+
+          if (!this._ghostSeeded) {
+            this._ghostHand.copy(this._handWorld);
+            this._ghostVel.set(0, 0, 0);
+            this._ghostSeeded = true;
+            return;
+          }
+
+          this._drift.copy(this._handWorld).sub(this._ghostHand);
+          this._ghostVel.addScaledVector(this._drift, DRIFT_STIFFNESS * dtSeconds);
+          this._ghostVel.multiplyScalar(Math.max(1 - DRIFT_DAMPING * dtSeconds, 0));
+          this._ghostHand.addScaledVector(this._ghostVel, dtSeconds);
+
+          if (VICES.alcohol <= 0.001) return this._drift.set(0, 0, 0);
+
+          // How far the ghost is lagging, in the hand's own frame so
+          // "left" means left of the barrel however you're facing.
+          this._drift.copy(this._ghostHand).sub(this._handWorld);
+          if (this._drift.lengthSq() > DRIFT_MAX_LAG * DRIFT_MAX_LAG) {
+            this._drift.setLength(DRIFT_MAX_LAG);
+          }
+          this.el.object3D.getWorldQuaternion(this._handQuat);
+          this._drift.applyQuaternion(this._handQuat.invert());
+          this._drift.multiplyScalar(VICES.alcohol);
+        },
+
+        // The rendered hand is a separate entity (see the markup
+        // comment), so it needs the same offset or the gun would
+        // visibly float out of an unnervingly steady fist. Applied to
+        // the loaded model rather than the entity, since
+        // tracked-controls owns the entity's pose — and composed on
+        // top of whatever resting transform hand-controls set up,
+        // captured the first time the model exists.
+        applyToVisual: function (grip) {
+          if (!this.data.visual) return;
+          var mesh = this.data.visual.getObject3D('mesh');
+          if (!mesh) return;
+
+          if (!this._visualBase) {
+            this._visualBase = {
+              position: mesh.position.clone(),
+              quaternion: mesh.quaternion.clone(),
+            };
+          }
+
+          mesh.position.copy(this._visualBase.position).add(grip.position);
+          mesh.quaternion.copy(this._visualBase.quaternion);
+          mesh.rotateX(grip.rotation.x);
+          mesh.rotateY(grip.rotation.y);
+          mesh.rotateZ(grip.rotation.z);
+        },
+
+        // Everything held attaches here rather than to the hand
+        // itself. Falls back to the hand if called before init, which
+        // can happen on the very first frame.
+        gripObject3D: function () {
+          return this.gripEl ? this.gripEl.object3D : this.el.object3D;
         },
 
         isFull: function () {
@@ -2802,10 +3182,19 @@
           if (this.isFull()) return;
 
           var obj = this.findGrabbableObject();
-          if (!obj) return;
+          if (obj) {
+            obj.components.holsterable.grab(this.el);
+            this.take(obj);
+            return;
+          }
 
-          obj.components.holsterable.grab(this.el);
-          this.take(obj);
+          // Nothing to pick up, but maybe something in your OTHER hand
+          // offers a second place to hold it — a shotgun forend.
+          var support = this.findSupportGrip();
+          if (support) {
+            support.components.holsterable.grabSupport(this.el);
+            this.supportObjects.push(support);
+          }
         },
 
         // Lets go of everything at once. Each item runs its own
@@ -2815,6 +3204,14 @@
         // their slots while the rest hit the floor.
         onGripUp: function () {
           this.gripHeld = false;
+
+          if (this.supportObjects.length) {
+            this.supportObjects.forEach(function (obj) {
+              obj.components.holsterable.releaseSupport();
+            });
+            this.supportObjects = [];
+          }
+
           if (!this.heldObjects.length) return;
 
           var objs = this.heldObjects;
@@ -2867,13 +3264,21 @@
         },
 
         // An actual pull (past the digital press threshold), not just
-        // a touch. Every firearm in this hand goes off — hold two
-        // pistols in one fist and one squeeze fires both, with two
-        // recoils and two lots of smoke.
+        // a touch. Dispatched generically: anything in this hand with
+        // an onTriggerUse method gets it, so a gun fires and a lighter
+        // flips its lid without hand-rig knowing either exists. Only
+        // heldObjects, never supportObjects — the hand on a shotgun's
+        // forend is on a forend, not a trigger.
         onTriggerDown: function () {
           this.heldObjects.forEach(function (objEl) {
-            var firearm = objEl.components.firearm;
-            if (firearm) firearm.fire();
+            useHeldObject(objEl, 'onTriggerUse');
+          });
+        },
+
+        // A/X or B/Y, either controller. Same generic dispatch.
+        onFaceButton: function () {
+          this.heldObjects.forEach(function (objEl) {
+            useHeldObject(objEl, 'onFaceButtonUse');
           });
         },
 
@@ -2894,6 +3299,34 @@
           objs.forEach(function (obj) {
             obj.components.holsterable.endDangle();
           });
+        },
+
+        // The nearest object being held by the OTHER hand that offers
+        // a second grip within reach of this one. Deliberately checked
+        // only after a normal grab fails, so a forend never steals a
+        // pickup from something lying right there.
+        findSupportGrip: function () {
+          var handPos = new THREE.Vector3();
+          var gripPos = new THREE.Vector3();
+          this.el.object3D.getWorldPosition(handPos);
+
+          var objects = document.querySelectorAll('.grabbable');
+          var nearest = null;
+          var nearestDist = Infinity;
+
+          for (var i = 0; i < objects.length; i++) {
+            var holsterable = objects[i].components.holsterable;
+            if (!holsterable || !holsterable.canSupport(this.el)) continue;
+
+            holsterable.supportGripWorldPosition(gripPos);
+            var d = gripPos.distanceTo(handPos);
+            if (d < holsterable.data.supportRadius && d < nearestDist) {
+              nearest = objects[i];
+              nearestDist = d;
+            }
+          }
+
+          return nearest;
         },
 
         // Nearest object this hand is currently allowed to grab:
@@ -2947,9 +3380,9 @@
       //
       // Two things it skips, so it doesn't buzz misleadingly:
       //   - whatever this hand is already holding (its object3D is
-      //     currently parented under this hand's object3D — true for
-      //     anything that follows the same "attach to the hand's
-      //     object3D when held" convention holsterable.grab() uses)
+      //     currently parented under this hand's grip — true for
+      //     anything that follows the same "attach to the grip when
+      //     held" convention holsterable.grab() uses)
       //   - everything, if hand-rig (when present) reports this hand
       //     as already full, since you can't grab a second thing
       //     right now anyway
@@ -2974,9 +3407,10 @@
           var targets = document.querySelectorAll('.grabbable');
           var inRange = false;
 
+          var grip = gripObjectOf(this.el);
           for (var i = 0; i < targets.length; i++) {
             var targetEl = targets[i];
-            if (targetEl.object3D.parent === this.el.object3D) continue; // already holding this one
+            if (targetEl.object3D.parent === grip) continue; // already holding this one
 
             targetEl.object3D.getWorldPosition(this.targetPos);
             if (this.handPos.distanceTo(this.targetPos) < PROXIMITY_HAPTIC_RADIUS) {
@@ -3903,6 +4337,9 @@
 
         init: function () {
           this.lit = false;
+          // A public veto another component can raise: a Zippo with
+          // the lid shut shouldn't catch light off a passing cigar.
+          this.blocked = false;
         },
 
         tipObject: function () {
@@ -3912,7 +4349,7 @@
         },
 
         ignite: function () {
-          if (this.lit) return;
+          if (this.lit || this.blocked) return;
           this.lit = true;
           this.el.emit('ignite', null, false);
         },
@@ -3925,138 +4362,199 @@
       });
 
       // ==============================================================
-      // COMPONENT: boxy-cigar
-      // Long axis along local -Z, the same convention as a gun barrel,
-      // with the origin at the end you put in your mouth. That's what
+      // COMPONENT: boxy-cigar / boxy-match
+      // Both are a stick that burns from the far end, so both are the
+      // same shape of thing: long axis along local -Z (the same
+      // convention as a gun barrel), origin at the end you hold, and a
+      // layout(length, ashLength) the burnable component drives as
+      // they're consumed. Putting the origin at the held end is what
       // makes "cigar in the mouth slot" and "pistol in the mouth slot"
-      // the same operation, and it means a cigar held in your fist
-      // points the same way a barrel would.
+      // the same operation.
       //
-      // Unlike the other visual builders, this one doesn't just build
-      // and forget: a cigar burns down and grows a grey ash tip, so it
-      // exposes layout() and lets the "cigar" component drive it. The
-      // split still holds — the behavior component decides how long
-      // and how ashy, this one decides what that looks like.
+      // These are the only visual builders that don't just build and
+      // forget, because these are the only objects that change shape.
+      // The split still holds: burnable decides how long and how ashy,
+      // these decide what that looks like.
       // ==============================================================
       var CIGAR_LENGTH = 0.13;
+      var MATCH_LENGTH = 0.075;
+
+      // Shared by both, since "a coloured stick with a burnt tip and a
+      // glowing end" is the whole of it.
+      function buildBurnStick(el, options) {
+        var parts = {};
+
+        function stick(radius, color) {
+          var c = document.createElement('a-cylinder');
+          c.setAttribute('radius', radius);
+          c.setAttribute('height', options.length);
+          c.setAttribute('color', color);
+          c.setAttribute('rotation', '90 0 0'); // stand the cylinder's axis up along Z
+          el.appendChild(c);
+          return c;
+        }
+
+        parts.body = stick(options.radius, options.bodyColor);
+        parts.ash = stick(options.radius * 1.02, options.ashColor);
+
+        parts.ember = document.createElement('a-sphere');
+        parts.ember.setAttribute('radius', options.radius * 1.05);
+        parts.ember.setAttribute('material', 'color: ' + options.headColor + '; shader: flat');
+        parts.ember.classList.add('ember');
+        el.appendChild(parts.ember);
+
+        parts.hitbox = createHitbox(0.045, options.length + 0.04, { x: 0, y: 0, z: 0 }, '90 0 0');
+        el.appendChild(parts.hitbox);
+
+        parts.fullLength = options.length;
+        parts.headColor = options.headColor;
+        parts.litColor = options.litColor;
+        return parts;
+      }
+
+      // `length` is how much is left, `ashLength` how much of that tip
+      // has burnt. The ash sits at the far end, the ember rides the
+      // very tip, and the unburnt body fills the rest.
+      function layoutBurnStick(parts, length, ashLength) {
+        ashLength = Math.min(ashLength, length);
+        var solid = length - ashLength;
+
+        parts.body.object3D.scale.y = Math.max(solid / parts.fullLength, 0.0001);
+        parts.body.object3D.position.set(0, 0, -solid / 2);
+        parts.body.setAttribute('visible', solid > 0.001);
+
+        parts.ash.object3D.scale.y = Math.max(ashLength / parts.fullLength, 0.0001);
+        parts.ash.object3D.position.set(0, 0, -(solid + ashLength / 2));
+        parts.ash.setAttribute('visible', ashLength > 0.001);
+
+        parts.ember.object3D.position.set(0, 0, -length);
+        parts.hitbox.object3D.scale.y = (length + 0.04) / (parts.fullLength + 0.04);
+        parts.hitbox.object3D.position.set(0, 0, -length / 2);
+      }
 
       AFRAME.registerComponent('boxy-cigar', {
         init: function () {
-          var el = this.el;
+          this.parts = buildBurnStick(this.el, {
+            length: CIGAR_LENGTH,
+            radius: 0.011,
+            bodyColor: '#5a3a1e',
+            ashColor: '#9c968c',
+            headColor: '#2a1a10',
+            litColor: '#ff7a1a',
+          });
 
-          // Every piece is built at unit length along the cylinder's
-          // own Y axis and then scaled by layout(), which is why the
-          // heights below are all CIGAR_LENGTH and the positions all
-          // get overwritten immediately.
-          this.body = document.createElement('a-cylinder');
-          this.body.setAttribute('radius', 0.011);
-          this.body.setAttribute('height', CIGAR_LENGTH);
-          this.body.setAttribute('color', '#5a3a1e');
-          this.body.setAttribute('rotation', '90 0 0'); // stand the cylinder's axis up along Z
-          el.appendChild(this.body);
-
-          this.ash = document.createElement('a-cylinder');
-          this.ash.setAttribute('radius', 0.0112);
-          this.ash.setAttribute('height', CIGAR_LENGTH);
-          this.ash.setAttribute('color', '#9c968c');
-          this.ash.setAttribute('rotation', '90 0 0');
-          el.appendChild(this.ash);
-
-          this.band = document.createElement('a-cylinder');
-          this.band.setAttribute('radius', 0.0118);
-          this.band.setAttribute('height', 0.018);
-          this.band.setAttribute('color', '#b8892f');
-          this.band.setAttribute('rotation', '90 0 0');
-          this.band.setAttribute('position', { x: 0, y: 0, z: -0.03 });
-          el.appendChild(this.band);
-
-          this.ember = document.createElement('a-sphere');
-          this.ember.setAttribute('radius', 0.0115);
-          this.ember.setAttribute('material', 'color: #2a1a10; shader: flat');
-          this.ember.classList.add('ember');
-          el.appendChild(this.ember);
-
-          this.hitbox = createHitbox(0.045, CIGAR_LENGTH + 0.04, { x: 0, y: 0, z: 0 }, '90 0 0');
-          el.appendChild(this.hitbox);
+          var band = document.createElement('a-cylinder');
+          band.setAttribute('radius', 0.0118);
+          band.setAttribute('height', 0.018);
+          band.setAttribute('color', '#b8892f');
+          band.setAttribute('rotation', '90 0 0');
+          band.setAttribute('position', { x: 0, y: 0, z: -0.03 });
+          this.el.appendChild(band);
 
           this.layout(CIGAR_LENGTH, 0);
         },
 
-        // `length` is how much cigar is left, `ashLength` how much of
-        // that tip has turned to ash. The ash sits at the far end, the
-        // ember rides on the very tip, and the unburnt body fills the
-        // rest.
         layout: function (length, ashLength) {
-          ashLength = Math.min(ashLength, length);
-          var solid = length - ashLength;
-
-          this.body.object3D.scale.y = Math.max(solid / CIGAR_LENGTH, 0.0001);
-          this.body.object3D.position.set(0, 0, -solid / 2);
-          this.body.setAttribute('visible', solid > 0.001);
-
-          this.ash.object3D.scale.y = Math.max(ashLength / CIGAR_LENGTH, 0.0001);
-          this.ash.object3D.position.set(0, 0, -(solid + ashLength / 2));
-          this.ash.setAttribute('visible', ashLength > 0.001);
-
-          this.ember.object3D.position.set(0, 0, -length);
-          this.hitbox.object3D.scale.y = (length + 0.04) / (CIGAR_LENGTH + 0.04);
-          this.hitbox.object3D.position.set(0, 0, -length / 2);
+          layoutBurnStick(this.parts, length, ashLength);
         },
 
         setEmber: function (lit) {
-          this.ember.setAttribute('material', 'color: ' + (lit ? '#ff7a1a' : '#2a1a10') + '; shader: flat');
+          this.parts.ember.setAttribute(
+            'material',
+            'color: ' + (lit ? this.parts.litColor : this.parts.headColor) + '; shader: flat'
+          );
+        },
+      });
+
+      // A match: shorter, thinner, and with a red head that's visible
+      // before it's lit — which matters, because the head is the bit
+      // you have to strike against something.
+      AFRAME.registerComponent('boxy-match', {
+        init: function () {
+          this.parts = buildBurnStick(this.el, {
+            length: MATCH_LENGTH,
+            radius: 0.004,
+            bodyColor: '#d8c9a4',
+            ashColor: '#3a3229',
+            headColor: '#b8321f',
+            litColor: '#ffb02a',
+          });
+
+          // The head's own collider, the same trick a bottle cap uses:
+          // striking THIS against something is what lights it, rather
+          // than waving the match near a surface.
+          var head = document.createElement('a-sphere');
+          head.setAttribute('radius', MATCH_HEAD_RADIUS);
+          head.setAttribute('material', 'opacity: 0; transparent: true; depthWrite: false');
+          head.classList.add('match-head');
+          head.setAttribute('position', { x: 0, y: 0, z: -MATCH_LENGTH });
+          this.el.appendChild(head);
+
+          this.layout(MATCH_LENGTH, 0);
+        },
+
+        layout: function (length, ashLength) {
+          layoutBurnStick(this.parts, length, ashLength);
+        },
+
+        setEmber: function (lit) {
+          this.parts.ember.setAttribute(
+            'material',
+            'color: ' + (lit ? this.parts.litColor : this.parts.headColor) + '; shader: flat'
+          );
         },
       });
 
       // ==============================================================
-      // COMPONENT: cigar
-      // What being lit actually does, and it's more than glowing.
+      // COMPONENT: burnable
+      // Anything that's consumed by being on fire. Owns how much is
+      // left and how much of the tip has turned to ash; drives a
+      // co-located visual component's layout(); and hands the object
+      // over to breakable's hide-and-come-back-later cycle when
+      // there's nothing left, rather than reimplementing that.
       //
-      //   - Ash creeps up from the tip while it burns, greying it out.
-      //     Flick your wrist sharply and the ash falls off as
-      //     particles, leaving the cigar that much shorter. Burn it
-      //     down past a stub and it goes out and is gone — a fresh one
-      //     turns up in the tray, via the same breakable respawn cycle
-      //     a shattered bottle uses.
-      //   - Just having one lit in your mouth trickles nicotine in.
-      //     Holding the tip AT your mouth is a proper draw: nicotine
-      //     climbs several times faster, the ash races, and no smoke
-      //     comes off it at all, because you're taking it in. Pull it
-      //     away and you exhale everything you banked, in one cloud.
+      // Ash comes off two ways, both of them "you shook it":
+      //   - a sharp flick of the wrist (see createFlickDetector), or
+      //   - twirling it off your trigger finger, where the tip is
+      //     whipping round fast enough that ash has no business
+      //     staying on.
+      // The second one exists because twirling a cigar is the single
+      // most obvious thing to try and it did nothing — a spin has no
+      // velocity reversal for a flick detector to notice, so it needs
+      // asking about directly.
       //
-      // Shooting a cigar is handled here rather than by breakable —
-      // an unlit one catches light (that is the intended way to do it,
-      // and yes, it means pointing a loaded pistol at your own face),
-      // and a lit one gets knocked clean out of your teeth.
+      // burnMultiplier is a public field other components set: the
+      // cigar cranks it while you're drawing on one.
       // ==============================================================
-      AFRAME.registerComponent('cigar', {
-        init: function () {
-          this.emberEl = this.el.querySelector('.ember');
-          this.length = CIGAR_LENGTH;
-          this.ash = 0;
-          this.puffTimer = 0;
-          this.bankedSmoke = 0; // puffs suppressed while inhaling, released on the exhale
-          this.inhaling = false;
+      AFRAME.registerComponent('burnable', {
+        schema: {
+          visual: { type: 'string', default: '' }, // co-located component exposing layout()/setEmber()
+          length: { type: 'number', default: CIGAR_LENGTH },
+          ashRate: { type: 'number', default: CIGAR_ASH_RATE }, // meters of tip per second
+          minLength: { type: 'number', default: CIGAR_MIN_LENGTH },
+          ashColor: { type: 'color', default: '#9c968c' },
+          shakeSpeed: { type: 'number', default: CIGAR_SHAKE_SPEED },
+          twirlRate: { type: 'number', default: CIGAR_TWIRL_ASH_RATE }, // rad/s of dangle spin that flings ash off
+        },
 
-          this.mouthEl = document.querySelector('#mouth-anchor');
+        init: function () {
+          this.length = this.data.length;
+          this.ash = 0;
+          this.burnMultiplier = 1;
+
+          this.emberEl = this.el.querySelector('.ember');
           this._tip = new THREE.Vector3();
-          this._prevTip = new THREE.Vector3();
-          this._mouthPos = new THREE.Vector3();
-          this._vel = new THREE.Vector3();
-          this._prevVel = new THREE.Vector3();
-          this._hasPrevTip = false;
+          this.flick = createFlickDetector(this.data.shakeSpeed, CIGAR_SHAKE_REVERSAL);
 
           this.onIgnite = this.onIgnite.bind(this);
-          this.onShot = this.onShot.bind(this);
+          this.onExtinguish = this.onExtinguish.bind(this);
           this.el.addEventListener('ignite', this.onIgnite);
-          this.el.addEventListener('shot', this.onShot);
-          this.el.addEventListener('click', this.onShot);
+          this.el.addEventListener('extinguish', this.onExtinguish);
         },
 
         remove: function () {
           this.el.removeEventListener('ignite', this.onIgnite);
-          this.el.removeEventListener('shot', this.onShot);
-          this.el.removeEventListener('click', this.onShot);
+          this.el.removeEventListener('extinguish', this.onExtinguish);
         },
 
         isLit: function () {
@@ -4068,6 +4566,167 @@
           this.setEmber(true);
           this.tipWorldPosition(this._tip);
           spawnSparks(this._tip, 6);
+        },
+
+        onExtinguish: function () {
+          this.setEmber(false);
+        },
+
+        tick: function (time, dt) {
+          var dtSeconds = Math.min((dt || 16) / 1000, 0.05);
+          var lit = this.isLit();
+
+          var source = this.el.components['ignition-source'];
+          if (source) source.hot = lit;
+
+          this.checkShake(dtSeconds);
+          if (!lit) return;
+
+          var rate = this.data.ashRate * this.burnMultiplier;
+          this.ash = Math.min(this.ash + rate * dtSeconds, this.length);
+          this.applyLayout();
+
+          // Never tapped, so it burnt all the way down. Note this is
+          // the slow way to lose one — knocking the ash off is what
+          // actually shortens it.
+          if (this.length - this.ash <= 0.003) this.burnOut();
+        },
+
+        checkShake: function (dtSeconds) {
+          if (this.ash <= 0.0005) {
+            this.tipWorldPosition(this._tip);
+            this.flick.update(this._tip, dtSeconds);
+            return;
+          }
+
+          var holsterable = this.el.components.holsterable;
+          if (
+            holsterable &&
+            holsterable.state === 'dangling' &&
+            holsterable.angularVelocity.length() > this.data.twirlRate
+          ) {
+            this.dropAsh();
+            return;
+          }
+
+          this.tipWorldPosition(this._tip);
+          if (this.flick.update(this._tip, dtSeconds)) this.dropAsh();
+        },
+
+        // The ash breaks off and it's that much shorter for good.
+        dropAsh: function () {
+          var lost = this.ash;
+          this.ash = 0;
+          this.length = Math.max(this.length - lost, 0);
+
+          this.tipWorldPosition(this._tip);
+          spawnDebris(this._tip, {
+            count: 5,
+            color: this.data.ashColor,
+            size: 0.012,
+            speed: 0.9,
+            life: 1400,
+          });
+
+          if (this.length <= this.data.minLength) this.burnOut();
+          else this.applyLayout();
+        },
+
+        // Nothing left. Goes through breakable's hide/respawn cycle
+        // rather than reimplementing it — see that component's
+        // autoShatter note.
+        burnOut: function () {
+          var lightable = this.el.components.lightable;
+          if (lightable) lightable.extinguish();
+          this.setEmber(false);
+          this.el.emit('burnt-out', null, false);
+
+          var holsterable = this.el.components.holsterable;
+          if (holsterable) {
+            if (holsterable.hand) {
+              var handRig = holsterable.hand.components['hand-rig'];
+              if (handRig) handRig.forget(this.el);
+            }
+            holsterable.vacateSlot();
+          }
+
+          var breakable = this.el.components.breakable;
+          if (breakable) breakable.shatter(false);
+        },
+
+        // Called by breakable when a burnt-out one comes back: fresh,
+        // full length, unlit.
+        restore: function () {
+          this.length = this.data.length;
+          this.ash = 0;
+          this.burnMultiplier = 1;
+          this.flick.reset();
+          this.setEmber(false);
+          this.applyLayout();
+        },
+
+        applyLayout: function () {
+          var visual = this.data.visual && this.el.components[this.data.visual];
+          if (visual) visual.layout(this.length, this.ash);
+        },
+
+        setEmber: function (lit) {
+          var visual = this.data.visual && this.el.components[this.data.visual];
+          if (visual) visual.setEmber(lit);
+        },
+
+        tipWorldPosition: function (out) {
+          if (this.emberEl) this.emberEl.object3D.getWorldPosition(out);
+          else this.el.object3D.getWorldPosition(out);
+          return out;
+        },
+      });
+
+      // ==============================================================
+      // COMPONENT: cigar
+      // Everything about a cigar that isn't just "it burns," which is
+      // burnable's job now. What's left is your mouth:
+      //
+      //   - one lit in your mouth trickles nicotine in;
+      //   - holding the tip AT your mouth is a proper draw, which
+      //     climbs several times faster, cranks burnable's rate, and
+      //     stops any smoke coming off it, because you're taking it
+      //     in. Pull it away and you exhale the whole banked cloud.
+      //
+      // Shooting a cigar is handled here rather than by breakable — an
+      // unlit one catches light (that is the intended way to do it,
+      // and yes, it means pointing a loaded pistol at your own face),
+      // and a lit one gets knocked clean out of your teeth.
+      // ==============================================================
+      AFRAME.registerComponent('cigar', {
+        init: function () {
+          this.puffTimer = 0;
+          this.bankedSmoke = 0; // puffs suppressed while inhaling, released on the exhale
+          this.inhaling = false;
+
+          this.mouthEl = document.querySelector('#mouth-anchor');
+          this._tip = new THREE.Vector3();
+          this._mouthPos = new THREE.Vector3();
+          this._forward = new THREE.Vector3();
+          this._quat = new THREE.Quaternion();
+
+          this.onShot = this.onShot.bind(this);
+          this.el.addEventListener('shot', this.onShot);
+          this.el.addEventListener('click', this.onShot);
+        },
+
+        remove: function () {
+          this.el.removeEventListener('shot', this.onShot);
+          this.el.removeEventListener('click', this.onShot);
+        },
+
+        burnable: function () {
+          return this.el.components.burnable;
+        },
+
+        isLit: function () {
+          var burnable = this.burnable();
+          return !!(burnable && burnable.isLit());
         },
 
         // A lit cigar shot out of your mouth: it goes out, leaves your
@@ -4082,90 +4741,49 @@
             return;
           }
 
-          this.extinguish();
-          this.detach();
+          lightable.extinguish();
+          this.releaseBankedSmoke();
+          this.inhaling = false;
+
           var holsterable = this.el.components.holsterable;
-          if (holsterable) {
+          if (holsterable && holsterable.state !== 'falling') {
+            if (holsterable.hand) {
+              var handRig = holsterable.hand.components['hand-rig'];
+              if (handRig) handRig.forget(this.el);
+            }
+            holsterable.vacateSlot();
+            holsterable.startFalling();
             holsterable.fallVelocity.set((Math.random() - 0.5) * 1.5, 1.2, (Math.random() - 0.5) * 1.5);
             holsterable.angularVelocity.set(Math.random() * 8, Math.random() * 8, 0);
           }
 
-          this.tipWorldPosition(this._tip);
-          spawnSparks(this._tip, 10);
+          var burnable = this.burnable();
+          if (burnable) {
+            burnable.tipWorldPosition(this._tip);
+            spawnSparks(this._tip, 10);
+          }
         },
 
         tick: function (time, dt) {
           var dtSeconds = Math.min((dt || 16) / 1000, 0.05);
-          var lit = this.isLit();
+          var burnable = this.burnable();
+          if (!burnable) return;
 
-          var source = this.el.components['ignition-source'];
-          if (source) source.hot = lit;
-
-          this.trackTipMotion(dtSeconds);
-          if (!lit) {
+          if (!burnable.isLit()) {
             this.releaseBankedSmoke();
             this.inhaling = false;
+            burnable.burnMultiplier = 1;
             return;
           }
 
-          this.updateDraw(dtSeconds);
-          this.updateAsh(dtSeconds);
-          this.updateSmoke(dtSeconds);
-        },
-
-        // Tip velocity, kept frame to frame so a shake can be told
-        // apart from a sweep: a sweep keeps going the same way, a
-        // shake reverses.
-        trackTipMotion: function (dtSeconds) {
-          this.tipWorldPosition(this._tip);
-          if (!this._hasPrevTip || dtSeconds <= 0) {
-            this._prevTip.copy(this._tip);
-            this._hasPrevTip = true;
-            return;
-          }
-
-          this._prevVel.copy(this._vel);
-          this._vel.copy(this._tip).sub(this._prevTip).divideScalar(dtSeconds);
-          this._prevTip.copy(this._tip);
-
-          if (!this.ash) return;
-          if (this._vel.length() < CIGAR_SHAKE_SPEED) return;
-          if (this._prevVel.length() < CIGAR_SHAKE_SPEED) return;
-
-          // Normalized dot of successive velocities: strongly negative
-          // means the tip snapped back the other way, which is a flick
-          // and not a wave.
-          var dot =
-            this._vel.dot(this._prevVel) / (this._vel.length() * this._prevVel.length());
-          if (dot < CIGAR_SHAKE_REVERSAL) this.dropAsh();
-        },
-
-        // The ash breaks off and the cigar is that much shorter for
-        // good. This is the only thing that actually consumes one, so
-        // a cigar you never tap lasts until the ash reaches your
-        // fingers.
-        dropAsh: function () {
-          var lost = this.ash;
-          this.ash = 0;
-          this.length = Math.max(this.length - lost, 0);
-
-          this.tipWorldPosition(this._tip);
-          spawnDebris(this._tip, {
-            count: 5,
-            color: '#9c968c',
-            size: 0.012,
-            speed: 0.9,
-            life: 1400,
-          });
-
-          if (this.length <= CIGAR_MIN_LENGTH) this.burnOut();
-          else this.applyLayout();
+          this.updateDraw(burnable, dtSeconds);
+          this.updateSmoke(burnable, dtSeconds);
         },
 
         // Is the tip at your mouth? That's a draw: nicotine much
         // faster, ash much faster, and the smoke goes into you instead
         // of into the room.
-        updateDraw: function (dtSeconds) {
+        updateDraw: function (burnable, dtSeconds) {
           var holsterable = this.el.components.holsterable;
           var inMouth = holsterable && holsterable.currentSlotEl === this.mouthEl;
           var wasInhaling = this.inhaling;
@@ -4173,9 +4791,11 @@
 
           if (holsterable && holsterable.state === 'held' && this.mouthEl) {
             this.mouthEl.object3D.getWorldPosition(this._mouthPos);
-            this.tipWorldPosition(this._tip);
+            burnable.tipWorldPosition(this._tip);
             this.inhaling = this._tip.distanceTo(this._mouthPos) < CIGAR_INHALE_RADIUS;
           }
+
+          burnable.burnMultiplier = this.inhaling ? CIGAR_ASH_INHALE_MULTIPLIER : 1;
 
           if (this.inhaling) addNicotine(NICOTINE_PER_INHALE * dtSeconds);
           else if (inMouth) addNicotine(NICOTINE_PER_CIGAR_PASSIVE * dtSeconds);
@@ -4183,18 +4803,7 @@
           if (wasInhaling && !this.inhaling) this.releaseBankedSmoke();
         },
 
-        updateAsh: function (dtSeconds) {
-          var rate = CIGAR_ASH_RATE * (this.inhaling ? CIGAR_ASH_INHALE_MULTIPLIER : 1);
-          this.ash = Math.min(this.ash + rate * dtSeconds, this.length);
-          this.applyLayout();
-
-          // Never tapped, so it ashed all the way to the band. Note
-          // this is the slow way to lose a cigar — knocking the ash
-          // off is what actually shortens it.
-          if (this.length - this.ash <= 0.003) this.burnOut();
-        },
-
-        updateSmoke: function (dtSeconds) {
+        updateSmoke: function (burnable, dtSeconds) {
           this.puffTimer -= dtSeconds * 1000;
           if (this.puffTimer > 0) return;
           this.puffTimer = CIGAR_PUFF_INTERVAL_MS * (0.7 + Math.random() * 0.6);
@@ -4206,8 +4815,8 @@
             return;
           }
 
-          this.tipWorldPosition(this._tip);
-          spawnSmoke(this._tip, null, 0.55);
+          burnable.tipWorldPosition(this._tip);
+          spawnSmoke(this._tip, null, 0.5);
         },
 
         // Everything you drew in, back out at once, from your mouth
@@ -4219,75 +4828,290 @@
           }
 
           this.mouthEl.object3D.getWorldPosition(this._mouthPos);
-          var forward = new THREE.Vector3(0, 0, -1).applyQuaternion(
-            this.mouthEl.object3D.getWorldQuaternion(new THREE.Quaternion())
-          );
+          this.mouthEl.object3D.getWorldQuaternion(this._quat);
+          this._forward.set(0, 0, -1).applyQuaternion(this._quat);
 
           for (var i = 0; i < this.bankedSmoke; i++) {
-            spawnSmoke(this._mouthPos, forward.clone().multiplyScalar(0.9 + Math.random() * 0.5), 0.9);
+            spawnSmoke(this._mouthPos, this._forward.clone().multiplyScalar(0.9 + Math.random() * 0.5), 0.85);
           }
           this.bankedSmoke = 0;
         },
+      });
 
-        extinguish: function () {
+      // ==============================================================
+      // COMPONENT: match
+      // A match is a burnable you light by striking, using exactly the
+      // machinery a bottle cap uses to come off: its head carries a
+      // small collider, and driving THAT down through a hard surface
+      // is what does it (see findHardSurfaceStrike). Everything after
+      // the strike — burning down, ash, going out, coming back in the
+      // box — is burnable's, and being a fire source at all is
+      // ignition-source's. There is nothing else to a match.
+      // ==============================================================
+      AFRAME.registerComponent('match', {
+        init: function () {
+          this.headEl = this.el.querySelector('.match-head');
+          this._head = new THREE.Vector3();
+          this._prevHead = new THREE.Vector3();
+          this._lastHead = new THREE.Vector3(); // where the head was last frame, kept while _prevHead advances
+          this._hasPrev = false;
+
+          this.onShot = this.onShot.bind(this);
+          this.el.addEventListener('shot', this.onShot);
+          this.el.addEventListener('click', this.onShot);
+        },
+
+        remove: function () {
+          this.el.removeEventListener('shot', this.onShot);
+          this.el.removeEventListener('click', this.onShot);
+        },
+
+        onShot: function () {
+          var lightable = this.el.components.lightable;
+          if (lightable) lightable.ignite();
+        },
+
+        tick: function (time, dt) {
+          if (!this.headEl) return;
+
+          var lightable = this.el.components.lightable;
+          var holsterable = this.el.components.holsterable;
+          if (!lightable || !holsterable) return;
+
+          var dtSeconds = Math.min((dt || 16) / 1000, 0.05);
+          if (dtSeconds <= 0) return;
+
+          this.headEl.object3D.getWorldPosition(this._head);
+          var hadPrev = this._hasPrev;
+          var speed = hadPrev ? (this._prevHead.y - this._head.y) / dtSeconds : 0;
+          this._lastHead.copy(this._prevHead);
+          this._prevHead.copy(this._head);
+          this._hasPrev = true;
+
+          if (lightable.lit) return;
+          if (!hadPrev || holsterable.state !== 'held') return;
+          // A snap blend is the game moving the match, not you
+          // striking it, and it's fast enough to read as a strike.
+          if (holsterable._heldElapsed < BOTTLE_STRIKE_GRACE_MS) return;
+
+          if (findHardSurfaceStrike(this._lastHead, this._head, speed, MATCH_HEAD_RADIUS)) {
+            lightable.ignite();
+            spawnSparks(this._head, 10);
+            playClink();
+          }
+        },
+      });
+
+
+      // ==============================================================
+      // COMPONENT: boxy-zippo
+      // A lighter, built the same "pile of primitives" way as
+      // everything else. The lid is a separate entity hinged along the
+      // top back edge so it can swing open, the wick sits just inside
+      // the chimney, and the flame is a cone that only exists while
+      // it's lit. Origin at the middle of the body, where your fingers
+      // would close around it.
+      // ==============================================================
+      AFRAME.registerComponent('boxy-zippo', {
+        init: function () {
+          var el = this.el;
+          var brass = '#b9962e';
+          var steel = '#8d8f94';
+
+          function box(w, h, d, pos, color, parent) {
+            var b = document.createElement('a-box');
+            b.setAttribute('width', w);
+            b.setAttribute('height', h);
+            b.setAttribute('depth', d);
+            b.setAttribute('position', pos);
+            b.setAttribute('color', color);
+            (parent || el).appendChild(b);
+            return b;
+          }
+
+          box(0.032, 0.042, 0.016, '0 -0.008 0', brass); // body
+          box(0.026, 0.006, 0.013, '0 0.015 0', steel); // chimney deck
+
+          // The lid, hinged at the top BACK edge: the hinge entity
+          // sits on that edge and the lid panel hangs forward from it,
+          // so rotating the hinge on X swings the lid up and back the
+          // way a real one does.
+          this.hinge = document.createElement('a-entity');
+          this.hinge.setAttribute('position', { x: 0, y: 0.018, z: 0.008 });
+          el.appendChild(this.hinge);
+
+          box(0.032, 0.026, 0.016, '0 0.013 -0.008', brass, this.hinge);
+
+          var wick = document.createElement('a-cylinder');
+          wick.setAttribute('radius', 0.0018);
+          wick.setAttribute('height', 0.008);
+          wick.setAttribute('color', '#2a2420');
+          wick.setAttribute('position', { x: 0, y: 0.021, z: 0 });
+          el.appendChild(wick);
+
+          this.flameEl = document.createElement('a-entity');
+          this.flameEl.setAttribute('geometry', {
+            primitive: 'cone',
+            radiusBottom: 0.007,
+            radiusTop: 0.0004,
+            height: 0.03,
+          });
+          this.flameEl.setAttribute('material', 'color: #ffb02a; shader: flat; transparent: true; opacity: 0.9');
+          this.flameEl.setAttribute('position', { x: 0, y: 0.038, z: 0 });
+          this.flameEl.setAttribute('visible', false);
+          this.flameEl.classList.add('flame');
+          el.appendChild(this.flameEl);
+
+          el.appendChild(createHitbox(0.04, 0.08, { x: 0, y: 0, z: 0 }));
+        },
+
+        setLid: function (openFraction) {
+          this.hinge.object3D.rotation.x = (ZIPPO_LID_OPEN_DEG * openFraction * Math.PI) / 180;
+        },
+
+        setFlame: function (lit, scale) {
+          this.flameEl.setAttribute('visible', lit);
+          if (lit) this.flameEl.object3D.scale.set(1, scale, 1);
+        },
+      });
+
+      // ==============================================================
+      // COMPONENT: zippo
+      // The behavior: a lid that opens and closes, and a flame that
+      // can only exist while it's open.
+      //
+      // Two ways to work the lid, because both are things people will
+      // try: pull the trigger (through hand-rig's generic press
+      // dispatch — see useHeldObject), or flick your wrist, which
+      // reuses the same flick detector that knocks ash off a cigar. A
+      // face button strikes it. Closing the lid snuffs it, which is
+      // the one rule a Zippo really has.
+      //
+      // While lit and open it's an ordinary ignition-source, so it
+      // lights cigars and matches through exactly the same proximity
+      // check a hot barrel does, and needed no code of its own to do
+      // that.
+      // ==============================================================
+      AFRAME.registerComponent('zippo', {
+        init: function () {
+          this.open = false;
+          this.lidFraction = 0; // 0 shut, 1 fully back
+          this.flickerPhase = Math.random() * 10;
+
+          this._lidTip = new THREE.Vector3();
+          this.flick = createFlickDetector(ZIPPO_FLICK_SPEED, ZIPPO_FLICK_REVERSAL);
+
+          this.onShot = this.onShot.bind(this);
+          this.el.addEventListener('shot', this.onShot);
+          this.el.addEventListener('click', this.onShot);
+        },
+
+        remove: function () {
+          this.el.removeEventListener('shot', this.onShot);
+          this.el.removeEventListener('click', this.onShot);
+        },
+
+        visual: function () {
+          return this.el.components['boxy-zippo'];
+        },
+
+        isLit: function () {
+          var lightable = this.el.components.lightable;
+          return !!(lightable && lightable.lit);
+        },
+
+        // Trigger: work the lid.
+        onTriggerUse: function () {
+          this.toggleLid();
+        },
+
+        // Face button: strike it. Only catches with the lid open,
+        // which is the entire ritual.
+        onFaceButtonUse: function () {
+          if (!this.open) return;
+          var lightable = this.el.components.lightable;
+          if (lightable && !lightable.lit) {
+            lightable.ignite();
+            playClink();
+          }
+        },
+
+        // Shooting a lighter is not something anyone should do, so it
+        // simply snaps the lid shut and puts it out.
+        onShot: function () {
+          if (this.open) this.toggleLid();
+        },
+
+        toggleLid: function () {
+          this.open = !this.open;
+          playClink();
+
+          // Updated here as well as in tick so the invariant holds
+          // immediately: open the lid and strike it in the same frame
+          // and it lights, rather than silently refusing because the
+          // veto hadn't been cleared yet.
+          var lightable = this.el.components.lightable;
+          if (lightable) lightable.blocked = !this.open;
+
+          if (!this.open) this.snuff();
+        },
+
+        snuff: function () {
           var lightable = this.el.components.lightable;
           if (lightable) lightable.extinguish();
-          this.setEmber(false);
-          this.releaseBankedSmoke();
-          this.inhaling = false;
         },
 
-        // Out of cigar. Goes through breakable's hide/respawn cycle
-        // rather than reimplementing it — see that component's
-        // autoShatter note.
-        burnOut: function () {
-          this.extinguish();
-          this.detach();
+        tick: function (time, dt) {
+          var dtSeconds = Math.min((dt || 16) / 1000, 0.05);
+          var visual = this.visual();
+          if (!visual) return;
 
-          var breakable = this.el.components.breakable;
-          if (breakable) breakable.shatter(false);
-        },
+          // Lid animation, driven straight rather than through
+          // A-Frame's animation component, for the same reason
+          // everything else here writes object3D directly.
+          var target = this.open ? 1 : 0;
+          var step = (ZIPPO_LID_SPEED_DEG / Math.abs(ZIPPO_LID_OPEN_DEG)) * dtSeconds;
+          if (this.lidFraction < target) this.lidFraction = Math.min(this.lidFraction + step, target);
+          else if (this.lidFraction > target) this.lidFraction = Math.max(this.lidFraction - step, target);
+          visual.setLid(this.lidFraction);
 
-        // Prised out of a mouth, a fist, or a tray without going
-        // through a normal release.
-        detach: function () {
-          var holsterable = this.el.components.holsterable;
-          if (!holsterable) return;
+          this.checkFlick(dtSeconds, visual);
 
-          if (holsterable.hand) {
-            var handRig = holsterable.hand.components['hand-rig'];
-            if (handRig) handRig.forget(this.el);
+          var lit = this.isLit();
+          var flicker = 0.75 + 0.25 * Math.sin((time / 1000) * ZIPPO_FLAME_FLICKER_HZ + this.flickerPhase);
+          visual.setFlame(lit, flicker);
+
+          // Only a lit, open lighter is a fire source. Closing it mid-
+          // burn snuffs it via toggleLid, so this is belt and braces.
+          var source = this.el.components['ignition-source'];
+          if (source) source.hot = lit && this.lidFraction > 0.5;
+
+          // Shut, it isn't lightable by anything either — no catching
+          // fire in your pocket off a stray hot barrel.
+          var lightable = this.el.components.lightable;
+          if (lightable) lightable.blocked = !this.open;
+
+          // A lit flame gives off the occasional thread of smoke.
+          this.smokeTimer = (this.smokeTimer || 0) - dtSeconds * 1000;
+          if (lit && this.smokeTimer <= 0) {
+            this.smokeTimer = 900 + Math.random() * 600;
+            visual.flameEl.object3D.getWorldPosition(this._lidTip);
+            spawnSmoke(this._lidTip, null, 0.3);
           }
-          holsterable.vacateSlot();
-          if (holsterable.state !== 'falling') holsterable.startFalling();
         },
 
-        // Called by breakable when a burnt-out cigar comes back to the
-        // tray: a fresh one, full length and unlit.
-        restore: function () {
-          this.length = CIGAR_LENGTH;
-          this.ash = 0;
-          this.bankedSmoke = 0;
-          this.inhaling = false;
-          this._hasPrevTip = false;
-          this.setEmber(false);
-          this.applyLayout();
-        },
+        // A sharp flick of the wrist works the lid too. Measured at
+        // the lid rather than the body so a rotation counts as motion
+        // — the same detector the cigar uses to shed ash.
+        checkFlick: function (dtSeconds, visual) {
+          var holsterable = this.el.components.holsterable;
+          if (!holsterable || holsterable.state !== 'held') {
+            this.flick.reset();
+            return;
+          }
 
-        applyLayout: function () {
-          var boxy = this.el.components['boxy-cigar'];
-          if (boxy) boxy.layout(this.length, this.ash);
-        },
-
-        setEmber: function (lit) {
-          var boxy = this.el.components['boxy-cigar'];
-          if (boxy) boxy.setEmber(lit);
-        },
-
-        tipWorldPosition: function (out) {
-          if (this.emberEl) this.emberEl.object3D.getWorldPosition(out);
-          else this.el.object3D.getWorldPosition(out);
-          return out;
+          visual.hinge.object3D.getWorldPosition(this._lidTip);
+          if (this.flick.update(this._lidTip, dtSeconds)) this.toggleLid();
         },
       });
 
@@ -4335,6 +5159,8 @@
           this.buildCounterBottles();
           this.buildShelfBottles();
           this.buildCigarBox();
+          this.buildMatchbox();
+          this.buildLighter();
 
           // Two spare sockets on the bar for whatever you're carrying —
           // a place to set your gun down, or your hat, while you drink.
@@ -4385,6 +5211,10 @@
             heldRotation: { x: -90, y: 0, z: 0 }, // same convention as the guns — see the RECOIL comment block
             grabRadius: 0.16,
             comOffset: { x: 0, y: -0.12, z: 0 },
+            // Deliberately unphysical: a real bottle's arc is over
+            // before you've drawn, and the whole point of throwing one
+            // is to shoot it down. Slowing its fall buys that time.
+            gravityScale: 0.6,
           });
           el.setAttribute('boxy-bottle', { glass: color });
           el.setAttribute('bottle', '');
@@ -4452,6 +5282,7 @@
               comOffset: { x: 0, y: 0, z: -0.065 },
             });
             el.setAttribute('boxy-cigar', '');
+            el.setAttribute('burnable', { visual: 'boxy-cigar' });
             el.setAttribute('cigar', '');
             el.setAttribute('lightable', { tipSelector: '.ember' });
             el.setAttribute('ignition-source', { tipSelector: '.ember' });
@@ -4469,6 +5300,80 @@
             });
             this.el.sceneEl.appendChild(el);
           }
+        },
+
+        // Matches, in a little box next to the cigars. Almost all of
+        // this is the same declaration a cigar gets — the differences
+        // are which visual builder it uses and how fast it burns,
+        // which is the point.
+        buildMatchbox: function () {
+          var boxX = 0.24; // beside the cigar tray, both on the near row where they're easiest to reach
+          var boxZ = BAR_NEAR_ROW_Z;
+          this.addBox(0.16, 0.035, 0.11, { x: boxX, y: BAR_TOP_Y + 0.018, z: boxZ }, '#7a4a2a');
+
+          var spacing = 0.035;
+          var startX = boxX - ((MATCH_COUNT - 1) * spacing) / 2;
+
+          for (var i = 0; i < MATCH_COUNT; i++) {
+            var slotId = this.addSlot({ x: startX + i * spacing, y: BAR_TOP_Y + 0.042, z: boxZ }, 'small', {});
+
+            var el = document.createElement('a-entity');
+            el.classList.add('grabbable');
+            el.classList.add('shootable');
+            el.setAttribute('holsterable', {
+              holsterSelector: '#' + slotId,
+              itemSize: 'small',
+              holsterRotation: { x: 0, y: 0, z: 0 },
+              heldRotation: { x: -90, y: 0, z: 0 },
+              grabRadius: 0.1,
+              comOffset: { x: 0, y: 0, z: -0.04 },
+            });
+            el.setAttribute('boxy-match', '');
+            el.setAttribute('burnable', {
+              visual: 'boxy-match',
+              length: MATCH_LENGTH,
+              ashRate: MATCH_ASH_RATE,
+              minLength: MATCH_MIN_LENGTH,
+              ashColor: '#3a3229',
+            });
+            el.setAttribute('match', '');
+            el.setAttribute('lightable', { tipSelector: '.ember' });
+            el.setAttribute('ignition-source', { tipSelector: '.ember' });
+            el.setAttribute('breakable', {
+              autoShatter: false,
+              sound: false,
+              shards: 3,
+              color: '#3a3229',
+              score: 0,
+              respawnMs: MATCH_RESPAWN_MS,
+            });
+            this.el.sceneEl.appendChild(el);
+          }
+        },
+
+        // One Zippo, sitting on the bar. Unlike the matches it never
+        // runs out, so it has no burnable and no breakable — just a
+        // lid, a flame, and the same ignition-source contract
+        // everything else lights from.
+        buildLighter: function () {
+          var slotId = this.addSlot({ x: -0.5, y: BAR_TOP_Y + 0.025, z: BAR_NEAR_ROW_Z }, 'small', {});
+
+          var el = document.createElement('a-entity');
+          el.classList.add('grabbable');
+          el.classList.add('shootable');
+          el.setAttribute('holsterable', {
+            holsterSelector: '#' + slotId,
+            itemSize: 'small',
+            holsterRotation: { x: 0, y: 0, z: 0 },
+            heldRotation: { x: -90, y: 0, z: 0 },
+            grabRadius: 0.11,
+            comOffset: { x: 0, y: -0.02, z: 0 },
+          });
+          el.setAttribute('boxy-zippo', '');
+          el.setAttribute('zippo', '');
+          el.setAttribute('lightable', { tipSelector: '.flame' });
+          el.setAttribute('ignition-source', { tipSelector: '.flame' });
+          this.el.sceneEl.appendChild(el);
         },
       });
 
@@ -4544,144 +5449,99 @@
 
       // ==============================================================
       // COMPONENT: booze-overlay
-      // The visual half of being drunk: a soft tunnel vignette that
-      // closes in from the edges, and a warm tint that pulses slowly
-      // over the whole view.
+      // The visual half of being drunk: a tunnel vignette closing in
+      // from the edges plus a warm tint over the whole view, both
+      // pulsing slowly.
       //
-      // Both are quads parented to the camera and therefore rigidly
-      // locked to your head. That's the entire safety argument: they
-      // never move relative to your view, so there's no motion for
-      // your inner ear to disagree with. Anything that drifted or
-      // rolled independently would be a reliable way to make someone
-      // genuinely ill, which is why the drunk effects deliberately
-      // stop at "your hands are unreliable and the world looks warm"
-      // rather than touching the camera at all.
+      // It is drawn as a single quad in CLIP SPACE — the vertex shader
+      // writes gl_Position directly from the vertex positions and
+      // never looks at the camera at all. That's deliberate and it's
+      // the third attempt at this. A quad placed in the world in front
+      // of the camera only works if it exactly matches the frustum at
+      // that distance: too small and you see a rectangle floating in
+      // front of you, too big and the entire gradient falls outside
+      // your field of view, so every pixel you can actually see
+      // samples the clear middle and the effect is invisible. Matching
+      // the frustum means knowing the FOV, and in WebXR there is no
+      // single FOV to know — the runtime substitutes two per-eye
+      // projection matrices, and any hardcoded guess is a guess. In
+      // clip space there is nothing to get wrong: the quad covers
+      // exactly the viewport, per eye, at any FOV, on any device.
       //
-      // depthTest is off and renderOrder is high so these draw over
-      // the scene regardless of what's in front of the camera —
-      // including a bottle you're currently holding up to your face.
+      // The safety argument is unchanged and is the whole reason the
+      // drunk effects are allowed to be visual at all: this is rigidly
+      // locked to your view, so there is no relative motion for your
+      // inner ear to disagree with. Nothing here — and nothing
+      // anywhere else in the alcohol code — moves the camera.
       // ==============================================================
-      var VIGNETTE_DISTANCE = 0.32; // meters in front of the camera
-      var VIGNETTE_MAX_OPACITY = 0.7;
-      var TINT_MAX_OPACITY = 0.22;
+      var VIGNETTE_MAX = 0.92; // peak darkness of the closed-in tunnel
+      var TINT_MAX = 0.3; // peak warm wash over everything
       var TINT_PULSE_HZ = 0.35;
-      var VR_FOV_DEG = 95; // assumed per-eye vertical FOV in a headset, where the desktop camera's own fov stops being meaningful
-      var VR_ASPECT = 1;
+      var VIGNETTE_CURVE = 0.65; // <1 pushes the effect earlier, so being a bit drunk still reads
 
       AFRAME.registerComponent('booze-overlay', {
         init: function () {
-          this.vignette = this.buildLayer(this.makeVignetteTexture(), null, -0.0001);
-          this.tint = this.buildLayer(null, '#c25a3a', 0);
+          var vertexShader = [
+            'varying vec2 vUv;',
+            'void main() {',
+            // position.xy spans -0.5..0.5 on a unit plane; doubling it
+            // spans the full -1..1 of clip space. z is pinned just
+            // inside the far plane and depth testing is off anyway.
+            '  vUv = uv;',
+            '  gl_Position = vec4(position.xy * 2.0, 0.0, 1.0);',
+            '}',
+          ].join('\n');
 
-          // The quads have to match the camera frustum, not merely be
-          // "big." Sized generously the first time round, the entire
-          // gradient fell outside the visible view and the vignette
-          // was invisible — every pixel on screen was sampling the
-          // clear middle of the texture.
-          this.applySize = this.applySize.bind(this);
-          this.applySize();
-          window.addEventListener('resize', this.applySize);
-          this.el.sceneEl.addEventListener('enter-vr', this.applySize);
-          this.el.sceneEl.addEventListener('exit-vr', this.applySize);
+          var fragmentShader = [
+            'varying vec2 vUv;',
+            'uniform float amount;',
+            'uniform vec3 tintColor;',
+            'uniform vec3 edgeColor;',
+            'void main() {',
+            '  float r = length(vUv - vec2(0.5)) * 2.0;', // 0 at center, ~1.41 at the corners
+            '  float tunnel = smoothstep(0.55, 1.3, r);',
+            '  float alpha = clamp(tunnel * amount * ' + VIGNETTE_MAX.toFixed(2) + ' + amount * ' + TINT_MAX.toFixed(2) + ', 0.0, 1.0);',
+            '  vec3 color = mix(tintColor, edgeColor, tunnel);',
+            '  gl_FragColor = vec4(color, alpha);',
+            '}',
+          ].join('\n');
+
+          this.material = new THREE.ShaderMaterial({
+            uniforms: {
+              amount: { value: 0 },
+              tintColor: { value: new THREE.Color('#c25a3a') },
+              edgeColor: { value: new THREE.Color('#0a060c') },
+            },
+            vertexShader: vertexShader,
+            fragmentShader: fragmentShader,
+            transparent: true,
+            depthTest: false,
+            depthWrite: false,
+          });
+
+          this.mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), this.material);
+          this.mesh.frustumCulled = false; // its vertices are in clip space; culling them against a frustum is meaningless
+          this.mesh.renderOrder = 10000; // last, over everything, including anything held up to your face
+          this.mesh.visible = false;
+          this.el.setObject3D('overlay', this.mesh);
         },
 
         remove: function () {
-          window.removeEventListener('resize', this.applySize);
-          this.el.sceneEl.removeEventListener('enter-vr', this.applySize);
-          this.el.sceneEl.removeEventListener('exit-vr', this.applySize);
-        },
-
-        applySize: function () {
-          var sceneEl = this.el.sceneEl;
-          var camera = sceneEl.camera;
-          var inVR = sceneEl.is('vr-mode');
-
-          var fov = inVR ? VR_FOV_DEG : (camera && camera.fov) || 80;
-          var aspect = inVR ? VR_ASPECT : (camera && camera.aspect) || 1.6;
-
-          var height = 2 * VIGNETTE_DISTANCE * Math.tan((fov * Math.PI) / 360);
-          var width = height * aspect;
-
-          [this.vignette, this.tint].forEach(function (el) {
-            el.setAttribute('width', width);
-            el.setAttribute('height', height);
-          });
-        },
-
-        // A radial gradient painted into a canvas: clear in the middle,
-        // opaque black at the corners. Generated rather than shipped
-        // as an asset for the same reason the sounds are synthesized —
-        // it's a handful of lines and it keeps the prototype a single
-        // self-contained file.
-        makeVignetteTexture: function () {
-          var size = 256;
-          var canvas = document.createElement('canvas');
-          canvas.width = canvas.height = size;
-
-          var ctx = canvas.getContext('2d');
-          var gradient = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size * 0.56);
-          // The clear middle is deliberately generous: the HUD text
-          // sits about 20 degrees below center and has to stay
-          // readable at the exact moment you most want to check how
-          // drunk you are.
-          gradient.addColorStop(0, 'rgba(10, 6, 12, 0)');
-          gradient.addColorStop(0.42, 'rgba(10, 6, 12, 0)');
-          gradient.addColorStop(0.62, 'rgba(10, 6, 12, 0.3)');
-          gradient.addColorStop(0.82, 'rgba(8, 5, 10, 0.78)');
-          gradient.addColorStop(1, 'rgba(6, 4, 8, 1)');
-          ctx.fillStyle = gradient;
-          ctx.fillRect(0, 0, size, size);
-
-          return new THREE.CanvasTexture(canvas);
-        },
-
-        buildLayer: function (texture, color, zNudge) {
-          var el = document.createElement('a-plane');
-          el.setAttribute('position', { x: 0, y: 0, z: -VIGNETTE_DISTANCE + zNudge });
-          el.setAttribute('material', {
-            shader: 'flat',
-            color: color || '#ffffff',
-            transparent: true,
-            opacity: 0,
-            depthTest: false,
-            side: 'double',
-          });
-          el.setAttribute('visible', false);
-          this.el.appendChild(el);
-
-          el.addEventListener('loaded', function () {
-            var mesh = el.getObject3D('mesh');
-            if (!mesh) return;
-            mesh.renderOrder = 999;
-            if (texture) {
-              mesh.material.map = texture;
-              mesh.material.needsUpdate = true;
-            }
-          });
-
-          return el;
+          this.el.removeObject3D('overlay');
         },
 
         tick: function (time) {
           var alcohol = VICES.alcohol;
-          var visible = alcohol > 0.02;
+          if (alcohol <= 0.01) {
+            this.mesh.visible = false;
+            return;
+          }
 
-          this.vignette.setAttribute('visible', visible);
-          this.tint.setAttribute('visible', visible);
-          if (!visible) return;
-
-          // The pulse is the "woozy" part: a slow swell in the tint
-          // that reads as the room breathing, without anything
-          // actually moving.
-          var pulse = 0.75 + 0.25 * Math.sin((time / 1000) * TINT_PULSE_HZ * Math.PI * 2);
-
-          this.setOpacity(this.vignette, alcohol * VIGNETTE_MAX_OPACITY * pulse);
-          this.setOpacity(this.tint, alcohol * TINT_MAX_OPACITY * pulse);
-        },
-
-        setOpacity: function (el, opacity) {
-          var mesh = el.getObject3D('mesh');
-          if (mesh && mesh.material) mesh.material.opacity = opacity;
+          this.mesh.visible = true;
+          // The pulse is the "woozy" part: a slow swell that reads as
+          // the room breathing, without anything actually moving.
+          var pulse = 0.78 + 0.22 * Math.sin((time / 1000) * TINT_PULSE_HZ * Math.PI * 2);
+          this.material.uniforms.amount.value = Math.pow(alcohol, VIGNETTE_CURVE) * pulse;
         },
       });
 
@@ -4767,9 +5627,8 @@
             var p = PARTICLES[i];
             p.age += dtSeconds * 1000;
 
-            if (p.age >= p.life || !p.el.parentNode) {
-              if (p.el.parentNode) p.el.parentNode.removeChild(p.el);
-              PARTICLES.splice(i, 1);
+            if (p.age >= p.life) {
+              this.retireParticle(i);
               continue;
             }
 
@@ -4815,11 +5674,18 @@
               this.applyWind(p, dtSeconds);
               p.vel.multiplyScalar(Math.max(1 - SMOKE_DRAG * dtSeconds, 0));
               obj.position.addScaledVector(p.vel, dtSeconds);
-              obj.scale.setScalar(1 + SMOKE_GROWTH * t);
+              obj.scale.setScalar(p.baseScale * (1 + SMOKE_GROWTH * t));
             }
 
             var mesh = p.el.getObject3D('mesh');
             if (mesh && mesh.material) {
+              // Pooled entities keep whatever colour the last particle
+              // left behind, so it's re-applied once on the first
+              // frame this one is alive.
+              if (p.needsColor) {
+                mesh.material.color.set(p.color);
+                p.needsColor = false;
+              }
               // Smoke holds its opacity most of its life and then goes;
               // debris fades only at the very end so shards read as
               // solid glass while they're bouncing.
@@ -4830,7 +5696,7 @@
 
         retireParticle: function (index) {
           var p = PARTICLES[index];
-          if (p.el.parentNode) p.el.parentNode.removeChild(p.el);
+          releaseParticleEl(p.el, p.shape);
           PARTICLES.splice(index, 1);
         },
 
@@ -4867,7 +5733,7 @@
 
           for (var i = 0; i < lightables.length; i++) {
             var lightable = lightables[i].components.lightable;
-            if (!lightable || lightable.lit) continue;
+            if (!lightable || lightable.lit || lightable.blocked) continue;
             lightable.tipObject().getWorldPosition(this._tipA);
 
             for (var j = 0; j < sources.length; j++) {
