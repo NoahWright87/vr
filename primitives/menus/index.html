@@ -40,7 +40,7 @@
          watch style.
     ============================================================== -->
     <div id="overlay">
-      <span>Menus — panel ahead: point and pull the trigger. Watches on your wrists: point with one hand (squeeze grip) and poke the other wrist's face to project a menu outward from it. Tilt that wrist toward your own face to poke its options directly; turn the face up instead and it grows bigger and turns to face you, so your other hand's laser can select from it. Poke the ❌ (or just lower the wrist) to close it. <a href="../../index.html">All prototypes</a></span>
+      <span>Menus — panel ahead: point and pull the trigger. Watches on your wrists: point with one hand (squeeze grip) and poke the other wrist's face to project a menu outward from it. Tilt that wrist toward your own face to poke its options directly; turn the face up instead and it grows bigger and turns to face you, so your other hand's laser can select from it. Poke the ❌ (or just lower the wrist) to close it. To your right, a wall screen: poke it to project a bigger poke-driven menu straight off the wall. To your left, a pedestal button: poke it and a menu billboards up above it for your laser to select from. Walking far enough away from either auto-closes it. <a href="../../index.html">All prototypes</a></span>
     </div>
 
     <a-scene>
@@ -124,7 +124,7 @@
         </a-entity>
 
         <a-text
-          id="menu-feedback-text"
+          class="menu-feedback-text"
           value="Selected: (none)"
           align="center"
           color="#aaa"
@@ -175,14 +175,16 @@
 
       <!-- ============================================================
            The menu the watch projects outward from its face when
-           poked. Authored in a "design unit" space (background ~1
-           wide) and scaled up/down wholesale by hand-with-watch —
-           small (poke mode, ~4x the watch face) or large and
-           billboarded to face the player (laser mode) — see the big
-           comment on hand-with-watch below for how it picks between
-           them. ".wm-target" marks every row hand-with-watch wires up
-           for poke (always) and laser click (only in laser mode, via
-           the shared ".menu-target" class toggled dynamically).
+           poked — one of three "projected-menu" examples in this
+           scene (the wall screen and pedestal button, further down,
+           are the other two). Authored in a "design unit" space
+           (background ~1 wide) and scaled up/down wholesale by the
+           generic projected-menu component — see its big comment
+           below for how a trigger picks poke vs. laser mode, and why
+           a single component covers all three examples here.
+           ".pm-target" marks every row projected-menu wires up for
+           poke (always) and laser click (only in laser mode, via the
+           shared ".menu-target" class toggled dynamically).
       ============================================================ -->
       <template id="watch-menu-template">
         <a-entity class="watch-menu-panel" visible="false">
@@ -190,7 +192,7 @@
 
           <a-text class="watch-menu-time" value="00:00:00" font="sourcecodepro" align="center" color="#9ad" width="2.4" position="0 0.5 0"></a-text>
 
-          <a-entity class="wm-target"
+          <a-entity class="pm-target"
             geometry="primitive: plane; width: 0.16; height: 0.16"
             material="color: #182238"
             menu-item="value: close; label: Close; hoverColor: #5c2a2a"
@@ -199,7 +201,7 @@
             <a-text value="X" align="center" color="#f66" width="6" position="0 0 0.01"></a-text>
           </a-entity>
 
-          <a-entity class="wm-target"
+          <a-entity class="pm-target"
             geometry="primitive: plane; width: 0.85; height: 0.2"
             material="color: #182238"
             menu-item="value: stopwatch; label: Stopwatch"
@@ -208,7 +210,7 @@
             <a-text class="watch-menu-stopwatch-label" value="Stopwatch" align="center" color="#eee" width="2.6" position="0 0 0.01"></a-text>
           </a-entity>
 
-          <a-entity class="wm-target"
+          <a-entity class="pm-target"
             geometry="primitive: plane; width: 0.85; height: 0.2"
             material="color: #182238"
             menu-item="value: haptics; label: Haptics Test"
@@ -217,7 +219,7 @@
             <a-text value="Haptics Test" align="center" color="#eee" width="2.6" position="0 0 0.01"></a-text>
           </a-entity>
 
-          <a-entity class="wm-target"
+          <a-entity class="pm-target"
             geometry="primitive: plane; width: 0.85; height: 0.2"
             material="color: #182238"
             menu-item="value: about; label: About"
@@ -252,6 +254,134 @@
         raycaster="objects: .menu-target; far: 10"
       ></a-entity>
       <a-entity hand-controls="hand: right; handModelStyle: lowPoly"></a-entity>
+
+      <!-- ============================================================
+           STYLE 3: wall screen. A world-fixed trigger — no wrist, no
+           orientation to read — so it uses projected-menu's "poke"
+           fixed mode: always grows in place, always poke-driven,
+           closes if the player walks far enough away instead of by
+           reading an orientation that doesn't apply here.
+           Rotation was found empirically (screenshot, adjust, repeat)
+           rather than derived — the fastest reliable way to point an
+           arbitrary new prop at wherever the player spawns.
+      ============================================================ -->
+      <template id="wall-screen-menu-template">
+        <a-entity class="wall-screen-menu-panel" visible="false">
+          <a-plane width="1" height="1" color="#101827" position="0 0 -0.01"></a-plane>
+          <a-text value="WALL PANEL" align="center" color="#9ad" width="2.6" position="0 0.4 0"></a-text>
+
+          <a-entity class="pm-target"
+            geometry="primitive: plane; width: 0.16; height: 0.16"
+            material="color: #182238"
+            menu-item="value: close; label: Close; hoverColor: #5c2a2a"
+            position="0.4 0.4 0"
+          >
+            <a-text value="X" align="center" color="#f66" width="6" position="0 0 0.01"></a-text>
+          </a-entity>
+
+          <a-entity class="pm-target"
+            geometry="primitive: plane; width: 0.8; height: 0.18"
+            material="color: #182238"
+            menu-item="value: brightness; label: Brightness"
+            position="0 0.15 0"
+          >
+            <a-text value="Brightness" align="center" color="#eee" width="2.4" position="0 0 0.01"></a-text>
+          </a-entity>
+
+          <a-entity class="pm-target"
+            geometry="primitive: plane; width: 0.8; height: 0.18"
+            material="color: #182238"
+            menu-item="value: volume; label: Volume"
+            position="0 -0.08 0"
+          >
+            <a-text value="Volume" align="center" color="#eee" width="2.4" position="0 0 0.01"></a-text>
+          </a-entity>
+
+          <a-entity class="pm-target"
+            geometry="primitive: plane; width: 0.8; height: 0.18"
+            material="color: #182238"
+            menu-item="value: info; label: Info"
+            position="0 -0.31 0"
+          >
+            <a-text value="Info" align="center" color="#eee" width="2.4" position="0 0 0.01"></a-text>
+          </a-entity>
+
+          <a-text class="menu-feedback-text" value="Selected: (none)" align="center" color="#aaa" width="1.8" position="0 -0.48 0"></a-text>
+        </a-entity>
+      </template>
+
+      <a-entity id="wall-slab" position="2 1.4 -1.3" rotation="0 -55 0">
+        <a-box width="1.4" height="1.8" depth="0.1" color="#2b2f38"></a-box>
+        <a-entity id="wall-screen-trigger"
+          geometry="primitive: plane; width: 0.4; height: 0.28"
+          material="color: #16324a; side: double"
+          position="0 0 0.051"
+        >
+          <a-text value="TAP" align="center" color="#7fd" width="4" position="0 0 0.002"></a-text>
+        </a-entity>
+      </a-entity>
+
+      <!-- ============================================================
+           STYLE 4: pedestal button. Also world-fixed, but this one is
+           locked to projected-menu's "laser" fixed mode instead: poke
+           the button and the menu always grows large and billboards
+           to face the player right away, no orientation dance — a
+           small physical button obviously isn't itself pokeable once
+           the resulting menu is floating a third of a meter above it.
+      ============================================================ -->
+      <template id="pedestal-menu-template">
+        <a-entity class="pedestal-menu-panel" visible="false">
+          <a-plane width="1" height="1" color="#101827" position="0 0 -0.01"></a-plane>
+          <a-text value="PEDESTAL MENU" align="center" color="#9ad" width="2.2" position="0 0.4 0"></a-text>
+
+          <a-entity class="pm-target"
+            geometry="primitive: plane; width: 0.16; height: 0.16"
+            material="color: #182238"
+            menu-item="value: close; label: Close; hoverColor: #5c2a2a"
+            position="0.4 0.4 0"
+          >
+            <a-text value="X" align="center" color="#f66" width="6" position="0 0 0.01"></a-text>
+          </a-entity>
+
+          <a-entity class="pm-target"
+            geometry="primitive: plane; width: 0.8; height: 0.18"
+            material="color: #182238"
+            menu-item="value: option-a; label: Option A"
+            position="0 0.15 0"
+          >
+            <a-text value="Option A" align="center" color="#eee" width="2.4" position="0 0 0.01"></a-text>
+          </a-entity>
+
+          <a-entity class="pm-target"
+            geometry="primitive: plane; width: 0.8; height: 0.18"
+            material="color: #182238"
+            menu-item="value: option-b; label: Option B"
+            position="0 -0.08 0"
+          >
+            <a-text value="Option B" align="center" color="#eee" width="2.4" position="0 0 0.01"></a-text>
+          </a-entity>
+
+          <a-entity class="pm-target"
+            geometry="primitive: plane; width: 0.8; height: 0.18"
+            material="color: #182238"
+            menu-item="value: option-c; label: Option C"
+            position="0 -0.31 0"
+          >
+            <a-text value="Option C" align="center" color="#eee" width="2.4" position="0 0 0.01"></a-text>
+          </a-entity>
+
+          <a-text class="menu-feedback-text" value="Selected: (none)" align="center" color="#aaa" width="1.8" position="0 -0.48 0"></a-text>
+        </a-entity>
+      </template>
+
+      <a-entity id="pedestal" position="-2 0 -1.3">
+        <a-cylinder radius="0.15" height="0.9" position="0 0.45 0" color="#555"></a-cylinder>
+        <a-entity id="pedestal-button"
+          geometry="primitive: cylinder; radius: 0.08; height: 0.04"
+          material="color: #b33"
+          position="0 0.92 0"
+        ></a-entity>
+      </a-entity>
     </a-scene>
 
     <script>
@@ -319,7 +449,7 @@
       // ==============================================================
       AFRAME.registerComponent('menu-feedback', {
         init: function () {
-          this.feedbackText = this.el.querySelector('#menu-feedback-text');
+          this.feedbackText = this.el.querySelector('.menu-feedback-text');
           this.el.addEventListener('menu-item-select', (evt) => {
             this.feedbackText.setAttribute(
               'text',
@@ -327,6 +457,237 @@
               'Selected: ' + evt.detail.label
             );
           });
+        },
+      });
+
+      // ==============================================================
+      // COMPONENT: projected-menu
+      // THE reusable primitive this whole scene is really about: turn
+      // any entity into a "poke it, a menu grows out of it" trigger.
+      // Started as watch-specific code; generalized once it became
+      // clear the wall screen and pedestal button below wanted the
+      // exact same mechanics with different trigger shapes, sizes, and
+      // menu content — which is the actual point of building these as
+      // primitives instead of one-off game code.
+      //
+      // Attach to ANY entity with its own geometry (obb-collider
+      // auto-sizes the poke hitbox from it, so a box, a plane, a
+      // cylinder — whatever — all just work):
+      //
+      //   el.setAttribute('projected-menu', {
+      //     template: '#my-menu-template',   // <template> content = the menu; any element
+      //                                       // with class "pm-target" + a menu-item
+      //                                       // attribute becomes a wired-up row
+      //     mode: 'auto' | 'poke' | 'laser',  // 'auto': watch-style — poke-sized while the
+      //                                       // trigger's local +Y faces roughly toward the
+      //                                       // player, laser-sized+billboarded while it faces
+      //                                       // roughly straight up, closed otherwise. 'poke'
+      //                                       // or 'laser': always that one mode once open,
+      //                                       // closing only via the reserved "close" menu-item
+      //                                       // value or by the player moving too far away.
+      //     pokeScale: 0.3, laserScale: 0.6,  // customizable per instance — the template's
+      //                                       // own content is authored ~1 unit wide/tall
+      //     offset: {x, y, z},                // menu position relative to the trigger
+      //     closeDistance: 2.5,               // 'poke'/'laser' modes only
+      //   });
+      //
+      // The template's own root element supplies the "poke" orientation
+      // (captured once, as-authored) — for a fixed prop like the wall
+      // screen or pedestal, whatever rotation you already gave it is
+      // enough; a moving trigger that needs a computed one (the watch,
+      // mirrored per hand) can override el.components['projected-menu']
+      // .pokeQuat right after attaching.
+      //
+      // The menu itself is appended as a SIBLING of the trigger (not a
+      // child) specifically so a caller can hide the trigger's own
+      // visible geometry while the menu is open (as hand-with-watch
+      // does with the small watch face) without that hiding the menu
+      // too, which is exactly what would happen if the menu lived
+      // inside the same entity three.js is told to stop rendering.
+      // Listen for "projected-menu-opened"/"projected-menu-closed" on
+      // the trigger to hook that kind of thing up.
+      // ==============================================================
+      AFRAME.registerComponent('projected-menu', {
+        schema: {
+          template: { type: 'selector' },
+          mode: { default: 'auto', oneOf: ['auto', 'poke', 'laser'] },
+          pokeScale: { default: 0.3 },
+          laserScale: { default: 0.6 },
+          offset: { type: 'vec3' },
+          lerp: { default: 0.15 },
+          closeDistance: { default: 2.5 },
+          faceupThreshold: { default: 0.6 },
+          facecamThreshold: { default: 0.45 },
+        },
+
+        init: function () {
+          var self = this;
+          var el = this.el;
+
+          this.active = false; // set by open()/close(); tick() derives mode from it each frame
+          this.mode = 'closed'; // 'closed' | 'poke' | 'laser'
+          this.scale = 0.0001; // never literally 0 — keeps scale/rotation math well-defined
+          this.visible = false;
+          this.lastItemsMode = null;
+          this.cameraEl = document.querySelector('a-camera');
+
+          var panel = this.data.template.content.cloneNode(true).firstElementChild;
+          el.parentNode.appendChild(panel); // sibling, not child — see the big comment above
+          this.pokeQuat = panel.object3D.quaternion.clone(); // template's own authored rotation = the "flush with trigger" default
+          panel.object3D.scale.setScalar(this.scale);
+          this.panelEl = panel;
+          this.updatePanelPosition();
+
+          el.setAttribute('obb-collider', '');
+          el.addEventListener('obbcollisionstarted', function (evt) {
+            var poker = evt.detail.withEl;
+            if (poker.handComponent && poker.handComponent.isPointing && !self.active) self.open();
+          });
+
+          // Poke always works (gated on mode==='poke' inside each row's
+          // own handler, so a stray touch mid-transition or in laser
+          // mode doesn't fire); laser only works while wearing the
+          // shared ".menu-target" class, toggled on/off with the mode
+          // by setItemsMode() so raycasters only ever pick these up in
+          // laser mode.
+          this.pmTargets = Array.prototype.slice.call(panel.querySelectorAll('.pm-target'));
+          this.pmTargets.forEach(function (item) {
+            item.setAttribute('obb-collider', 'size: 0.035');
+            item.addEventListener('obbcollisionstarted', function (evt) {
+              var poker = evt.detail.withEl;
+              if (self.mode === 'poke' && poker.handComponent && poker.handComponent.isPointing) {
+                item.emit('click');
+              }
+            });
+          });
+
+          // "close" is a reserved menu-item value: any row using it
+          // closes this menu with no extra wiring from the caller.
+          panel.addEventListener('menu-item-select', function (evt) {
+            if (evt.detail.value === 'close') self.close();
+          });
+        },
+
+        // Re-derived every tick (not just once) since the trigger itself
+        // may move — a wrist, notably.
+        updatePanelPosition: function () {
+          var t = this.el.object3D.position;
+          var o = this.data.offset;
+          this.panelEl.object3D.position.set(t.x + o.x, t.y + o.y, t.z + o.z);
+        },
+
+        tick: function () {
+          if (this.active) {
+            var mode = this.computeMode();
+            if (!mode) this.active = false; // e.g. the watch got lowered, or the player walked away
+            this.mode = mode || 'closed';
+          } else {
+            this.mode = 'closed';
+          }
+          this.applyState();
+        },
+
+        computeMode: function () {
+          var THREE = AFRAME.THREE;
+          var camPos = new THREE.Vector3();
+          this.cameraEl.object3D.getWorldPosition(camPos);
+          var pos = new THREE.Vector3();
+          this.el.object3D.getWorldPosition(pos);
+
+          if (this.data.mode === 'poke' || this.data.mode === 'laser') {
+            if (camPos.distanceTo(pos) > this.data.closeDistance) return null;
+            return this.data.mode;
+          }
+
+          // 'auto': which of the two poses (if either) the trigger is
+          // currently in, read off its own world rotation — the local
+          // +Y axis is this system's "outward normal" convention.
+          var worldQuat = new THREE.Quaternion();
+          this.el.object3D.getWorldQuaternion(worldQuat);
+          var normal = new THREE.Vector3(0, 1, 0).applyQuaternion(worldQuat);
+          var toCam = camPos.clone().sub(pos).normalize();
+
+          var dotUp = normal.dot(new THREE.Vector3(0, 1, 0));
+          var dotCam = normal.dot(toCam);
+          if (dotUp > this.data.faceupThreshold) return 'laser';
+          if (dotCam > this.data.facecamThreshold) return 'poke';
+          return null;
+        },
+
+        // The local quaternion that makes the panel's front face the
+        // camera, computed via Object3D.lookAt() rather than hand-derived
+        // matrix math — lookAt() already correctly accounts for the
+        // panel's current parent rotation, which is exactly the step
+        // easiest to get backwards doing it by hand. Verified directly
+        // (not just by eye) when this was first built: with the panel's
+        // own +Z as "front" and no extra flip, its world-space front
+        // vector dots to ~+1 against the direction toward the camera.
+        computeLaserLocalQuat: function () {
+          var THREE = AFRAME.THREE;
+          this.panelEl.object3D.updateMatrixWorld(true);
+          var camPos = new THREE.Vector3();
+          this.cameraEl.object3D.getWorldPosition(camPos);
+
+          var savedQuat = this.panelEl.object3D.quaternion.clone();
+          this.panelEl.object3D.lookAt(camPos);
+          var lookQuat = this.panelEl.object3D.quaternion.clone();
+          this.panelEl.object3D.quaternion.copy(savedQuat);
+          return lookQuat;
+        },
+
+        applyState: function () {
+          this.updatePanelPosition();
+
+          var targetScale;
+          var targetQuat;
+          if (this.mode === 'poke') {
+            targetScale = this.data.pokeScale;
+            targetQuat = this.pokeQuat;
+          } else if (this.mode === 'laser') {
+            targetScale = this.data.laserScale;
+            targetQuat = this.computeLaserLocalQuat();
+          } else {
+            targetScale = 0.0001;
+            targetQuat = null; // freeze rotation while shrinking closed
+          }
+
+          this.scale += (targetScale - this.scale) * this.data.lerp;
+          this.panelEl.object3D.scale.setScalar(this.scale);
+          if (targetQuat) this.panelEl.object3D.quaternion.slerp(targetQuat, this.data.lerp);
+
+          if (this.mode === 'closed') {
+            if (this.scale < 0.005 && this.visible) {
+              this.panelEl.setAttribute('visible', false);
+              this.visible = false;
+              this.setItemsMode('closed');
+              this.el.emit('projected-menu-closed');
+            }
+          } else {
+            if (!this.visible) {
+              this.panelEl.setAttribute('visible', true);
+              this.visible = true;
+              this.el.emit('projected-menu-opened');
+            }
+            this.setItemsMode(this.mode);
+          }
+        },
+
+        setItemsMode: function (mode) {
+          if (mode === this.lastItemsMode) return;
+          this.lastItemsMode = mode;
+          this.pmTargets.forEach(function (item) {
+            if (mode === 'laser') item.classList.add('menu-target');
+            else item.classList.remove('menu-target');
+          });
+        },
+
+        open: function () {
+          if (this.active) return;
+          this.active = true;
+        },
+
+        close: function () {
+          this.active = false;
         },
       });
 
@@ -356,19 +717,14 @@
       var PROXIMITY_MAX_INNER_RADIUS = 0.013;
       var PROXIMITY_MIN_INNER_RADIUS = 0.001;
 
-      // The projected menu's two sizes: "poke" is ~4x the small watch
-      // face's own width (0.032), aligned flush with it; "laser" is
-      // bigger still and billboards to face the player instead. Both are
-      // overall-scale multipliers on the template's ~1-wide design space.
-      var MENU_SCALE_POKE = 0.12;
-      var MENU_SCALE_LASER = 0.26;
-      var MENU_LERP = 0.15; // per-tick approach speed for scale/rotation
-
-      // Orientation thresholds (dot products, so 1 = dead-on) for picking
-      // which mode the open menu should be in each frame — checked in
-      // this order since "face-up" is the narrower, more deliberate pose.
-      var FACEUP_DOT_THRESHOLD = 0.6;
-      var FACECAM_DOT_THRESHOLD = 0.45;
+      // The watch's projected menu: "poke" is ~4x the small watch face's
+      // own width (0.032), aligned flush with it; "laser" is bigger
+      // still and billboards to face the player instead. Both are
+      // overall-scale multipliers on projected-menu's ~1-wide design
+      // space, customizable per instance — the wall screen and pedestal
+      // button further down use their own, bigger numbers.
+      var WATCH_MENU_SCALE_POKE = 0.12;
+      var WATCH_MENU_SCALE_LASER = 0.26;
 
       // Same vendor controller components hand-controls itself attaches,
       // with model:false so nothing renders from them — they're here only
@@ -445,6 +801,7 @@
           textEl.setAttribute('rotation', '-90 0 ' + side * 90);
           this.textEl = textEl;
           this.ringEl = watch.querySelector('.watch-proximity-ring');
+          this.faceEl = faceEl;
 
           // ----- Button state -----
           // Real events, not simulated: attach the same vendor control
@@ -470,7 +827,8 @@
           // Invisible hitbox at the fingertip. obb-collider does the
           // actual overlap test (oriented-bounding-box, no physics engine
           // involved) against anything else carrying obb-collider — the
-          // watch face (to open the menu) and, once open, its items.
+          // watch face (to open the menu, via projected-menu below) and,
+          // once open, its items.
           var fingertip = document.createElement('a-entity');
           fingertip.setAttribute(
             'position',
@@ -481,66 +839,65 @@
           wrapper.appendChild(fingertip);
           this.fingertipEl = fingertip;
 
-          faceEl.setAttribute('obb-collider', '');
-          this.faceEl = faceEl;
-          // A poke is any OTHER hand's fingertip touching this face while
-          // that hand is pointing — not this hand's own fingertip, which
-          // sits on the opposite side of the wrist and geometrically can
-          // never reach its own watch face anyway.
-          faceEl.addEventListener('obbcollisionstarted', function (evt) {
-            var poker = evt.detail.withEl;
-            if (poker.handComponent && poker.handComponent.isPointing && !self.menuActive) {
-              self.openMenu();
-            }
-          });
-
           // ----- The projected menu -----
-          this.menuActive = false; // set by openMenu()/closeMenu(); tick() derives menuMode from it each frame
-          this.menuMode = 'closed'; // 'closed' | 'poke' | 'laser'
-          this.panelVisible = false;
-          this.panelScale = 0.0001; // never literally 0 — keeps scale/rotation math well-defined
-          this.lastItemsMode = null;
+          // projected-menu owns opening/closing, poke-vs-laser mode, and
+          // wiring every ".pm-target" row — see its own big comment.
+          // hand-with-watch only supplies what makes THIS instance a
+          // watch: where the menu attaches, how big its two sizes are,
+          // the per-hand mirrored "poke" orientation (a moving trigger's
+          // own local rotation isn't a reliable default the way a fixed
+          // prop's is, hence the override), and what its own three items
+          // actually do.
           this.stopwatch = { running: false, elapsedMs: 0, startedAt: 0 };
 
-          var pokeEuler = new AFRAME.THREE.Euler(degToRad(-90), 0, degToRad(side * 90), 'XYZ');
-          this.pokeQuat = new AFRAME.THREE.Quaternion().setFromEuler(pokeEuler);
+          // faceEl was only just created and appended a few lines up, so
+          // — unlike the static wall-screen/pedestal triggers, already
+          // loaded by the time the scene's own "loaded" fires — it has
+          // NOT finished its own async load yet: setAttribute here does
+          // register the projected-menu component instance, but defers
+          // actually running its init() (the part that populates
+          // panelEl) until faceEl loads. Reading pm.panelEl synchronously
+          // right after setAttribute would still find it undefined.
+          faceEl.setAttribute('projected-menu', {
+            template: '#watch-menu-template',
+            mode: 'auto',
+            pokeScale: WATCH_MENU_SCALE_POKE,
+            laserScale: WATCH_MENU_SCALE_LASER,
+          });
+          function wireUpProjectedMenu () {
+            var pm = faceEl.components['projected-menu'];
+            self.projectedMenu = pm;
+            pm.pokeQuat = new AFRAME.THREE.Quaternion().setFromEuler(
+              new AFRAME.THREE.Euler(degToRad(-90), 0, degToRad(side * 90), 'XYZ')
+            );
+            self.panelTimeEl = pm.panelEl.querySelector('.watch-menu-time');
+            self.stopwatchLabelEl = pm.panelEl.querySelector('.watch-menu-stopwatch-label');
 
-          var panelTemplate = document.getElementById('watch-menu-template');
-          var panel = panelTemplate.content.cloneNode(true).firstElementChild;
-          panel.setAttribute('position', bandX + ' ' + FACE_Y_OFFSET + ' ' + WATCH_OFFSET.z);
-          wrapper.appendChild(panel); // must attach before touching object3D — it doesn't exist until then
-          panel.object3D.quaternion.copy(this.pokeQuat);
-          panel.object3D.scale.setScalar(this.panelScale);
-          this.panelEl = panel;
-          this.panelTimeEl = panel.querySelector('.watch-menu-time');
-          this.stopwatchLabelEl = panel.querySelector('.watch-menu-stopwatch-label');
-
-          // Every row: poke always works (gated on menuMode==='poke' so a
-          // stray touch while the menu is mid-transition or in laser mode
-          // doesn't fire); laser only works while wearing the
-          // ".menu-target" class, toggled on/off with the mode by
-          // setItemsMode() so the OTHER hand's raycaster only ever picks
-          // these up in laser mode.
-          this.wmTargets = Array.prototype.slice.call(panel.querySelectorAll('.wm-target'));
-          this.wmTargets.forEach(function (item) {
-            item.setAttribute('obb-collider', 'size: 0.035');
-            item.addEventListener('obbcollisionstarted', function (evt) {
-              var poker = evt.detail.withEl;
-              if (self.menuMode === 'poke' && poker.handComponent && poker.handComponent.isPointing) {
-                item.emit('click');
-              }
+            // The small watch face and the projected menu occupy the same
+            // spot, so swap one for the other rather than showing both.
+            faceEl.addEventListener('projected-menu-opened', function () {
+              faceEl.setAttribute('visible', false);
             });
-          });
+            faceEl.addEventListener('projected-menu-closed', function () {
+              faceEl.setAttribute('visible', true);
+            });
 
-          panel.addEventListener('menu-item-select', function (evt) {
-            if (evt.detail.value === 'close') self.closeMenu();
-            else if (evt.detail.value === 'stopwatch') self.toggleStopwatch();
-            else if (evt.detail.value === 'haptics') self.triggerHaptics();
-            else if (evt.detail.value === 'about') self.showAbout();
-          });
+            pm.panelEl.addEventListener('menu-item-select', function (evt) {
+              if (evt.detail.value === 'stopwatch') self.toggleStopwatch();
+              else if (evt.detail.value === 'haptics') self.triggerHaptics();
+              else if (evt.detail.value === 'about') self.showAbout();
+            });
+          }
+          if (faceEl.hasLoaded) wireUpProjectedMenu();
+          else faceEl.addEventListener('loaded', wireUpProjectedMenu);
         },
 
         tick: function () {
+          // faceEl's own async load (see wireUpProjectedMenu above) can
+          // still be pending a frame or two after this component's own
+          // init() returns.
+          if (!this.projectedMenu) return;
+
           // Lazily find the other hand once both have initialized.
           if (!this.otherHand) {
             var otherId = this.data.hand === 'left' ? '#right-hand' : '#left-hand';
@@ -554,135 +911,20 @@
           // The proximity ring is only a "should I poke to open" hint —
           // irrelevant once the menu is already open (and the face it
           // lives on is hidden then anyway).
-          if (!this.menuActive) {
-            if (!this.otherHand.isPointing) {
-              this.ringEl.setAttribute('visible', false);
-            } else {
-              var facePos = new AFRAME.THREE.Vector3();
-              var tipPos = new AFRAME.THREE.Vector3();
-              this.faceEl.object3D.getWorldPosition(facePos);
-              this.otherHand.fingertipEl.object3D.getWorldPosition(tipPos);
-              var dist = facePos.distanceTo(tipPos);
-              var t = Math.min(1, Math.max(0, dist / PROXIMITY_MAX_DIST));
-              var innerRadius = PROXIMITY_MIN_INNER_RADIUS + t * (PROXIMITY_MAX_INNER_RADIUS - PROXIMITY_MIN_INNER_RADIUS);
-              this.ringEl.setAttribute('visible', true);
-              this.ringEl.setAttribute('geometry', 'radiusInner', innerRadius);
-            }
+          if (this.projectedMenu.active || !this.otherHand.isPointing) {
+            this.ringEl.setAttribute('visible', false);
+            return;
           }
 
-          if (this.menuActive) {
-            var mode = this.computeMenuMode();
-            if (!mode) this.menuActive = false; // neither pose held — e.g. the watch got lowered
-            this.menuMode = mode || 'closed';
-          } else {
-            this.menuMode = 'closed';
-          }
-          this.updateMenuPanel();
-        },
-
-        // Which of the two projected-menu poses (if either) the wrist is
-        // currently in. Checked against the WRAPPER's world rotation
-        // (the true physical wrist orientation) rather than the panel's
-        // own — the panel's rotation is what we're actively animating
-        // toward a target, not a reliable read of where the wrist itself
-        // is pointed.
-        computeMenuMode: function () {
-          var THREE = AFRAME.THREE;
-          var wrapperWorldQuat = new THREE.Quaternion();
-          this.wrapperEl.object3D.getWorldQuaternion(wrapperWorldQuat);
-          var faceNormal = new THREE.Vector3(0, 1, 0).applyQuaternion(wrapperWorldQuat);
-
-          var facePos = new THREE.Vector3();
+          var facePos = new AFRAME.THREE.Vector3();
+          var tipPos = new AFRAME.THREE.Vector3();
           this.faceEl.object3D.getWorldPosition(facePos);
-          var camPos = new THREE.Vector3();
-          document.querySelector('a-camera').object3D.getWorldPosition(camPos);
-          var toCam = camPos.clone().sub(facePos).normalize();
-
-          var dotUp = faceNormal.dot(new THREE.Vector3(0, 1, 0));
-          var dotCam = faceNormal.dot(toCam);
-
-          if (dotUp > FACEUP_DOT_THRESHOLD) return 'laser';
-          if (dotCam > FACECAM_DOT_THRESHOLD) return 'poke';
-          return null;
-        },
-
-        // The local quaternion that makes the panel's front face the
-        // camera, computed via Object3D.lookAt() rather than hand-derived
-        // matrix math — lookAt() already correctly accounts for the
-        // panel's current parent (wrapper) rotation, which is exactly the
-        // step easiest to get backwards doing it by hand. Verified
-        // directly (not just by eye): with the panel's own +Z as "front"
-        // and no extra flip, its world-space front vector dots to ~+1
-        // against the direction toward the camera.
-        computeLaserLocalQuat: function () {
-          var THREE = AFRAME.THREE;
-          this.panelEl.object3D.updateMatrixWorld(true);
-          var camPos = new THREE.Vector3();
-          document.querySelector('a-camera').object3D.getWorldPosition(camPos);
-
-          var savedQuat = this.panelEl.object3D.quaternion.clone();
-          this.panelEl.object3D.lookAt(camPos);
-          var lookQuat = this.panelEl.object3D.quaternion.clone();
-          this.panelEl.object3D.quaternion.copy(savedQuat);
-          return lookQuat;
-        },
-
-        updateMenuPanel: function () {
-          var targetScale;
-          var targetQuat;
-          if (this.menuMode === 'poke') {
-            targetScale = MENU_SCALE_POKE;
-            targetQuat = this.pokeQuat;
-          } else if (this.menuMode === 'laser') {
-            targetScale = MENU_SCALE_LASER;
-            targetQuat = this.computeLaserLocalQuat();
-          } else {
-            targetScale = 0.0001;
-            targetQuat = null; // freeze rotation while shrinking closed
-          }
-
-          this.panelScale += (targetScale - this.panelScale) * MENU_LERP;
-          this.panelEl.object3D.scale.setScalar(this.panelScale);
-          if (targetQuat) this.panelEl.object3D.quaternion.slerp(targetQuat, MENU_LERP);
-
-          if (this.menuMode === 'closed') {
-            if (this.panelScale < 0.005 && this.panelVisible) {
-              this.panelEl.setAttribute('visible', false);
-              this.faceEl.setAttribute('visible', true);
-              this.panelVisible = false;
-              this.setItemsMode('closed');
-            }
-          } else {
-            if (!this.panelVisible) {
-              this.panelEl.setAttribute('visible', true);
-              this.faceEl.setAttribute('visible', false);
-              this.panelVisible = true;
-            }
-            this.setItemsMode(this.menuMode);
-          }
-        },
-
-        // Toggles the shared ".menu-target" class (the OTHER hand's
-        // raycaster is already scoped to it) on every row, so they're
-        // laser-clickable only in laser mode — poke keeps working
-        // regardless, gated separately inside each row's own collision
-        // handler by checking menuMode there instead.
-        setItemsMode: function (mode) {
-          if (mode === this.lastItemsMode) return;
-          this.lastItemsMode = mode;
-          this.wmTargets.forEach(function (item) {
-            if (mode === 'laser') item.classList.add('menu-target');
-            else item.classList.remove('menu-target');
-          });
-        },
-
-        openMenu: function () {
-          if (this.menuActive) return;
-          this.menuActive = true;
-        },
-
-        closeMenu: function () {
-          this.menuActive = false;
+          this.otherHand.fingertipEl.object3D.getWorldPosition(tipPos);
+          var dist = facePos.distanceTo(tipPos);
+          var t = Math.min(1, Math.max(0, dist / PROXIMITY_MAX_DIST));
+          var innerRadius = PROXIMITY_MIN_INNER_RADIUS + t * (PROXIMITY_MAX_INNER_RADIUS - PROXIMITY_MIN_INNER_RADIUS);
+          this.ringEl.setAttribute('visible', true);
+          this.ringEl.setAttribute('geometry', 'radiusInner', innerRadius);
         },
 
         toggleStopwatch: function () {
@@ -707,7 +949,7 @@
         },
 
         showAbout: function () {
-          var label = this.panelEl.querySelector('.watch-menu-about-label');
+          var label = this.projectedMenu.panelEl.querySelector('.watch-menu-about-label');
           var original = label.getAttribute('text').value;
           label.setAttribute('text', 'value', 'WebXR Primitives');
           setTimeout(function () {
@@ -716,6 +958,8 @@
         },
 
         updateDisplay: function () {
+          if (!this.panelTimeEl) return; // same brief async window as tick()
+
           var pad = function (n) { return String(n).padStart(2, '0'); };
           var d = new Date();
           var clockValue = pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
@@ -736,6 +980,53 @@
           this.stopwatchLabelEl.setAttribute('text', 'value', label);
         },
       });
+
+      // ==============================================================
+      // STYLE 3 & 4 setup: wall screen (poke, fixed) and pedestal
+      // button (laser, fixed) — the two "fixed prop" projected-menu
+      // examples. Unlike the watch, neither tracks a moving trigger or
+      // needs its own component: both are just "attach projected-menu
+      // with this prop's own mode/scale/offset, then let menu-feedback
+      // reflect selections back" the same way the STYLE 1 fixed panel
+      // does. Offsets are in the trigger's OWN PARENT's local space
+      // (see updatePanelPosition on projected-menu) — wall-slab and
+      // pedestal each supply their own rotation/position once, and
+      // every number below is relative to that, not world space.
+      // Poking either one reuses the same two hands' fingertips as the
+      // watch — there's no separate "poker" per prop, just whichever
+      // hand happens to be pointing (squeeze grip) and touches it.
+      // ==============================================================
+      // Components only attach once their entity has loaded — true
+      // immediately for freshly-appended elements like the watch's own
+      // faceEl (already inside a loaded tree by the time hand-with-watch
+      // runs), but NOT for these two: they're part of the scene's
+      // initial markup, and this top-level script block runs before
+      // a-scene's own "loaded" event fires. Deref'ing .components right
+      // after setAttribute() here — before that event — finds nothing yet.
+      function setupFixedProjectedMenus () {
+        var wallScreenTrigger = document.querySelector('#wall-screen-trigger');
+        wallScreenTrigger.setAttribute('projected-menu', {
+          template: '#wall-screen-menu-template',
+          mode: 'poke',
+          pokeScale: 1.2,
+          offset: { x: 0, y: 0.35, z: 0.4 },
+          closeDistance: 3.5,
+        });
+        wallScreenTrigger.components['projected-menu'].panelEl.setAttribute('menu-feedback', '');
+
+        var pedestalButton = document.querySelector('#pedestal-button');
+        pedestalButton.setAttribute('projected-menu', {
+          template: '#pedestal-menu-template',
+          mode: 'laser',
+          laserScale: 1.3,
+          offset: { x: 0, y: 0.55, z: 0 },
+          closeDistance: 3.5,
+        });
+        pedestalButton.components['projected-menu'].panelEl.setAttribute('menu-feedback', '');
+      }
+      var sceneEl = document.querySelector('a-scene');
+      if (sceneEl.hasLoaded) setupFixedProjectedMenus();
+      else sceneEl.addEventListener('loaded', setupFixedProjectedMenus);
 
       function updateAllDisplays () {
         document.querySelectorAll('[hand-with-watch]').forEach(function (el) {
