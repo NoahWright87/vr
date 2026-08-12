@@ -1,0 +1,2414 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Pistols at Dawn — WebXR Prototype</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
+
+    <style>
+      body {
+        margin: 0;
+        font-family: system-ui, sans-serif;
+      }
+      #overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        padding: 0.75rem 1rem;
+        background: rgba(0, 0, 0, 0.55);
+        color: white;
+        z-index: 1;
+        font-size: 0.9rem;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 1rem;
+      }
+      #overlay a {
+        color: #9ad;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="overlay">
+      <span>Pistols at Dawn — grip near a holstered pistol, shotgun, or your hat to draw it. Guns fire on the trigger; let go of the grip while a finger still rests on the trigger to dangle and twirl whatever you're holding. Anything can snap into any anchor it's small enough for — glance at the glowing spheres for a hint — so go ahead and wear a gun like a hat, or hide one inside your hat. <a href="../../index.html">All prototypes</a></span>
+    </div>
+
+    <a-scene>
+      <!-- ============================================================
+           RANGE
+      ============================================================ -->
+      <a-plane
+        rotation="-90 0 0"
+        width="30"
+        height="30"
+        color="#7a6a52"
+        position="0 0 0"
+      ></a-plane>
+      <a-sky color="#7d6b8f"></a-sky>
+
+      <!-- ============================================================
+           PLAYER RIG + DESKTOP/PHONE FALLBACK
+           The grab/holster/dangle mechanic below is inherently a VR
+           interaction (it needs grip + trigger buttons and real hand
+           motion), so there's no meaningful desktop equivalent for it.
+           The reticle + click-to-score fallback from the previous
+           version is kept as-is, purely so target scoring stays
+           sanity-checkable without a headset.
+      ============================================================ -->
+      <a-camera id="head-camera">
+        <a-text
+          id="hud-text"
+          value="Score: 0   Shots: 0"
+          align="center"
+          color="#FFFFFF"
+          width="2"
+          position="0 -0.35 -1"
+        ></a-text>
+        <a-entity
+          cursor="fuse: false"
+          position="0 0 -1"
+          geometry="primitive: ring; radiusInner: 0.005; radiusOuter: 0.008"
+          material="color: #FFFFFF; shader: flat; opacity: 0.8"
+          raycaster="objects: .target-ring; far: 20"
+        ></a-entity>
+        <!-- Nested directly under the camera (rather than a body-anchor-style
+             tick() component) so it inherits full head rotation for free,
+             pitch/roll included — unlike the hips, a worn hat SHOULD tilt
+             with your head. The 0.1m vertical offset is an estimate for
+             "brim just clips the top of view"; real headset FOV isn't
+             something testable from here, so this (and/or boxy-hat's own
+             geometry) will likely need eyes-on tuning. A medium anchor-slot
+             — yes, you can wear a gun on your head like a hat. -->
+        <a-entity id="head-anchor" class="anchor-slot" anchor-slot="size: medium" position="0 0.1 0"></a-entity>
+      </a-camera>
+
+      <!-- ============================================================
+           HANDS
+           Two entities per hand, deliberately decoupled:
+
+           - oculus-touch-controls (model:false) is the one the gun
+             actually attaches to and the one hand-rig listens to for
+             grip/trigger events. Its forward axis is the same one
+             laser-controls uses for aiming in Cube Pop, so a gun
+             welded to it points where you'd expect.
+           - hand-controls is purely cosmetic: it renders the animated
+             hand mesh (fist on grip, point on trigger) at the same
+             tracked position, but its own orientation convention is
+             tuned for a believable-looking hand pose, not for "-Z is
+             where you're pointing" — which is why the first version of
+             this file, with the gun parented directly to a
+             hand-controls entity, aimed inconsistently.
+
+           proximity-haptics is generic and unrelated to pistols
+           specifically — see its own comment below. The "hand" class
+           is what lets generic helpers like findOtherHand and
+           findCatchingHand (used for tossing/catching) enumerate both
+           hands without hardcoding left/right.
+      ============================================================ -->
+      <a-entity class="hand" oculus-touch-controls="hand: left; model: false" hand-rig proximity-haptics></a-entity>
+      <a-entity hand-controls="hand: left; handModelStyle: lowPoly; color: #3a3a3a"></a-entity>
+
+      <a-entity class="hand" oculus-touch-controls="hand: right; model: false" hand-rig proximity-haptics></a-entity>
+      <a-entity hand-controls="hand: right; handModelStyle: lowPoly; color: #3a3a3a"></a-entity>
+
+      <!-- ============================================================
+           BODY ANCHORS
+           Three invisible anchor points that track the player's body:
+           two hips (small slots — pistol-sized) and a back-center
+           bandolier point (large — shotgun-sized). There's no real
+           body tracking on a Quest, so body-anchor approximates all
+           three from the headset: position and yaw (turning left/
+           right) only, deliberately ignoring pitch/roll so looking up
+           or tilting your head doesn't drag them around. Each one also
+           builds its own bit of "shitty" flavor geometry (a holster
+           pouch, a diagonal strap) so it's obvious where things go —
+           see body-anchor's own comment.
+
+           anchor-slot is the generic snap-target component (see its
+           own comment): any ".grabbable" item whose itemSize fits a
+           given slot's size can be released, thrown, or caught into
+           it — this is NOT restricted to "guns go in holsters." A
+           slot's translucent sphere brightens as a compatible carried
+           item approaches, with a quick "click" bounce right as it
+           enters snap range.
+      ============================================================ -->
+      <a-entity id="hip-left" class="anchor-slot" body-anchor="side: left" anchor-slot="size: small"></a-entity>
+      <a-entity id="hip-right" class="anchor-slot" body-anchor="side: right" anchor-slot="size: small"></a-entity>
+      <a-entity id="back-anchor" class="anchor-slot" body-anchor="side: back" anchor-slot="size: large"></a-entity>
+
+      <!-- ============================================================
+           GUNS + HAT
+           Each is a free-standing entity (not nested under a hand) so
+           it can be reparented at runtime between a slot, a hand, or
+           loose in the world while dangling/falling. All the holster/
+           hold/dangle/fall/throw/catch state machine lives in the
+           generic "holsterable" component, configured per-object
+           below; "pistol"/"shotgun" are small companions that add
+           firing on top (the hat has no such companion — nothing to
+           fire). The "grabbable" class is what makes proximity-haptics
+           notice them, and is also how hand-rig finds anything
+           pickable — any future interactive prop just needs
+           holsterable (and optionally its own visual-builder
+           component, the way boxy-gun/boxy-hat/boxy-shotgun are
+           separate from holsterable itself) to join in.
+
+           itemSize is the only thing that decides which slots an
+           object can snap into (see holsterable.findNearestSlot) —
+           there's no per-object list of "which anchors." Pistols are
+           small (fit any slot), the hat is medium (head or the back
+           bandolier — NOT a hip holster, it's too big), the shotgun is
+           large (only the bandolier fits it).
+
+           The hat's holsterPosition/comOffset look unusual compared to
+           the guns' — see boxy-hat's comment for why: its origin is
+           deliberately offset to one edge of the inner brim (like a
+           finger hooked under the rim) rather than centered, so the
+           exact same dangle physics that makes a gun swing from the
+           trigger guard makes the hat swing from that point instead.
+           It also carries its own small anchor-slot tucked inside the
+           crown (see boxy-hat) — hide a gun in your hat.
+      ============================================================ -->
+      <a-entity
+        class="grabbable"
+        holsterable="holsterSelector: #hip-left; itemSize: small; holsterRotation: -90 0 0; heldRotation: -90 0 0; heldPosition: 0 0 0; grabRadius: 0.15; comOffset: 0 0.03 -0.08"
+        pistol
+        boxy-gun
+      ></a-entity>
+      <a-entity
+        class="grabbable"
+        holsterable="holsterSelector: #hip-right; itemSize: small; holsterRotation: -90 0 0; heldRotation: -90 0 0; heldPosition: 0 0 0; grabRadius: 0.15; comOffset: 0 0.03 -0.08"
+        pistol
+        boxy-gun
+      ></a-entity>
+
+      <a-entity
+        class="grabbable"
+        holsterable="holsterSelector: #head-anchor; itemSize: medium; holsterRotation: 0 0 0; heldRotation: 90 0 0; holsterPosition: 0.11 0 0; heldPosition: -0.1 0 0; grabRadius: 0.35; comOffset: 0.11 -0.065 0"
+        boxy-hat
+      ></a-entity>
+
+      <a-entity
+        class="grabbable"
+        holsterable="holsterSelector: #back-anchor; itemSize: large; holsterRotation: -90 0 0; heldRotation: -90 0 0; heldPosition: 0 0 0; grabRadius: 0.2; comOffset: 0 0.02 -0.2"
+        shotgun
+        boxy-shotgun
+      ></a-entity>
+
+      <!-- ============================================================
+           TARGET GALLERY
+           range-manager owns score/shots/HUD only. Everything else
+           here is an independent group of pop-up targets (see
+           pop-target, target-group, wheel-target, conveyor-target,
+           popper-target below) that spawns and resets itself, placed
+           at its own angle/distance in an arc in front of the player
+           so nothing crowds or hides behind anything else. Straight
+           ahead (angle 0) is the three stationary distance tiers;
+           wheels sit off to the left, conveyors off to the right, and
+           the pop-up "poppers" sit close in, front and center.
+      ============================================================ -->
+      <a-entity id="range-manager" shooting-range></a-entity>
+
+      <a-entity target-group="count: 3; distanceScale: 1"></a-entity>
+      <a-entity target-group="count: 4; distanceScale: 2"></a-entity>
+      <a-entity target-group="count: 5; distanceScale: 3"></a-entity>
+
+      <a-entity wheel-target="spokeCount: 4; wheelRadius: 0.9; speed: 45; targetScale: 0.5; angle: -50; distance: 6"></a-entity>
+      <a-entity wheel-target="spokeCount: 6; wheelRadius: 1.3; speed: 20; targetScale: 0.5; angle: -82; distance: 8.5"></a-entity>
+
+      <a-entity conveyor-target="count: 3; length: 3; speed: 0.5; direction: 1; angle: 50; distance: 6"></a-entity>
+      <a-entity conveyor-target="count: 4; length: 4; speed: 0.35; direction: -1; angle: 82; distance: 8.5"></a-entity>
+
+      <a-entity popper-target="count: 4; angle: 0; distance: 3"></a-entity>
+    </a-scene>
+
+    <script>
+      // ==============================================================
+      // TUNING CONSTANTS
+      // Everything about "does the twirl feel fun" lives in these few
+      // numbers. Expect to adjust them after actually trying it on a
+      // headset.
+      // ==============================================================
+      var GRAB_RADIUS = 0.15; // meters — how close a hand must be to pick something up
+      var HIP_HEIGHT = 0.9; // meters off the ground
+      var HIP_SIDE_OFFSET = 0.18; // meters, left/right from body centerline
+      var BACK_HEIGHT = 1.3; // meters off the ground — the bandolier's anchor sits higher up the torso than the hips
+      var BACK_DEPTH_OFFSET = 0.12; // meters behind the body centerline
+      var GRAVITY = 9.8; // real-world value, used for the drop/tumble simulation
+      var DANGLE_GRAVITY_TORQUE = 2.5; // how insistently a dangling gun swings back to hanging straight down
+      var DANGLE_INERTIA_SCALE = 6; // how strongly flicking your hand imparts spin — crank this up further if it still feels weak
+      var DANGLE_DAMPING = 0.999; // per-frame angular velocity decay while swinging — close to 1 = low friction, keeps spinning
+      var MAX_ANGULAR_VELOCITY = 40; // rad/s safety clamp so one noisy tracking spike can't fling it into nonsense
+      var FALL_DAMPING = 0.99; // per-frame angular velocity decay while tumbling to the ground
+      var GROUND_REST_Y = 0.05; // meters — half the gun's resting thickness off the floor
+
+      var PROXIMITY_HAPTIC_RADIUS = 0.2; // meters — a bit past GRAB_RADIUS, so the buzz gives you a heads-up just before you're in range
+      var PROXIMITY_HAPTIC_INTENSITY = 0.15; // 0-1, deliberately light ("slight buzz", not a jolt)
+      var PROXIMITY_HAPTIC_PULSE_MS = 60; // re-issued every tick while in range, so this just needs to outlast one frame
+
+      // A gun's local -Z (barrel forward) is defined relative to the
+      // hand's raw tracked ("grip") orientation, which on Quest Touch
+      // controllers does NOT point where your index finger does — this
+      // is a well-known WebXR quirk (laser-controls gets away with the
+      // same raw orientation because you visually self-correct your
+      // aim by watching the laser line; a rigid gun model has no such
+      // feedback, so the mismatch just looks wrong). Each pistol's
+      // holsterable="...heldRotation: -90 0 0..." markup attribute
+      // rotates the held gun to compensate — -90° on X is a reasoned
+      // starting estimate (pitching the barrel down out of "grip up"
+      // into "pointing forward"), not a verified value; if the barrel
+      // still doesn't track your finger, nudge that x value in ~15°
+      // steps (or adjust y/z if the mismatch looks like a left/right
+      // twist rather than up/down) and reload. The hat has no such
+      // problem — it isn't aimed at anything, so its heldRotation is
+      // just identity.
+      var RECOIL_KICK_DEG = -8; // extra pitch added on top of heldRotation when firing (see the "pistol" component)
+      var RECOIL_RECOVER_MS = 120; // how long the kick takes to settle back
+
+      var SHOTGUN_PELLET_COUNT = 6;
+      var SHOTGUN_CONE_DEG = 4; // half-angle of the pellet spread cone
+      var SHOTGUN_RECOIL_KICK_DEG = -16; // a much bigger kick than a pistol's
+      var SHOTGUN_RECOIL_RECOVER_MS = 200;
+
+      var TRACER_COLOR = '#ffe066';
+      var TRACER_RADIUS = 0.004; // meters
+      var TRACER_LIFETIME_MS = 80;
+      var IMPACT_RADIUS = 0.04; // meters
+      var IMPACT_LIFETIME_MS = 150;
+      var MAX_SHOT_RANGE = 20; // meters — both the raycaster's far distance and the tracer's length on a miss
+
+      var FALL_ROTATION_X = -90; // degrees a hit target tips backward, hinged at its base
+      var FALL_DUR_MS = 220;
+      var STAND_UP_DUR_MS = 350;
+      var RESET_DELAY_MS = 700; // pause after a group's last target falls, before that group pops back up
+
+      var RING_Z_START = 0.03; // meters in front of the board face, to the outermost ring
+      var RING_Z_STEP = 0.01; // extra separation per ring stepping inward — small enough to look flat from a few meters out, big enough that the depth buffer doesn't flicker between rings
+
+      // Juggling: an aimed toss, not raw physics. The vertical speed of
+      // your hand at release controls how high/long the arc is; the
+      // horizontal velocity is discarded and replaced with whatever's
+      // needed to land exactly at a target hand's position (see
+      // computeThrowVelocity). Which hand is the target is the only
+      // thing your actual aim direction decides.
+      var MIN_THROW_UPWARD_SPEED = 0.8; // m/s — vertical hand speed floor to count as a deliberate toss at all; below this, a release just falls/holsters as before
+      var OTHER_HAND_DOT_THRESHOLD = 0.3; // m/s of horizontal speed toward the other hand needed to target it instead of yourself
+      var THROW_VELOCITY_MULTIPLIER = 1.6; // exaggerates real hand vy before clamping, so tosses read as more dramatic than your actual flick
+      var THROW_LAUNCH_VY_MIN = 2.2; // m/s — clamps the arc's height floor so even a weak flick gives a reactable toss
+      var THROW_LAUNCH_VY_MAX = 6; // m/s — clamps the ceiling so a hard flick doesn't send it flying absurdly high
+      var THROW_CATCH_RADIUS = 0.35; // meters — deliberately wide vs. GRAB_RADIUS(0.15): catching something already falling/flying should be far more forgiving than picking something up at rest
+      var THROW_SPIN_RATE = 7; // rad/s — fixed visual tumble given to a fresh throw
+      var SNAP_BLEND_DUR_MS = 130; // ms — how long any snap-into-place (grab, holster, or catch) takes to blend smoothly into its target pose, instead of an instant pop
+
+      // ==============================================================
+      // ANCHOR SLOTS
+      // Any object holsterable declares an itemSize; any anchor
+      // declares a slot size. Small fits in small/medium/large, medium
+      // fits medium/large, large fits large only — see the "rank"
+      // ordering below. Every distance here (how close counts as "in
+      // range to snap," how far out the indicator sphere starts
+      // reacting) scales with the slot's own size, so a big slot like
+      // the bandolier stays proportionally as generous as a small
+      // holster rather than sharing one flat radius for everything.
+      // ==============================================================
+      var SLOT_SIZE_RANK = { small: 0, medium: 1, large: 2 };
+      var SLOT_COLOR = { small: '#ffd93d', medium: '#3ddc84', large: '#2196f3' };
+      var SLOT_SPHERE_BASE_RADIUS = { small: 0.03, medium: 0.045, large: 0.06 }; // idle indicator size
+      var SLOT_SPHERE_MAX_RADIUS = { small: 0.055, medium: 0.075, large: 0.095 }; // indicator size once a carried item is close enough to snap
+      var SLOT_SNAP_RADIUS = { small: 0.22, medium: 0.32, large: 0.45 }; // meters — how close a released/thrown item needs to be to anchor here
+      var SLOT_APPROACH_RADIUS = { small: 0.42, medium: 0.55, large: 0.75 }; // meters — how far out the indicator starts growing at all
+      var SLOT_CLICK_DUR_MS = 220; // ms — fast "click into place" indicator bounce: overshoot, undershoot, settle
+
+      // ==============================================================
+      // spawnTracer
+      // A quick yellow line from the muzzle to wherever the shot ended
+      // up (a hit point, or MAX_SHOT_RANGE out into the distance on a
+      // miss), plus a small burst at that endpoint. Both are one-shot,
+      // throwaway entities — created, shown briefly, removed — so it's
+      // a plain function rather than a component.
+      // ==============================================================
+      function spawnTracer(origin, endPoint) {
+        var sceneEl = document.querySelector('a-scene');
+
+        var direction = new THREE.Vector3().subVectors(endPoint, origin);
+        var length = direction.length();
+        if (length > 0.001) {
+          var midpoint = new THREE.Vector3().addVectors(origin, endPoint).multiplyScalar(0.5);
+          var quaternion = new THREE.Quaternion().setFromUnitVectors(
+            new THREE.Vector3(0, 1, 0),
+            direction.clone().normalize()
+          );
+
+          var tracer = document.createElement('a-entity');
+          tracer.setAttribute('geometry', { primitive: 'cylinder', radius: TRACER_RADIUS, height: length });
+          tracer.setAttribute('material', 'color: ' + TRACER_COLOR + '; shader: flat; opacity: 0.9; transparent: true');
+          tracer.object3D.position.copy(midpoint);
+          tracer.object3D.quaternion.copy(quaternion);
+          sceneEl.appendChild(tracer);
+          setTimeout(function () {
+            if (tracer.parentNode) tracer.parentNode.removeChild(tracer);
+          }, TRACER_LIFETIME_MS);
+        }
+
+        var impact = document.createElement('a-sphere');
+        impact.setAttribute('radius', IMPACT_RADIUS);
+        impact.setAttribute('material', 'color: ' + TRACER_COLOR + '; shader: flat; opacity: 0.9; transparent: true');
+        impact.object3D.position.copy(endPoint);
+        impact.setAttribute('animation__shrink', {
+          property: 'scale',
+          to: '0.001 0.001 0.001',
+          dur: IMPACT_LIFETIME_MS,
+          easing: 'easeInQuad',
+        });
+        sceneEl.appendChild(impact);
+        setTimeout(function () {
+          if (impact.parentNode) impact.parentNode.removeChild(impact);
+        }, IMPACT_LIFETIME_MS + 20);
+      }
+
+      // ==============================================================
+      // createTargetFace
+      // The reusable "bullseye" visual: a board plus five scored rings,
+      // with no pop-target/hit-reaction logic of its own and no
+      // assumption about how it's mounted. Every gallery type below
+      // (stationary stand, wheel spoke, conveyor, popper) builds its
+      // own "hinge" entity — the thing that actually has pop-target
+      // attached and physically falls — and appends one of these as a
+      // child of it. `scale` shrinks the whole face uniformly, since a
+      // 1.1m board that looks right on a stationary stand would be
+      // absurd sticking out of a wheel spoke.
+      // ==============================================================
+      function createTargetFace(scale) {
+        scale = scale || 1;
+        var face = document.createElement('a-entity');
+
+        var board = document.createElement('a-box');
+        board.setAttribute('width', 1.1 * scale);
+        board.setAttribute('height', 1.1 * scale);
+        board.setAttribute('depth', 0.04);
+        board.setAttribute('color', '#8a6d4b');
+        face.appendChild(board);
+
+        var rings = [
+          { radius: 0.5, color: '#f4f1de', score: 10, label: 'Outer ring' },
+          { radius: 0.4, color: '#1b1b1b', score: 25, label: 'Black ring' },
+          { radius: 0.3, color: '#2274a5', score: 50, label: 'Blue ring' },
+          { radius: 0.2, color: '#c1121f', score: 75, label: 'Red ring' },
+          { radius: 0.1, color: '#ffd60a', score: 100, label: 'BULLSEYE' },
+        ];
+
+        rings.forEach(function (ring, i) {
+          var circle = document.createElement('a-circle');
+          circle.setAttribute('radius', ring.radius * scale);
+          circle.setAttribute('color', ring.color);
+          circle.setAttribute('position', { x: 0, y: 0, z: RING_Z_START + i * RING_Z_STEP });
+          circle.classList.add('target-ring');
+          circle.setAttribute('scoring-ring', { score: ring.score, label: ring.label });
+          face.appendChild(circle);
+        });
+
+        return face;
+      }
+
+      // ==============================================================
+      // placeInArc
+      // Positions an entity at a given angle/distance from the player
+      // (0° = straight ahead, negative = left, positive = right) and
+      // rotates it to face back roughly toward center — the same
+      // convention target-group's internal layout already used for
+      // individual stands, generalized here for gallery pieces that
+      // place themselves as a whole.
+      // ==============================================================
+      function placeInArc(el, angleDeg, distance) {
+        var angleRad = (angleDeg * Math.PI) / 180;
+        el.object3D.position.set(distance * Math.sin(angleRad), 0, -distance * Math.cos(angleRad));
+        el.object3D.rotation.set(0, (-angleDeg * Math.PI) / 180, 0);
+      }
+
+      // ==============================================================
+      // makeGroupResetHandler
+      // Every gallery type manages a group of pop-target hinges and
+      // needs the identical "once they're all down, wait and stand
+      // them back up together" behavior. Takes a function returning
+      // the current list of hinge entities (rather than the list
+      // itself) since it's called before that list exists yet.
+      // ==============================================================
+      function makeGroupResetHandler(getTargets) {
+        return function () {
+          var targets = getTargets();
+          var allDown = targets.every(function (hingeEl) {
+            return hingeEl.components['pop-target'].fallen;
+          });
+          if (!allDown) return;
+
+          setTimeout(function () {
+            targets.forEach(function (hingeEl) {
+              hingeEl.components['pop-target'].standUp();
+            });
+          }, RESET_DELAY_MS);
+        };
+      }
+
+      // ==============================================================
+      // findOtherHand
+      // The `.hand` element that isn't handEl — with exactly two hands
+      // in the scene this is just "the other one," found generically
+      // rather than assuming which is left/right.
+      // ==============================================================
+      function findOtherHand(handEl) {
+        var hands = document.querySelectorAll('.hand');
+        for (var i = 0; i < hands.length; i++) {
+          if (hands[i] !== handEl) return hands[i];
+        }
+        return null;
+      }
+
+      // ==============================================================
+      // computeThrowVelocity
+      // Decides whether a grip-release counts as a deliberate upward
+      // toss and, if so, returns the launch velocity to use — or null
+      // if it's just a normal release (too slow, or not upward enough)
+      // that should fall through to the usual holster/drop logic.
+      //
+      // This is an aimed toss, not raw physics: real hand velocity at
+      // release is unreliable for anyone to consistently land a catch
+      // with, so only the vertical component (how hard you flicked
+      // upward, clamped to a reactable range) survives untouched. The
+      // horizontal component is discarded and replaced with whatever's
+      // needed to land exactly on a target hand — your own hand's
+      // current position for a "basically straight up" release, or the
+      // other hand's current position if there's meaningful sideways
+      // velocity toward it. Both targets are fixed at this instant;
+      // the arc doesn't re-aim later if a hand moves (see
+      // pistol.updateFall/checkCatch for how catching still stays
+      // generous regardless of exactly where the arc ends up).
+      // ==============================================================
+      function computeThrowVelocity(handEl) {
+        var handRig = handEl.components['hand-rig'];
+        if (!handRig) return null;
+
+        var vy = handRig.velocity.y;
+        if (vy < MIN_THROW_UPWARD_SPEED) return null;
+        vy = Math.min(Math.max(vy * THROW_VELOCITY_MULTIPLIER, THROW_LAUNCH_VY_MIN), THROW_LAUNCH_VY_MAX);
+
+        var releasePos = new THREE.Vector3();
+        handEl.object3D.getWorldPosition(releasePos);
+
+        var targetPos = releasePos.clone();
+        var otherHandEl = findOtherHand(handEl);
+
+        if (otherHandEl) {
+          var otherPos = new THREE.Vector3();
+          otherHandEl.object3D.getWorldPosition(otherPos);
+
+          var towardOther = new THREE.Vector3(otherPos.x - releasePos.x, 0, otherPos.z - releasePos.z);
+          if (towardOther.lengthSq() > 0.0001) {
+            towardOther.normalize();
+            var towardOtherSpeed = handRig.velocity.x * towardOther.x + handRig.velocity.z * towardOther.z;
+            if (towardOtherSpeed > OTHER_HAND_DOT_THRESHOLD) {
+              targetPos = otherPos;
+            }
+          }
+        }
+
+        var flightTime = (2 * vy) / GRAVITY; // time to fall back to launch height under gravity
+        return new THREE.Vector3(
+          (targetPos.x - releasePos.x) / flightTime,
+          vy,
+          (targetPos.z - releasePos.z) / flightTime
+        );
+      }
+
+      // ==============================================================
+      // findCatchingHand
+      // Generous catch detection for anything falling/flying (a
+      // dropped or thrown holsterable prop — this doesn't know or care
+      // which one, it just checks `.hand` elements' public hand-rig
+      // state). A hand can catch by gripping (any grip currently held, not
+      // just a fresh press) within THROW_CATCH_RADIUS, or by resting a
+      // finger on the trigger within that same radius — the two modes
+      // the caller uses to decide "snap into hand" vs. "land on the
+      // finger and dangle." Skips any hand that's already holding or
+      // dangling something.
+      // ==============================================================
+      function findCatchingHand(worldPos, radius) {
+        var hands = document.querySelectorAll('.hand');
+        var handPos = new THREE.Vector3();
+        var best = null;
+        var bestDist = radius;
+
+        for (var i = 0; i < hands.length; i++) {
+          var handEl = hands[i];
+          var handRig = handEl.components['hand-rig'];
+          if (!handRig) continue;
+          if (handRig.heldObject || handRig.danglingObject) continue;
+
+          var mode = handRig.gripHeld ? 'grip' : handRig.fingerOnTrigger ? 'trigger' : null;
+          if (!mode) continue;
+
+          handEl.object3D.getWorldPosition(handPos);
+          var d = handPos.distanceTo(worldPos);
+          if (d < bestDist) {
+            bestDist = d;
+            best = { handEl: handEl, mode: mode };
+          }
+        }
+
+        return best;
+      }
+
+      // ==============================================================
+      // findContainerHolsterable
+      // Walks a slot entity's object3D ancestors (NOT the DOM — a
+      // holsterable object's DOM parent is left alone when it's
+      // reparented at runtime, see holsterable's own comment) to find
+      // the holsterable component of whatever object this slot is
+      // physically attached to, if any. Returns null for a slot that's
+      // just a free-standing body anchor (hips, head, back) rather
+      // than a slot nested inside another grabbable item (like the
+      // hat's inner slot) — that distinction is exactly what
+      // findCatchingSlot uses to decide what's allowed to passively
+      // "catch" a falling item and what isn't.
+      // ==============================================================
+      function findContainerHolsterable(slotEl) {
+        var node = slotEl.object3D.parent;
+        while (node) {
+          if (node.el && node.el.components && node.el.components.holsterable) {
+            return node.el.components.holsterable;
+          }
+          node = node.parent;
+        }
+        return null;
+      }
+
+      // ==============================================================
+      // findCatchingSlot
+      // The "throw your gun up, take off your hat, and use it to catch
+      // the gun" mechanic. Only a slot that's nested inside another
+      // object AND currently actively gripped in a hand (state ===
+      // 'held', per findContainerHolsterable) counts — a slot worn,
+      // holstered, or resting is a deliberate-release target only (see
+      // holsterable.tryHolsterElse/findNearestSlot), not a passive
+      // basket that scoops up anything that flies near it.
+      // ==============================================================
+      function findCatchingSlot(worldPos, itemSize) {
+        var itemRank = SLOT_SIZE_RANK[itemSize];
+        var slots = document.querySelectorAll('.anchor-slot');
+        var slotPos = new THREE.Vector3();
+        var best = null;
+        var bestDist = Infinity;
+
+        for (var i = 0; i < slots.length; i++) {
+          var slotEl = slots[i];
+          var slotComp = slotEl.components['anchor-slot'];
+          if (!slotComp || slotComp.occupant) continue;
+
+          var slotRank = SLOT_SIZE_RANK[slotComp.data.size];
+          if (slotRank < itemRank) continue;
+
+          var container = findContainerHolsterable(slotEl);
+          if (!container || container.state !== 'held') continue;
+
+          slotEl.object3D.getWorldPosition(slotPos);
+          var d = slotPos.distanceTo(worldPos);
+          if (d < SLOT_SNAP_RADIUS[slotComp.data.size] && d < bestDist) {
+            best = slotEl;
+            bestDist = d;
+          }
+        }
+
+        return best;
+      }
+
+      // ==============================================================
+      // clickEnvelope
+      // A fast "click into place" bounce for the anchor-slot indicator
+      // sphere: rises past its target size, dips back below it, then
+      // settles — a quick buzz rather than a dramatic wiggle, since
+      // controller vibration doesn't reliably work everywhere. Input
+      // t is 0..1 progress through SLOT_CLICK_DUR_MS; output is a
+      // multiplier on the sphere's fully-expanded radius.
+      // ==============================================================
+      function clickEnvelope(t) {
+        if (t < 0.35) return 1 + 0.35 * (t / 0.35); // quick rise to 1.35x (overshoot)
+        if (t < 0.7) return 1.35 - 0.55 * ((t - 0.35) / 0.35); // fall through to 0.8x (undershoot)
+        return 0.8 + 0.2 * ((t - 0.7) / 0.3); // settle back to 1x
+      }
+
+      // ==============================================================
+      // COMPONENT: boxy-gun
+      // Builds a very simple, low-poly pistol out of boxes, sized for a
+      // hand-held scale (roughly 20cm long). Local space is defined so
+      // the entity's own origin sits at the grip/trigger-guard area —
+      // that's what lets holsterable's dangle physics (a separate
+      // component, attached alongside this one) treat "pivot around
+      // the entity origin" as "pivot around the trigger guard" without
+      // needing a separate offset. See boxy-hat, below, for the same
+      // trick applied to a very differently-shaped object.
+      // ==============================================================
+      AFRAME.registerComponent('boxy-gun', {
+        init: function () {
+          var el = this.el;
+          var metal = '#2b2b2f';
+          var wood = '#4a2f1c';
+          var brass = '#c9962c';
+
+          function addBox(w, h, d, pos, color, rot) {
+            var box = document.createElement('a-box');
+            box.setAttribute('width', w);
+            box.setAttribute('height', h);
+            box.setAttribute('depth', d);
+            box.setAttribute('position', pos);
+            box.setAttribute('color', color);
+            if (rot) box.setAttribute('rotation', rot);
+            el.appendChild(box);
+            return box;
+          }
+
+          addBox(0.045, 0.13, 0.05, '0 -0.05 0.02', wood, '12 0 0'); // grip
+          addBox(0.045, 0.05, 0.14, '0 0.02 -0.04', metal); // frame
+          addBox(0.042, 0.045, 0.22, '0 0.058 -0.12', metal); // slide
+          addBox(0.045, 0.006, 0.06, '0 -0.028 -0.02', metal); // trigger guard (bottom)
+          addBox(0.045, 0.05, 0.006, '0 -0.005 -0.05', metal); // trigger guard (front)
+          addBox(0.008, 0.03, 0.008, '0 -0.01 -0.035', brass); // trigger
+          addBox(0.03, 0.025, 0.012, '0 0.075 0.025', metal, '20 0 0'); // hammer
+          addBox(0.008, 0.012, 0.008, '0 0.085 -0.22', metal); // front sight
+          addBox(0.03, 0.01, 0.012, '0 0.083 -0.03', metal); // rear sight
+
+          var flash = document.createElement('a-circle');
+          flash.setAttribute('radius', 0.03);
+          flash.setAttribute('material', 'color: #ffe066; shader: flat; opacity: 0.9');
+          flash.setAttribute('position', '0 0.058 -0.24');
+          flash.setAttribute('visible', false);
+          flash.classList.add('muzzle-flash');
+          el.appendChild(flash);
+
+          var muzzle = document.createElement('a-entity');
+          muzzle.setAttribute('position', '0 0.058 -0.235');
+          muzzle.classList.add('muzzle');
+          el.appendChild(muzzle);
+        },
+      });
+
+      // ==============================================================
+      // COMPONENT: boxy-shotgun
+      // Same boxy-box-of-boxes approach and the same "origin sits at
+      // the trigger guard" convention as boxy-gun (so it dangles/
+      // twirls with zero extra physics code), just a lot longer: a
+      // long barrel, a pump forend under it, and a stock out the back
+      // for shouldering flavor. This is also why it needs a large
+      // anchor-slot (see the bandolier in markup) rather than a small
+      // one like the pistols — it's sized to obviously not fit in a
+      // hip holster.
+      // ==============================================================
+      AFRAME.registerComponent('boxy-shotgun', {
+        init: function () {
+          var el = this.el;
+          var metal = '#2b2b2f';
+          var wood = '#4a2f1c';
+          var brass = '#c9962c';
+
+          function addBox(w, h, d, pos, color, rot) {
+            var box = document.createElement('a-box');
+            box.setAttribute('width', w);
+            box.setAttribute('height', h);
+            box.setAttribute('depth', d);
+            box.setAttribute('position', pos);
+            box.setAttribute('color', color);
+            if (rot) box.setAttribute('rotation', rot);
+            el.appendChild(box);
+            return box;
+          }
+
+          addBox(0.05, 0.14, 0.055, '0 -0.05 0.02', wood, '10 0 0'); // grip
+          addBox(0.05, 0.06, 0.18, '0 0.02 -0.06', metal); // receiver
+          addBox(0.035, 0.035, 0.45, '0 0.05 -0.36', metal); // barrel
+          addBox(0.055, 0.045, 0.16, '0 0.01 -0.22', wood); // pump forend
+          addBox(0.06, 0.09, 0.28, '0 -0.02 0.24', wood, '-6 0 0'); // stock
+          addBox(0.045, 0.006, 0.06, '0 -0.028 -0.02', metal); // trigger guard (bottom)
+          addBox(0.045, 0.05, 0.006, '0 -0.005 -0.05', metal); // trigger guard (front)
+          addBox(0.008, 0.03, 0.008, '0 -0.01 -0.035', brass); // trigger
+          addBox(0.01, 0.014, 0.01, '0 0.085 -0.58', metal); // front sight bead
+
+          var flash = document.createElement('a-circle');
+          flash.setAttribute('radius', 0.045);
+          flash.setAttribute('material', 'color: #ffe066; shader: flat; opacity: 0.9');
+          flash.setAttribute('position', '0 0.05 -0.6');
+          flash.setAttribute('visible', false);
+          flash.classList.add('muzzle-flash');
+          el.appendChild(flash);
+
+          var muzzle = document.createElement('a-entity');
+          muzzle.setAttribute('position', '0 0.05 -0.585');
+          muzzle.classList.add('muzzle');
+          el.appendChild(muzzle);
+        },
+      });
+
+      // ==============================================================
+      // COMPONENT: boxy-hat
+      // A simple cowboy hat: a wide flat brim plus a cylindrical crown,
+      // built the same "very simple, boxy" way as boxy-gun. The one
+      // thing that isn't simple: unlike boxy-gun (whose origin already
+      // sits at a natural grip point, the trigger guard), this hat's
+      // true geometric center is offset from its own entity origin by
+      // -innerRadius on local X. The origin instead sits at one point
+      // along the inner rim of the head-hole — as if a finger were
+      // hooked under that one edge, rather than the hat balanced
+      // centered on a fingertip. That's the whole trick behind "spin
+      // axis like your finger's in the hat, offset to one side": since
+      // holsterable's dangle physics always pivots around the entity
+      // origin, putting the origin there directly (instead of at the
+      // hat's middle) is all it takes — no hat-specific physics code.
+      //
+      // Because of that offset, holsterable's holsterPosition (set in
+      // markup) has to counter it by +innerRadius so the hat renders
+      // centered on your head when worn rather than shifted to one
+      // side. innerRadius/crownHeight here need to stay in sync with
+      // the holsterPosition/comOffset numbers on the hat entity in
+      // markup — there's no shared constant linking them, the same way
+      // boxy-gun's part dimensions and pistol's comOffset/heldRotation
+      // are already just kept consistent by hand.
+      // ==============================================================
+      AFRAME.registerComponent('boxy-hat', {
+        init: function () {
+          var el = this.el;
+          var felt = '#2b2320';
+          var band = '#5b3a29';
+
+          var innerRadius = 0.11; // crown radius / head-hole size
+          var crownHeight = 0.13;
+          var brimRadius = 0.24;
+          var brimThickness = 0.015;
+          var cx = -innerRadius; // local x of the hat's true center, relative to the rim point the origin sits at
+
+          var brim = document.createElement('a-cylinder');
+          brim.setAttribute('radius', brimRadius);
+          brim.setAttribute('height', brimThickness);
+          brim.setAttribute('color', felt);
+          brim.setAttribute('position', { x: cx, y: 0, z: 0 });
+          el.appendChild(brim);
+
+          var crown = document.createElement('a-cylinder');
+          crown.setAttribute('radius', innerRadius);
+          crown.setAttribute('height', crownHeight);
+          crown.setAttribute('color', felt);
+          crown.setAttribute('position', { x: cx, y: crownHeight / 2, z: 0 });
+          el.appendChild(crown);
+
+          var hatBand = document.createElement('a-cylinder');
+          hatBand.setAttribute('radius', innerRadius + 0.004);
+          hatBand.setAttribute('height', 0.03);
+          hatBand.setAttribute('color', band);
+          hatBand.setAttribute('position', { x: cx, y: 0.02, z: 0 });
+          el.appendChild(hatBand);
+
+          // A small slot tucked inside the crown's hollow interior —
+          // "hide a gun in your hat." Positioned at the crown's true
+          // center (cx), not the entity's own rim-edge origin, and
+          // low enough to read as sitting down inside the hollow
+          // rather than floating above the brim. Being a plain DOM/
+          // object3D child of this entity, it automatically follows
+          // the hat wherever holsterable reparents it — held, worn,
+          // dangling, or resting — with no extra tracking code.
+          var innerSlot = document.createElement('a-entity');
+          innerSlot.classList.add('anchor-slot');
+          innerSlot.setAttribute('anchor-slot', 'size: small');
+          innerSlot.setAttribute('position', { x: cx, y: crownHeight * 0.35, z: 0 });
+          el.appendChild(innerSlot);
+        },
+      });
+
+      // ==============================================================
+      // COMPONENT: body-anchor
+      // Drives an invisible entity to sit at roughly a fixed spot on
+      // the player's body, following the headset's horizontal position
+      // and yaw only (see the comment above the markup for why
+      // pitch/roll are excluded) — there's no real body tracking on a
+      // Quest, so this is an approximation for all three spots it's
+      // used for: the two hips and the back-center bandolier point.
+      // Also builds each spot's own bit of simple "boxy" flavor
+      // geometry (a holster pouch for the hips, a diagonal strap for
+      // the back) so it's visually obvious where things are meant to
+      // go — purely cosmetic, no bearing on the actual anchor-slot
+      // component (added separately in markup) that does the real
+      // snapping work.
+      // ==============================================================
+      AFRAME.registerComponent('body-anchor', {
+        schema: {
+          side: { type: 'string', default: 'right' }, // 'left' | 'right' | 'back'
+        },
+
+        init: function () {
+          this.camera = document.querySelector('#head-camera');
+          this.camPos = new THREE.Vector3();
+          this.camQuat = new THREE.Quaternion();
+          this.camEuler = new THREE.Euler();
+          this.offsetVec = new THREE.Vector3();
+
+          if (this.data.side === 'left') {
+            this.localOffset = new THREE.Vector3(-HIP_SIDE_OFFSET, 0, 0);
+            this.height = HIP_HEIGHT;
+          } else if (this.data.side === 'right') {
+            this.localOffset = new THREE.Vector3(HIP_SIDE_OFFSET, 0, 0);
+            this.height = HIP_HEIGHT;
+          } else {
+            this.localOffset = new THREE.Vector3(0, 0, BACK_DEPTH_OFFSET); // local +Z is behind the player
+            this.height = BACK_HEIGHT;
+          }
+
+          this.buildProps();
+        },
+
+        tick: function () {
+          if (!this.camera || !this.camera.object3D) return;
+
+          this.camera.object3D.getWorldPosition(this.camPos);
+          this.camera.object3D.getWorldQuaternion(this.camQuat);
+          this.camEuler.setFromQuaternion(this.camQuat, 'YXZ');
+          var yaw = this.camEuler.y;
+
+          this.offsetVec.copy(this.localOffset).applyAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
+
+          this.el.object3D.position.set(
+            this.camPos.x + this.offsetVec.x,
+            this.height,
+            this.camPos.z + this.offsetVec.z
+          );
+          this.el.object3D.rotation.set(0, yaw, 0);
+        },
+
+        // Cheap, "shitty" flavor geometry — a leather-ish holster
+        // pouch under each hip anchor, a diagonal bandolier strap
+        // across the back one. Estimated proportions, not measured
+        // against a real body; expect these to want eyes-on tuning.
+        buildProps: function () {
+          if (this.data.side === 'back') {
+            var strap = document.createElement('a-box');
+            strap.setAttribute('width', 0.09);
+            strap.setAttribute('height', 0.9);
+            strap.setAttribute('depth', 0.03);
+            strap.setAttribute('color', '#5b3a29');
+            strap.setAttribute('rotation', '0 0 35');
+            this.el.appendChild(strap);
+          } else {
+            var pouch = document.createElement('a-box');
+            pouch.setAttribute('width', 0.09);
+            pouch.setAttribute('height', 0.16);
+            pouch.setAttribute('depth', 0.07);
+            pouch.setAttribute('color', '#4a3220');
+            pouch.setAttribute('position', { x: 0, y: -0.04, z: -0.02 });
+            this.el.appendChild(pouch);
+          }
+        },
+      });
+
+      // ==============================================================
+      // COMPONENT: anchor-slot
+      // The generic "you can snap a compatible item here" socket.
+      // Purely declarative on its own (just a size — small/medium/
+      // large) plus a translucent sphere that visually marks the spot
+      // and reacts as a compatible carried item approaches; the actual
+      // matching/snapping logic lives in holsterable (findNearestSlot)
+      // and the free functions above (findCatchingSlot). `occupant` is
+      // the one piece of real state here: whichever holsterable
+      // component currently has this slot claimed, so two items can't
+      // pile into the same spot and so the indicator hides itself
+      // while something's already resting here.
+      // ==============================================================
+      AFRAME.registerComponent('anchor-slot', {
+        schema: {
+          size: { type: 'string', default: 'small' }, // 'small' | 'medium' | 'large'
+        },
+
+        init: function () {
+          this.occupant = null;
+          this.wasInRange = false;
+          this.clickElapsed = null; // ms into the click bounce, or null when idle
+
+          this.sphere = document.createElement('a-sphere');
+          this.sphere.setAttribute('radius', SLOT_SPHERE_BASE_RADIUS[this.data.size]);
+          this.sphere.setAttribute(
+            'material',
+            'color: ' + SLOT_COLOR[this.data.size] + '; shader: flat; opacity: 0.35; transparent: true; depthWrite: false'
+          );
+          this.el.appendChild(this.sphere);
+
+          this._slotPos = new THREE.Vector3();
+          this._itemPos = new THREE.Vector3();
+        },
+
+        tick: function (time, dt) {
+          if (this.occupant) {
+            this.sphere.setAttribute('visible', false);
+            this.wasInRange = false;
+            this.clickElapsed = null;
+            return;
+          }
+          this.sphere.setAttribute('visible', true);
+
+          var nearestDist = this.findNearestCompatibleHeldDistance();
+          var snapRadius = SLOT_SNAP_RADIUS[this.data.size];
+          var approachRadius = SLOT_APPROACH_RADIUS[this.data.size];
+          var baseR = SLOT_SPHERE_BASE_RADIUS[this.data.size];
+          var maxR = SLOT_SPHERE_MAX_RADIUS[this.data.size];
+
+          var inRange = nearestDist <= snapRadius;
+          if (inRange && !this.wasInRange) this.clickElapsed = 0;
+          this.wasInRange = inRange;
+
+          var t = 0;
+          if (isFinite(nearestDist)) {
+            t = 1 - (nearestDist - snapRadius) / (approachRadius - snapRadius);
+            t = Math.min(Math.max(t, 0), 1);
+          }
+          var radius = baseR + (maxR - baseR) * t;
+          var opacity = 0.25 + (0.6 - 0.25) * t;
+
+          if (this.clickElapsed !== null) {
+            this.clickElapsed += dt || 16;
+            if (this.clickElapsed >= SLOT_CLICK_DUR_MS) {
+              this.clickElapsed = null;
+            } else {
+              radius = maxR * clickEnvelope(this.clickElapsed / SLOT_CLICK_DUR_MS);
+              opacity = 0.6;
+            }
+          }
+
+          this.sphere.setAttribute('radius', radius);
+          this.sphere.setAttribute('material', 'opacity', opacity);
+        },
+
+        // Nearest currently-HELD (actively gripped, not dangling —
+        // that's a twirl in progress, not "aiming for a slot")
+        // grabbable item whose itemSize actually fits this slot.
+        // Infinity if nothing qualifies, which reads as "stay idle."
+        findNearestCompatibleHeldDistance: function () {
+          var slotRank = SLOT_SIZE_RANK[this.data.size];
+          var items = document.querySelectorAll('.grabbable');
+          var best = Infinity;
+          this.el.object3D.getWorldPosition(this._slotPos);
+
+          for (var i = 0; i < items.length; i++) {
+            var holsterable = items[i].components.holsterable;
+            if (!holsterable || holsterable.state !== 'held') continue;
+            if (SLOT_SIZE_RANK[holsterable.data.itemSize] > slotRank) continue;
+
+            items[i].object3D.getWorldPosition(this._itemPos);
+            var d = this._itemPos.distanceTo(this._slotPos);
+            if (d < best) best = d;
+          }
+
+          return best;
+        },
+      });
+
+      // ==============================================================
+      // COMPONENT: holsterable
+      // The shared state machine and physics behind every grabbable
+      // prop in the scene (currently the two pistols and the hat):
+      //   holstered -> held (grabbed) -> dangling (grip released while
+      //   a finger is still resting on the trigger) -> held again
+      //   (caught) or holstered/falling (finger comes off the trigger
+      //   too — holstered if that happens near a matching anchor,
+      //   falling otherwise) -> resting (on the ground, grabbable
+      //   again).
+      //
+      //   Releasing the grip with NO finger on the trigger and a
+      //   deliberate upward hand speed is a throw instead — same
+      //   "falling" state, just seeded with a real launch velocity
+      //   (see release()/throwWithVelocity()/computeThrowVelocity()).
+      //   A calm release with no throw checks the holster immediately
+      //   (see release()). A release WITH a finger still on the
+      //   trigger always dangles, deliberately skipping both the throw
+      //   and holster checks at that moment — those only happen later,
+      //   in endDangle(), when the finger actually comes off the
+      //   trigger. That's what lets a dangling, spinning object be
+      //   aimed into its holster as its own move, rather than only
+      //   ever holstering from a plain grip-release.
+      //
+      //   While falling (dropped OR thrown — same state), it's
+      //   generously catchable by either hand: see checkCatch(),
+      //   catchThrown(), and catchIntoDangle().
+      //
+      // Schema is what makes this reusable rather than gun-specific:
+      // itemSize is this object's size class (small/medium/large) —
+      // see findNearestSlot for how that decides which anchor-slot
+      // entities in the scene it's allowed to snap into, generically,
+      // with no per-object list of "which holsters" to maintain;
+      // holsterPosition/holsterRotation and heldPosition/heldRotation
+      // are the local poses snapped to when holstered/held (the same
+      // holsterPosition/holsterRotation apply no matter which slot it
+      // lands in — a gun tucked into a hat ends up in the same jaunty
+      // barrel-down pose it holsters at your hip in, which is a
+      // feature, not a bug, for a game this silly); grabRadius is how
+      // close a hand needs to be to pick it up (wider than the
+      // object's own origin-to-edge distance for something like the
+      // hat, whose origin sits well inside its visual silhouette — see
+      // the hat's markup comment); comOffset is where this object's
+      // true center of mass sits
+      // relative to its own entity origin. That origin, per
+      // boxy-gun/boxy-hat, is deliberately NOT the object's geometric
+      // center but its natural grip/pivot point — the trigger guard
+      // for a gun, one edge of the inner brim for a hat — and comOffset
+      // (which the dangle physics uses to work out which way "down"
+      // pulls it) is the whole reason the same twirl mechanic works
+      // for a completely different-shaped object with zero
+      // object-specific physics code.
+      //
+      // Every "snap into a new spot" transition (grab, holster, catch)
+      // goes through snapTo(), which blends smoothly over
+      // SNAP_BLEND_DUR_MS rather than popping instantly into place —
+      // see snapTo/updatePoseBlend.
+      //
+      // Visual geometry (boxy-gun, boxy-hat) is a separate component
+      // attached alongside this one in markup — this component
+      // neither knows nor cares what the object looks like. Firing
+      // likewise isn't here: see the small "pistol" companion
+      // component below, attached only to the guns, which reads this
+      // component's state but adds nothing back into it.
+      //
+      // Reparenting is done directly on the three.js object3D graph
+      // via Object3D.attach(), which reparents while preserving the
+      // object's current world transform — the DOM tree is left alone,
+      // since nothing here depends on DOM nesting.
+      // ==============================================================
+      AFRAME.registerComponent('holsterable', {
+        schema: {
+          holsterSelector: { type: 'selector' }, // starting holster anchor
+          itemSize: { type: 'string', default: 'small' }, // 'small' | 'medium' | 'large' — which anchor-slot sizes this object fits into
+          holsterPosition: { type: 'vec3', default: { x: 0, y: 0, z: 0 } },
+          holsterRotation: { type: 'vec3', default: { x: 0, y: 0, z: 0 } },
+          heldPosition: { type: 'vec3', default: { x: 0, y: 0, z: 0 } },
+          heldRotation: { type: 'vec3', default: { x: 0, y: 0, z: 0 } },
+          grabRadius: { type: 'number', default: GRAB_RADIUS },
+          comOffset: { type: 'vec3', default: { x: 0, y: 0, z: 0 } }, // center of mass, relative to the entity origin
+        },
+
+        init: function () {
+          this.state = 'holstered';
+          this.hand = null; // the hand entity currently holding/dangling this object
+          this.currentSlotEl = null; // the anchor-slot entity this object currently occupies, if holstered
+
+          this.angularVelocity = new THREE.Vector3();
+          this.fallVelocity = new THREE.Vector3();
+          this.prevPivotPos = new THREE.Vector3();
+          this.prevPivotVelocity = new THREE.Vector3();
+
+          this._pivot = new THREE.Vector3();
+          this._pivotVelocity = new THREE.Vector3();
+          this._pivotAccel = new THREE.Vector3();
+          this._comLocal = new THREE.Vector3(this.data.comOffset.x, this.data.comOffset.y, this.data.comOffset.z);
+          this._comWorld = new THREE.Vector3();
+          this._down = new THREE.Vector3(0, -1, 0);
+          this._torque = new THREE.Vector3();
+          this._deltaQuat = new THREE.Quaternion();
+          this._worldPos = new THREE.Vector3();
+          this._holsterPos = new THREE.Vector3();
+
+          // Smooth pose blend (see snapTo/updatePoseBlend). Starts
+          // "already finished" so nothing plays on scene load.
+          this._poseBlendFromPos = new THREE.Vector3();
+          this._poseBlendFromQuat = new THREE.Quaternion();
+          this._poseBlendToPos = new THREE.Vector3();
+          this._poseBlendToQuat = new THREE.Quaternion();
+          this._poseBlendElapsed = SNAP_BLEND_DUR_MS;
+
+          if (this.data.holsterSelector) {
+            // The very first placement, at scene load — instant, via
+            // attachTo directly, since there's nothing meaningful to
+            // blend from before the object has ever been anywhere.
+            this.attachTo(this.data.holsterSelector.object3D, this.data.holsterPosition, this.data.holsterRotation);
+          }
+        },
+
+        // The pose blend runs regardless of state (held or holstered
+        // are both valid snap targets) — cheap to check unconditionally
+        // since it's a no-op once finished.
+        //
+        // The initial slot claim (registering this object as the
+        // occupant of whatever it starts holstered on) happens here,
+        // on the first tick, rather than in init() — init() order
+        // across sibling entities isn't guaranteed, so the target
+        // anchor-slot's own component might not have attached yet if
+        // checked from init(). By the first tick, the whole scene's
+        // initial entities are guaranteed live, and object3D.parent.el
+        // reliably points back to whatever this object actually ended
+        // up parented under (the same "el" back-reference A-Frame
+        // already sets on any object3D/mesh, used elsewhere in this
+        // file e.g. for scoring-ring's raycast hits).
+        tick: function (time, dt) {
+          if (!this._didInitialSlotClaim) {
+            this._didInitialSlotClaim = true;
+            if (this.state === 'holstered' && !this.currentSlotEl) {
+              var parentObj = this.el.object3D.parent;
+              var parentEl = parentObj && parentObj.el;
+              if (parentEl && parentEl.components && parentEl.components['anchor-slot']) {
+                this.occupySlot(parentEl);
+              }
+            }
+          }
+
+          var dtSeconds = Math.min((dt || 16) / 1000, 0.05);
+          this.updatePoseBlend(dtSeconds);
+          if (this.state === 'dangling') this.updateDangle(dtSeconds);
+          else if (this.state === 'falling') this.updateFall(dtSeconds);
+        },
+
+        // Instant reparent + pose set, no blend — used only for the
+        // very first placement at scene load. Every runtime transition
+        // uses snapTo() instead.
+        attachTo: function (parentObject3D, localPos, localRotDeg) {
+          parentObject3D.attach(this.el.object3D);
+          if (localPos) this.el.object3D.position.set(localPos.x, localPos.y, localPos.z);
+          if (localRotDeg) {
+            this.el.object3D.rotation.set(
+              (localRotDeg.x * Math.PI) / 180,
+              (localRotDeg.y * Math.PI) / 180,
+              (localRotDeg.z * Math.PI) / 180
+            );
+          }
+        },
+
+        // Reparents (preserving current world pose as the blend's
+        // starting local pose, via Object3D.attach), then smoothly
+        // interpolates to the given target local pose over
+        // SNAP_BLEND_DUR_MS instead of popping there instantly. Used
+        // for every runtime "snap into a new spot" moment: grabbing,
+        // holstering, and catching something thrown.
+        snapTo: function (parentObject3D, targetLocalPos, targetLocalRotDeg) {
+          parentObject3D.attach(this.el.object3D);
+          this._poseBlendFromPos.copy(this.el.object3D.position);
+          this._poseBlendFromQuat.copy(this.el.object3D.quaternion);
+
+          this._poseBlendToPos.set(targetLocalPos.x, targetLocalPos.y, targetLocalPos.z);
+          this._poseBlendToQuat.setFromEuler(
+            new THREE.Euler(
+              (targetLocalRotDeg.x * Math.PI) / 180,
+              (targetLocalRotDeg.y * Math.PI) / 180,
+              (targetLocalRotDeg.z * Math.PI) / 180
+            )
+          );
+          this._poseBlendElapsed = 0;
+        },
+
+        // Same direct-object3D-write approach used throughout this
+        // component rather than through A-Frame's animation component,
+        // since that animates the core "rotation" component's own
+        // cached state — which everything here bypasses by writing
+        // object3D.rotation/quaternion directly — and the two caches
+        // falling out of sync is exactly the kind of thing that
+        // produces an object that's rotated wrong for no visible
+        // reason.
+        updatePoseBlend: function (dtSeconds) {
+          if (this._poseBlendElapsed >= SNAP_BLEND_DUR_MS) return;
+
+          this._poseBlendElapsed = Math.min(this._poseBlendElapsed + dtSeconds * 1000, SNAP_BLEND_DUR_MS);
+          var t = this._poseBlendElapsed / SNAP_BLEND_DUR_MS;
+
+          this.el.object3D.position.lerpVectors(this._poseBlendFromPos, this._poseBlendToPos, t);
+          this.el.object3D.quaternion.slerpQuaternions(this._poseBlendFromQuat, this._poseBlendToQuat, t);
+        },
+
+        // Called by hand-rig: either a fresh pickup (from a holster or
+        // the ground) or catching this same object mid-dangle — both
+        // are "snap rigidly into this hand" and need no other
+        // distinction. vacateSlot() is a no-op unless this object was
+        // actually anchored somewhere (holstered state is the only way
+        // in to grab(), so it's the one place a slot ever needs to be
+        // freed up again).
+        grab: function (handEl) {
+          this.state = 'held';
+          this.hand = handEl;
+          this.vacateSlot();
+          this.snapTo(handEl.object3D, this.data.heldPosition, this.data.heldRotation);
+          this.angularVelocity.set(0, 0, 0);
+        },
+
+        // Called by hand-rig when the hand currently holding this
+        // object releases its grip. fingerOnTrigger reflects whether
+        // that hand's finger is resting on (not necessarily pulling)
+        // the trigger at that moment. See the state-machine comment
+        // above for why the holster and throw checks are both skipped
+        // here when a finger is still on the trigger.
+        //
+        // A throw takes priority over the holster check — a real flick
+        // upward is a strong, deliberate signal that shouldn't get
+        // reinterpreted as "must be holstering" just because it
+        // happened near an anchor.
+        release: function (fingerOnTrigger) {
+          if (fingerOnTrigger) {
+            this.startDangling();
+            return;
+          }
+
+          var throwVelocity = computeThrowVelocity(this.hand);
+          if (throwVelocity) {
+            this.throwWithVelocity(throwVelocity);
+            return;
+          }
+
+          this.tryHolsterElse(this.startFalling.bind(this));
+        },
+
+        // Called directly by hand-rig when the finger lifts off the
+        // trigger while this object is dangling from that hand — the
+        // moment that decides whether it lands in a holster, gets
+        // thrown, or falls. Mirrors release()'s own priority order: a
+        // real upward flick while twirling should send it flying,
+        // spin and all, not just drop it straight down.
+        endDangle: function () {
+          var throwVelocity = computeThrowVelocity(this.hand);
+          if (throwVelocity) {
+            this.throwWithVelocity(throwVelocity);
+            return;
+          }
+
+          this.tryHolsterElse(this.startFalling.bind(this));
+        },
+
+        tryHolsterElse: function (fallback) {
+          this.el.object3D.getWorldPosition(this._worldPos);
+          var nearestSlot = this.findNearestSlot(this._worldPos);
+
+          if (nearestSlot) {
+            this.state = 'holstered';
+            this.hand = null;
+            this.snapTo(nearestSlot.object3D, this.data.holsterPosition, this.data.holsterRotation);
+            this.occupySlot(nearestSlot);
+            return;
+          }
+
+          fallback();
+        },
+
+        startDangling: function () {
+          this.state = 'dangling';
+          this.el.sceneEl.object3D.attach(this.el.object3D);
+          this.el.object3D.getWorldPosition(this.prevPivotPos);
+          this.prevPivotVelocity.set(0, 0, 0);
+          // this.hand stays set — we're still dangling from it
+        },
+
+        // Called when nothing is left holding this object up: either
+        // tryHolsterElse's fallback, or updateDangle's own safety net
+        // below if this.hand ever goes missing mid-dangle.
+        startFalling: function () {
+          this.state = 'falling';
+          this.hand = null;
+          this.el.sceneEl.object3D.attach(this.el.object3D); // no-op if already world-parented
+          this.fallVelocity.set(0, 0, 0);
+        },
+
+        // A throw: the same "falling" state a plain drop uses, just
+        // seeded with a real (aimed) launch velocity instead of zero,
+        // plus a fixed visual tumble so it reads as a toss rather than
+        // an object sliding through the air. updateFall's own gravity
+        // integration and catch-check take it from here. Seeds a fresh
+        // throw's spin, but if it's already spinning faster than the
+        // fixed toss tumble (e.g. thrown straight out of a twirl via
+        // endDangle), keeps the existing spin rather than clobbering
+        // it — a spinning object thrown should keep spinning, just as
+        // hard, not reset to a slower default.
+        throwWithVelocity: function (velocity) {
+          this.state = 'falling';
+          this.hand = null;
+          this.el.sceneEl.object3D.attach(this.el.object3D);
+          this.fallVelocity.copy(velocity);
+          if (this.angularVelocity.length() < THROW_SPIN_RATE) {
+            this.angularVelocity.set(THROW_SPIN_RATE, 0, 0);
+          }
+        },
+
+        // Grip-catch: snaps rigidly into handEl, but blends smoothly
+        // into the canonical held pose over SNAP_BLEND_DUR_MS instead
+        // of an instant snap (see snapTo/updatePoseBlend) — this is
+        // the one reserved for something already falling/flying,
+        // deliberately different from grab()'s instant pickup snap.
+        // Also updates the catching hand's own bookkeeping directly,
+        // since this catch wasn't initiated by that hand's own
+        // gripdown handler.
+        catchThrown: function (handEl) {
+          this.state = 'held';
+          this.hand = handEl;
+          this.angularVelocity.set(0, 0, 0);
+
+          this.snapTo(handEl.object3D, this.data.heldPosition, this.data.heldRotation);
+
+          var handRig = handEl.components['hand-rig'];
+          if (handRig) handRig.heldObject = this.el;
+        },
+
+        // Catches a falling/flying object directly onto handEl's
+        // trigger finger, dangling — no grip needed. angularVelocity
+        // is deliberately left alone rather than reset: whatever
+        // tumble it had mid-flight carries straight into the twirl.
+        catchIntoDangle: function (handEl) {
+          this.state = 'dangling';
+          this.hand = handEl;
+          this.el.object3D.getWorldPosition(this.prevPivotPos);
+          this.prevPivotVelocity.set(0, 0, 0);
+
+          var handRig = handEl.components['hand-rig'];
+          if (handRig) handRig.danglingObject = this.el;
+        },
+
+        // Passively caught by a slot belonging to something another
+        // hand is actively holding — "use your hat to catch your gun."
+        // See findCatchingSlot for the eligibility rules. Lands
+        // straight in 'holstered', occupying the slot, blended in via
+        // the usual snapTo rather than an instant pop.
+        catchIntoSlot: function (slotEl) {
+          this.state = 'holstered';
+          this.hand = null;
+          this.angularVelocity.set(0, 0, 0);
+          this.snapTo(slotEl.object3D, this.data.holsterPosition, this.data.holsterRotation);
+          this.occupySlot(slotEl);
+        },
+
+        occupySlot: function (slotEl) {
+          this.currentSlotEl = slotEl;
+          var slotComp = slotEl.components['anchor-slot'];
+          if (slotComp) slotComp.occupant = this;
+        },
+
+        vacateSlot: function () {
+          if (!this.currentSlotEl) return;
+          var slotComp = this.currentSlotEl.components['anchor-slot'];
+          if (slotComp && slotComp.occupant === this) slotComp.occupant = null;
+          this.currentSlotEl = null;
+        },
+
+        // Checked every frame while falling: is either hand positioned
+        // and ready (gripping, or fingertip resting on the trigger)
+        // within this object's own catch radius? If so, catch it and
+        // report true so updateFall skips the rest of this frame's
+        // fall physics. The radius scales with grabRadius so a bigger
+        // object (like the hat) stays proportionally as generous to
+        // catch as it is to grab, instead of falling back to the
+        // gun-sized default. Hand-catching is checked first; only if
+        // neither hand is ready does a nearby held item's own slot
+        // (see findCatchingSlot) get a shot at it.
+        checkCatch: function () {
+          this.el.object3D.getWorldPosition(this._worldPos);
+          var radius = this.data.grabRadius + (THROW_CATCH_RADIUS - GRAB_RADIUS);
+          var handMatch = findCatchingHand(this._worldPos, radius);
+          if (handMatch) {
+            if (handMatch.mode === 'grip') this.catchThrown(handMatch.handEl);
+            else this.catchIntoDangle(handMatch.handEl);
+            return true;
+          }
+
+          var slotEl = findCatchingSlot(this._worldPos, this.data.itemSize);
+          if (slotEl) {
+            this.catchIntoSlot(slotEl);
+            return true;
+          }
+
+          return false;
+        },
+
+        // Every anchor-slot in the scene this object's itemSize could
+        // fit into, that isn't already claimed by something else, and
+        // that's within ITS OWN size's snap radius. Among those,
+        // "prefer the smallest slot in range, but the closest one
+        // among slots of that same size" — a pistol in range of both a
+        // hip holster and the (much larger) bandolier goes in the
+        // holster, and between two equally-sized options it's whichever
+        // is physically nearer. The object3D ancestry walk guards
+        // against a future object nesting into a slot that's actually
+        // one of its own descendants (not reachable with today's
+        // objects, since nothing with a child slot has a small enough
+        // itemSize to fit inside its own slot, but cheap to rule out
+        // outright rather than rely on that staying true).
+        findNearestSlot: function (worldPos) {
+          var itemRank = SLOT_SIZE_RANK[this.data.itemSize];
+          var slots = document.querySelectorAll('.anchor-slot');
+          var best = null;
+          var bestRank = Infinity;
+          var bestDist = Infinity;
+
+          for (var i = 0; i < slots.length; i++) {
+            var slotEl = slots[i];
+            var slotComp = slotEl.components['anchor-slot'];
+            if (!slotComp) continue;
+            if (slotComp.occupant && slotComp.occupant !== this) continue;
+
+            var slotRank = SLOT_SIZE_RANK[slotComp.data.size];
+            if (slotRank < itemRank) continue;
+
+            var ancestor = slotEl.object3D;
+            var isOwnDescendant = false;
+            while (ancestor) {
+              if (ancestor === this.el.object3D) {
+                isOwnDescendant = true;
+                break;
+              }
+              ancestor = ancestor.parent;
+            }
+            if (isOwnDescendant) continue;
+
+            slotEl.object3D.getWorldPosition(this._holsterPos);
+            var d = this._holsterPos.distanceTo(worldPos);
+            if (d > SLOT_SNAP_RADIUS[slotComp.data.size]) continue;
+
+            if (slotRank < bestRank || (slotRank === bestRank && d < bestDist)) {
+              best = slotEl;
+              bestRank = slotRank;
+              bestDist = d;
+            }
+          }
+
+          return best;
+        },
+
+        // Spherical-pendulum-ish swing around a moving pivot (the
+        // hand). Because the object's own origin IS the pivot point
+        // (see boxy-gun/boxy-hat), position just tracks the hand
+        // exactly each frame — only the orientation swings. Gravity
+        // pulls the center of mass (comOffset) toward hanging straight
+        // down; the pivot's own acceleration (how fast you're flicking
+        // your hand around) injects extra spin, which is what makes a
+        // sharp wrist flick throw the object into a twirl. This is a
+        // tuned-for-feel approximation, not a rigorous rigid-body
+        // simulation.
+        updateDangle: function (dt) {
+          if (!this.hand) {
+            this.startFalling();
+            return;
+          }
+
+          this.hand.object3D.getWorldPosition(this._pivot);
+
+          this._pivotVelocity.copy(this._pivot).sub(this.prevPivotPos).divideScalar(dt);
+          this._pivotAccel.copy(this._pivotVelocity).sub(this.prevPivotVelocity).divideScalar(dt);
+          this.prevPivotVelocity.copy(this._pivotVelocity);
+          this.prevPivotPos.copy(this._pivot);
+
+          this._comWorld.copy(this._comLocal).applyQuaternion(this.el.object3D.quaternion).normalize();
+
+          this._torque.crossVectors(this._comWorld, this._down).multiplyScalar(DANGLE_GRAVITY_TORQUE);
+          this.angularVelocity.addScaledVector(this._torque, dt);
+
+          this._torque.crossVectors(this._comWorld, this._pivotAccel).multiplyScalar(-DANGLE_INERTIA_SCALE);
+          this.angularVelocity.addScaledVector(this._torque, dt);
+
+          this.angularVelocity.multiplyScalar(DANGLE_DAMPING);
+          if (this.angularVelocity.length() > MAX_ANGULAR_VELOCITY) {
+            this.angularVelocity.setLength(MAX_ANGULAR_VELOCITY);
+          }
+
+          this.integrateRotation(dt);
+          this.el.object3D.position.copy(this._pivot);
+        },
+
+        // Free-fall under gravity — covers both a plain drop (zero
+        // initial velocity) and a throw (see throwWithVelocity), since
+        // both are just this same integration seeded differently.
+        // Keeps whatever spin it had so it tumbles rather than just
+        // sinking straight down. Checked every frame for a generous
+        // catch (see checkCatch) before falling through to the normal
+        // ground-settle.
+        updateFall: function (dt) {
+          this.fallVelocity.y -= GRAVITY * dt;
+          this.el.object3D.position.addScaledVector(this.fallVelocity, dt);
+          this.angularVelocity.multiplyScalar(FALL_DAMPING);
+          this.integrateRotation(dt);
+
+          if (this.checkCatch()) return;
+
+          if (this.el.object3D.position.y <= GROUND_REST_Y) {
+            this.el.object3D.position.y = GROUND_REST_Y;
+            this.fallVelocity.set(0, 0, 0);
+            this.angularVelocity.set(0, 0, 0);
+            this.state = 'resting';
+          }
+        },
+
+        // Standard dq/dt = 0.5 * omega-as-pure-quaternion * q integration.
+        integrateRotation: function (dt) {
+          var q = this.el.object3D.quaternion;
+          this._deltaQuat.set(
+            this.angularVelocity.x * dt,
+            this.angularVelocity.y * dt,
+            this.angularVelocity.z * dt,
+            0
+          );
+          this._deltaQuat.multiply(q);
+          q.set(
+            q.x + 0.5 * this._deltaQuat.x,
+            q.y + 0.5 * this._deltaQuat.y,
+            q.z + 0.5 * this._deltaQuat.z,
+            q.w + 0.5 * this._deltaQuat.w
+          ).normalize();
+        },
+      });
+
+      // ==============================================================
+      // COMPONENT: pistol
+      // The one gun-specific behavior: firing. A thin companion to
+      // holsterable, attached alongside it only on the two gun
+      // entities — the hat has no such component, so hand-rig's
+      // trigger-pull handler (which checks for this component before
+      // calling fire()) is naturally a no-op while holding it. Reads
+      // holsterable's state/heldRotation rather than owning any state
+      // machine of its own.
+      // ==============================================================
+      AFRAME.registerComponent('pistol', {
+        init: function () {
+          this.recoilTimer = 0; // ms remaining on the current fire-recoil kick, while held
+        },
+
+        // Only actually does anything for the ~120ms right after a
+        // shot: eases the recoil kick back down to the normal held
+        // pose. Same direct-object3D-write reasoning as holsterable's
+        // own updateCatchBlend — composes on top of holsterable's
+        // heldRotation rather than through A-Frame's animation
+        // component, so it can't fall out of sync with the direct
+        // writes holsterable does elsewhere on this same entity.
+        tick: function (time, dt) {
+          var holsterable = this.el.components.holsterable;
+          if (!holsterable || holsterable.state !== 'held') return;
+          this.updateRecoil(Math.min((dt || 16) / 1000, 0.05));
+        },
+
+        updateRecoil: function (dtSeconds) {
+          if (this.recoilTimer <= 0) return;
+
+          this.recoilTimer = Math.max(this.recoilTimer - dtSeconds * 1000, 0);
+          var kick = RECOIL_KICK_DEG * (this.recoilTimer / RECOIL_RECOVER_MS);
+          var heldRotation = this.el.components.holsterable.data.heldRotation;
+
+          this.el.object3D.rotation.set(
+            ((heldRotation.x + kick) * Math.PI) / 180,
+            (heldRotation.y * Math.PI) / 180,
+            (heldRotation.z * Math.PI) / 180
+          );
+        },
+
+        // Raycasts from the muzzle against the targets. Only fires
+        // while properly held — not while dangling or mid-air, so a
+        // twirl in progress can't accidentally go off.
+        fire: function () {
+          var holsterable = this.el.components.holsterable;
+          if (!holsterable || holsterable.state !== 'held') return;
+
+          var muzzleEl = this.el.querySelector('.muzzle');
+          if (!muzzleEl || !muzzleEl.object3D) return;
+
+          var origin = new THREE.Vector3();
+          var quat = new THREE.Quaternion();
+          muzzleEl.object3D.getWorldPosition(origin);
+          muzzleEl.object3D.getWorldQuaternion(quat);
+          var direction = new THREE.Vector3(0, 0, -1).applyQuaternion(quat).normalize();
+
+          var raycaster = new THREE.Raycaster(origin, direction, 0, MAX_SHOT_RANGE);
+          var meshes = Array.prototype
+            .slice.call(document.querySelectorAll('.target-ring'))
+            .map(function (targetEl) { return targetEl.getObject3D('mesh'); })
+            .filter(Boolean);
+          var hits = raycaster.intersectObjects(meshes, false);
+
+          this.playMuzzleEffects();
+
+          var endPoint;
+          if (hits.length > 0) {
+            endPoint = hits[0].point;
+            hits[0].object.el.emit('click', null, true);
+          } else {
+            endPoint = origin.clone().addScaledVector(direction, MAX_SHOT_RANGE);
+            var manager = document.querySelector('#range-manager');
+            if (manager) manager.emit('gun-miss', null, false);
+          }
+
+          spawnTracer(origin, endPoint);
+        },
+
+        playMuzzleEffects: function () {
+          this.recoilTimer = RECOIL_RECOVER_MS;
+
+          var flash = this.el.querySelector('.muzzle-flash');
+          if (flash) {
+            flash.setAttribute('visible', true);
+            clearTimeout(this.flashTimeout);
+            var flashEl = flash;
+            this.flashTimeout = setTimeout(function () {
+              flashEl.setAttribute('visible', false);
+            }, 80);
+          }
+        },
+      });
+
+      // ==============================================================
+      // COMPONENT: shotgun
+      // Same firing companion as pistol, structurally, just with a
+      // spread instead of a single ray: SHOTGUN_PELLET_COUNT
+      // independent raycasts jittered within a narrow cone around the
+      // muzzle's forward direction, each one able to score its own
+      // target ring — a wide spread can plausibly ding several stands
+      // at once. scoring-ring's own "ignore hits once this target's
+      // already fallen" guard means multiple pellets landing on the
+      // same still-standing target only score/tip it once, so no
+      // special dedup logic is needed here.
+      // ==============================================================
+      AFRAME.registerComponent('shotgun', {
+        init: function () {
+          this.recoilTimer = 0;
+        },
+
+        tick: function (time, dt) {
+          var holsterable = this.el.components.holsterable;
+          if (!holsterable || holsterable.state !== 'held') return;
+          this.updateRecoil(Math.min((dt || 16) / 1000, 0.05));
+        },
+
+        updateRecoil: function (dtSeconds) {
+          if (this.recoilTimer <= 0) return;
+
+          this.recoilTimer = Math.max(this.recoilTimer - dtSeconds * 1000, 0);
+          var kick = SHOTGUN_RECOIL_KICK_DEG * (this.recoilTimer / SHOTGUN_RECOIL_RECOVER_MS);
+          var heldRotation = this.el.components.holsterable.data.heldRotation;
+
+          this.el.object3D.rotation.set(
+            ((heldRotation.x + kick) * Math.PI) / 180,
+            (heldRotation.y * Math.PI) / 180,
+            (heldRotation.z * Math.PI) / 180
+          );
+        },
+
+        fire: function () {
+          var holsterable = this.el.components.holsterable;
+          if (!holsterable || holsterable.state !== 'held') return;
+
+          var muzzleEl = this.el.querySelector('.muzzle');
+          if (!muzzleEl || !muzzleEl.object3D) return;
+
+          var origin = new THREE.Vector3();
+          var quat = new THREE.Quaternion();
+          muzzleEl.object3D.getWorldPosition(origin);
+          muzzleEl.object3D.getWorldQuaternion(quat);
+          var forward = new THREE.Vector3(0, 0, -1).applyQuaternion(quat).normalize();
+          var right = new THREE.Vector3(1, 0, 0).applyQuaternion(quat).normalize();
+          var up = new THREE.Vector3(0, 1, 0).applyQuaternion(quat).normalize();
+          var coneRad = (SHOTGUN_CONE_DEG * Math.PI) / 180;
+
+          var meshes = Array.prototype
+            .slice.call(document.querySelectorAll('.target-ring'))
+            .map(function (targetEl) { return targetEl.getObject3D('mesh'); })
+            .filter(Boolean);
+
+          this.playMuzzleEffects();
+
+          var hitCount = 0;
+          for (var i = 0; i < SHOTGUN_PELLET_COUNT; i++) {
+            var direction = forward
+              .clone()
+              .applyAxisAngle(right, (Math.random() - 0.5) * 2 * coneRad)
+              .applyAxisAngle(up, (Math.random() - 0.5) * 2 * coneRad)
+              .normalize();
+
+            var raycaster = new THREE.Raycaster(origin, direction, 0, MAX_SHOT_RANGE);
+            var hits = raycaster.intersectObjects(meshes, false);
+
+            var endPoint;
+            if (hits.length > 0) {
+              endPoint = hits[0].point;
+              hits[0].object.el.emit('click', null, true);
+              hitCount++;
+            } else {
+              endPoint = origin.clone().addScaledVector(direction, MAX_SHOT_RANGE);
+            }
+
+            spawnTracer(origin, endPoint);
+          }
+
+          if (hitCount === 0) {
+            var manager = document.querySelector('#range-manager');
+            if (manager) manager.emit('gun-miss', null, false);
+          }
+        },
+
+        playMuzzleEffects: function () {
+          this.recoilTimer = SHOTGUN_RECOIL_RECOVER_MS;
+
+          var flash = this.el.querySelector('.muzzle-flash');
+          if (flash) {
+            flash.setAttribute('visible', true);
+            clearTimeout(this.flashTimeout);
+            var flashEl = flash;
+            this.flashTimeout = setTimeout(function () {
+              flashEl.setAttribute('visible', false);
+            }, 80);
+          }
+        },
+      });
+
+      // ==============================================================
+      // COMPONENT: hand-rig
+      // Listens to one hand's grip/trigger buttons. Owns the "what am
+      // I currently holding" bookkeeping and delegates all the actual
+      // state/physics work to the holsterable component on whatever
+      // object is involved — completely object-agnostic, it never
+      // checks whether that object is a gun, a hat, or anything else.
+      // Firing is the one exception: onTriggerDown looks specifically
+      // for a co-located "pistol" or "shotgun" component and calls
+      // fire() only if one exists, which is naturally a no-op while
+      // holding the hat.
+      //
+      // Also tracks this hand's own world-space velocity and current
+      // button state (gripHeld, fingerOnTrigger) as plain public
+      // fields — generic hand-side data that computeThrowVelocity and
+      // findCatchingHand (both reusable, object-agnostic) read
+      // directly rather than going through holsterable-specific
+      // accessors.
+      // ==============================================================
+      AFRAME.registerComponent('hand-rig', {
+        init: function () {
+          this.heldObject = null; // object currently rigidly held by this hand, if any
+          this.danglingObject = null; // object currently dangling from this hand's trigger finger, if any
+          this.fingerOnTrigger = false; // capacitive touch, not a pull — see triggertouchstart/end below
+          this.gripHeld = false; // true for the whole time the grip is squeezed, not just the initial press
+
+          this.velocity = new THREE.Vector3();
+          this._prevPos = new THREE.Vector3();
+          this.el.object3D.getWorldPosition(this._prevPos); // avoid a garbage first-frame velocity spike
+
+          this.onGripDown = this.onGripDown.bind(this);
+          this.onGripUp = this.onGripUp.bind(this);
+          this.onTriggerDown = this.onTriggerDown.bind(this);
+          this.onTriggerTouchStart = this.onTriggerTouchStart.bind(this);
+          this.onTriggerTouchEnd = this.onTriggerTouchEnd.bind(this);
+
+          this.el.addEventListener('gripdown', this.onGripDown);
+          this.el.addEventListener('gripup', this.onGripUp);
+          this.el.addEventListener('triggerdown', this.onTriggerDown);
+          this.el.addEventListener('triggertouchstart', this.onTriggerTouchStart);
+          this.el.addEventListener('triggertouchend', this.onTriggerTouchEnd);
+        },
+
+        remove: function () {
+          this.el.removeEventListener('gripdown', this.onGripDown);
+          this.el.removeEventListener('gripup', this.onGripUp);
+          this.el.removeEventListener('triggerdown', this.onTriggerDown);
+          this.el.removeEventListener('triggertouchstart', this.onTriggerTouchStart);
+          this.el.removeEventListener('triggertouchend', this.onTriggerTouchEnd);
+        },
+
+        // Smoothed (50%-blended) world-space velocity, so a single
+        // noisy tracking frame right at release doesn't get read as a
+        // huge spurious throw speed.
+        tick: function (time, dt) {
+          var dtSeconds = Math.min((dt || 16) / 1000, 0.05);
+          if (dtSeconds <= 0) return;
+
+          var currentPos = new THREE.Vector3();
+          this.el.object3D.getWorldPosition(currentPos);
+
+          var instant = currentPos.clone().sub(this._prevPos).divideScalar(dtSeconds);
+          this.velocity.lerp(instant, 0.5);
+          this._prevPos.copy(currentPos);
+        },
+
+        onGripDown: function () {
+          this.gripHeld = true;
+          if (this.heldObject) return;
+
+          var obj = this.findGrabbableObject();
+          if (!obj) return;
+
+          obj.components.holsterable.grab(this.el);
+          this.heldObject = obj;
+          if (obj === this.danglingObject) this.danglingObject = null;
+        },
+
+        onGripUp: function () {
+          this.gripHeld = false;
+          if (!this.heldObject) return;
+
+          var obj = this.heldObject;
+          this.heldObject = null;
+          obj.components.holsterable.release(this.fingerOnTrigger);
+
+          this.danglingObject = obj.components.holsterable.state === 'dangling' ? obj : null;
+        },
+
+        // An actual pull (past the digital press threshold), not just
+        // a touch — this is what fires a gun. No-ops for anything
+        // without a "pistol" companion component, like the hat.
+        onTriggerDown: function () {
+          if (!this.heldObject) return;
+          var firearm = this.heldObject.components.pistol || this.heldObject.components.shotgun;
+          if (firearm) firearm.fire();
+        },
+
+        onTriggerTouchStart: function () {
+          this.fingerOnTrigger = true;
+        },
+
+        // Finger fully lifts off the trigger surface. If an object is
+        // dangling from this hand, that's the last thing holding it
+        // up — this is the moment that decides holster vs. fall.
+        onTriggerTouchEnd: function () {
+          this.fingerOnTrigger = false;
+          if (this.danglingObject) {
+            this.danglingObject.components.holsterable.endDangle();
+            this.danglingObject = null;
+          }
+        },
+
+        // Nearest object this hand is currently allowed to grab:
+        // anything holstered or resting on the ground, or the object
+        // already dangling from this specific hand's finger (a
+        // "catch"). Any ".grabbable" entity qualifies, regardless of
+        // what it is — guns, hat, or anything added later. Each
+        // object's own grabRadius gates its eligibility (a bulky
+        // object like the hat can declare a bigger grab box than a
+        // gun without changing anything here), so nearestDist starts
+        // wide open and lets the per-object check do the filtering.
+        findGrabbableObject: function () {
+          var handPos = new THREE.Vector3();
+          this.el.object3D.getWorldPosition(handPos);
+
+          var objects = Array.prototype.slice.call(document.querySelectorAll('.grabbable'));
+          var self = this;
+          var nearest = null;
+          var nearestDist = Infinity;
+          var objPos = new THREE.Vector3();
+
+          objects.forEach(function (objEl) {
+            var holsterable = objEl.components.holsterable;
+            if (!holsterable) return;
+
+            var eligible =
+              holsterable.state === 'holstered' ||
+              holsterable.state === 'resting' ||
+              (holsterable.state === 'dangling' && holsterable.hand === self.el);
+            if (!eligible) return;
+
+            objEl.object3D.getWorldPosition(objPos);
+            var d = objPos.distanceTo(handPos);
+            if (d < holsterable.data.grabRadius && d < nearestDist) {
+              nearest = objEl;
+              nearestDist = d;
+            }
+          });
+
+          return nearest;
+        },
+      });
+
+      // ==============================================================
+      // COMPONENT: proximity-haptics
+      // Generic and reusable — has no idea what a pistol is. Buzzes
+      // this hand's controller whenever the nearest ".grabbable"
+      // entity in the scene is within PROXIMITY_HAPTIC_RADIUS. Future
+      // interactive props just need class="grabbable" to opt into the
+      // same behavior; nothing here needs to change for them.
+      //
+      // Two things it skips, so it doesn't buzz misleadingly:
+      //   - whatever this hand is already holding (its object3D is
+      //     currently parented under this hand's object3D — true for
+      //     anything that follows the same "attach to the hand's
+      //     object3D when held" convention holsterable.grab() uses)
+      //   - everything, if hand-rig (when present) reports this hand
+      //     as already full, since you can't grab a second thing
+      //     right now anyway
+      // ==============================================================
+      AFRAME.registerComponent('proximity-haptics', {
+        init: function () {
+          this.handPos = new THREE.Vector3();
+          this.targetPos = new THREE.Vector3();
+        },
+
+        tick: function () {
+          var handRig = this.el.components['hand-rig'];
+          if (handRig && handRig.heldObject) return;
+
+          var trackedControls = this.el.components['tracked-controls'];
+          var gamepad = trackedControls && trackedControls.controller;
+          var actuator = gamepad && gamepad.hapticActuators && gamepad.hapticActuators[0];
+          if (!actuator) return;
+
+          this.el.object3D.getWorldPosition(this.handPos);
+
+          var targets = document.querySelectorAll('.grabbable');
+          var inRange = false;
+
+          for (var i = 0; i < targets.length; i++) {
+            var targetEl = targets[i];
+            if (targetEl.object3D.parent === this.el.object3D) continue; // already holding this one
+
+            targetEl.object3D.getWorldPosition(this.targetPos);
+            if (this.handPos.distanceTo(this.targetPos) < PROXIMITY_HAPTIC_RADIUS) {
+              inRange = true;
+              break;
+            }
+          }
+
+          if (inRange) {
+            actuator.pulse(PROXIMITY_HAPTIC_INTENSITY, PROXIMITY_HAPTIC_PULSE_MS);
+          }
+        },
+      });
+
+      // ==============================================================
+      // COMPONENT: pop-target
+      // Attached to a target's "hinge" entity — the thing that
+      // physically tips over when the target is hit. Whatever the
+      // hinge carries as children (a stationary stand's post, a wheel
+      // spoke's target face, a conveyor target, a popper) all move
+      // together as one rigid piece — nothing is ever removed or
+      // altered on a hit. Ignores further hits while already fallen;
+      // standUp() resets it.
+      // ==============================================================
+      AFRAME.registerComponent('pop-target', {
+        init: function () {
+          this.fallen = false;
+        },
+
+        fall: function () {
+          if (this.fallen) return;
+          this.fallen = true;
+          this.el.setAttribute('animation__fall', {
+            property: 'rotation',
+            to: FALL_ROTATION_X + ' 0 0',
+            dur: FALL_DUR_MS,
+            easing: 'easeInQuad',
+          });
+          // Bubbles up to whichever gallery-group entity spawned this
+          // hinge (target-group, wheel-target, conveyor-target, or
+          // popper-target) — each listens for it on itself.
+          this.el.emit('target-fallen', null, true);
+        },
+
+        standUp: function () {
+          if (!this.fallen) return;
+          this.fallen = false;
+          this.el.setAttribute('animation__fall', {
+            property: 'rotation',
+            to: '0 0 0',
+            dur: STAND_UP_DUR_MS,
+            easing: 'easeOutBack',
+          });
+        },
+      });
+
+      // ==============================================================
+      // COMPONENT: wheel-target
+      // A carnival wheel: targets mounted on spokes around a hub that
+      // spins continuously. The hub's rotation is a plain per-frame
+      // object3D write (like the gun's physics), independent of each
+      // spoke's own pop-target-driven fall animation — different
+      // entities, so the two never conflict. A fallen spoke keeps
+      // spinning with the wheel, tipped over; that's intentional, not
+      // a bug, and matches how a hit conveyor target keeps sliding.
+      // ==============================================================
+      AFRAME.registerComponent('wheel-target', {
+        schema: {
+          spokeCount: { type: 'number', default: 4 },
+          wheelRadius: { type: 'number', default: 0.9 }, // meters, hub center to target center
+          speed: { type: 'number', default: 40 }, // degrees/second
+          targetScale: { type: 'number', default: 0.5 },
+          hubHeight: { type: 'number', default: 1.4 },
+          angle: { type: 'number', default: 0 }, // this wheel's own spot in the arc in front of the player
+          distance: { type: 'number', default: 5.5 },
+        },
+
+        init: function () {
+          placeInArc(this.el, this.data.angle, this.data.distance);
+
+          this.targets = [];
+          var self = this;
+          this.onTargetFallen = makeGroupResetHandler(function () { return self.targets; });
+          this.el.addEventListener('target-fallen', this.onTargetFallen);
+
+          var support = document.createElement('a-box');
+          support.setAttribute('width', 0.08);
+          support.setAttribute('depth', 0.08);
+          support.setAttribute('height', this.data.hubHeight);
+          support.setAttribute('position', { x: 0, y: this.data.hubHeight / 2, z: 0 });
+          support.setAttribute('color', '#5b4633');
+          this.el.appendChild(support);
+
+          this.hub = document.createElement('a-entity');
+          this.hub.setAttribute('position', { x: 0, y: this.data.hubHeight, z: 0 });
+          this.el.appendChild(this.hub);
+
+          var axle = document.createElement('a-cylinder');
+          axle.setAttribute('radius', 0.06);
+          axle.setAttribute('height', 0.1);
+          axle.setAttribute('rotation', '90 0 0');
+          axle.setAttribute('color', '#2b2b2f');
+          this.hub.appendChild(axle);
+
+          for (var i = 0; i < this.data.spokeCount; i++) {
+            var angleDeg = (360 / this.data.spokeCount) * i;
+            var angleRad = (angleDeg * Math.PI) / 180;
+            var x = this.data.wheelRadius * Math.cos(angleRad);
+            var y = this.data.wheelRadius * Math.sin(angleRad);
+
+            var spoke = document.createElement('a-box');
+            spoke.setAttribute('width', 0.04);
+            spoke.setAttribute('depth', 0.04);
+            spoke.setAttribute('height', this.data.wheelRadius);
+            spoke.setAttribute('position', { x: x / 2, y: y / 2, z: 0 });
+            spoke.setAttribute('rotation', { x: 0, y: 0, z: angleDeg - 90 });
+            spoke.setAttribute('color', '#5b4633');
+            this.hub.appendChild(spoke);
+
+            var hinge = document.createElement('a-entity');
+            hinge.setAttribute('pop-target', '');
+            hinge.setAttribute('position', { x: x, y: y, z: 0 });
+            this.hub.appendChild(hinge);
+            hinge.appendChild(createTargetFace(this.data.targetScale));
+
+            this.targets.push(hinge);
+          }
+        },
+
+        tick: function (time, dt) {
+          var dtSeconds = Math.min((dt || 16) / 1000, 0.05);
+          this.hub.object3D.rotation.z += ((this.data.speed * Math.PI) / 180) * dtSeconds;
+        },
+      });
+
+      // ==============================================================
+      // COMPONENT: conveyor-target
+      // Targets sliding steadily along a track, wrapping around to the
+      // start when they reach the end. `direction` flips which way —
+      // line up a few of these with opposite directions for a belt
+      // wall that alternates.
+      // ==============================================================
+      AFRAME.registerComponent('conveyor-target', {
+        schema: {
+          count: { type: 'number', default: 3 },
+          length: { type: 'number', default: 3.2 }, // meters of track, end to end
+          speed: { type: 'number', default: 0.45 }, // meters/second
+          direction: { type: 'number', default: 1 }, // 1 = left-to-right, -1 = right-to-left
+          height: { type: 'number', default: 1.3 },
+          targetScale: { type: 'number', default: 0.5 },
+          angle: { type: 'number', default: 0 },
+          distance: { type: 'number', default: 5.5 },
+        },
+
+        init: function () {
+          placeInArc(this.el, this.data.angle, this.data.distance);
+
+          this.targets = [];
+          var self = this;
+          this.onTargetFallen = makeGroupResetHandler(function () { return self.targets; });
+          this.el.addEventListener('target-fallen', this.onTargetFallen);
+
+          var halfLength = this.data.length / 2;
+
+          var track = document.createElement('a-box');
+          track.setAttribute('width', this.data.length + 0.3);
+          track.setAttribute('height', 0.05);
+          track.setAttribute('depth', 0.05);
+          track.setAttribute('position', { x: 0, y: this.data.height, z: 0 });
+          track.setAttribute('color', '#2b2b2f');
+          this.el.appendChild(track);
+
+          [-halfLength - 0.1, halfLength + 0.1].forEach(function (legX) {
+            var leg = document.createElement('a-box');
+            leg.setAttribute('width', 0.06);
+            leg.setAttribute('depth', 0.06);
+            leg.setAttribute('height', self.data.height);
+            leg.setAttribute('position', { x: legX, y: self.data.height / 2, z: 0 });
+            leg.setAttribute('color', '#5b4633');
+            self.el.appendChild(leg);
+          });
+
+          var spacing = this.data.length / this.data.count;
+          for (var i = 0; i < this.data.count; i++) {
+            var startX = -halfLength + spacing * (i + 0.5);
+
+            var hinge = document.createElement('a-entity');
+            hinge.setAttribute('pop-target', '');
+            hinge.setAttribute('position', { x: startX, y: this.data.height, z: 0 });
+            this.el.appendChild(hinge);
+            hinge.appendChild(createTargetFace(this.data.targetScale));
+
+            this.targets.push(hinge);
+          }
+        },
+
+        tick: function (time, dt) {
+          var dtSeconds = Math.min((dt || 16) / 1000, 0.05);
+          var delta = this.data.speed * this.data.direction * dtSeconds;
+          var halfLength = this.data.length / 2;
+
+          this.targets.forEach(function (hingeEl) {
+            var pos = hingeEl.object3D.position;
+            pos.x += delta;
+            if (pos.x > halfLength) pos.x -= halfLength * 2;
+            else if (pos.x < -halfLength) pos.x += halfLength * 2;
+          });
+        },
+      });
+
+      // ==============================================================
+      // COMPONENT: popper-target
+      // The surprise: targets that spend most of their time hidden
+      // below ground and rise up for a stretch on a randomized timer,
+      // whack-a-mole style — a reflex/timing challenge rather than the
+      // continuous motion of a wheel or conveyor. Each pops on its own
+      // schedule (staggered random start so they don't all rise in
+      // unison). Position is driven entirely by A-Frame's animation
+      // component here, which is safe to mix with pop-target's own
+      // rotation animation on the same hinge since they target
+      // different properties and neither one touches object3D
+      // directly.
+      // ==============================================================
+      AFRAME.registerComponent('popper-target', {
+        schema: {
+          count: { type: 'number', default: 4 },
+          spacing: { type: 'number', default: 0.8 },
+          upHeight: { type: 'number', default: 1.1 },
+          downHeight: { type: 'number', default: -0.5 }, // below the ground plane, so it's genuinely hidden
+          targetScale: { type: 'number', default: 0.5 },
+          cycleMinMs: { type: 'number', default: 2000 }, // shortest time spent hidden between pops
+          cycleMaxMs: { type: 'number', default: 4500 }, // longest time spent hidden between pops
+          upDurationMs: { type: 'number', default: 2200 }, // how long it stays up before ducking back down
+          angle: { type: 'number', default: 0 },
+          distance: { type: 'number', default: 3 },
+        },
+
+        init: function () {
+          placeInArc(this.el, this.data.angle, this.data.distance);
+
+          this.targets = [];
+          this.poppers = [];
+          var self = this;
+          this.onTargetFallen = makeGroupResetHandler(function () { return self.targets; });
+          this.el.addEventListener('target-fallen', this.onTargetFallen);
+
+          var totalWidth = (this.data.count - 1) * this.data.spacing;
+
+          for (var i = 0; i < this.data.count; i++) {
+            var x = -totalWidth / 2 + i * this.data.spacing;
+
+            var hole = document.createElement('a-circle');
+            hole.setAttribute('radius', 0.18);
+            hole.setAttribute('rotation', '-90 0 0');
+            hole.setAttribute('color', '#3a2f22');
+            hole.setAttribute('position', { x: x, y: 0.005, z: 0 });
+            this.el.appendChild(hole);
+
+            var hinge = document.createElement('a-entity');
+            hinge.setAttribute('pop-target', '');
+            hinge.setAttribute('position', { x: x, y: this.data.downHeight, z: 0 });
+            this.el.appendChild(hinge);
+            hinge.appendChild(createTargetFace(this.data.targetScale));
+
+            this.targets.push(hinge);
+            this.poppers.push({
+              hinge: hinge,
+              x: x,
+              isUp: false,
+              timer: Math.random() * this.data.cycleMaxMs, // stagger initial pops
+            });
+          }
+        },
+
+        tick: function (time, dt) {
+          var self = this;
+          this.poppers.forEach(function (popper) {
+            popper.timer -= dt || 16;
+            if (popper.timer > 0) return;
+
+            popper.isUp = !popper.isUp;
+            var targetY = popper.isUp ? self.data.upHeight : self.data.downHeight;
+            popper.hinge.setAttribute('animation__pop', {
+              property: 'position',
+              to: popper.x + ' ' + targetY + ' 0',
+              dur: 220,
+              easing: popper.isUp ? 'easeOutQuad' : 'easeInQuad',
+            });
+            popper.timer = popper.isUp
+              ? self.data.upDurationMs
+              : self.data.cycleMinMs + Math.random() * (self.data.cycleMaxMs - self.data.cycleMinMs);
+          });
+        },
+      });
+
+      // ==============================================================
+      // COMPONENT: scoring-ring
+      // Attached to each colored disc of a bullseye. Invincible by
+      // design — a hit never changes its appearance or removes it,
+      // just scores it and tips the whole target over via its parent
+      // pop-target component. Fires on the standard "click" event so
+      // it doesn't care whether that click came from a fired shot
+      // (pistol.fire, above) or a desktop/phone reticle tap. Ignores
+      // hits once the target it belongs to is already fallen.
+      //
+      // Looks up its owning pop-target via closest() rather than
+      // assuming it's the direct parent, since a ring's parent is
+      // actually the shared "face" createTargetFace built, one level
+      // below whatever hinge pop-target is really attached to.
+      //
+      // Emits "ring-hit" directly at #range-manager rather than
+      // bubbling, since target groups are now siblings of the range
+      // manager (not descendants of it) — bubbling wouldn't reach it.
+      // ==============================================================
+      AFRAME.registerComponent('scoring-ring', {
+        schema: {
+          score: { type: 'number' },
+          label: { type: 'string' },
+        },
+
+        init: function () {
+          this.onClick = this.onClick.bind(this);
+          this.el.addEventListener('click', this.onClick);
+        },
+
+        remove: function () {
+          this.el.removeEventListener('click', this.onClick);
+        },
+
+        onClick: function () {
+          var hingeEl = this.el.closest('[pop-target]');
+          var popTarget = hingeEl && hingeEl.components['pop-target'];
+          if (popTarget && popTarget.fallen) return;
+
+          var manager = document.querySelector('#range-manager');
+          if (manager) {
+            manager.emit('ring-hit', { score: this.data.score, label: this.data.label }, false);
+          }
+
+          if (popTarget) popTarget.fall();
+        },
+      });
+
+      // ==============================================================
+      // COMPONENT: shooting-range
+      // The range manager: just score/shots/HUD now. Listens for
+      // "ring-hit" and "gun-miss", both emitted directly at this
+      // entity (not bubbled — see scoring-ring's comment for why).
+      // Target spawning and per-group reset logic live in
+      // target-group, below, since there are now multiple independent
+      // groups of targets sharing this one HUD.
+      // ==============================================================
+      AFRAME.registerComponent('shooting-range', {
+        init: function () {
+          this.score = 0;
+          this.shots = 0;
+          this.hud = document.querySelector('#hud-text');
+
+          this.onRingHit = this.onRingHit.bind(this);
+          this.onMiss = this.onMiss.bind(this);
+          this.el.addEventListener('ring-hit', this.onRingHit);
+          this.el.addEventListener('gun-miss', this.onMiss);
+
+          this.updateHud('Draw a pistol and take aim');
+        },
+
+        onRingHit: function (evt) {
+          this.shots++;
+          this.score += evt.detail.score;
+          this.updateHud(evt.detail.label + '  +' + evt.detail.score);
+        },
+
+        onMiss: function () {
+          this.shots++;
+          this.updateHud('MISS');
+        },
+
+        updateHud: function (message) {
+          this.hud.setAttribute(
+            'text',
+            'value',
+            'Score: ' + this.score + '   Shots: ' + this.shots + '\n' + message
+          );
+        },
+      });
+
+      // ==============================================================
+      // COMPONENT: target-group
+      // Spawns one distance-tier's worth of pop-up target stands (see
+      // pop-target) in a shallow arc, and owns resetting just that
+      // group: once every stand it spawned has fallen, it waits
+      // RESET_DELAY_MS and stands them all back up together. Other
+      // groups are unaffected — "target-fallen" only bubbles up to
+      // this entity (the ancestor of the stands it spawned), not to
+      // sibling groups or the range manager.
+      // ==============================================================
+      AFRAME.registerComponent('target-group', {
+        schema: {
+          count: { type: 'number', default: 3 },
+          distanceScale: { type: 'number', default: 1 }, // multiplies how far this group stands from the player
+        },
+
+        init: function () {
+          this.targets = []; // the hinge entities, one per stand in this group
+
+          var self = this;
+          this.onTargetFallen = makeGroupResetHandler(function () { return self.targets; });
+          this.el.addEventListener('target-fallen', this.onTargetFallen);
+
+          this.buildLayout(this.data.count, this.data.distanceScale).forEach(function (spot) {
+            self.targets.push(self.spawnTarget(spot.x, spot.standHeight, spot.z, spot.rotY));
+          });
+        },
+
+        // A shallow arc of `count` stands at a distance scaled by
+        // distanceScale, wider arcs for bigger groups so the stands
+        // don't crowd together at longer range.
+        buildLayout: function (count, distanceScale) {
+          var baseRadius = 4.5 * distanceScale;
+          var totalSpreadDeg = Math.min(14 * count, 60);
+          var positions = [];
+
+          for (var i = 0; i < count; i++) {
+            var t = count === 1 ? 0 : i / (count - 1) - 0.5; // -0.5..0.5 across the group
+            var angleDeg = t * totalSpreadDeg;
+            var angleRad = (angleDeg * Math.PI) / 180;
+            positions.push({
+              x: baseRadius * Math.sin(angleRad),
+              z: -baseRadius * Math.cos(angleRad),
+              standHeight: i % 2 === 0 ? 1.2 : 1.4,
+              rotY: -angleDeg, // angle the board back toward the player
+            });
+          }
+
+          return positions;
+        },
+
+        // Builds one wooden target stand and returns its "hinge"
+        // entity: the thing pop-target rotates when hit. The hinge
+        // sits at the stand's origin (ground level, the base of the
+        // post) and carries the post and the target face all as
+        // children, so the whole stand tips over as one rigid piece
+        // rather than just the board flopping at the top of a
+        // stationary post.
+        spawnTarget: function (x, standHeight, z, rotY) {
+          var stand = document.createElement('a-entity');
+          stand.setAttribute('position', { x: x, y: 0, z: z });
+          stand.setAttribute('rotation', { x: 0, y: rotY, z: 0 });
+
+          var hinge = document.createElement('a-entity');
+          hinge.setAttribute('pop-target', '');
+          stand.appendChild(hinge);
+
+          var post = document.createElement('a-box');
+          post.setAttribute('width', 0.08);
+          post.setAttribute('depth', 0.08);
+          post.setAttribute('height', standHeight);
+          post.setAttribute('position', { x: 0, y: standHeight / 2, z: 0 });
+          post.setAttribute('color', '#5b4633');
+          hinge.appendChild(post);
+
+          var face = createTargetFace(1);
+          face.setAttribute('position', { x: 0, y: standHeight, z: 0 });
+          hinge.appendChild(face);
+
+          this.el.appendChild(stand);
+          return hinge;
+        },
+      });
+    </script>
+  </body>
+</html>
