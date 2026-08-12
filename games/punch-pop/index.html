@@ -1,0 +1,3294 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Punch Pop — WebXR Prototype</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <!-- Same no-build-step A-Frame CDN pattern as Cube Pop. Pinned so this
+         page doesn't shift under us on a future A-Frame release. -->
+    <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
+
+    <style>
+      body {
+        margin: 0;
+        font-family: system-ui, sans-serif;
+      }
+      #overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        padding: 0.75rem 1rem;
+        background: rgba(0, 0, 0, 0.6);
+        color: white;
+        z-index: 1;
+        font-size: 0.85rem;
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        align-items: center;
+        gap: 0.75rem;
+      }
+      #overlay a {
+        color: #9ad;
+      }
+      #overlay p {
+        margin: 0;
+        max-width: 42rem;
+      }
+      #debug-controls {
+        display: flex;
+        gap: 0.4rem;
+        flex-wrap: wrap;
+      }
+      #debug-controls button {
+        font-size: 0.8rem;
+        padding: 0.3rem 0.6rem;
+        cursor: pointer;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Flat HTML overlay: desktop/browser testing convenience only,
+         invisible in the headset. Real punch/locomotion physics can't be
+         exercised with a mouse, so the "Simulate" buttons call the exact
+         same code path a real controller punch would (see bottom script) —
+         that's how this whole prototype got sanity-checked before ever
+         touching a headset. -->
+    <div id="overlay">
+      <p>
+        Punch Pop — punching <em>is</em> movement. Extend a fist forward past ~40% of your reach and a punch
+        starts tracking; extend it overhead past ~40% of your overhead reach for an uppercut. Reach far enough
+        (90% forward / 80% overhead) or slow back down and it fires, sending you toward whatever you're
+        looking at (locking onto a nearby enemy if there is one) — bring your hand back before the threshold
+        to reset for another. Punch a cube hard enough to pop it. Press any face button (A/B/X/Y) to open the
+        menu, a couple feet in front of you — your other hand gets a laser pointer to click with; press a face
+        button again to close it. Outside the menu, pull either trigger for a quick reset.
+        <strong>Clear ~2x2m of real space before trying this in a headset.</strong>
+        <a href="../../index.html">All prototypes</a>
+      </p>
+      <div id="debug-controls">
+        <button id="menu-button-html">Menu</button>
+        <button id="sim-punch">Simulate punch (forward)</button>
+        <button id="sim-up">Simulate punch (up-ish)</button>
+        <button id="sim-down">Simulate punch (down-ish)</button>
+        <button id="reset-button-html">Reset (desktop)</button>
+      </div>
+    </div>
+
+    <a-scene>
+      <!-- ============================================================
+           ROOM
+           A closed, human-scaled room (30x30m, 6m walls) instead of an
+           empty plane + sky, so there's a static visual frame of
+           reference around you as you fly across the arena — both for
+           "this is a real place" presence and because a strong static
+           background is one of the standard ways to counter vection-
+           induced motion sickness during fast locomotion. Floor/walls
+           get a checkerboard/grid texture painted onto a <canvas> at
+           runtime (see applyCheckerTexture below) rather than an
+           external image, so the room has zero extra network
+           dependency beyond the A-Frame script itself.
+      ============================================================ -->
+      <a-entity id="room">
+        <a-plane id="floor" rotation="-90 0 0" width="30" height="30" position="0 0 0"></a-plane>
+        <!-- Blood-splatter layer: a second plane just above the floor
+             (0.002m, to avoid z-fighting) carrying its own transparent
+             canvas texture that gets painted on as cubes are hit — see
+             paintSplat/paintSplatBurst below. Separate from the floor's
+             own checkerboard texture entirely, so the checkerboard is
+             never touched and shows through around the splats. -->
+        <a-plane
+          id="splat-layer"
+          rotation="-90 0 0"
+          width="30"
+          height="30"
+          position="0 0.002 0"
+          material="shader: flat; transparent: true; alphaTest: 0.01; side: double"
+        ></a-plane>
+        <a-plane class="wall" width="30" height="6" position="0 3 -15" rotation="0 0 0" material="side: double; color: #2a3350"></a-plane>
+        <a-plane class="wall" width="30" height="6" position="0 3 15" rotation="0 180 0" material="side: double; color: #2a3350"></a-plane>
+        <a-plane class="wall" width="30" height="6" position="15 3 0" rotation="0 -90 0" material="side: double; color: #2a3350"></a-plane>
+        <a-plane class="wall" width="30" height="6" position="-15 3 0" rotation="0 90 0" material="side: double; color: #2a3350"></a-plane>
+      </a-entity>
+      <a-sky color="#0d1526"></a-sky>
+
+      <!-- ============================================================
+           PLAYER RIG
+           Everything the physical player can move (head + both hands) is
+           nested under #rig. WebXR reports head/hand poses as each
+           entity's *local* transform relative to its parent, so moving
+           #rig in world space carries the whole play space with it while
+           your real physical head/hand motion still reads correctly
+           relative to that new spot. This is what lets "punch = move":
+           punch-locomotion translates #rig itself, never the camera.
+      ============================================================ -->
+      <a-entity id="rig" position="0 0 0" punch-locomotion>
+        <a-camera id="head" wasd-controls="enabled: false" punch-tracker>
+          <a-text
+            id="hud-text"
+            value="Popped: 0"
+            align="center"
+            color="#FFFFFF"
+            width="2"
+            position="0 -0.35 -1"
+          ></a-text>
+          <a-text
+            id="debug-text"
+            value=""
+            align="center"
+            color="#9ad"
+            width="1.1"
+            position="0 0.55 -1"
+          ></a-text>
+          <!-- Toggled from the menu's MORE tab (Show Stats). Off by
+               default — this is a playtesting aid for understanding what
+               the new look-gated/lock-on punch targeting is doing, not
+               something meant to stay on for normal play. -->
+          <a-text
+            id="stats-text"
+            value=""
+            align="center"
+            color="#7CFC9A"
+            width="1.1"
+            position="0 0.85 -1"
+            visible="false"
+          ></a-text>
+          <a-text
+            id="punch-label"
+            value=""
+            align="center"
+            color="#FFD166"
+            width="4"
+            position="0 0.2 -1"
+            visible="false"
+          ></a-text>
+          <!-- Toggled from the menu's DEBUG tab (Live Debug HUD). Unlike
+               stats-text (a snapshot of the *last completed* punch), this
+               updates every single frame with the raw, live numbers the
+               punch-detection state machine is actually reading right
+               now — both hands' raw vs. head-relative speed and swing
+               state, the current trigger/reset thresholds, and the turn
+               filter — so a confusing moment in-headset can be read (or
+               screenshotted) directly instead of guessed at blind. -->
+          <a-text
+            id="live-debug-text"
+            value=""
+            align="center"
+            color="#FFAA55"
+            width="0.9"
+            position="0 1.15 -1"
+            visible="false"
+          ></a-text>
+
+          <!-- Gaze reticle: lets a phone/desktop tester pop a cube by
+               looking at it and clicking, same fallback pattern as Cube
+               Pop. It doubles as the world menu's desktop/phone pointer
+               too — world-menu-system widens its raycast target list to
+               include menu buttons while the menu is open, so a mouse
+               click still works there without real controllers. In VR
+               proper, menu buttons are clicked with a per-hand laser
+               pointer instead (see the hand entities below). -->
+          <a-entity
+            id="gaze-cursor"
+            cursor="fuse: false"
+            position="0 0 -1"
+            geometry="primitive: ring; radiusInner: 0.005; radiusOuter: 0.008"
+            material="color: #FFFFFF; shader: flat; opacity: 0.8"
+            raycaster="objects: .cube-target; far: 10"
+          ></a-entity>
+
+          <!-- Comfort vignette: a camera-attached plane carrying a
+               radial-gradient canvas texture (transparent center, opaque
+               black edges — same "paint a <canvas>, apply as a texture"
+               pattern already used for the floor/walls and blood
+               splatter, so no external asset). Sits close to the near
+               clip plane so it reads as darkening the edge of vision
+               rather than a floating panel. Opacity is driven every
+               frame by punch-locomotion.tick() from current rig speed —
+               see buildVignetteTexture / the vignette* globals for the
+               menu-tunable strength/size. depthTest:false so it always
+               renders on top regardless of what it's nominally "behind".
+          -->
+          <a-entity
+            id="vignette"
+            geometry="primitive: plane; width: 3; height: 3"
+            material="shader: flat; transparent: true; opacity: 0; side: double; depthTest: false"
+            position="0 0 -0.3"
+            visible="false"
+          ></a-entity>
+        </a-camera>
+
+        <!-- Hands: no laser during normal play, on purpose — this is a
+             boxing game, not a pointer game, so hit detection is real
+             proximity between fist and cube (see punch-game below), not
+             a raycast. oculus-touch-controls is the Quest-native controls
+             component and is confirmed to actually bind on real Quest 2
+             Touch controllers. model:false swaps the full controller
+             model for a small sphere so the "fist" reads clearly in VR.
+
+             Each hand also carries a raycaster+cursor pair, same pattern
+             laser-controls itself uses, but pointed at `.menu-target`
+             instead of `.cube-target` and left disabled (raycaster
+             enabled:false, .menu-laser hidden) during normal punching.
+             world-menu-system enables this on *at most one* hand at a
+             time — whichever hand didn't press grip to open the menu —
+             so there's never a moment where both hands are live pointers
+             at once (that was the root cause of a trigger pull on one
+             hand accidentally registering a click aimed by the other).
+
+             cursor's downEvents/upEvents matter more than they look: left
+             at their default (empty), the cursor component binds its
+             click handling to *mouse/touch events on the canvas*, not to
+             the controller's own trigger button — real trigger pulls only
+             produced clicks via whatever synthetic click a given WebXR
+             browser happens to fire on "select" for accessibility
+             fallback purposes, which is exactly the kind of thing that
+             would register "some of the time." Binding directly to
+             triggerdown/triggerup (real events oculus-touch-controls
+             already emits, the same ones punch-game's own quick-reset
+             listens to) is unambiguous and confirmed via reading A-Frame
+             1.6.0's cursor component source, not assumed. -->
+        <a-entity
+          id="leftHand"
+          oculus-touch-controls="hand: left; model: false"
+          punch-tracker="edgeDetect: true"
+          raycaster="objects: .menu-target; far: 5; enabled: false"
+          cursor="fuse: false; downEvents: triggerdown; upEvents: triggerup"
+        >
+          <a-sphere radius="0.06" color="#EF476F" shader="flat"></a-sphere>
+          <!-- depth starts at 1 (unit length); laser-beam scales/repositions
+               it every frame to stop exactly at whatever it's pointed at,
+               instead of a fixed length that visibly pokes out the far
+               side of the menu panel it's aimed at. -->
+          <a-box
+            class="menu-laser"
+            width="0.006"
+            height="0.006"
+            depth="1"
+            position="0 0 -0.5"
+            material="color: #FFD166; shader: flat; opacity: 0.85"
+            laser-beam="maxLength: 3"
+            visible="false"
+          ></a-box>
+        </a-entity>
+        <a-entity
+          id="rightHand"
+          oculus-touch-controls="hand: right; model: false"
+          punch-tracker="edgeDetect: true"
+          raycaster="objects: .menu-target; far: 5; enabled: false"
+          cursor="fuse: false; downEvents: triggerdown; upEvents: triggerup"
+        >
+          <a-sphere radius="0.06" color="#118AB2" shader="flat"></a-sphere>
+          <a-box
+            class="menu-laser"
+            width="0.006"
+            height="0.006"
+            depth="1"
+            position="0 0 -0.5"
+            material="color: #FFD166; shader: flat; opacity: 0.85"
+            laser-beam="maxLength: 3"
+            visible="false"
+          ></a-box>
+        </a-entity>
+      </a-entity>
+
+      <!-- ============================================================
+           GAME MANAGER
+           Unlike Cube Pop's fixed batch + win screen, this is an endless
+           heavy-bag loop: always `count` cubes live, each pop spawns a
+           fresh replacement immediately. That fits a fitness/reps framing
+           better than a one-shot win state, and it's simpler to iterate
+           on for a movement-feel POC.
+      ============================================================ -->
+      <a-entity id="cube-manager" punch-game="count: 6; behaviorMode: mixed"></a-entity>
+
+      <!-- ============================================================
+           WORLD MENU
+           A single panel fixed in world space (NOT parented to the
+           camera or a hand) — world-menu-system repositions it a couple
+           feet in front of wherever the player is standing/looking each
+           time it opens, facing back toward them. Replaced an earlier
+           per-wrist "watch menu" design that turned out hard to aim at
+           and to keep readable across a growing number of tabs.
+      ============================================================ -->
+      <a-entity id="world-menu" visible="false" scale="0.6 0.6 0.6"></a-entity>
+
+      <a-entity world-menu-system></a-entity>
+    </a-scene>
+
+    <script>
+      // ==============================================================
+      // Small shared helpers
+      // ==============================================================
+      function clamp(v, lo, hi) {
+        return Math.min(hi, Math.max(lo, v));
+      }
+
+      function degToRad(d) {
+        return (d * Math.PI) / 180;
+      }
+
+      // Gets the world-space direction an entity is "pointing," using
+      // this codebase's consistent local -Z-is-forward convention (same
+      // one the menu-laser and punch directions use throughout). This is
+      // deliberately NOT `el.object3D.getWorldDirection()` — that method
+      // is only overridden to mean -Z for an actual THREE.Camera object;
+      // for a plain Object3D (which is what an A-Frame entity's own
+      // `.object3D` is, even <a-camera>'s — the real THREE.Camera lives
+      // on a child object3D reachable via `.getObject3D('camera')`) it
+      // returns +Z instead, silently pointing the opposite way. Fell
+      // into that exact trap once already; this avoids it everywhere.
+      var _forwardQuat = new THREE.Quaternion();
+      function getForwardDirection(el, target) {
+        el.object3D.getWorldQuaternion(_forwardQuat);
+        return target.set(0, 0, -1).applyQuaternion(_forwardQuat);
+      }
+
+      // True while the menu is open. Read by punch-locomotion and
+      // punch-game to disable punching (both locomotion and cube-popping)
+      // and freeze rig physics while the player is fiddling with
+      // settings, and by punch-game's trigger-reset handler so pulling
+      // the trigger to click a menu item doesn't *also* reset the arena.
+      var menuOpen = false;
+
+      // Toggled from the menu's MORE tab (Show Stats). Read by
+      // punch-locomotion to decide whether to bother updating the
+      // in-view stats HUD after each punch.
+      var showStatsOn = false;
+
+      // Toggled from the menu's DEBUG tab (Live Debug HUD). Read by
+      // punch-locomotion's tick to decide whether to bother refreshing
+      // the always-live (not post-punch-snapshot) debug text every frame.
+      var liveDebugOn = false;
+
+      // Comfort vignette + "zoom" haptic buzz (menu, FEEL tab) — both
+      // added for VR comfort/gamefeel and made tunable from the start
+      // since neither can really be judged from outside a headset, and
+      // comfort tolerance is personal. See punch-locomotion.tick() for
+      // where both are actually driven from current rig speed.
+      var vignetteEnabled = true;
+      var vignetteStrength = 1.0; // 0-2, multiplies the max opacity a full-speed lunge reaches
+      var vignetteSize = 1.0; // 0.6-1.4, scales the vignette plane itself — smaller plane = the darkened ring reaches further into the center
+      var buzzHapticsEnabled = true;
+      var buzzHapticsStrength = 1.0; // 0-2, multiplies pulse intensity
+
+      // Global, menu-tunable knobs for the blood-splatter/knockback
+      // system. Kept as plain globals (like menuOpen/showStatsOn above)
+      // rather than component schema properties, since they apply
+      // uniformly across every cube regardless of when it was spawned —
+      // no per-entity attribute sync needed.
+      var splatAmountMultiplier = 1.5; // scales splat size/opacity/blob-count
+      var splatScatterMultiplier = 1.5; // scales how far blobs spread from the hit point
+      var cubeKnockbackFactor = 0.15; // damage -> knockback speed (m/s per damage point)
+      var cubeTrailEnabled = true;
+
+      // An "extending" swing that never resolves (full extension or a
+      // stop) within this long force-finishes anyway — guards against
+      // e.g. slow continuous circular hand motion (arm circles) getting
+      // stuck extended forever. Not expected to matter for a normal
+      // punch or uppercut, which resolve in well under this.
+      var MAX_SWING_MS = 2000;
+
+      // ==============================================================
+      // REACH CALIBRATION + EXTENSION-BASED PUNCH DETECTION
+      //
+      // Full redesign, replacing the old velocity-threshold swing state
+      // machine (crossing triggerSpeed / falling back to resetSpeed).
+      // Playtesting kept landing "either too hard to register or way too
+      // twitchy," and Noah's framing of the actual fix was: stop asking
+      // what a proper punch or uppercut *is* and start asking what a
+      // player *thinks* they are doing — extending their fist forward
+      // (a punch) or extending it overhead (an uppercut), regardless of
+      // how fast or how far, cocked back or not.
+      //
+      // So detection is now based on how far the hand has physically
+      // reached from an approximate torso reference point, expressed as
+      // a *fraction of the player's own calibrated reach* — not raw
+      // velocity. This is naturally robust to the single biggest false-
+      // positive source discovered last round (turning your body while
+      // holding a hand out): rotating your head/torso by some angle
+      // rotates the hand's offset-from-torso vector by that same angle,
+      // and rotates the torso's own forward direction by that same
+      // angle too, so the *dot product between them* (what the forward-
+      // extension fraction is built from) stays constant through a pure
+      // body turn with a static arm pose. A real reach, by contrast,
+      // changes that dot product directly. No velocity threshold can
+      // offer that guarantee, however it's filtered.
+      //
+      // Reach is calibrated per player (menu, REACH tab -> Calibrate
+      // Reach): a few seconds reaching forward, then a few seconds
+      // reaching overhead, sampling the max hand-to-torso distance
+      // (along the relevant axis) from *either* hand each phase. Until
+      // calibrated, sensible adult-human defaults are used.
+      // ==============================================================
+      var reachForward = 0.55; // meters, calibrated (or default) forward reach from torsoRef
+      var reachOverhead = 0.65; // meters, calibrated (or default) overhead reach from torsoRef
+      var REACH_MIN = 0.25; // clamp on a calibration result that's clearly too small to be real
+      var REACH_MAX = 1.0; // clamp on a calibration result that's clearly too large to be real
+      var CALIBRATION_PHASE_MS = 3000; // how long each of the two calibration phases samples for
+      var TORSO_HEAD_DROP = 0.25; // meters below head position used as an approximate shoulder/chest reference point
+
+      // Extension fractions (0..1 of reachForward / reachOverhead) that
+      // gate the state machine in punch-tracker: below ARM_THRESHOLD is
+      // "not reaching," at/above it starts tracking a punch attempt, and
+      // at/above the FULL threshold that attempt auto-fires regardless
+      // of speed ("if they cross 90% of their reach, treat it like an
+      // abrupt stop — the punch is thrown"). The other way to fire
+      // mid-range is the hand's speed dropping back down (see
+      // punch-tracker's stopSpeed schema field) — a slower, more
+      // deliberate reach that never gets close to full extension still
+      // counts once it visibly stops.
+      var EXT_ARM_THRESHOLD = 0.4;
+      var EXT_FORWARD_FULL_THRESHOLD = 0.9;
+      var EXT_OVERHEAD_FULL_THRESHOLD = 0.8;
+
+      // "Sticky" hit-assist for the locked-on target of a punch/uppercut
+      // — see punch-locomotion.onPunch. 'off' is pure physical proximity
+      // (punch-game.checkHand's own hitRadius check, unaffected by any
+      // of this); 'cheat' guarantees the locked target actually takes
+      // the hit the instant the punch fires, regardless of whether the
+      // fist's real physical path would have reached it; 'turn'
+      // guarantees the same hit but also snaps the rig's yaw a little
+      // toward the target first, so the fist visually reads as landing
+      // rather than the hit just happening invisibly. Exposed in the
+      // menu (AIM tab) as an experiment, per Noah's ask to A/B whether
+      // the turn is too disorienting or the cheat too obvious. Defaults
+      // to 'turn': first real playtest found 'cheat' feeling wrong (a
+      // hit registering with no visible reason it landed reads as
+      // arbitrary), and 'turn' is the one built specifically to fix
+      // that by giving the hit something to visibly land on.
+      var hitAssistMode = 'turn'; // 'off' | 'cheat' | 'turn'
+      var HIT_ASSIST_MODES = ['off', 'cheat', 'turn'];
+      var TURN_ASSIST_MAX_DEGREES = 35; // cap on the one-shot yaw snap, so a wildly-off target doesn't spin the player
+
+      // How long a glanced-at enemy stays "the thing I was probably
+      // trying to punch" after the player's head turns away from it —
+      // people often turn their head mid-swing, especially while
+      // winding up, even though their eyes (and intent) stayed on the
+      // target. Updated every frame in punch-locomotion.tick(); consumed
+      // in onPunch only when the punch's *own* look-direction lock-on
+      // search comes up empty.
+      var RECENT_LOOK_MEMORY_MS = 1800;
+      var RECENT_LOOK_RANGE_SLACK = 1.3; // extra range tolerance for a remembered (vs. fresh) target
+
+      // The four "live" per-cube movement behaviors. Menu's cycle button
+      // also offers "mixed", which isn't itself a movement behavior —
+      // it means "assign each newly-spawned cube a random one of these."
+      // 'idle' (formerly 'bob') used to float the cube up and down in
+      // place; now that enemies are grounded humanoids, it just means
+      // "stand still" — see cube-behavior.
+      var CUBE_BEHAVIOR_MODES = ['idle', 'chase', 'patrol', 'wander'];
+
+      // Cube knockback physics (cube-behavior) and cube-on-cube collision
+      // (punch-game) tuning. Kept as plain constants rather than menu
+      // knobs — cubeKnockbackFactor above already controls how hard a hit
+      // launches a cube, and these just shape what happens after that.
+      var CUBE_KNOCKBACK_FRICTION = 2.5; // exponential horizontal-velocity damping rate
+      var CUBE_KNOCKBACK_GRAVITY = 9; // m/s^2, pulls a launched cube back toward the floor
+      var CUBE_KNOCKBACK_MAX_SPEED = 6; // m/s cap, so a huge hit can't send a cube flying off-arena
+      var CUBE_KNOCKBACK_MIN_SPEED = 0.05; // below this, a cube is considered settled again
+      var CUBE_TRAIL_MIN_SPEED = 0.6; // m/s — a cube must be sliding at least this fast to leave a trail
+      var CUBE_TRAIL_INTERVAL = 0.06; // seconds between trail dots while sliding
+      var CUBE_COLLISION_RADIUS = 0.4; // meters between cube centers to count as a collision
+      var CUBE_COLLISION_MIN_SPEED = 0.6; // a cube must be sliding at least this fast to hit another
+      var CUBE_COLLISION_COOLDOWN_MS = 1000; // per-pair cooldown, so two cubes can't infinitely re-hit each other
+      var CUBE_COLLISION_DAMAGE_PER_SPEED = 8; // damage dealt to cube B = cubeA's slide speed * this
+      var CUBE_COLLISION_TRANSFER_FACTOR = 0.6; // fraction of cubeA's slide speed passed on as cubeB's new velocity
+
+      // "Move fast and break things": a cube's knockback velocity that
+      // gets suddenly zeroed by a hard surface (floor or wall — see
+      // cube-behavior's room-bounds clamp and floor-landing logic) deals
+      // impact damage proportional to how much speed was just lost.
+      // Small stumbles/gentle landings (below the min) don't count —
+      // only a genuinely hard stop does.
+      var CUBE_ROOM_BOUND = 14; // meters, matches punch-locomotion's own player bounds/wall margin
+      var CUBE_IMPACT_MIN_LOST_SPEED = 1.5; // m/s
+      var CUBE_IMPACT_DAMAGE_PER_SPEED = 10; // damage per m/s lost above the minimum
+
+      // A punch's knockback on a cube is primarily "straight away from
+      // the player" (a clean push, not a wobbly reflection of whatever
+      // direction the fist happened to be moving), angled only a little
+      // by the actual swing direction, with the swing's vertical
+      // component given partial (not full) credit as a launch — "if
+      // there's upwards force, send them a little airborne," a downward
+      // swing likewise adds a little downward velocity (which, on an
+      // already-grounded target, immediately feeds into the impact-
+      // damage system above: a downward punch that connects with a
+      // standing enemy contributes to slamming them into the floor).
+      var KNOCKBACK_ANGLE_BLEND = 0.3; // 0 = straight away from player, 1 = pure swing direction
+      var KNOCKBACK_VERTICAL_FACTOR = 0.5; // fraction of the swing's vertical component kept as launch/slam
+
+      // Lock-on lunges are capped so finishing off a cube you're already
+      // standing next to gives a felt "thump" rather than launching you
+      // past or through it — the direct fix for "the game moves me
+      // around unexpectedly" during close-range combos. Distance-based
+      // cap: lunge magnitude can't exceed (distance to target *
+      // LOCK_DISTANCE_FACTOR + LOCK_MIN_MAGNITUDE), so magnitude scales
+      // up smoothly as the target gets farther away instead of a hard
+      // on/off cutoff.
+      var LOCK_DISTANCE_FACTOR = 3.5;
+      var LOCK_MIN_MAGNITUDE = 0.6;
+
+      // When a punch has nothing to lock onto, the lunge direction is
+      // mostly look direction, lightly nudged by the swing's own net
+      // displacement — 0 would be pure look direction (ignore the swing
+      // entirely), 1 would be the old 50/50-ish blend. Kept small
+      // deliberately: "look at the thing you want to punch" is meant to
+      // be the dominant intent signal now, not the swing's exact
+      // trajectory (a fast, wobbly real swing's displacement direction
+      // is a much noisier signal than where the player's eyes are).
+      var PUNCH_DIR_BLEND = 0.25;
+
+      // Comfort vignette tuning: opacity ramps toward VIGNETTE_MAX_OPACITY
+      // (before the vignetteStrength menu multiplier) as rig speed
+      // approaches VIGNETTE_REFERENCE_SPEED, smoothed with an exponential
+      // decay (same damping shape as the movement/knockback physics
+      // elsewhere in this file) so it doesn't flicker in and out on every
+      // small speed fluctuation between punches.
+      var VIGNETTE_REFERENCE_SPEED = 6; // m/s — rig speed at which the vignette reaches full strength
+      var VIGNETTE_MAX_OPACITY = 0.85;
+      var VIGNETTE_SMOOTH_TAU = 0.2; // seconds
+
+      // "Zoom" haptic buzz tuning: while buzzHapticsEnabled and rig speed
+      // is above BUZZ_MIN_SPEED, both hands get a short pulse every
+      // BUZZ_INTERVAL_MS (intensity scaled by current speed, capped at 1)
+      // — a real "sustained rumble" isn't offered by the WebXR haptics
+      // API (just discrete pulses), so a buzz is approximated by firing
+      // short pulses in quick succession.
+      var BUZZ_MIN_SPEED = 1.0; // m/s
+      var BUZZ_REFERENCE_SPEED = 8; // m/s — speed at which buzz intensity caps out
+      var BUZZ_INTERVAL_MS = 90;
+      var BUZZ_PULSE_MS = 55;
+
+      // Set the instant a hand's hapticActuator is first found (or first
+      // confirmed absent), read by the live debug HUD as "haptics: L
+      // yes/no R yes/no" — a real, concrete answer to "is the vibration
+      // just not there, or is something actually broken" instead of
+      // guessing from outside the headset a second time.
+      var hapticActuatorSeen = { left: null, right: null };
+
+      // Haptics are a nice-to-have confirmation buzz on hit/punch, not
+      // load-bearing — swallow anything unsupported rather than let a
+      // missing hapticActuators API break the game. actuator.pulse()
+      // returns a Promise (per the Gamepad Haptic Actuator spec) that
+      // can reject — e.g. if a browser rejects overlapping pulse calls
+      // on the same actuator — and a bare try/catch around a synchronous
+      // call does NOT catch a rejected promise. With the "zoom" buzz
+      // firing pulses on both hands roughly every 90ms during any
+      // sustained fast movement, an unhandled rejection every cycle adds
+      // up over a real play session; explicitly caught here so it can't
+      // accumulate into instability.
+      function pulseHaptics(handEl, intensity, durationMs) {
+        var handKey = handEl && handEl.id === 'leftHand' ? 'left' : handEl && handEl.id === 'rightHand' ? 'right' : null;
+        try {
+          var tracked = handEl && handEl.components['tracked-controls'];
+          var controller = tracked && tracked.controller;
+          var actuator = controller && controller.hapticActuators && controller.hapticActuators[0];
+          if (handKey && hapticActuatorSeen[handKey] === null) hapticActuatorSeen[handKey] = !!actuator;
+          if (actuator) {
+            var result = actuator.pulse(intensity, durationMs);
+            if (result && typeof result.catch === 'function') result.catch(function () {});
+          }
+        } catch (e) {
+          // ignore
+        }
+      }
+
+      // Paints a simple 2-color checker pattern onto a <canvas> and
+      // applies it as a tiled texture on an already-created (or
+      // about-to-be-created) A-Frame primitive's mesh. Avoids any
+      // external image asset/network dependency for the room's look.
+      function applyCheckerTexture(el, colorA, colorB, repeatX, repeatY) {
+        var canvas = document.createElement('canvas');
+        canvas.width = canvas.height = 64;
+        var ctx = canvas.getContext('2d');
+        ctx.fillStyle = colorA;
+        ctx.fillRect(0, 0, 64, 64);
+        ctx.fillStyle = colorB;
+        ctx.fillRect(0, 0, 32, 32);
+        ctx.fillRect(32, 32, 32, 32);
+
+        var texture = new THREE.CanvasTexture(canvas);
+        texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+        texture.repeat.set(repeatX, repeatY);
+
+        function apply() {
+          var mesh = el.getObject3D('mesh');
+          if (!mesh || !mesh.material) return;
+          mesh.material.map = texture;
+          mesh.material.needsUpdate = true;
+        }
+        if (el.getObject3D('mesh')) apply();
+        else el.addEventListener('loaded', apply, { once: true });
+      }
+
+      // Paints a radial gradient onto a <canvas> — transparent center,
+      // fading to opaque black at the edge — and applies it to the
+      // #vignette plane's mesh. Same "generate the texture at runtime,
+      // no external asset" approach as applyCheckerTexture/the splat
+      // canvas above. Canvas pixels beyond the outer gradient stop stay
+      // fully opaque black (CanvasGradient extends the last stop past
+      // its radius), which is exactly what's wanted here — a plane's
+      // corners, beyond the inscribed circle, read as fully masked.
+      function buildVignetteTexture() {
+        var size = 512;
+        var canvas = document.createElement('canvas');
+        canvas.width = canvas.height = size;
+        var ctx = canvas.getContext('2d');
+        var center = size / 2;
+        var gradient = ctx.createRadialGradient(center, center, size * 0.26, center, center, size * 0.5);
+        gradient.addColorStop(0, 'rgba(0,0,0,0)');
+        gradient.addColorStop(1, 'rgba(0,0,0,1)');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, size, size);
+        return new THREE.CanvasTexture(canvas);
+      }
+
+      function applyVignetteTexture(el) {
+        var texture = buildVignetteTexture();
+        function apply() {
+          var mesh = el.getObject3D('mesh');
+          if (!mesh || !mesh.material) return;
+          mesh.material.map = texture;
+          mesh.material.needsUpdate = true;
+        }
+        if (el.getObject3D('mesh')) apply();
+        else el.addEventListener('loaded', apply, { once: true });
+      }
+
+      // ==============================================================
+      // BLOOD SPLATTER
+      // A single high-res canvas painted onto over time and applied as
+      // the #splat-layer plane's texture (see the room markup above).
+      // Each cube's *original*, undamaged color is what gets splattered
+      // — the same color draining out of it via desaturation as it
+      // takes damage ends up on the floor, so the room tells the story
+      // of the fight as you go.
+      //
+      // World-to-canvas-pixel mapping is done by actually raycasting
+      // straight down onto the #splat-layer mesh and reading back the
+      // intersection's UV, rather than hand-deriving a formula from the
+      // plane's rotation — this file has already gotten bitten twice by
+      // wrong assumptions about which way a rotated/oriented object's
+      // axes point (see getForwardDirection's comment), so for this one
+      // the ground truth comes directly from three.js's own raycaster
+      // instead of more manual reasoning about conventions.
+      // ==============================================================
+      var SPLAT_CANVAS_SIZE = 1024;
+      var SPLAT_BASE_RADIUS = 0.22; // meters, before per-hit scaling and splatAmountMultiplier
+      var SPLAT_BASE_OPACITY = 0.65;
+      var SPLAT_TRAIL_RADIUS = 0.09; // small dots painted while a cube slides from knockback
+      var SPLAT_TRAIL_OPACITY = 0.4;
+
+      var splatCanvas = document.createElement('canvas');
+      splatCanvas.width = splatCanvas.height = SPLAT_CANVAS_SIZE;
+      var splatCtx = splatCanvas.getContext('2d');
+      var splatTexture = new THREE.CanvasTexture(splatCanvas);
+
+      var splatRaycaster = new THREE.Raycaster();
+      var _splatRayOrigin = new THREE.Vector3();
+      var _splatRayDir = new THREE.Vector3(0, -1, 0);
+
+      function attachSplatTexture(el) {
+        function apply() {
+          var mesh = el.getObject3D('mesh');
+          if (!mesh || !mesh.material) return;
+          mesh.material.map = splatTexture;
+          mesh.material.transparent = true;
+          mesh.material.needsUpdate = true;
+        }
+        if (el.getObject3D('mesh')) apply();
+        else el.addEventListener('loaded', apply, { once: true });
+      }
+
+      function clearSplatCanvas() {
+        splatCtx.clearRect(0, 0, SPLAT_CANVAS_SIZE, SPLAT_CANVAS_SIZE);
+        splatTexture.needsUpdate = true;
+      }
+
+      // Casts straight down from (worldX, 5, worldZ) onto the splat
+      // layer and returns the canvas pixel that world point corresponds
+      // to, or null if it somehow misses (shouldn't happen for any
+      // point within the room). (1 - uv.y) accounts for CanvasTexture's
+      // default flipY — verified empirically (paint a point, read the
+      // pixel back) rather than assumed.
+      function worldToSplatPixel(worldX, worldZ) {
+        var splatEl = document.querySelector('#splat-layer');
+        var mesh = splatEl && splatEl.getObject3D('mesh');
+        if (!mesh) return null;
+
+        _splatRayOrigin.set(worldX, 5, worldZ);
+        splatRaycaster.set(_splatRayOrigin, _splatRayDir);
+        var hits = splatRaycaster.intersectObject(mesh, true);
+        if (!hits.length || !hits[0].uv) return null;
+
+        return { x: hits[0].uv.x * SPLAT_CANVAS_SIZE, y: (1 - hits[0].uv.y) * SPLAT_CANVAS_SIZE };
+      }
+
+      // One organic-ish blob: a handful of randomly offset, randomly
+      // sized overlapping circles rather than one perfect circle, so it
+      // reads as a splat rather than a sticker. `splatAmountMultiplier`
+      // and `splatScatterMultiplier` (menu, SPLAT tab) scale size/
+      // opacity/blob-count and spread respectively, on top of whatever
+      // radius/opacity the caller asked for — playtesting feedback was
+      // that punch splats read as tight, sticker-like groupings under
+      // the cube, so both the baseline constants above and the default
+      // multipliers here start considerably more generous than a first
+      // guess would.
+      function paintSplat(worldX, worldZ, colorHex, radiusMeters, opacity) {
+        var pixel = worldToSplatPixel(worldX, worldZ);
+        if (!pixel) return;
+
+        var effectiveRadius = radiusMeters * splatAmountMultiplier;
+        var effectiveOpacity = clamp(opacity * splatAmountMultiplier, 0.08, 1);
+        var pixelsPerMeter = SPLAT_CANVAS_SIZE / 30; // room is 30m across
+        var pxRadius = effectiveRadius * pixelsPerMeter;
+
+        splatCtx.fillStyle = colorHex;
+        splatCtx.globalAlpha = effectiveOpacity;
+        var blobCount = Math.round((4 + Math.random() * 3) * clamp(splatAmountMultiplier, 1, 2.5));
+        for (var i = 0; i < blobCount; i++) {
+          var angle = Math.random() * Math.PI * 2;
+          var dist = Math.random() * pxRadius * 1.3 * splatScatterMultiplier;
+          var bx = pixel.x + Math.cos(angle) * dist;
+          var by = pixel.y + Math.sin(angle) * dist;
+          var br = pxRadius * (0.4 + Math.random() * 0.6);
+          splatCtx.beginPath();
+          splatCtx.arc(bx, by, br, 0, Math.PI * 2);
+          splatCtx.fill();
+        }
+        splatCtx.globalAlpha = 1;
+        splatTexture.needsUpdate = true;
+      }
+
+      // A death burst: several splats scattered around the impact point
+      // rather than one blob, for a bigger "explosion" moment. Also
+      // scaled by splatAmountMultiplier (count) and splatScatterMultiplier
+      // (spread radius), on top of the per-splat scaling paintSplat
+      // already does.
+      function paintSplatBurst(worldX, worldZ, colorHex) {
+        var count = Math.round((6 + Math.random() * 4) * clamp(splatAmountMultiplier, 1, 2));
+        for (var i = 0; i < count; i++) {
+          var angle = Math.random() * Math.PI * 2;
+          var dist = Math.random() * 0.7 * splatScatterMultiplier;
+          paintSplat(
+            worldX + Math.cos(angle) * dist,
+            worldZ + Math.sin(angle) * dist,
+            colorHex,
+            SPLAT_BASE_RADIUS * (0.6 + Math.random() * 0.8),
+            SPLAT_BASE_OPACITY * (0.7 + Math.random() * 0.3)
+          );
+        }
+      }
+
+      // ==============================================================
+      // COMPONENT: punch-tracker
+      // Attached to each hand and to the head. Tracks *local* position
+      // deltas (i.e. relative to the #rig parent) frame to frame to get
+      // real physical velocity of that body part — deliberately NOT
+      // world-space velocity. If we used world position, a hand's
+      // apparent velocity would include however fast #rig itself is
+      // currently drifting from a previous punch, which would let one
+      // hard swing bootstrap runaway "phantom" punches forever. Local
+      // position sidesteps that: your rig can be flying across the arena
+      // and a stationary hand still reads as zero velocity.
+      //
+      // When edgeDetect is on (hands only, not the head), it runs TWO
+      // independent extension-fraction state machines — one for a
+      // forward punch, one for an uppercut — instead of the old single
+      // velocity-threshold swing detector. See the big REACH CALIBRATION
+      // comment block above for the full rationale; in short: each axis
+      // tracks how far the hand has reached from an approximate torso
+      // point, as a fraction of the player's own calibrated reach along
+      // that axis, and moves through three states:
+      //   armed        - fraction below EXT_ARM_THRESHOLD (0.4). Ready.
+      //   extending    - fraction crossed 0.4; accumulating max speed,
+      //                  hand path length, head path length, same swing
+      //                  stats as before. Fires ("punch" event) the
+      //                  instant either (a) fraction crosses the FULL
+      //                  threshold (0.9 forward / 0.8 overhead — treated
+      //                  like an abrupt stop, the punch is thrown) or
+      //                  (b) the hand's (head-relative) speed drops back
+      //                  down near zero — a slower, more deliberate
+      //                  reach that stops without ever fully extending.
+      //   holdForReset - already fired; ignored until the hand comes
+      //                  back behind the arm threshold, at which point
+      //                  it re-arms. This is the whole "extend enough to
+      //                  punch, retract enough to punch again" model —
+      //                  deliberately easy to explain to a player.
+      //
+      // Both hands run both axes independently and simultaneously; a
+      // diagonal swing that crosses both thresholds can fire both a
+      // punch and an uppercut event from one physical motion, which
+      // reads as (and is treated as) one bigger compound hit rather than
+      // something to specifically prevent.
+      //
+      // Also tracks whether the underlying WebXR controller is actually
+      // connected, surfaced in punch-locomotion's debug HUD line — a
+      // direct way to see, in-headset, whether both hands are being
+      // recognized at all (as opposed to a movement-feel/tuning issue).
+      // ==============================================================
+      AFRAME.registerComponent('punch-tracker', {
+        schema: {
+          edgeDetect: { type: 'boolean', default: false },
+          // Hand (head-relative) speed at/below this counts as "the
+          // reach has stopped" while extending — the secondary trigger
+          // for a punch/uppercut that never reaches full extension. Not
+          // a trigger threshold any more (extension fraction owns that
+          // job entirely) — purely "has the motion visibly stopped."
+          stopSpeed: { type: 'number', default: 0.35 },
+          // How much of the head's own current velocity to subtract from
+          // this hand's velocity before comparing against stopSpeed — 0
+          // is raw hand velocity, 1 fully filters it out. Extension-
+          // fraction detection is already largely immune to body-turn
+          // false positives by construction (rotating hand and head
+          // offsets by the same angle preserves their dot product), but
+          // this still guards the *stop* check: turning your body while
+          // holding an already-extended pose shouldn't read as "stopped
+          // early" from turn-induced velocity noise. Exposed in the
+          // menu's DEBUG tab as "Turn Filter".
+          headBlend: { type: 'number', default: 1.0 },
+        },
+
+        init: function () {
+          this.prevLocal = this.el.object3D.position.clone();
+          this.velocity = new THREE.Vector3();
+          this.worldPos = new THREE.Vector3();
+          this.speed = 0; // head-relative speed, used for the "stopped" check
+          this.rawSpeed = 0; // unblended hand speed — used for magnitude/damage, and the debug HUD
+          this.hasPrev = false;
+          this.connected = false;
+          this._relVelocity = new THREE.Vector3();
+
+          if (this.data.edgeDetect) {
+            this.head = document.querySelector('#head');
+            this.torsoRef = new THREE.Vector3();
+            this.headForwardLocal = new THREE.Vector3();
+            this.fwd = this._makeAxisState();
+            this.up = this._makeAxisState();
+          }
+
+          var self = this;
+          this.el.addEventListener('controllerconnected', function () {
+            self.connected = true;
+            // The entity sits at its declared (0,0,0)-ish rest position
+            // until a real controller connects and starts driving its
+            // pose. Without this reseed, that stale pre-connection
+            // position leaks into the first tick after connecting as a
+            // huge one-frame "velocity" spike, which could look like (or
+            // start) an extension that never really happened.
+            self.hasPrev = false;
+            if (self.data.edgeDetect) {
+              self.fwd.state = 'armed';
+              self.up.state = 'armed';
+            }
+          });
+          this.el.addEventListener('controllerdisconnected', function () { self.connected = false; });
+        },
+
+        _makeAxisState: function () {
+          return {
+            state: 'armed', // 'armed' | 'extending' | 'holdForReset'
+            maxSpeed: 0,
+            handDist: 0,
+            headDist: 0,
+            startTime: 0,
+            startLocalPos: new THREE.Vector3(),
+            prevHeadPos: new THREE.Vector3(),
+          };
+        },
+
+        tick: function (time, deltaMs) {
+          if (!deltaMs) return;
+          var dt = deltaMs / 1000;
+          var localPos = this.el.object3D.position;
+
+          if (this.hasPrev) {
+            this.velocity.subVectors(localPos, this.prevLocal).divideScalar(dt);
+            this.rawSpeed = this.velocity.length();
+
+            if (this.data.edgeDetect && this.head) {
+              // Subtract (a fraction of) the head's own current velocity
+              // — see headBlend's schema comment for why. The head's
+              // punch-tracker instance ticks independently; reading its
+              // velocity here is at most one frame stale, which is
+              // imperceptible at VR frame rates.
+              var headTracker = this.head.components['punch-tracker'];
+              var headVel = headTracker ? headTracker.velocity : null;
+              if (headVel) {
+                this._relVelocity
+                  .copy(this.velocity)
+                  .addScaledVector(headVel, -this.data.headBlend);
+                this.speed = this._relVelocity.length();
+              } else {
+                this.speed = this.rawSpeed;
+              }
+            } else {
+              this.speed = this.rawSpeed;
+            }
+          }
+          this.prevLocal.copy(localPos);
+          this.hasPrev = true;
+
+          // Hit-testing against cubes (which live in world space, outside
+          // the rig) needs the real world position, separately from the
+          // rig-relative velocity above.
+          this.el.object3D.getWorldPosition(this.worldPos);
+
+          if (!this.data.edgeDetect || !this.head) return;
+
+          // Approximate torso/shoulder reference point and this frame's
+          // flattened (horizontal-only) forward direction, both in
+          // rig-local space to stay consistent with localPos above —
+          // local space is used throughout rather than world space
+          // specifically so this still works correctly if the rig ever
+          // gets yaw-rotated (see punch-locomotion's turn-assist hit-
+          // assist mode): a child entity's own *local* position/rotation
+          // never changes just because its parent rotates.
+          var headLocal = this.head.object3D.position;
+          this.torsoRef.set(headLocal.x, headLocal.y - TORSO_HEAD_DROP, headLocal.z);
+          this.headForwardLocal.set(0, 0, -1).applyQuaternion(this.head.object3D.quaternion);
+          this.headForwardLocal.y = 0;
+          if (this.headForwardLocal.lengthSq() > 0.0001) this.headForwardLocal.normalize();
+          else this.headForwardLocal.set(0, 0, -1);
+
+          var offsetX = localPos.x - this.torsoRef.x;
+          var offsetY = localPos.y - this.torsoRef.y;
+          var offsetZ = localPos.z - this.torsoRef.z;
+
+          var forwardExt = offsetX * this.headForwardLocal.x + offsetZ * this.headForwardLocal.z;
+          var forwardFrac = clamp(forwardExt / reachForward, 0, 1.3);
+          var overheadFrac = clamp(offsetY / reachOverhead, 0, 1.3);
+
+          this._updateAxis(this.fwd, 'forward', forwardFrac, EXT_FORWARD_FULL_THRESHOLD, localPos, time, dt);
+          this._updateAxis(this.up, 'overhead', overheadFrac, EXT_OVERHEAD_FULL_THRESHOLD, localPos, time, dt);
+        },
+
+        _updateAxis: function (st, axisName, extFrac, fullThreshold, localPos, time, dt) {
+          if (st.state === 'armed') {
+            if (extFrac >= EXT_ARM_THRESHOLD) {
+              st.state = 'extending';
+              st.maxSpeed = this.rawSpeed;
+              st.handDist = 0;
+              st.headDist = 0;
+              st.startTime = time;
+              st.startLocalPos.copy(localPos);
+              if (this.head) st.prevHeadPos.copy(this.head.object3D.position);
+            }
+            return;
+          }
+
+          if (st.state === 'extending') {
+            // maxSpeed (and its accumulation here) deliberately tracks
+            // rawSpeed, not the head-relative speed used for the stop
+            // check below — a punch thrown while stepping/leaning in
+            // should still get full credit for that commitment in the
+            // magnitude formula.
+            st.maxSpeed = Math.max(st.maxSpeed, this.rawSpeed);
+            st.handDist += this.velocity.length() * dt;
+            if (this.head) {
+              var headPos = this.head.object3D.position;
+              st.headDist += headPos.distanceTo(st.prevHeadPos);
+              st.prevHeadPos.copy(headPos);
+            }
+
+            var fullyExtended = extFrac >= fullThreshold;
+            var stopped = this.speed <= this.data.stopSpeed;
+            var timedOut = time - st.startTime > MAX_SWING_MS;
+
+            if (!fullyExtended && !stopped && !timedOut) return;
+
+            st.state = 'holdForReset';
+
+            var displacement = new THREE.Vector3().subVectors(localPos, st.startLocalPos);
+            var dist = displacement.length();
+            var dir = dist > 0.001 ? displacement.divideScalar(dist) : null;
+            if (dir && !isFinite(dir.x)) dir = null;
+
+            this.el.emit(
+              'punch',
+              {
+                direction: dir, // may be null; punch-locomotion falls back to look direction
+                extensionAxis: axisName,
+                maxSpeed: st.maxSpeed,
+                handTravelDist: st.handDist,
+                headTravelDist: st.headDist,
+                fullyExtended: fullyExtended,
+              },
+              true
+            );
+            return;
+          }
+
+          // st.state === 'holdForReset'
+          if (extFrac < EXT_ARM_THRESHOLD) st.state = 'armed';
+        },
+      });
+
+      // ==============================================================
+      // findLockOnTarget: among live (unpopped) cubes, finds the one
+      // closest to dead-center of the player's aim — within `maxRange`
+      // of `originPos` and within `maxAngleRad` of `lookDir` — and
+      // returns its element, or null if nothing qualifies. Ties (well,
+      // "closest to center" ties) go to whichever is checked first;
+      // not worth being fussier about for this few cubes.
+      // ==============================================================
+      function findLockOnTarget(originPos, lookDir, maxRange, maxAngleRad) {
+        var cubes = document.querySelectorAll('.cube-target');
+        var best = null;
+        var bestAngle = Infinity;
+        var toCube = new THREE.Vector3();
+        var cubePos = new THREE.Vector3();
+
+        for (var i = 0; i < cubes.length; i++) {
+          var cube = cubes[i];
+          var target = cube.components['punch-target'];
+          if (!target || target.popped) continue;
+
+          cube.object3D.getWorldPosition(cubePos);
+          toCube.subVectors(cubePos, originPos);
+          var dist = toCube.length();
+          if (dist > maxRange || dist < 0.001) continue;
+
+          toCube.divideScalar(dist);
+          var angle = toCube.angleTo(lookDir);
+          if (angle <= maxAngleRad && angle < bestAngle) {
+            bestAngle = angle;
+            best = cube;
+          }
+        }
+
+        return best;
+      }
+
+      // ==============================================================
+      // COMPONENT: punch-locomotion
+      // Lives on #rig. Listens for "punch" events bubbling up from the
+      // hands (see punch-tracker's swing state machine for how a punch's
+      // direction/stats are computed) and turns each one into a velocity
+      // impulse, then integrates that velocity into rig position every
+      // frame (gravity, ground collision, drag). This is the whole
+      // "punch to move" mechanic.
+      //
+      // There's no look-cone gate any more (see onPunch's own comment for
+      // why the old one — rejecting a punch whose net displacement
+      // direction was too far from where the player was looking — is
+      // structurally unnecessary now: punch-tracker's extension-fraction
+      // trigger physically can't fire from a pure cock-back to begin
+      // with). Movement direction leans on the player's *look* direction
+      // as the primary intent signal instead, per Noah's framing that a
+      // player's real intent is "I'm looking at the thing I want to hit,"
+      // not the exact physical trajectory of their swing:
+      //
+      // If a live cube is within `lockOnConeAngle` of your aim and close
+      // enough (`baseLockRange`, extended a bit by how committed the
+      // swing was — or the "recently looked at" memory if your head has
+      // since turned away, see updateRecentLookTarget), the punch locks
+      // onto it and moves you straight toward it, with the target's
+      // distance capping how big that lunge can be. Sticky hit-assist
+      // (menu, AIM tab) then decides what happens to the locked target
+      // itself — 'off' leaves it to plain physical proximity
+      // (punch-game.checkHand), 'cheat' guarantees the hit lands the
+      // instant the punch fires regardless of physical accuracy, 'turn'
+      // does the same plus a small one-shot view snap toward the target.
+      // Otherwise (no lock) the movement direction is mostly look
+      // direction, lightly nudged by the swing's own net displacement
+      // (PUNCH_DIR_BLEND) — so punching with nothing to aim at still
+      // generally sends you where you're looking.
+      //
+      // Impulse magnitude comes from three swing stats together — how
+      // fast the hand was moving at its peak, how far the hand
+      // travelled, and how far the head travelled over the same window
+      // (rewarding leaning/stepping into a punch, not just flicking the
+      // wrist) — combined via speedFactor/handDistFactor/headDistFactor
+      // and then scaled by `powerMultiplier`, the one knob exposed to
+      // the player as "Move Speed" in the menu.
+      // ==============================================================
+      AFRAME.registerComponent('punch-locomotion', {
+        schema: {
+          speedFactor: { type: 'number', default: 1.1 },
+          handDistFactor: { type: 'number', default: 4.5 },
+          headDistFactor: { type: 'number', default: 6.0 },
+          // Widened from 25/1.5 — the whole point of the reach-based
+          // redesign is "if I'm even sorta close to the right direction
+          // my attack should hit," so lock-on should trigger liberally.
+          lockOnConeAngle: { type: 'number', default: 40 }, // degrees
+          baseLockRange: { type: 'number', default: 2.0 }, // meters
+          lockRangeFactor: { type: 'number', default: 0.15 },
+          maxSpeed: { type: 'number', default: 14 },
+          gravity: { type: 'number', default: 5.5 },
+          groundStopTau: { type: 'number', default: 0.12 },
+          airDragTau: { type: 'number', default: 1.0 },
+          bounds: { type: 'number', default: 14 },
+          powerMultiplier: { type: 'number', default: 3.0 },
+        },
+
+        init: function () {
+          this.velocity = new THREE.Vector3();
+          this.grounded = true;
+          this.head = document.querySelector('#head');
+          this.leftHand = document.querySelector('#leftHand');
+          this.rightHand = document.querySelector('#rightHand');
+          this.debugText = document.querySelector('#debug-text');
+          this.statsText = document.querySelector('#stats-text');
+          this.liveDebugText = document.querySelector('#live-debug-text');
+          this.labelText = document.querySelector('#punch-label');
+          this.labelTimeout = null;
+
+          this.vignetteEl = document.querySelector('#vignette');
+          this.vignetteOpacity = 0;
+          this.buzzAccumMs = 0;
+
+          this.lookDir = new THREE.Vector3();
+          this.headWorldPos = new THREE.Vector3();
+          this.finalDir = new THREE.Vector3();
+          this.lastStats = null;
+
+          // "Recently looked at" target memory — see the RECENT_LOOK_*
+          // constants' comment. Refreshed every tick (not gated on
+          // menuOpen the way movement is, so it stays current the
+          // instant the menu closes) whenever a live cube is currently
+          // within a generous glance cone/range of the player's look
+          // direction.
+          this.recentLookTarget = null;
+          this.recentLookTime = 0;
+
+          // Reach calibration state — see startCalibration/updateCalibration.
+          this.calibrating = false;
+          this.calibPhase = 0;
+          this.calibMaxForward = 0;
+          this.calibMaxOverhead = 0;
+          this.calibPhaseEndTime = 0;
+
+          this.onPunch = this.onPunch.bind(this);
+          this.el.addEventListener('punch', this.onPunch);
+        },
+
+        // No more hard look-cone gate ("BLOCKED") — the old one existed
+        // to reject a cock-back's net displacement direction, but that
+        // whole failure mode is now structurally impossible: a pure
+        // retraction never crosses the extension threshold to begin
+        // with (see punch-tracker), since armed->extending requires
+        // *starting* below the threshold and moving up past it. With
+        // that gone, movement direction leans heavily on look direction
+        // (finalDir below, or the locked target's actual position),
+        // only lightly nudged by the swing's own displacement — "look
+        // at the thing you want to punch" is now the primary intent
+        // signal, not the swing's exact trajectory.
+        onPunch: function (evt) {
+          if (menuOpen || this.calibrating) return;
+
+          var punchDir = evt.detail.direction; // may be null (see punch-tracker)
+          var maxSpeed = evt.detail.maxSpeed;
+          var handDist = evt.detail.handTravelDist;
+          var headDist = evt.detail.headTravelDist || 0;
+          var axis = evt.detail.extensionAxis;
+          var fullyExtended = evt.detail.fullyExtended;
+
+          getForwardDirection(this.head, this.lookDir);
+          this.head.object3D.getWorldPosition(this.headWorldPos);
+
+          var magnitude = this.computeMagnitude(maxSpeed, handDist, headDist);
+
+          // Targeting, in priority order: (1) whatever's currently
+          // dead-ahead within a generous cone/range, (2) the "recently
+          // looked at" memory, for when the head has since turned away
+          // mid-swing (common, especially winding up) even though the
+          // player's intent didn't change, (3) nothing — blended-
+          // direction lunge with no lock.
+          var lockRange = this.data.baseLockRange + magnitude * this.data.lockRangeFactor;
+          var lockConeRad = degToRad(this.data.lockOnConeAngle);
+          var target = findLockOnTarget(this.headWorldPos, this.lookDir, lockRange, lockConeRad);
+          var usedMemory = false;
+
+          if (!target && this.recentLookTarget) {
+            var recentComp = this.recentLookTarget.components['punch-target'];
+            var recentFresh = recentComp && !recentComp.popped && Date.now() - this.recentLookTime < RECENT_LOOK_MEMORY_MS;
+            if (recentFresh) {
+              var memPos = new THREE.Vector3();
+              this.recentLookTarget.object3D.getWorldPosition(memPos);
+              if (memPos.distanceTo(this.headWorldPos) <= lockRange * RECENT_LOOK_RANGE_SLACK) {
+                target = this.recentLookTarget;
+                usedMemory = true;
+              }
+            }
+          }
+
+          // Lock-on lunges are capped by how far away the target
+          // actually is: (distance * LOCK_DISTANCE_FACTOR +
+          // LOCK_MIN_MAGNITUDE). Without this, finishing off a cube
+          // you're already standing next to applies the SAME full
+          // magnitude as a lunge from across the room, flinging the
+          // player past/through it instead of landing a controlled
+          // close-range hit.
+          var appliedMagnitude = magnitude;
+          var distToTarget = 0;
+          var hitAssisted = false;
+
+          if (target) {
+            var targetPos = new THREE.Vector3();
+            target.object3D.getWorldPosition(targetPos);
+            this.finalDir.subVectors(targetPos, this.headWorldPos);
+            distToTarget = this.finalDir.length();
+            this.finalDir.normalize();
+
+            var cappedMagnitude = distToTarget * LOCK_DISTANCE_FACTOR + LOCK_MIN_MAGNITUDE;
+            if (cappedMagnitude < appliedMagnitude) appliedMagnitude = cappedMagnitude;
+
+            // Sticky hit-assist: guarantee this locked target actually
+            // takes the hit the instant the punch fires, regardless of
+            // whether the fist's real physical path would have reached
+            // it — the direct answer to "I punch towards an enemy and
+            // fly past it, missing entirely." 'turn' additionally snaps
+            // the view a little toward the target so the miss doesn't
+            // look like one; see hitAssistMode's top-of-file comment.
+            if (hitAssistMode !== 'off') {
+              var targetComp = target.components['punch-target'];
+              if (targetComp && !targetComp.popped) {
+                targetComp.hit(this.finalDir.clone(), magnitude, this.headWorldPos.clone());
+                hitAssisted = true;
+                if (hitAssistMode === 'turn') this.nudgeYawToward(target);
+              }
+            }
+          } else {
+            // No lock: mostly look direction, only lightly nudged by
+            // the swing's own net displacement (or straight look
+            // direction if punch-tracker couldn't compute one).
+            var swingDir = punchDir || this.lookDir;
+            this.finalDir
+              .copy(this.lookDir)
+              .multiplyScalar(1 - PUNCH_DIR_BLEND)
+              .addScaledVector(swingDir, PUNCH_DIR_BLEND)
+              .normalize();
+          }
+
+          this.velocity.x += this.finalDir.x * appliedMagnitude;
+          this.velocity.y += this.finalDir.y * appliedMagnitude;
+          this.velocity.z += this.finalDir.z * appliedMagnitude;
+
+          var totalSpeed = this.velocity.length();
+          if (totalSpeed > this.data.maxSpeed) {
+            this.velocity.multiplyScalar(this.data.maxSpeed / totalSpeed);
+          }
+
+          var outcome = axis === 'overhead' ? 'UPPERCUT!' : 'PUNCH!';
+          if (target) outcome = (axis === 'overhead' ? 'UPPERCUT ' : '') + 'LOCK-ON!' + (usedMemory ? ' (recall)' : '');
+
+          this.lastStats = {
+            axis: axis,
+            fullyExtended: fullyExtended,
+            maxSpeed: maxSpeed,
+            handDist: handDist,
+            headDist: headDist,
+            magnitude: magnitude,
+            appliedMagnitude: appliedMagnitude,
+            capped: appliedMagnitude < magnitude,
+            distToTarget: distToTarget,
+            locked: !!target,
+            usedMemory: usedMemory,
+            hitAssisted: hitAssisted,
+            outcome: outcome,
+          };
+          this.updateStatsHud();
+          this.showLabel(outcome + (this.lastStats.capped ? ' (close)' : ''));
+          pulseHaptics(evt.target, target ? 0.9 : 0.5, target ? 80 : 60);
+        },
+
+        // Same formula used for both "how far does this punch lunge the
+        // player" and "how much damage does this punch do to a cube" —
+        // punch-game's checkHand calls this directly rather than having
+        // its own separate notion of punch force, per Noah's ask that
+        // cube damage use the same calculation as player movement.
+        computeMagnitude: function (maxSpeed, handDist, headDist) {
+          return (
+            (maxSpeed * this.data.speedFactor +
+              handDist * this.data.handDistFactor +
+              headDist * this.data.headDistFactor) *
+            this.data.powerMultiplier
+          );
+        },
+
+        tick: function (time, deltaMs) {
+          if (!deltaMs) return;
+
+          if (this.calibrating) {
+            this.updateCalibration();
+            return; // frozen during calibration, same as while the menu is open
+          }
+          if (menuOpen) return; // freeze in place while the menu is open
+
+          this.updateRecentLookTarget();
+
+          var dt = Math.min(deltaMs / 1000, 0.05); // guard against huge steps (tab switch, etc.)
+          var pos = this.el.object3D.position;
+
+          if (!this.grounded || this.velocity.y > 0) {
+            this.velocity.y -= this.data.gravity * dt;
+          }
+
+          pos.x += this.velocity.x * dt;
+          pos.y += this.velocity.y * dt;
+          pos.z += this.velocity.z * dt;
+
+          if (pos.y <= 0) {
+            pos.y = 0;
+            this.velocity.y = 0;
+            this.grounded = true;
+          } else {
+            this.grounded = false;
+          }
+
+          pos.x = clamp(pos.x, -this.data.bounds, this.data.bounds);
+          pos.z = clamp(pos.z, -this.data.bounds, this.data.bounds);
+
+          // Exponential decay: fast stop on the ground so a lunge resolves
+          // into a stance instead of an endless ice-skating slide (a big
+          // part of what would make this nauseating), slow decay in the
+          // air so a jump/lunge keeps its momentum through the arc —
+          // this is also what makes juggling/hovering between airborne
+          // punches feel controllable rather than just falling straight
+          // back down between hits.
+          var tau = this.grounded ? this.data.groundStopTau : this.data.airDragTau;
+          var damping = Math.exp(-dt / tau);
+          this.velocity.x *= damping;
+          this.velocity.z *= damping;
+
+          var speed = this.velocity.length();
+
+          if (this.debugText) {
+            var leftTracker = this.leftHand && this.leftHand.components['punch-tracker'];
+            var rightTracker = this.rightHand && this.rightHand.components['punch-tracker'];
+            var handsStatus =
+              'L:' + (leftTracker && leftTracker.connected ? 'ok' : '--') +
+              ' R:' + (rightTracker && rightTracker.connected ? 'ok' : '--');
+            this.debugText.setAttribute(
+              'value',
+              'rig speed: ' + speed.toFixed(1) + ' m/s' + (this.grounded ? '' : ' (air)') + '\n' + handsStatus
+            );
+          }
+
+          this.updateVignette(speed, dt);
+          this.updateBuzzHaptics(speed, deltaMs);
+
+          if (liveDebugOn) this.updateLiveDebugHud();
+        },
+
+        // Comfort vignette: fades the camera-attached radial-gradient
+        // plane's opacity toward VIGNETTE_MAX_OPACITY * vignetteStrength
+        // as rig speed approaches VIGNETTE_REFERENCE_SPEED, exponentially
+        // smoothed so it doesn't flicker between frames. vignetteSize
+        // scales the plane itself rather than repainting the texture —
+        // cheaper, and avoids regenerating a canvas on every menu tweak.
+        //
+        // Deliberately mutates the THREE.js mesh/material/object3D
+        // directly rather than going through el.setAttribute() — this
+        // runs every single frame (unlike everything else in this file
+        // that calls setAttribute, which only fires on discrete events
+        // like a punch or a menu click), and setAttribute's schema-diff-
+        // and-fire-update-handlers machinery is real, avoidable overhead
+        // to pay 70-90 times a second for what's just two number writes.
+        updateVignette: function (speed, dt) {
+          if (!this.vignetteEl) return;
+          var mesh = this.vignetteEl.getObject3D('mesh');
+          if (!mesh || !mesh.material) return; // texture/mesh not attached yet
+
+          if (!vignetteEnabled) {
+            if (this.vignetteOpacity !== 0) {
+              this.vignetteOpacity = 0;
+              mesh.material.opacity = 0;
+              this.vignetteEl.object3D.visible = false;
+            }
+            return;
+          }
+
+          var speedFrac = clamp(speed / VIGNETTE_REFERENCE_SPEED, 0, 1);
+          // vignetteStrength goes up to 2 (200%) so the strongest
+          // setting is still clearly "more" than the default even at
+          // low speed, but material opacity itself is only meaningful
+          // in [0,1] — THREE.js won't error on a higher value (a
+          // renderer just treats it as fully opaque), but there's no
+          // reason to hand it a number outside the range it means.
+          var targetOpacity = clamp(speedFrac * VIGNETTE_MAX_OPACITY * vignetteStrength, 0, 1);
+          var smoothing = Math.exp(-dt / VIGNETTE_SMOOTH_TAU);
+          this.vignetteOpacity = clamp(targetOpacity + (this.vignetteOpacity - targetOpacity) * smoothing, 0, 1);
+
+          this.vignetteEl.object3D.scale.setScalar(vignetteSize);
+          mesh.material.opacity = this.vignetteOpacity;
+          this.vignetteEl.object3D.visible = this.vignetteOpacity > 0.01;
+        },
+
+        // "Zoom" haptic buzz: short pulses to both hands, roughly every
+        // BUZZ_INTERVAL_MS, while moving faster than BUZZ_MIN_SPEED —
+        // see BUZZ_* constants' comment for why this is pulses rather
+        // than a true sustained rumble.
+        updateBuzzHaptics: function (speed, deltaMs) {
+          if (!buzzHapticsEnabled || speed < BUZZ_MIN_SPEED) {
+            this.buzzAccumMs = 0;
+            return;
+          }
+          this.buzzAccumMs += deltaMs;
+          if (this.buzzAccumMs < BUZZ_INTERVAL_MS) return;
+          this.buzzAccumMs = 0;
+
+          var intensity = clamp((speed / BUZZ_REFERENCE_SPEED) * buzzHapticsStrength, 0, 1);
+          pulseHaptics(this.leftHand, intensity, BUZZ_PULSE_MS);
+          pulseHaptics(this.rightHand, intensity, BUZZ_PULSE_MS);
+        },
+
+        // Refreshes the "recently looked at" memory whenever a live
+        // cube is currently within a generous glance cone/range of the
+        // player's look direction — deliberately the same cone/range
+        // lock-on itself uses, since "close enough to lock onto" and
+        // "close enough to remember glancing at" are the same bar.
+        updateRecentLookTarget: function () {
+          getForwardDirection(this.head, this.lookDir);
+          this.head.object3D.getWorldPosition(this.headWorldPos);
+          var glanceRange = this.data.baseLockRange + 3;
+          var glanceConeRad = degToRad(this.data.lockOnConeAngle);
+          var glanced = findLockOnTarget(this.headWorldPos, this.lookDir, glanceRange, glanceConeRad);
+          if (glanced) {
+            this.recentLookTarget = glanced;
+            this.recentLookTime = Date.now();
+          }
+        },
+
+        // Rotates the rig by angleRad around the world Y axis, pivoting
+        // on the given world point (the head's current position) rather
+        // than the rig's own translation origin — so it reads as "you
+        // turned in place" instead of swinging your whole body through
+        // an arc around wherever the rig's origin happens to sit (which,
+        // for a room-scale player who's walked around, may not be
+        // anywhere near them).
+        applyYawAroundPoint: function (angleRad, pivotWorldPos) {
+          var rigPos = this.el.object3D.position;
+          var dx = rigPos.x - pivotWorldPos.x;
+          var dz = rigPos.z - pivotWorldPos.z;
+          var cos = Math.cos(angleRad);
+          var sin = Math.sin(angleRad);
+          rigPos.x = pivotWorldPos.x + (dx * cos - dz * sin);
+          rigPos.z = pivotWorldPos.z + (dx * sin + dz * cos);
+          this.el.object3D.rotation.y += angleRad;
+        },
+
+        // 'turn' hit-assist: snaps the view a little toward the locked
+        // target so a guaranteed hit also *looks* landed. Applied as an
+        // instant one-shot rotation, not an animated turn — smooth/
+        // animated camera rotation is well known to be a worse motion-
+        // sickness offender in VR than an instant snap (the same reason
+        // "snap turn" is usually the comfort-preferred way to turn via
+        // locomotion), and the whole point of offering this as an
+        // alternative to 'cheat' is to be the more comfortable option.
+        nudgeYawToward: function (targetEl) {
+          var targetPos = new THREE.Vector3();
+          targetEl.object3D.getWorldPosition(targetPos);
+          var headPos = new THREE.Vector3();
+          this.head.object3D.getWorldPosition(headPos);
+
+          var toTarget = new THREE.Vector3(targetPos.x - headPos.x, 0, targetPos.z - headPos.z);
+          if (toTarget.lengthSq() < 0.0001) return;
+          toTarget.normalize();
+
+          var lookFlat = new THREE.Vector3();
+          getForwardDirection(this.head, lookFlat);
+          lookFlat.y = 0;
+          if (lookFlat.lengthSq() < 0.0001) return;
+          lookFlat.normalize();
+
+          var angle = Math.atan2(
+            lookFlat.x * toTarget.z - lookFlat.z * toTarget.x,
+            lookFlat.x * toTarget.x + lookFlat.z * toTarget.z
+          );
+          var maxAngle = degToRad(TURN_ASSIST_MAX_DEGREES);
+          angle = clamp(angle, -maxAngle, maxAngle);
+          this.applyYawAroundPoint(angle, headPos);
+        },
+
+        // Kicks off the two-phase reach calibration (menu, REACH tab).
+        // Punching and rig physics are frozen for its duration (tick()
+        // early-returns into updateCalibration instead), and the menu
+        // is expected to already be closed by the caller so the player
+        // can freely see the prompt and move their arms.
+        startCalibration: function () {
+          this.calibrating = true;
+          this.calibPhase = 0;
+          this.calibMaxForward = 0;
+          this.calibMaxOverhead = 0;
+          this.calibPhaseEndTime = Date.now() + CALIBRATION_PHASE_MS;
+          this.showLabel('Reach FORWARD with both arms!', CALIBRATION_PHASE_MS);
+        },
+
+        // Samples both hands' offset from an approximate torso reference
+        // point every frame during calibration, taking the max forward
+        // (phase 0) or vertical (phase 1) component seen from *either*
+        // hand — same torsoRef/forward-direction math as punch-tracker's
+        // live extension-fraction calculation, just computing the raw
+        // calibration numbers rather than a fraction of them.
+        updateCalibration: function () {
+          if (!this._calibTorsoRef) {
+            this._calibTorsoRef = new THREE.Vector3();
+            this._calibForward = new THREE.Vector3();
+          }
+          var headLocal = this.head.object3D.position;
+          this._calibTorsoRef.set(headLocal.x, headLocal.y - TORSO_HEAD_DROP, headLocal.z);
+          this._calibForward.set(0, 0, -1).applyQuaternion(this.head.object3D.quaternion);
+          this._calibForward.y = 0;
+          if (this._calibForward.lengthSq() > 0.0001) this._calibForward.normalize();
+          else this._calibForward.set(0, 0, -1);
+
+          var hands = [this.leftHand, this.rightHand];
+          for (var i = 0; i < hands.length; i++) {
+            var handEl = hands[i];
+            if (!handEl) continue;
+            var handLocal = handEl.object3D.position;
+            var offsetX = handLocal.x - this._calibTorsoRef.x;
+            var offsetY = handLocal.y - this._calibTorsoRef.y;
+            var offsetZ = handLocal.z - this._calibTorsoRef.z;
+            if (this.calibPhase === 0) {
+              var fwd = offsetX * this._calibForward.x + offsetZ * this._calibForward.z;
+              if (fwd > this.calibMaxForward) this.calibMaxForward = fwd;
+            } else if (offsetY > this.calibMaxOverhead) {
+              this.calibMaxOverhead = offsetY;
+            }
+          }
+
+          if (Date.now() < this.calibPhaseEndTime) return;
+
+          if (this.calibPhase === 0) {
+            this.calibPhase = 1;
+            this.calibPhaseEndTime = Date.now() + CALIBRATION_PHASE_MS;
+            this.showLabel('Now reach OVERHEAD with both arms!', CALIBRATION_PHASE_MS);
+          } else {
+            reachForward = clamp(this.calibMaxForward, REACH_MIN, REACH_MAX);
+            reachOverhead = clamp(this.calibMaxOverhead, REACH_MIN, REACH_MAX);
+            this.calibrating = false;
+            this.showLabel('Calibrated! ' + reachForward.toFixed(2) + 'm / ' + reachOverhead.toFixed(2) + 'm', 2000);
+          }
+        },
+
+        updateStatsHud: function () {
+          if (!this.statsText || !this.lastStats) return;
+          var s = this.lastStats;
+          this.statsText.setAttribute(
+            'value',
+            (s.axis === 'overhead' ? 'UPPERCUT' : 'PUNCH') + (s.fullyExtended ? ' full-ext' : ' stopped') +
+              '\nMaxSpd ' + s.maxSpeed.toFixed(1) + '  HandDist ' + s.handDist.toFixed(2) + '  HeadDist ' + s.headDist.toFixed(2) +
+              '\nMag ' + s.magnitude.toFixed(1) + (s.capped ? ' -> ' + s.appliedMagnitude.toFixed(1) + ' (capped)' : '') +
+              '\n' + s.outcome + (s.locked ? '  dist ' + s.distToTarget.toFixed(2) + 'm' : '') + (s.hitAssisted ? '  [assist]' : '')
+          );
+        },
+
+        // Continuously-updating (not post-punch-snapshot) view of the
+        // handful of raw numbers punch-tracker's extension state machine
+        // actually reads every frame — both hands' raw vs. head-relative
+        // speed and current forward/overhead axis state, the live stop-
+        // speed/turn-filter thresholds, and the calibrated reach values.
+        // This is deliberately everything the detection logic uses to
+        // decide "is this a punch" in one place, so a confusing moment
+        // in-headset can be read directly off this HUD — or
+        // screenshotted — instead of guessed at from outside the headset.
+        updateLiveDebugHud: function () {
+          if (!this.liveDebugText) return;
+          var lt = this.leftHand && this.leftHand.components['punch-tracker'];
+          var rt = this.rightHand && this.rightHand.components['punch-tracker'];
+
+          function stateChar(s) { return s === 'armed' ? 'A' : s === 'extending' ? 'E' : 'H'; }
+          function handLine(label, t) {
+            if (!t || !t.fwd) return label + ' --';
+            return (
+              label +
+              ' raw ' + t.rawSpeed.toFixed(2) +
+              ' rel ' + t.speed.toFixed(2) +
+              ' F:' + stateChar(t.fwd.state) + ' U:' + stateChar(t.up.state)
+            );
+          }
+
+          function haptic(v) { return v === null ? '?' : v ? 'yes' : 'no'; }
+
+          var lines = [
+            handLine('L', lt),
+            handLine('R', rt),
+            'stop ' + (lt ? lt.data.stopSpeed.toFixed(2) : '-') +
+              ' turn ' + (lt ? Math.round(lt.data.headBlend * 100) : '-') + '%' +
+              ' reach ' + reachForward.toFixed(2) + '/' + reachOverhead.toFixed(2) + 'm',
+            'assist ' + hitAssistMode + '  rig vel ' + this.velocity.length().toFixed(2),
+            'haptics L:' + haptic(hapticActuatorSeen.left) + ' R:' + haptic(hapticActuatorSeen.right) +
+              '  vignette ' + this.vignetteOpacity.toFixed(2),
+          ];
+          this.liveDebugText.setAttribute('value', lines.join('\n'));
+        },
+
+        showLabel: function (label, durationMs) {
+          if (!this.labelText) return;
+          this.labelText.setAttribute('value', label);
+          this.labelText.setAttribute('visible', true);
+          clearTimeout(this.labelTimeout);
+          var el = this.labelText;
+          this.labelTimeout = setTimeout(function () {
+            el.setAttribute('visible', false);
+          }, durationMs || 500);
+        },
+
+        resetPosition: function () {
+          this.el.object3D.position.set(0, 0, 0);
+          this.el.object3D.rotation.y = 0; // undo any accumulated 'turn' hit-assist yaw
+          this.velocity.set(0, 0, 0);
+          this.grounded = true;
+        },
+      });
+
+      // ==============================================================
+      // COMPONENT: cube-behavior
+      // Drives a cube's own horizontal movement (independent of the
+      // player) plus a constant vertical bob. Modes:
+      //   bob     - stationary, just the float (the original Cube Pop
+      //             feel).
+      //   chase   - slowly drifts toward the player rig's position,
+      //             stopping just short so it doesn't clip into you.
+      //   patrol  - walks back and forth between two fixed points.
+      //   wander  - picks a new nearby random point every couple of
+      //             seconds and ambles toward it.
+      // "chase" reads the rig's own position as a stand-in for "where
+      // the player is" (not the headset's exact room-scale offset) —
+      // close enough for a slow approach AI in a POC.
+      // ==============================================================
+      AFRAME.registerComponent('cube-behavior', {
+        schema: {
+          mode: { type: 'string', default: 'idle' },
+          speed: { type: 'number', default: 0.5 },
+        },
+
+        init: function () {
+          // Enemies are grounded humanoids now (see punch-game.spawnCube)
+          // — this entity's own position is always the character's feet/
+          // ground contact point, y=0 at rest. There is deliberately no
+          // vertical idle animation any more (the old "bob" float): a
+          // training dummy standing still just... stands still.
+          this.basePos = this.el.object3D.position.clone();
+          this.rig = document.querySelector('#rig');
+
+          this.patrolA = this.basePos.clone();
+          this.patrolB = this.basePos
+            .clone()
+            .add(new THREE.Vector3((Math.random() - 0.5) * 3, 0, (Math.random() - 0.5) * 3));
+          this.patrolTarget = this.patrolB;
+
+          this.wanderTarget = this.basePos.clone();
+          this.nextWanderTime = 0;
+
+          this.scratch = new THREE.Vector3();
+
+          // Real physical knockback, separate from the mode-driven
+          // movement above: a decaying velocity applied on top of (and,
+          // while significant, in place of) the normal chase/patrol/
+          // wander/idle position updates. See applyKnockback, called
+          // from punch-target.hit() on a non-lethal hit and from
+          // punch-game's cube-on-cube collision check.
+          this.knockbackVel = new THREE.Vector3();
+          this.trailAccum = 0;
+          this.wasSliding = false;
+        },
+
+        // dir: normalized THREE.Vector3, speed: m/s. Additive (not a
+        // straight overwrite) so a cube already sliding from one hit and
+        // then clipped by another — or slammed into a neighbor — gets a
+        // combined push rather than the second hit just resetting the
+        // first's momentum.
+        applyKnockback: function (dir, speed) {
+          this.knockbackVel.addScaledVector(dir, speed);
+          if (this.knockbackVel.length() > CUBE_KNOCKBACK_MAX_SPEED) {
+            this.knockbackVel.setLength(CUBE_KNOCKBACK_MAX_SPEED);
+          }
+        },
+
+        tick: function (time, deltaMs) {
+          if (!deltaMs) return;
+          // Same guard as punch-locomotion's tick — without it, a single
+          // slow/coalesced frame (a real headset hitch, a GC pause, a
+          // backgrounded tab) integrates gravity over an oversized dt in
+          // one step, and since only applyKnockback's addScaledVector
+          // path checks the speed cap, that one-frame spike goes in
+          // uncapped: confirmed via testing, an unclamped dt let a cube's
+          // downward knockback velocity run away to 100+ m/s instead of
+          // settling back to ~0.
+          var dt = Math.min(deltaMs / 1000, 0.05);
+          var pos = this.el.object3D.position;
+          var knockSpeed = this.knockbackVel.length();
+
+          if (knockSpeed > CUBE_KNOCKBACK_MIN_SPEED) {
+            // Sliding from a hit: integrate knockback velocity directly
+            // into position (in place of the mode-driven movement below,
+            // which would otherwise fight it every frame), with friction
+            // decaying horizontal speed and a light "gravity" pulling any
+            // vertical launch back down. Hitting the room bounds (a wall)
+            // or the floor while still moving fast enough is a genuinely
+            // sudden stop — "move fast and break things": that lost
+            // speed becomes impact damage below, separate from and on
+            // top of whatever punch caused the slide in the first place.
+            var impactLostSpeed = 0;
+
+            var nextX = pos.x + this.knockbackVel.x * dt;
+            if (nextX > CUBE_ROOM_BOUND) {
+              impactLostSpeed += Math.abs(this.knockbackVel.x);
+              nextX = CUBE_ROOM_BOUND;
+              this.knockbackVel.x = 0;
+            } else if (nextX < -CUBE_ROOM_BOUND) {
+              impactLostSpeed += Math.abs(this.knockbackVel.x);
+              nextX = -CUBE_ROOM_BOUND;
+              this.knockbackVel.x = 0;
+            }
+            pos.x = nextX;
+
+            var nextZ = pos.z + this.knockbackVel.z * dt;
+            if (nextZ > CUBE_ROOM_BOUND) {
+              impactLostSpeed += Math.abs(this.knockbackVel.z);
+              nextZ = CUBE_ROOM_BOUND;
+              this.knockbackVel.z = 0;
+            } else if (nextZ < -CUBE_ROOM_BOUND) {
+              impactLostSpeed += Math.abs(this.knockbackVel.z);
+              nextZ = -CUBE_ROOM_BOUND;
+              this.knockbackVel.z = 0;
+            }
+            pos.z = nextZ;
+
+            var nextY = pos.y + this.knockbackVel.y * dt;
+            if (nextY <= 0) {
+              // Landed: zero the vertical component so gravity stops
+              // accumulating on it. Without this, a cube resting on the
+              // floor clamp keeps falling in velocity space forever (its
+              // position just can't follow), so knockbackVel.length()
+              // never drops back below CUBE_KNOCKBACK_MIN_SPEED and the
+              // cube is stuck "sliding" (skipping its normal behavior)
+              // indefinitely even though it looks stationary. Only a
+              // downward landing counts as an impact — this branch can
+              // also be reached at exactly y=0 with no vertical velocity
+              // at all (a purely horizontal slide), which isn't a hit.
+              if (this.knockbackVel.y < 0) impactLostSpeed += -this.knockbackVel.y;
+              pos.y = 0;
+              this.knockbackVel.y = 0;
+            } else {
+              pos.y = nextY;
+              this.knockbackVel.y -= CUBE_KNOCKBACK_GRAVITY * dt;
+            }
+
+            var damping = Math.exp(-dt * CUBE_KNOCKBACK_FRICTION);
+            this.knockbackVel.x *= damping;
+            this.knockbackVel.z *= damping;
+
+            var target = this.el.components['punch-target'];
+
+            if (impactLostSpeed > CUBE_IMPACT_MIN_LOST_SPEED && target) {
+              target.takeImpactDamage((impactLostSpeed - CUBE_IMPACT_MIN_LOST_SPEED) * CUBE_IMPACT_DAMAGE_PER_SPEED);
+            }
+
+            if (cubeTrailEnabled && knockSpeed > CUBE_TRAIL_MIN_SPEED && target) {
+              this.trailAccum += dt;
+              if (this.trailAccum >= CUBE_TRAIL_INTERVAL) {
+                this.trailAccum = 0;
+                var sizeFactor = clamp(knockSpeed / CUBE_KNOCKBACK_MAX_SPEED, 0.2, 1);
+                paintSplat(
+                  pos.x,
+                  pos.z,
+                  '#' + target.baseColor.getHexString(),
+                  SPLAT_TRAIL_RADIUS * (0.5 + sizeFactor * 0.5),
+                  SPLAT_TRAIL_OPACITY
+                );
+              }
+            }
+            this.wasSliding = true;
+            return;
+          }
+
+          this.knockbackVel.set(0, 0, 0);
+          pos.y = 0; // always grounded once settled
+
+          if (this.wasSliding) {
+            // Just settled from a knockback: re-anchor patrol/wander's
+            // reference points to wherever the cube actually ended up,
+            // rather than leaving them pointing at its original spawn
+            // location. Without this, a cube punched well away from
+            // where it spawned would slide to a stop and then calmly
+            // walk itself back toward its old spot once its behavior
+            // resumed — a milder echo of the same "magically resets"
+            // complaint the knockback rewrite was meant to fix.
+            this.basePos.copy(pos);
+            this.patrolA.copy(this.basePos);
+            this.patrolB.copy(this.basePos).add(new THREE.Vector3((Math.random() - 0.5) * 3, 0, (Math.random() - 0.5) * 3));
+            this.patrolTarget = this.patrolB;
+            this.wanderTarget.copy(this.basePos);
+            this.nextWanderTime = 0;
+            this.wasSliding = false;
+          }
+
+          var mode = this.data.mode;
+          var speed = this.data.speed;
+
+          if (mode === 'chase' && this.rig) {
+            var playerPos = this.rig.object3D.position;
+            var toPlayer = this.scratch.set(playerPos.x - pos.x, 0, playerPos.z - pos.z);
+            var dist = toPlayer.length();
+            if (dist > 0.7) {
+              toPlayer.normalize();
+              pos.x += toPlayer.x * speed * dt;
+              pos.z += toPlayer.z * speed * dt;
+            }
+          } else if (mode === 'patrol') {
+            var toTarget = this.scratch.set(this.patrolTarget.x - pos.x, 0, this.patrolTarget.z - pos.z);
+            if (toTarget.length() < 0.15) {
+              this.patrolTarget = this.patrolTarget === this.patrolA ? this.patrolB : this.patrolA;
+            } else {
+              toTarget.normalize();
+              pos.x += toTarget.x * speed * dt;
+              pos.z += toTarget.z * speed * dt;
+            }
+          } else if (mode === 'wander') {
+            if (time > this.nextWanderTime) {
+              this.wanderTarget.set(
+                this.basePos.x + (Math.random() - 0.5) * 3,
+                0,
+                this.basePos.z + (Math.random() - 0.5) * 3
+              );
+              this.nextWanderTime = time + 1500 + Math.random() * 2000;
+            }
+            var toWander = this.scratch.set(this.wanderTarget.x - pos.x, 0, this.wanderTarget.z - pos.z);
+            if (toWander.length() > 0.1) {
+              toWander.normalize();
+              pos.x += toWander.x * speed * dt;
+              pos.z += toWander.z * speed * dt;
+            }
+          }
+          // 'idle' (or anything unrecognized): stand still.
+        },
+      });
+
+      // Minimum time (ms) between two hits registering on the same cube.
+      // Without this, a single swing that dwells in a cube's hit radius
+      // for more than one frame (punch-game's checkHand runs every tick,
+      // ~90Hz in VR) would apply damage many times over for what's
+      // physically one punch.
+      var HIT_COOLDOWN_MS = 220;
+
+      // ==============================================================
+      // COMPONENT: punch-target
+      // Attached to each cube-person's container entity (see
+      // punch-game.spawnCube — the actual head/torso/legs meshes are
+      // children listed in `this.el.bodyParts`, since the container
+      // itself carries no geometry/material of its own). Cubes have
+      // health instead of popping in one hit — hit() applies damage (see
+      // punch-game.checkHand, which computes it via punch-locomotion
+      // .computeMagnitude, the exact same formula used for how far a
+      // punch lunges the player) and desaturates every body part's color
+      // toward gray in proportion to remaining health, so the color
+      // visibly drains out as it takes damage rather than showing a
+      // separate health bar. It dies (pop()) once health reaches zero.
+      // ==============================================================
+      AFRAME.registerComponent('punch-target', {
+        schema: {
+          maxHealth: { type: 'number', default: 100 },
+          color: { type: 'color', default: '#FFFFFF' },
+        },
+
+        init: function () {
+          this.health = this.data.maxHealth;
+          this.popped = false;
+          this.hitCooldownUntil = 0;
+          this.flinchTimeout = null;
+
+          // THREE.Color's HSL conversion is what drives desaturation:
+          // keep the cube's original hue/lightness, scale saturation
+          // down toward 0 (gray) as health drops toward 0. Sourced from
+          // the schema (not read off the entity's own material) since
+          // this container has no material of its own — see bodyParts.
+          this.baseColor = new THREE.Color(this.data.color);
+          this.baseHsl = {};
+          this.baseColor.getHSL(this.baseHsl);
+          this.displayColor = new THREE.Color();
+
+          this.onClick = this.onClick.bind(this);
+          this.el.addEventListener('click', this.onClick);
+        },
+
+        // The visible meshes to recolor for a damage/flinch/pop flash —
+        // punch-game.spawnCube sets `el.bodyParts` to [legs, torso, head].
+        // Falls back to the entity itself so this component still works
+        // if ever attached to a plain single-mesh entity (e.g. in tests).
+        parts: function () {
+          return this.el.bodyParts || [this.el];
+        },
+
+        onClick: function () {
+          // Desktop/phone fallback: an instant kill on click, matching
+          // the original one-hit-pops-it convenience for sanity-testing
+          // the spawn/pop/respawn loop without a headset.
+          this.hit(new THREE.Vector3(0, 0.4, -1), this.data.maxHealth);
+        },
+
+        // damage is in the same units as punch-locomotion's lunge
+        // magnitude (see computeMagnitude) — a light tap barely dents
+        // health, a big committed swing takes a real chunk out. playerPos
+        // (world-space) is used to knock the target *away from the
+        // player* rather than in whatever direction the hand happened to
+        // be instantaneously moving — see applyPhysicalKnockback. Omit
+        // it (e.g. from a cube-on-cube collision) to fall back to a
+        // plain hitVelocity-direction push.
+        hit: function (hitVelocity, damage, playerPos) {
+          if (this.popped) return;
+          var now = Date.now();
+          if (now < this.hitCooldownUntil) return;
+          this.hitCooldownUntil = now + HIT_COOLDOWN_MS;
+
+          var lethal = this.applyDamage(damage, hitVelocity);
+          if (!lethal) {
+            // Real physical knockback only on a non-lethal hit — pop()
+            // removes cube-behavior immediately for a dying cube and
+            // plays its own separate death-knockback animation, so there
+            // would be nothing left to apply this to (and nothing to see
+            // if there were).
+            this.applyPhysicalKnockback(hitVelocity, damage, playerPos);
+          }
+        },
+
+        // Impact damage from slamming into a hard surface (floor or
+        // wall — see cube-behavior's room-bounds clamp and floor-landing
+        // logic), proportional to how much speed the surface just
+        // absorbed. Shares hit()'s cooldown (so a bouncy landing can't
+        // machine-gun several impact ticks) but deliberately does NOT
+        // call applyPhysicalKnockback: the cube's velocity was just
+        // forcibly zeroed by the surface, so launching it again from
+        // taking that damage would start an unstoppable little bounce.
+        takeImpactDamage: function (damage) {
+          if (this.popped || damage <= 0) return;
+          var now = Date.now();
+          if (now < this.hitCooldownUntil) return;
+          this.hitCooldownUntil = now + HIT_COOLDOWN_MS;
+          this.applyDamage(damage, null);
+        },
+
+        // Shared by hit() and takeImpactDamage(): reduces health,
+        // updates color, splatters the floor, and either pops (dead) or
+        // flinches (still alive). Returns true if this damage was
+        // lethal. popDirHint is used only for pop()'s own death-
+        // knockback animation direction — takeImpactDamage has no
+        // meaningful "hit direction" to offer, so pop() falls back to a
+        // generic one when it's null.
+        applyDamage: function (damage, popDirHint) {
+          this.health = clamp(this.health - damage, 0, this.data.maxHealth);
+          this.updateColor();
+          this.splatFloor(damage);
+
+          if (this.health <= 0) {
+            this.pop(popDirHint);
+            return true;
+          }
+          this.flinch();
+          return false;
+        },
+
+        // Launches this cube via cube-behavior's knockback physics.
+        // Primarily "straight away from the player" rather than a raw
+        // reflection of the hand's instantaneous velocity direction
+        // (which can be pretty wobbly mid-swing) — angled only a little
+        // by the actual swing direction (KNOCKBACK_ANGLE_BLEND) — with
+        // the swing's vertical component contributing partial credit
+        // (KNOCKBACK_VERTICAL_FACTOR) as a launch/slam: "if there's
+        // upwards force, send them a little airborne," and a downward
+        // swing adds a little downward velocity too, which — on an
+        // already-grounded target — immediately feeds the impact-damage
+        // system above (cube-behavior lands it again right away).
+        // Overall speed scales with hit force (`damage`, via
+        // cubeKnockbackFactor — a menu knob in the SPLAT tab),
+        // deliberately much gentler than the player's own lunge speed.
+        // playerPos is optional: omit it (e.g. a cube-on-cube collision,
+        // where "away from the other cube" is already what hitVelocity's
+        // direction represents) to skip the away-blend and use
+        // hitVelocity's own horizontal direction directly.
+        applyPhysicalKnockback: function (hitVelocity, damage, playerPos) {
+          var behavior = this.el.components['cube-behavior'];
+          if (!behavior) return;
+
+          var hitDir = hitVelocity.clone();
+          var hitLenSq = hitDir.lengthSq();
+          var verticalComponent = 0;
+          var hitHorizontal = new THREE.Vector3();
+          if (hitLenSq > 0.0001) {
+            var hitNorm = hitDir.clone().normalize();
+            verticalComponent = hitNorm.y;
+            hitHorizontal.set(hitNorm.x, 0, hitNorm.z);
+            if (hitHorizontal.lengthSq() > 0.0001) hitHorizontal.normalize();
+          }
+
+          var horizontalDir;
+          if (playerPos) {
+            var cubePos = new THREE.Vector3();
+            this.el.object3D.getWorldPosition(cubePos);
+            var awayDir = new THREE.Vector3(cubePos.x - playerPos.x, 0, cubePos.z - playerPos.z);
+            if (awayDir.lengthSq() < 0.0001) awayDir.copy(hitHorizontal.lengthSq() > 0.0001 ? hitHorizontal : new THREE.Vector3(0, 0, -1));
+            else awayDir.normalize();
+
+            if (hitHorizontal.lengthSq() > 0.0001) {
+              horizontalDir = awayDir
+                .clone()
+                .multiplyScalar(1 - KNOCKBACK_ANGLE_BLEND)
+                .addScaledVector(hitHorizontal, KNOCKBACK_ANGLE_BLEND);
+              if (horizontalDir.lengthSq() < 0.0001) horizontalDir.copy(awayDir);
+              else horizontalDir.normalize();
+            } else {
+              horizontalDir = awayDir;
+            }
+          } else if (hitHorizontal.lengthSq() > 0.0001) {
+            horizontalDir = hitHorizontal;
+          } else {
+            return; // no usable direction at all (shouldn't normally happen)
+          }
+
+          var finalDir = new THREE.Vector3(horizontalDir.x, verticalComponent * KNOCKBACK_VERTICAL_FACTOR, horizontalDir.z);
+          if (finalDir.lengthSq() < 0.0001) return;
+          finalDir.normalize();
+
+          var speed = clamp(damage * cubeKnockbackFactor, 0, CUBE_KNOCKBACK_MAX_SPEED);
+          behavior.applyKnockback(finalDir, speed);
+        },
+
+        // Splatters this cube's original (undamaged) color onto the
+        // floor beneath it — a small blob per ordinary hit, a bigger
+        // scattered burst on the killing blow.
+        splatFloor: function (damage) {
+          var worldPos = new THREE.Vector3();
+          this.el.object3D.getWorldPosition(worldPos);
+          var colorHex = '#' + this.baseColor.getHexString();
+
+          if (this.health <= 0) {
+            paintSplatBurst(worldPos.x, worldPos.z, colorHex);
+          } else {
+            var sizeFactor = clamp(damage / this.data.maxHealth, 0.15, 1);
+            paintSplat(worldPos.x, worldPos.z, colorHex, SPLAT_BASE_RADIUS * (0.5 + sizeFactor), SPLAT_BASE_OPACITY);
+          }
+        },
+
+        updateColor: function () {
+          var healthFrac = this.health / this.data.maxHealth;
+          this.displayColor.setHSL(this.baseHsl.h, this.baseHsl.s * healthFrac, this.baseHsl.l);
+          var hex = '#' + this.displayColor.getHexString();
+          var parts = this.parts();
+          for (var i = 0; i < parts.length; i++) parts[i].setAttribute('material', 'color', hex);
+        },
+
+        // Non-lethal hit feedback: a quick bright flash + scale pulse,
+        // then settle back into the new (more desaturated) color. Scale
+        // rather than position for the pulse — cube-behavior sets this
+        // entity's position every single frame, so a position-based
+        // knockback here would just get overwritten immediately, same
+        // reason pop() below has to remove cube-behavior first (there,
+        // the cube really is being removed, so that's fine to do).
+        flinch: function () {
+          var parts = this.parts();
+          for (var i = 0; i < parts.length; i++) parts[i].setAttribute('material', 'color', '#FFFFFF');
+          this.el.setAttribute('animation__flinch', {
+            property: 'scale',
+            from: '1.15 1.15 1.15',
+            to: '1 1 1',
+            dur: 120,
+            easing: 'easeOutQuad',
+          });
+
+          clearTimeout(this.flinchTimeout);
+          var self = this;
+          this.flinchTimeout = setTimeout(function () {
+            self.updateColor();
+          }, 60);
+        },
+
+        pop: function (hitVelocity) {
+          if (this.popped) return;
+          this.popped = true;
+          clearTimeout(this.flinchTimeout);
+
+          // Stop cube-behavior from continuing to drive this entity's
+          // position — otherwise it fights the knockback/shrink
+          // animation below for control of the same transform every
+          // frame for the ~150ms it takes to play out.
+          this.el.removeAttribute('cube-behavior');
+
+          var parts = this.parts();
+          for (var i = 0; i < parts.length; i++) parts[i].setAttribute('material', 'color', '#FFFFFF');
+
+          var dir = hitVelocity ? hitVelocity.clone().normalize() : new THREE.Vector3(0, 0.4, -1).normalize();
+          if (!isFinite(dir.x)) dir.set(0, 0.4, -1).normalize();
+          var p = this.el.object3D.position;
+          this.el.setAttribute('animation__knockback', {
+            property: 'position',
+            to: p.x + dir.x * 0.6 + ' ' + (p.y + dir.y * 0.6) + ' ' + (p.z + dir.z * 0.6),
+            dur: 150,
+            easing: 'easeOutQuad',
+          });
+          this.el.setAttribute('animation__shrink', {
+            property: 'scale',
+            to: '0.001 0.001 0.001',
+            dur: 150,
+            easing: 'easeInBack',
+          });
+
+          var el = this.el;
+          setTimeout(function () {
+            el.emit('cube-popped', {}, true);
+            if (el.parentNode) el.parentNode.removeChild(el);
+          }, 150);
+        },
+
+        remove: function () {
+          this.el.removeEventListener('click', this.onClick);
+          clearTimeout(this.flinchTimeout);
+        },
+      });
+
+      // ==============================================================
+      // COMPONENT: laser-beam
+      // Attached to a `.menu-laser` box (a child of a hand entity that
+      // also carries the raycaster it's visualizing). Every frame, reads
+      // that raycaster's current intersection and stretches/repositions
+      // the box so it stops exactly at whatever it's pointing at —
+      // scale.z + position.z rather than rebuilding the geometry, since
+      // this runs every frame the whole time the menu is open. A
+      // fixed-length beam used to pass visibly through the menu panel it
+      // had just clicked, which reads as "did that actually register?"
+      // even though it did.
+      // ==============================================================
+      AFRAME.registerComponent('laser-beam', {
+        schema: { maxLength: { type: 'number', default: 3 } },
+
+        init: function () {
+          this.raycasterEl = this.el.parentEl;
+        },
+
+        tick: function () {
+          var raycaster = this.raycasterEl.components.raycaster;
+          if (!raycaster || !raycaster.data.enabled) return;
+
+          var length = this.data.maxLength;
+          if (raycaster.intersections && raycaster.intersections.length) {
+            length = Math.min(raycaster.intersections[0].distance, this.data.maxLength);
+          }
+          length = Math.max(length, 0.01);
+
+          this.el.object3D.scale.z = length;
+          this.el.object3D.position.z = -length / 2;
+        },
+      });
+
+      // ==============================================================
+      // COMPONENT: punch-game
+      // Game manager. Keeps `count` cubes live at all times, checks both
+      // hands against every cube every frame for a force-based hit, and
+      // tracks the running popped total. Reset is bound to either
+      // controller's physical trigger button (triggerdown) rather than a
+      // raycast target, since there are no laser pointers in this scene
+      // outside the menu.
+      // ==============================================================
+      AFRAME.registerComponent('punch-game', {
+        schema: {
+          count: { type: 'number', default: 6 },
+          hitRadius: { type: 'number', default: 0.35 },
+          popForceSpeed: { type: 'number', default: 1.0 },
+          behaviorMode: { type: 'string', default: 'mixed' },
+          // Lowered from an earlier 100: playtesting found that a
+          // realistic, *sustainable* punch (not an all-out haymaker —
+          // this is controlled physically, and nobody can throw maximum-
+          // effort punches indefinitely) was only doing a small fraction
+          // of a 100-health bar per hit, so killing one dummy took far
+          // more punches than felt good. At 50, a solid moderate hit
+          // takes a visible chunk out and a real committed swing (or one
+          // solid follow-up impact into a wall/floor) can drop one in a
+          // couple of hits — still not a single tap, but reads as "I am
+          // actually damaging this thing" rather than a slog.
+          cubeHealth: { type: 'number', default: 50 },
+        },
+
+        init: function () {
+          this.hud = document.querySelector('#hud-text');
+          this.leftHand = document.querySelector('#leftHand');
+          this.rightHand = document.querySelector('#rightHand');
+          this.rig = document.querySelector('#rig');
+          this.cubes = [];
+          this.colors = ['#EF476F', '#FFD166', '#06D6A0', '#118AB2', '#7B2CBF'];
+          this.scratch = new THREE.Vector3();
+          this.collisionPosA = new THREE.Vector3();
+          this.collisionPosB = new THREE.Vector3();
+          this.collisionDir = new THREE.Vector3();
+
+          // Keyed by "smallerCubeId|largerCubeId" -> timestamp the pair
+          // is allowed to hit each other again. Without this, a cube
+          // slid into a neighbor would keep re-triggering damage+
+          // knockback every frame the two stay in contact, which reads
+          // as (and is) an infinite damage loop between them.
+          this.pairCooldowns = {};
+          this.nextCubeId = 1;
+
+          this.reset = this.reset.bind(this);
+          this.onTriggerReset = this.onTriggerReset.bind(this);
+          this.onCubePopped = this.onCubePopped.bind(this);
+          this.el.addEventListener('cube-popped', this.onCubePopped);
+
+          // Physical trigger pull resets, on either hand — a direct
+          // button event, not a raycast hit. Gated on menuOpen (see
+          // onTriggerReset) since while the menu is open, the trigger is
+          // instead doing menu-click duty via the hand raycaster+cursor
+          // — without that gate, clicking a menu button would also
+          // reset the arena on the same trigger pull. (The menu also has
+          // its own explicit "Reset Arena" button.)
+          if (this.leftHand) this.leftHand.addEventListener('triggerdown', this.onTriggerReset);
+          if (this.rightHand) this.rightHand.addEventListener('triggerdown', this.onTriggerReset);
+          document.querySelector('#reset-button-html').addEventListener('click', this.reset);
+
+          this.reset();
+        },
+
+        onTriggerReset: function () {
+          if (menuOpen) return;
+          this.reset();
+        },
+
+        reset: function () {
+          for (var i = 0; i < this.cubes.length; i++) {
+            if (this.cubes[i].parentNode) this.cubes[i].parentNode.removeChild(this.cubes[i]);
+          }
+          this.cubes = [];
+          this.popped = 0;
+          this.pairCooldowns = {};
+          this.updateHud();
+          clearSplatCanvas();
+
+          var locomotion = this.rig.components['punch-locomotion'];
+          if (locomotion) locomotion.resetPosition();
+
+          for (var c = 0; c < this.data.count; c++) this.spawnCube(c);
+        },
+
+        // Builds a simple humanoid "cube person" — legs/torso/head boxes
+        // stacked on a container entity whose own position is the
+        // character's feet/ground-contact point (y=0 at rest). Not
+        // meant to be much (a real skeleton/model + ragdoll physics is a
+        // future step) — just enough that these read as combatants
+        // rather than floating balloons, and enough that a punch at any
+        // height (low jab, chest-level cross, high hook) can actually
+        // connect with *something* on the body. punch-target has no
+        // material of its own to recolor as damage accumulates, since
+        // the container carries no geometry — see el.bodyParts below.
+        spawnCube: function (colorSeed) {
+          // Wide spread of distance so hitting the field naturally calls
+          // for a mix of jabs and lunges. No height randomization any
+          // more — cube-people always stand on the floor.
+          var angle = (Math.random() - 0.5) * 1.8; // radians
+          var radius = 0.9 + Math.random() * 2.1; // 0.9m jab .. 3m lunge
+          var x = radius * Math.sin(angle);
+          var z = -radius * Math.cos(angle);
+
+          var colorHex = this.colors[colorSeed % this.colors.length];
+
+          var cube = document.createElement('a-entity');
+          cube.setAttribute('position', { x: x, y: 0, z: z });
+          cube.classList.add('cube-target');
+
+          var legs = document.createElement('a-box');
+          legs.setAttribute('width', 0.3);
+          legs.setAttribute('height', 0.65);
+          legs.setAttribute('depth', 0.22);
+          legs.setAttribute('position', '0 0.325 0');
+          legs.setAttribute('material', { color: colorHex });
+          legs.classList.add('cube-target');
+          cube.appendChild(legs);
+
+          var torso = document.createElement('a-box');
+          torso.setAttribute('width', 0.4);
+          torso.setAttribute('height', 0.55);
+          torso.setAttribute('depth', 0.26);
+          torso.setAttribute('position', '0 0.925 0');
+          torso.setAttribute('material', { color: colorHex });
+          torso.classList.add('cube-target');
+          cube.appendChild(torso);
+
+          var head = document.createElement('a-box');
+          head.setAttribute('width', 0.24);
+          head.setAttribute('height', 0.26);
+          head.setAttribute('depth', 0.24);
+          head.setAttribute('position', '0 1.33 0');
+          head.setAttribute('material', { color: colorHex });
+          head.classList.add('cube-target');
+          cube.appendChild(head);
+
+          // Plain JS property (not an AFRAME attribute) — read by
+          // punch-target for which meshes to recolor, and by
+          // punch-game.checkHand for per-part hit-radius checks. Not
+          // reactive/observed by A-Frame, which is fine: it's set once
+          // here and never needs to change afterward.
+          cube.bodyParts = [legs, torso, head];
+
+          cube.setAttribute('punch-target', { maxHealth: this.data.cubeHealth, color: colorHex });
+          cube.cubeId = this.nextCubeId++;
+
+          var mode = this.data.behaviorMode;
+          if (mode === 'mixed') {
+            mode = CUBE_BEHAVIOR_MODES[Math.floor(Math.random() * CUBE_BEHAVIOR_MODES.length)];
+          }
+          cube.setAttribute('cube-behavior', {
+            mode: mode,
+            speed: 0.4 + Math.random() * 0.5,
+          });
+
+          this.el.appendChild(cube);
+          this.cubes.push(cube);
+        },
+
+        tick: function () {
+          if (menuOpen) return; // punching (including cube-popping) is disabled while the menu is open
+          this.checkHand(this.leftHand);
+          this.checkHand(this.rightHand);
+          this.checkCubeCollisions();
+        },
+
+        // A cube that's currently sliding from its own knockback (fast
+        // enough to matter) checked against every other live cube: close
+        // enough, and not on cooldown with that specific cube, transfers
+        // some damage and velocity to it — punching one cube into
+        // another should hurt both. O(n^2) over the live cube list, which
+        // tops out at 14 (menu's Cube Count max), so this is cheap.
+        checkCubeCollisions: function () {
+          var now = Date.now();
+          for (var i = 0; i < this.cubes.length; i++) {
+            var cubeA = this.cubes[i];
+            var targetA = cubeA.components['punch-target'];
+            var behaviorA = cubeA.components['cube-behavior'];
+            if (!targetA || targetA.popped || !behaviorA) continue;
+
+            var speedA = behaviorA.knockbackVel.length();
+            if (speedA < CUBE_COLLISION_MIN_SPEED) continue;
+
+            cubeA.object3D.getWorldPosition(this.collisionPosA);
+
+            for (var j = 0; j < this.cubes.length; j++) {
+              if (i === j) continue;
+              var cubeB = this.cubes[j];
+              var targetB = cubeB.components['punch-target'];
+              if (!targetB || targetB.popped) continue;
+
+              cubeB.object3D.getWorldPosition(this.collisionPosB);
+              if (this.collisionPosA.distanceTo(this.collisionPosB) > CUBE_COLLISION_RADIUS) continue;
+
+              var key = cubeA.cubeId < cubeB.cubeId ? cubeA.cubeId + '|' + cubeB.cubeId : cubeB.cubeId + '|' + cubeA.cubeId;
+              if (this.pairCooldowns[key] && now < this.pairCooldowns[key]) continue;
+              this.pairCooldowns[key] = now + CUBE_COLLISION_COOLDOWN_MS;
+
+              this.collisionDir.subVectors(this.collisionPosB, this.collisionPosA);
+              if (this.collisionDir.lengthSq() < 0.0001) {
+                this.collisionDir.set(Math.random() - 0.5, 0.2, Math.random() - 0.5);
+              }
+              this.collisionDir.normalize();
+
+              var damage = speedA * CUBE_COLLISION_DAMAGE_PER_SPEED;
+              targetB.hit(this.collisionDir, damage);
+
+              var behaviorB = cubeB.components['cube-behavior'];
+              if (behaviorB) behaviorB.applyKnockback(this.collisionDir, speedA * CUBE_COLLISION_TRANSFER_FACTOR);
+            }
+          }
+        },
+
+        checkHand: function (handEl) {
+          if (!handEl) return;
+          var tracker = handEl.components['punch-tracker'];
+          // Gate on the head-relative speed (tracker.speed), not raw —
+          // otherwise spinning your body with a fist happening to sweep
+          // past a nearby cube would register as a real hit.
+          if (!tracker || !tracker.hasPrev || tracker.speed < this.data.popForceSpeed) return;
+
+          // Same magnitude formula that decides how far a punch lunges
+          // the player (computeMagnitude), but deliberately fed zero
+          // hand/head travel distance — per Noah's explicit note, this
+          // ambient/incidental contact path (any fist-near-enemy-while-
+          // moving-fast-enough touch, whether or not it's part of a
+          // deliberate punch/uppercut) should do plain velocity-based
+          // damage only, never the "lunging" distance bonus a *deliberate*
+          // triggered punch/uppercut gets (that bonus is applied
+          // separately, in punch-locomotion.onPunch, using the full
+          // completed swing's accumulated stats). Uses rawSpeed (not the
+          // head-relative tracker.speed used for the gate above) so
+          // damage still reflects true physical force once a hit is
+          // confirmed real.
+          var handDist = 0;
+          var headDist = 0;
+          // Looked up fresh here rather than cached in init() — a real
+          // bug found via testing: punch-game's init() can run before
+          // punch-locomotion's own init() has attached to #rig (a
+          // cross-entity component-init race, not guaranteed order by
+          // A-Frame), which silently left this.locomotion permanently
+          // undefined and fell back to raw hand speed with none of the
+          // formula's distance/power scaling for the entire session —
+          // a likely large, invisible contributor to "it takes way too
+          // many punches to kill one of these."
+          var locomotion = this.rig.components['punch-locomotion'];
+          var damage = locomotion
+            ? locomotion.computeMagnitude(tracker.rawSpeed, handDist, headDist)
+            : tracker.rawSpeed;
+
+          var playerPos = this.rig.object3D.position;
+
+          for (var i = this.cubes.length - 1; i >= 0; i--) {
+            var cube = this.cubes[i];
+            var target = cube.components['punch-target'];
+            if (!target || target.popped) continue;
+
+            // Check every body part independently (head/torso/legs) so
+            // a punch at any height can connect with *something* on the
+            // humanoid, rather than one hit-test against a single point.
+            var parts = cube.bodyParts || [cube];
+            for (var p = 0; p < parts.length; p++) {
+              parts[p].object3D.getWorldPosition(this.scratch);
+              if (tracker.worldPos.distanceTo(this.scratch) <= this.data.hitRadius) {
+                target.hit(tracker.velocity, damage, playerPos);
+                pulseHaptics(handEl, 0.6, 40);
+                break; // one hit per cube per frame — hit()'s own cooldown would dedupe anyway, this just skips the redundant checks
+              }
+            }
+          }
+        },
+
+        onCubePopped: function (evt) {
+          this.popped++;
+          this.updateHud();
+          var idx = this.cubes.indexOf(evt.target);
+          if (idx !== -1) this.cubes.splice(idx, 1);
+          this.spawnCube(this.popped);
+        },
+
+        updateHud: function () {
+          this.hud.setAttribute('text', 'value', 'Popped: ' + this.popped);
+        },
+      });
+
+      // ==============================================================
+      // REUSABLE: makeMenuButton / makeAdjustRow
+      // Small VR-menu row builders, used by createTabbedPanel's tab
+      // headers and by buildSettingsTabs' tab content alike. Both create
+      // `.menu-target` clickable row(s) parented under the given entity,
+      // and both re-derive their displayed label from a function (rather
+      // than a fixed string) so the current value shows immediately
+      // after every click without needing separate manual-refresh
+      // bookkeeping in the caller.
+      //
+      // The optional trailing `refreshList` array, if given, gets this
+      // row's refresh function pushed onto it, letting a caller force
+      // every row in a panel to re-read its current value on demand (see
+      // buildSettingsTabs / world-menu-system.open) — a defensive
+      // measure in case a value ever changes by some path other than
+      // this same panel's own buttons (e.g. the desktop overlay's Reset
+      // button) while the menu is closed.
+      //
+      // Generic enough to copy-paste alongside createTabbedPanel into a
+      // future prototype.
+      // ==============================================================
+      function makeMenuButton(parentEl, y, labelFn, onClick, refreshList, width) {
+        var btn = document.createElement('a-entity');
+        btn.setAttribute('geometry', { primitive: 'plane', width: width || 1.3, height: 0.18 });
+        btn.setAttribute('material', { color: '#2a3350', shader: 'flat' });
+        btn.setAttribute('position', { x: 0, y: y, z: 0.01 });
+        btn.classList.add('menu-target');
+
+        var text = document.createElement('a-text');
+        text.setAttribute('align', 'center');
+        text.setAttribute('color', '#FFFFFF');
+        text.setAttribute('width', 2.2);
+        text.setAttribute('position', '0 0 0.01');
+        text.setAttribute('value', labelFn());
+        btn.appendChild(text);
+
+        var refresh = function () { text.setAttribute('value', labelFn()); };
+        if (refreshList) refreshList.push(refresh);
+
+        btn.addEventListener('click', function () {
+          onClick();
+          refresh();
+        });
+        parentEl.appendChild(btn);
+      }
+
+      function makeAdjustRow(parentEl, y, labelFn, onMinus, onPlus, refreshList) {
+        var label = document.createElement('a-text');
+        label.setAttribute('align', 'center');
+        label.setAttribute('color', '#FFFFFF');
+        label.setAttribute('width', 2.0);
+        label.setAttribute('position', '0 ' + y + ' 0.01');
+        label.setAttribute('value', labelFn());
+        parentEl.appendChild(label);
+
+        var refresh = function () { label.setAttribute('value', labelFn()); };
+        if (refreshList) refreshList.push(refresh);
+
+        function makeSmallButton(x, glyph, onClick) {
+          var btn = document.createElement('a-entity');
+          // Enlarged from an earlier 0.22x0.18 — playtesting found the
+          // small adjust buttons much harder to reliably trigger-click
+          // than the big menu buttons, which (once the cursor's click
+          // binding was fixed to real triggerdown/up events, see the
+          // hand entities' cursor config) points at natural hand tremor
+          // during a trigger pull nudging the raycast off a small target
+          // between press and release — a bigger target directly
+          // compensates for that regardless of the click-binding fix.
+          btn.setAttribute('geometry', { primitive: 'plane', width: 0.34, height: 0.26 });
+          btn.setAttribute('material', { color: '#3a4468', shader: 'flat' });
+          btn.setAttribute('position', { x: x, y: y, z: 0.01 });
+          btn.classList.add('menu-target');
+
+          var t = document.createElement('a-text');
+          t.setAttribute('value', glyph);
+          t.setAttribute('align', 'center');
+          t.setAttribute('color', '#FFFFFF');
+          t.setAttribute('width', 3);
+          t.setAttribute('position', '0 0 0.01');
+          btn.appendChild(t);
+
+          btn.addEventListener('click', function () {
+            onClick();
+            refresh();
+          });
+          parentEl.appendChild(btn);
+        }
+
+        makeSmallButton(-0.78, '-', onMinus);
+        makeSmallButton(0.78, '+', onPlus);
+      }
+
+      // ==============================================================
+      // REUSABLE: createTabbedPanel
+      // Builds a tab bar (evenly-spaced clickable headers) plus one
+      // content container per tab inside `parentEl`, and shows/hides
+      // content containers as tabs are clicked. Nothing about this is
+      // specific to Punch Pop's settings — it only assumes `.menu-target`
+      // is whatever class the caller's raycaster(s) are already filtering
+      // on for clickable UI (see the gaze/hand raycaster `objects`
+      // configs above). This project has no build step or shared module
+      // system, so "reusable" here means "self-contained enough to
+      // copy-paste into the next prototype that needs tabs" rather than
+      // an import — grab this function and makeMenuButton/makeAdjustRow
+      // above wholesale.
+      //
+      // tabs: [{ id, label }, ...]
+      // Returns { getContent(id) -> <a-entity> to append that tab's rows
+      // into, setActive(id) }.
+      // ==============================================================
+      function createTabbedPanel(parentEl, tabs, width, tabBarY) {
+        var contentById = {};
+        var headerById = {};
+
+        function setActive(id) {
+          for (var tabId in contentById) {
+            contentById[tabId].setAttribute('visible', tabId === id);
+            headerById[tabId].setAttribute('material', 'color', tabId === id ? '#3a4468' : '#182238');
+          }
+        }
+
+        var tabWidth = width / tabs.length;
+        tabs.forEach(function (tab, index) {
+          var x = -width / 2 + tabWidth * (index + 0.5);
+
+          var header = document.createElement('a-entity');
+          header.setAttribute('geometry', { primitive: 'plane', width: tabWidth - 0.02, height: 0.16 });
+          header.setAttribute('material', { color: '#182238', shader: 'flat' });
+          header.setAttribute('position', { x: x, y: tabBarY, z: 0.01 });
+          header.classList.add('menu-target');
+
+          var label = document.createElement('a-text');
+          label.setAttribute('value', tab.label);
+          label.setAttribute('align', 'center');
+          label.setAttribute('color', '#FFFFFF');
+          label.setAttribute('width', 2.6);
+          label.setAttribute('position', '0 0 0.01');
+          header.appendChild(label);
+
+          header.addEventListener('click', function () { setActive(tab.id); });
+          parentEl.appendChild(header);
+          headerById[tab.id] = header;
+
+          var content = document.createElement('a-entity');
+          parentEl.appendChild(content);
+          contentById[tab.id] = content;
+        });
+
+        setActive(tabs[0] && tabs[0].id);
+
+        return {
+          getContent: function (id) { return contentById[id]; },
+          setActive: setActive,
+        };
+      }
+
+      // ==============================================================
+      // Builds Punch Pop's actual settings content into a tabbed panel
+      // (see buildWorldMenu below). `api` is a small object of getters
+      // and actions (see world-menu-system.buildApi) so this function
+      // doesn't need to know how settings are actually stored.
+      // ==============================================================
+      function buildSettingsTabs(panelEl, api) {
+        var refreshFns = [];
+
+        var panel = createTabbedPanel(
+          panelEl,
+          [
+            { id: 'punch', label: 'PUNCH' },
+            { id: 'foes', label: 'FOES' },
+            { id: 'aim', label: 'AIM' },
+            { id: 'reach', label: 'REACH' },
+            { id: 'splat', label: 'SPLAT' },
+            { id: 'feel', label: 'FEEL' },
+            { id: 'debug', label: 'DEBUG' },
+            { id: 'more', label: 'MORE' },
+          ],
+          2.8,
+          0.86
+        );
+
+        var punchTab = panel.getContent('punch');
+        makeAdjustRow(
+          punchTab,
+          0.5,
+          function () { return 'Move Speed: ' + api.getPower().toFixed(1) + 'x'; },
+          function () { api.setPower(api.getPower() - 0.5); },
+          function () { api.setPower(api.getPower() + 0.5); },
+          refreshFns
+        );
+        makeAdjustRow(
+          punchTab,
+          0.22,
+          function () { return 'Gravity: ' + api.getGravity().toFixed(1); },
+          function () { api.setGravity(api.getGravity() - 0.5); },
+          function () { api.setGravity(api.getGravity() + 0.5); },
+          refreshFns
+        );
+        makeAdjustRow(
+          punchTab,
+          -0.06,
+          function () { return 'Max Speed: ' + api.getMaxSpeed().toFixed(0); },
+          function () { api.setMaxSpeed(api.getMaxSpeed() - 1); },
+          function () { api.setMaxSpeed(api.getMaxSpeed() + 1); },
+          refreshFns
+        );
+        makeMenuButton(punchTab, -0.36, function () { return 'Reset Arena'; }, api.resetArena, refreshFns);
+
+        var foesTab = panel.getContent('foes');
+        makeAdjustRow(
+          foesTab,
+          0.5,
+          function () { return 'Cube Count: ' + api.getCount(); },
+          function () { api.setCount(api.getCount() - 1); },
+          function () { api.setCount(api.getCount() + 1); },
+          refreshFns
+        );
+        makeAdjustRow(
+          foesTab,
+          0.22,
+          function () { return 'Cube Health: ' + api.getCubeHealth(); },
+          function () { api.setCubeHealth(api.getCubeHealth() - 10); },
+          function () { api.setCubeHealth(api.getCubeHealth() + 10); },
+          refreshFns
+        );
+        makeMenuButton(
+          foesTab,
+          -0.06,
+          function () { return 'Behavior: ' + api.getBehavior(); },
+          api.cycleBehavior,
+          refreshFns
+        );
+
+        // Lock-on targeting tuning: how tight a cone counts as "aimed
+        // enough at a specific enemy" to lock onto it, the base search
+        // radius for that lock-on (which also scales up a bit with how
+        // committed the swing was — see punch-locomotion's onPunch), and
+        // the sticky hit-assist mode that decides what happens once a
+        // target IS locked (see hitAssistMode's top-of-file comment for
+        // what each option actually does).
+        var aimTab = panel.getContent('aim');
+        makeAdjustRow(
+          aimTab,
+          0.5,
+          function () { return 'Lock-On Cone: ' + api.getLockCone().toFixed(0) + 'deg'; },
+          function () { api.setLockCone(api.getLockCone() - 5); },
+          function () { api.setLockCone(api.getLockCone() + 5); },
+          refreshFns
+        );
+        makeAdjustRow(
+          aimTab,
+          0.22,
+          function () { return 'Lock Range: ' + api.getLockRange().toFixed(2) + 'm'; },
+          function () { api.setLockRange(api.getLockRange() - 0.25); },
+          function () { api.setLockRange(api.getLockRange() + 0.25); },
+          refreshFns
+        );
+        // Descriptions alongside the mode name, not just the bare word --
+        // "cheat"/"turn" don't explain themselves, and that was a real
+        // discoverability problem: Noah found the option but couldn't
+        // tell what switching it would actually do without asking.
+        var HIT_ASSIST_LABELS = {
+          off: 'off (real aim only)',
+          cheat: 'cheat (auto-hit)',
+          turn: 'turn (auto-hit+view)',
+        };
+        makeMenuButton(
+          aimTab,
+          -0.1,
+          function () { return 'Hit Assist: ' + HIT_ASSIST_LABELS[api.getHitAssist()]; },
+          api.cycleHitAssist,
+          refreshFns,
+          2.0 // wider than the default 1.3 -- these labels run longer than a bare mode name
+        );
+
+        // Reach calibration + the extension-fraction thresholds that
+        // replaced the old velocity-threshold swing detector — see the
+        // REACH CALIBRATION comment block near the top of this file for
+        // the full rationale.
+        var reachTab = panel.getContent('reach');
+        makeMenuButton(
+          reachTab,
+          0.5,
+          function () { return 'Calibrate Reach'; },
+          api.calibrateReach,
+          refreshFns
+        );
+        makeAdjustRow(
+          reachTab,
+          0.2,
+          function () { return 'Reach Fwd: ' + api.getReachForward().toFixed(2) + 'm'; },
+          function () { api.setReachForward(api.getReachForward() - 0.05); },
+          function () { api.setReachForward(api.getReachForward() + 0.05); },
+          refreshFns
+        );
+        makeAdjustRow(
+          reachTab,
+          -0.1,
+          function () { return 'Reach Up: ' + api.getReachOverhead().toFixed(2) + 'm'; },
+          function () { api.setReachOverhead(api.getReachOverhead() - 0.05); },
+          function () { api.setReachOverhead(api.getReachOverhead() + 0.05); },
+          refreshFns
+        );
+        makeAdjustRow(
+          reachTab,
+          -0.4,
+          function () { return 'Arm Threshold: ' + Math.round(api.getArmThreshold() * 100) + '%'; },
+          function () { api.setArmThreshold(api.getArmThreshold() - 0.05); },
+          function () { api.setArmThreshold(api.getArmThreshold() + 0.05); },
+          refreshFns
+        );
+
+        // Blood-splatter tuning, per playtesting feedback that the
+        // default splatter read as sparse and tightly clustered right
+        // under the cube. Splat Amount/Scatter scale the whole
+        // paintSplat/paintSplatBurst pipeline (size, opacity, blob count,
+        // spread); Knockback Force controls how hard a hit launches a
+        // cube (see cube-behavior's applyKnockback) — which also
+        // indirectly controls how much trail gets painted and how hard
+        // cube-on-cube collisions hit, since both derive from a cube's
+        // current slide speed.
+        var splatTab = panel.getContent('splat');
+        makeAdjustRow(
+          splatTab,
+          0.5,
+          function () { return 'Splat Amount: ' + api.getSplatAmount().toFixed(2) + 'x'; },
+          function () { api.setSplatAmount(api.getSplatAmount() - 0.5); },
+          function () { api.setSplatAmount(api.getSplatAmount() + 0.5); },
+          refreshFns
+        );
+        makeAdjustRow(
+          splatTab,
+          0.22,
+          function () { return 'Splat Scatter: ' + api.getSplatScatter().toFixed(2) + 'x'; },
+          function () { api.setSplatScatter(api.getSplatScatter() - 0.25); },
+          function () { api.setSplatScatter(api.getSplatScatter() + 0.25); },
+          refreshFns
+        );
+        makeAdjustRow(
+          splatTab,
+          -0.06,
+          function () { return 'Knockback Force: ' + api.getKnockbackForce().toFixed(2); },
+          function () { api.setKnockbackForce(api.getKnockbackForce() - 0.05); },
+          function () { api.setKnockbackForce(api.getKnockbackForce() + 0.05); },
+          refreshFns
+        );
+        makeMenuButton(
+          splatTab,
+          -0.36,
+          function () { return 'Trail: ' + (api.getTrailEnabled() ? 'ON' : 'OFF'); },
+          api.toggleTrail,
+          refreshFns
+        );
+
+        // Comfort/gamefeel: the vignette (darkened screen edges during
+        // fast movement, a standard VR motion-sickness mitigation) and
+        // the "zoom" haptic buzz while moving fast. Both default on but
+        // fully tunable — neither can really be judged from outside a
+        // headset, and comfort tolerance is personal, so this is meant
+        // to be dialed in live rather than guessed at from a screenshot.
+        var feelTab = panel.getContent('feel');
+        makeMenuButton(
+          feelTab,
+          0.62,
+          function () { return 'Vignette: ' + (api.getVignetteEnabled() ? 'ON' : 'OFF'); },
+          api.toggleVignetteEnabled,
+          refreshFns
+        );
+        makeAdjustRow(
+          feelTab,
+          0.32,
+          function () { return 'Vignette Strength: ' + Math.round(api.getVignetteStrength() * 100) + '%'; },
+          function () { api.setVignetteStrength(api.getVignetteStrength() - 0.1); },
+          function () { api.setVignetteStrength(api.getVignetteStrength() + 0.1); },
+          refreshFns
+        );
+        makeAdjustRow(
+          feelTab,
+          0.02,
+          function () { return 'Vignette Size: ' + Math.round(api.getVignetteSize() * 100) + '%'; },
+          function () { api.setVignetteSize(api.getVignetteSize() - 0.1); },
+          function () { api.setVignetteSize(api.getVignetteSize() + 0.1); },
+          refreshFns
+        );
+        makeMenuButton(
+          feelTab,
+          -0.3,
+          function () { return 'Zoom Buzz: ' + (api.getBuzzEnabled() ? 'ON' : 'OFF'); },
+          api.toggleBuzzEnabled,
+          refreshFns
+        );
+        makeAdjustRow(
+          feelTab,
+          -0.6,
+          function () { return 'Buzz Strength: ' + Math.round(api.getBuzzStrength() * 100) + '%'; },
+          function () { api.setBuzzStrength(api.getBuzzStrength() - 0.1); },
+          function () { api.setBuzzStrength(api.getBuzzStrength() + 0.1); },
+          refreshFns
+        );
+
+        // Punch-detection transparency + tuning: the stop-speed
+        // threshold punch-tracker's extension state machine reads every
+        // frame (see stopSpeed's schema comment), the head-relative
+        // "Turn Filter" that guards that stop check against body-turn
+        // velocity noise, and a toggle for a continuously-live readout
+        // of the underlying numbers rather than just a post-punch
+        // snapshot.
+        var debugTab = panel.getContent('debug');
+        makeMenuButton(
+          debugTab,
+          0.5,
+          function () { return 'Live Debug HUD: ' + (api.getLiveDebug() ? 'ON' : 'OFF'); },
+          api.toggleLiveDebug,
+          refreshFns
+        );
+        makeAdjustRow(
+          debugTab,
+          0.2,
+          function () { return 'Stop Spd: ' + api.getStopSpeed().toFixed(2); },
+          function () { api.setStopSpeed(api.getStopSpeed() - 0.05); },
+          function () { api.setStopSpeed(api.getStopSpeed() + 0.05); },
+          refreshFns
+        );
+        makeAdjustRow(
+          debugTab,
+          -0.1,
+          function () { return 'Turn Filter: ' + Math.round(api.getTurnFilter() * 100) + '%'; },
+          function () { api.setTurnFilter(api.getTurnFilter() - 0.1); },
+          function () { api.setTurnFilter(api.getTurnFilter() + 0.1); },
+          refreshFns
+        );
+
+        var moreTab = panel.getContent('more');
+        makeMenuButton(moreTab, 0.4, function () { return 'Resume'; }, api.resume, refreshFns);
+        makeMenuButton(moreTab, 0.1, function () { return 'Exit VR'; }, api.exitVR, refreshFns);
+        makeMenuButton(
+          moreTab,
+          -0.2,
+          function () { return 'Show Stats: ' + (api.getShowStats() ? 'ON' : 'OFF'); },
+          api.toggleShowStats,
+          refreshFns
+        );
+
+        // Called by world-menu-system right before showing the panel, so
+        // a value that somehow changed while the menu was closed is
+        // never stale the moment it's opened again.
+        panelEl.refreshLabels = function () {
+          refreshFns.forEach(function (fn) { fn(); });
+        };
+      }
+
+      // Background + the tabbed settings content for the world-fixed
+      // menu panel.
+      function buildWorldMenu(panelEl, api) {
+        var bg = document.createElement('a-plane');
+        bg.setAttribute('width', 2.9);
+        bg.setAttribute('height', 1.9);
+        bg.setAttribute('material', 'color: #0d1526; opacity: 0.95; shader: flat; side: double');
+        panelEl.appendChild(bg);
+        buildSettingsTabs(panelEl, api);
+      }
+
+      // How far in front of the player (meters) the menu spawns when
+      // opened, and roughly how large it reads there — see the #world-menu
+      // entity's scale attribute for the actual size. Both are first
+      // guesses at a "couple feet, but noticeably bigger than before"
+      // panel; easy to retune here if it reads too close/far or too
+      // big/small once tried in a headset.
+      var MENU_SPAWN_DISTANCE = 0.9;
+
+      // ==============================================================
+      // COMPONENT: world-menu-system
+      // Replaces an earlier per-wrist "watch menu" design: instead of a
+      // small panel mounted on the hand (hard to aim at, and ran out of
+      // room once there were several tabs of settings), there's one
+      // bigger panel fixed in world space. Pressing either controller's
+      // grip toggles it open/closed; when it opens, it's freshly
+      // repositioned a couple feet in front of wherever the player is
+      // currently standing and facing, oriented back toward them — see
+      // positionInFrontOfPlayer. The hand that did *not* press grip gets
+      // a laser pointer to click it with.
+      //
+      // Only one hand ever has an active raycaster at a time — a real
+      // interaction bug in an earlier design let a trigger pull on the
+      // hand you weren't looking at register a click aimed by that hand
+      // instead. Toggle-on-grip-press also means neither hand has to
+      // stay physically holding a button down for however long you're
+      // digging through tabs, unlike the previous hold-to-show design
+      // (reasonable for a quick wrist glance, less so for a bigger menu
+      // you might spend a while in).
+      //
+      // While open: punching is disabled and rig physics freeze (both
+      // gated on the shared `menuOpen` flag, checked by punch-locomotion
+      // and punch-game), and the trigger's normal quick-reset job is
+      // suspended so clicking a menu button doesn't also reset the arena.
+      // ==============================================================
+      AFRAME.registerComponent('world-menu-system', {
+        init: function () {
+          this.build = this.build.bind(this);
+          // Deferred to scene "loaded" for the same reason earlier
+          // menu-system revisions had to be: this entity can end up
+          // initializing before sibling entities elsewhere in the
+          // markup exist yet, and this component needs several of them
+          // (#cube-manager in particular) up front.
+          var sceneEl = this.el.sceneEl;
+          if (sceneEl.hasLoaded) this.build();
+          else sceneEl.addEventListener('loaded', this.build, { once: true });
+        },
+
+        build: function () {
+          this.rig = document.querySelector('#rig');
+          this.head = document.querySelector('#head');
+          this.gameEl = document.querySelector('#cube-manager');
+          this.cursorEl = document.querySelector('#gaze-cursor');
+          this.leftHand = document.querySelector('#leftHand');
+          this.rightHand = document.querySelector('#rightHand');
+          this.panel = document.querySelector('#world-menu');
+          this.isOpen = false;
+          this.laserHand = null;
+
+          // The always-on debug line, the punch-result label, the
+          // opt-in stats/live-debug HUDs, and the comfort vignette all
+          // sit fixed in front of the camera — with the world-fixed menu
+          // panel spawning nearby, they visually compete with (and can
+          // occlude/clutter) menu buttons. Hidden while the menu is
+          // open; restored to whatever they were showing (which may
+          // itself be "hidden", for the opt-in ones) on close. The
+          // vignette specifically would otherwise freeze at whatever
+          // opacity it had the instant the menu opened — punch-locomotion
+          // .tick() stops updating it while menuOpen, same as it stops
+          // moving the rig — so without this it could sit there dimming
+          // the panel's edges for as long as the menu stayed open.
+          this.overlayEls = [
+            document.querySelector('#hud-text'),
+            document.querySelector('#debug-text'),
+            document.querySelector('#stats-text'),
+            document.querySelector('#live-debug-text'),
+            document.querySelector('#punch-label'),
+            document.querySelector('#vignette'),
+          ];
+
+          var api = this.buildApi();
+          buildWorldMenu(this.panel, api);
+
+          // Face buttons open/close the menu — grip used to, but got
+          // pressed by accident too often during normal punching/
+          // clenching. Bound on both hands' A/B (right) and X/Y (left)
+          // buttons so either hand can toggle it, same as grip did.
+          this.onMenuButton = this.onMenuButton.bind(this);
+          this.leftHand.addEventListener('xbuttondown', this.onMenuButton);
+          this.leftHand.addEventListener('ybuttondown', this.onMenuButton);
+          this.rightHand.addEventListener('abuttondown', this.onMenuButton);
+          this.rightHand.addEventListener('bbuttondown', this.onMenuButton);
+
+          // Desktop/phone has no controller buttons, so the overlay's
+          // "Menu" button toggles it instead, using the gaze reticle
+          // (widened below) as its pointer.
+          this.toggleDesktop = this.toggleDesktop.bind(this);
+          document.querySelector('#menu-button-html').addEventListener('click', this.toggleDesktop);
+        },
+
+        onMenuButton: function (evt) {
+          if (this.isOpen) {
+            this.close();
+          } else {
+            // Whichever hand's face button was pressed keeps punching;
+            // the other hand gets the laser pointer.
+            var pressedHand = evt.target;
+            this.open(pressedHand === this.leftHand ? this.rightHand : this.leftHand);
+          }
+        },
+
+        toggleDesktop: function () {
+          if (this.isOpen) this.close();
+          else this.open(null); // no real hand on desktop; the gaze reticle is what's actually used
+        },
+
+        open: function (laserHandEl) {
+          this.isOpen = true;
+          menuOpen = true;
+          this.laserHand = laserHandEl;
+
+          this.positionInFrontOfPlayer();
+          if (this.panel.refreshLabels) this.panel.refreshLabels();
+          this.panel.setAttribute('visible', true);
+          if (this.laserHand) this.setLaser(this.laserHand, true);
+          if (this.cursorEl) this.cursorEl.setAttribute('raycaster', 'objects', '.cube-target, .menu-target');
+          for (var i = 0; i < this.overlayEls.length; i++) {
+            if (this.overlayEls[i]) this.overlayEls[i].setAttribute('visible', false);
+          }
+        },
+
+        close: function () {
+          this.isOpen = false;
+          menuOpen = false;
+
+          this.panel.setAttribute('visible', false);
+          if (this.laserHand) this.setLaser(this.laserHand, false);
+          this.laserHand = null;
+          if (this.cursorEl) this.cursorEl.setAttribute('raycaster', 'objects', '.cube-target');
+
+          // hud-text and debug-text are always-on; punch-label re-shows
+          // itself on the next punch regardless. stats-text/live-debug-
+          // text are opt-in (Show Stats / Live Debug HUD) — only restore
+          // those if their toggle is actually on, so closing the menu
+          // doesn't un-hide a HUD the player had deliberately turned off.
+          var statsText = document.querySelector('#stats-text');
+          var liveDebugText = document.querySelector('#live-debug-text');
+          if (document.querySelector('#hud-text')) document.querySelector('#hud-text').setAttribute('visible', true);
+          if (document.querySelector('#debug-text')) document.querySelector('#debug-text').setAttribute('visible', true);
+          if (statsText) statsText.setAttribute('visible', showStatsOn);
+          if (liveDebugText) liveDebugText.setAttribute('visible', liveDebugOn);
+        },
+
+        // Spawns the panel roughly at eye height, MENU_SPAWN_DISTANCE in
+        // front of wherever the player is currently standing and
+        // facing (flattened to horizontal, so looking up/down when you
+        // open it doesn't tilt the panel into the floor or ceiling),
+        // then orients it to face back toward the player.
+        positionInFrontOfPlayer: function () {
+          var camPos = new THREE.Vector3();
+          this.head.object3D.getWorldPosition(camPos);
+          var camDir = new THREE.Vector3();
+          getForwardDirection(this.head, camDir);
+          camDir.y = 0;
+          if (camDir.lengthSq() < 0.0001) camDir.set(0, 0, -1);
+          camDir.normalize();
+
+          var spawnPos = camPos.clone().addScaledVector(camDir, MENU_SPAWN_DISTANCE);
+          this.panel.object3D.position.copy(spawnPos);
+          // For a plain Object3D (this panel isn't a camera), lookAt
+          // orients local +Z — this panel's front, per
+          // createTabbedPanel/makeMenuButton's row geometry — toward the
+          // given point. Aim it straight at the player's head position
+          // so the front faces them directly.
+          this.panel.object3D.lookAt(camPos);
+        },
+
+        setLaser: function (handEl, on) {
+          handEl.setAttribute('raycaster', 'enabled', on);
+          var laser = handEl.querySelector('.menu-laser');
+          if (laser) laser.setAttribute('visible', on);
+        },
+
+        buildApi: function () {
+          var self = this;
+          return {
+            getPower: function () { return self.rig.getAttribute('punch-locomotion').powerMultiplier; },
+            setPower: function (v) {
+              v = clamp(Math.round(v * 10) / 10, 0.4, 8.0);
+              self.rig.setAttribute('punch-locomotion', 'powerMultiplier', v);
+            },
+            getGravity: function () { return self.rig.getAttribute('punch-locomotion').gravity; },
+            setGravity: function (v) {
+              v = clamp(Math.round(v * 10) / 10, 1, 12);
+              self.rig.setAttribute('punch-locomotion', 'gravity', v);
+            },
+            getMaxSpeed: function () { return self.rig.getAttribute('punch-locomotion').maxSpeed; },
+            setMaxSpeed: function (v) {
+              v = clamp(Math.round(v), 3, 30);
+              self.rig.setAttribute('punch-locomotion', 'maxSpeed', v);
+            },
+            getLockCone: function () { return self.rig.getAttribute('punch-locomotion').lockOnConeAngle; },
+            setLockCone: function (v) {
+              v = clamp(Math.round(v), 5, 90);
+              self.rig.setAttribute('punch-locomotion', 'lockOnConeAngle', v);
+            },
+            getLockRange: function () { return self.rig.getAttribute('punch-locomotion').baseLockRange; },
+            setLockRange: function (v) {
+              v = clamp(Math.round(v * 100) / 100, 0, 5);
+              self.rig.setAttribute('punch-locomotion', 'baseLockRange', v);
+            },
+            getCount: function () { return self.gameEl.getAttribute('punch-game').count; },
+            setCount: function (v) {
+              v = clamp(v, 2, 14);
+              self.gameEl.setAttribute('punch-game', 'count', v);
+              self.gameEl.components['punch-game'].reset();
+            },
+            getCubeHealth: function () { return self.gameEl.getAttribute('punch-game').cubeHealth; },
+            setCubeHealth: function (v) {
+              v = clamp(v, 15, 300);
+              self.gameEl.setAttribute('punch-game', 'cubeHealth', v);
+              self.gameEl.components['punch-game'].reset();
+            },
+            getBehavior: function () { return self.gameEl.getAttribute('punch-game').behaviorMode; },
+            cycleBehavior: function () {
+              var modes = ['mixed'].concat(CUBE_BEHAVIOR_MODES);
+              var current = self.gameEl.getAttribute('punch-game').behaviorMode;
+              var next = modes[(modes.indexOf(current) + 1) % modes.length];
+              self.gameEl.setAttribute('punch-game', 'behaviorMode', next);
+              self.gameEl.components['punch-game'].reset();
+            },
+            resetArena: function () { self.gameEl.components['punch-game'].reset(); },
+            resume: function () { self.close(); },
+            exitVR: function () {
+              var sceneEl = self.el.sceneEl;
+              if (sceneEl) sceneEl.exitVR();
+            },
+            getShowStats: function () { return showStatsOn; },
+            toggleShowStats: function () {
+              showStatsOn = !showStatsOn;
+              var statsText = document.querySelector('#stats-text');
+              if (statsText) statsText.setAttribute('visible', showStatsOn);
+            },
+
+            getSplatAmount: function () { return splatAmountMultiplier; },
+            setSplatAmount: function (v) { splatAmountMultiplier = clamp(Math.round(v * 100) / 100, 0.25, 6); },
+            getSplatScatter: function () { return splatScatterMultiplier; },
+            setSplatScatter: function (v) { splatScatterMultiplier = clamp(Math.round(v * 100) / 100, 0.25, 4); },
+            getKnockbackForce: function () { return cubeKnockbackFactor; },
+            setKnockbackForce: function (v) { cubeKnockbackFactor = clamp(Math.round(v * 100) / 100, 0, 1); },
+            getTrailEnabled: function () { return cubeTrailEnabled; },
+            toggleTrail: function () { cubeTrailEnabled = !cubeTrailEnabled; },
+
+            // Stop speed and the turn filter live on each hand's own
+            // punch-tracker instance, not on punch-locomotion — both
+            // hands are kept in sync by writing the same value to both
+            // on every change, same as how the two hand entities already
+            // mirror every other per-hand setting.
+            getStopSpeed: function () { return self.leftHand.getAttribute('punch-tracker').stopSpeed; },
+            setStopSpeed: function (v) {
+              v = clamp(Math.round(v * 100) / 100, 0.05, 2);
+              self.leftHand.setAttribute('punch-tracker', 'stopSpeed', v);
+              self.rightHand.setAttribute('punch-tracker', 'stopSpeed', v);
+            },
+            getTurnFilter: function () { return self.leftHand.getAttribute('punch-tracker').headBlend; },
+            setTurnFilter: function (v) {
+              v = clamp(Math.round(v * 100) / 100, 0, 1);
+              self.leftHand.setAttribute('punch-tracker', 'headBlend', v);
+              self.rightHand.setAttribute('punch-tracker', 'headBlend', v);
+            },
+            getLiveDebug: function () { return liveDebugOn; },
+            toggleLiveDebug: function () {
+              liveDebugOn = !liveDebugOn;
+              var el = document.querySelector('#live-debug-text');
+              if (el) el.setAttribute('visible', liveDebugOn);
+            },
+
+            // Reach calibration + extension thresholds — reachForward/
+            // reachOverhead/EXT_ARM_THRESHOLD are plain globals (like
+            // splatAmountMultiplier etc. above), not per-entity schema,
+            // since they're read directly by punch-tracker's shared
+            // extension-fraction math for both hands at once.
+            getReachForward: function () { return reachForward; },
+            setReachForward: function (v) { reachForward = clamp(Math.round(v * 100) / 100, REACH_MIN, REACH_MAX); },
+            getReachOverhead: function () { return reachOverhead; },
+            setReachOverhead: function (v) { reachOverhead = clamp(Math.round(v * 100) / 100, REACH_MIN, REACH_MAX); },
+            getArmThreshold: function () { return EXT_ARM_THRESHOLD; },
+            setArmThreshold: function (v) { EXT_ARM_THRESHOLD = clamp(Math.round(v * 100) / 100, 0.1, 0.7); },
+            // Closes the menu first so the player can actually see the
+            // "reach forward" / "reach overhead" prompts and move their
+            // arms freely — calibration would be pointless with the
+            // panel still covering their view.
+            calibrateReach: function () {
+              self.close();
+              var locomotion = self.rig.components['punch-locomotion'];
+              if (locomotion) locomotion.startCalibration();
+            },
+
+            getHitAssist: function () { return hitAssistMode; },
+            cycleHitAssist: function () {
+              hitAssistMode = HIT_ASSIST_MODES[(HIT_ASSIST_MODES.indexOf(hitAssistMode) + 1) % HIT_ASSIST_MODES.length];
+            },
+
+            getVignetteEnabled: function () { return vignetteEnabled; },
+            toggleVignetteEnabled: function () { vignetteEnabled = !vignetteEnabled; },
+            getVignetteStrength: function () { return vignetteStrength; },
+            setVignetteStrength: function (v) { vignetteStrength = clamp(Math.round(v * 100) / 100, 0, 2); },
+            getVignetteSize: function () { return vignetteSize; },
+            setVignetteSize: function (v) { vignetteSize = clamp(Math.round(v * 100) / 100, 0.6, 1.4); },
+            getBuzzEnabled: function () { return buzzHapticsEnabled; },
+            toggleBuzzEnabled: function () { buzzHapticsEnabled = !buzzHapticsEnabled; },
+            getBuzzStrength: function () { return buzzHapticsStrength; },
+            setBuzzStrength: function (v) { buzzHapticsStrength = clamp(Math.round(v * 100) / 100, 0, 2); },
+          };
+        },
+      });
+
+      // ==============================================================
+      // Room textures + desktop simulate buttons
+      // ==============================================================
+      document.querySelector('a-scene').addEventListener('loaded', function () {
+        applyCheckerTexture(document.querySelector('#floor'), '#3a4468', '#2c3454', 10, 10);
+        var walls = document.querySelectorAll('.wall');
+        for (var i = 0; i < walls.length; i++) {
+          applyCheckerTexture(walls[i], '#2a3350', '#242c48', 10, 2);
+        }
+        attachSplatTexture(document.querySelector('#splat-layer'));
+        applyVignetteTexture(document.querySelector('#vignette'));
+      });
+
+      // Desktop-only simulate buttons: no mouse can produce a real
+      // controller-velocity swing, so these call punch-locomotion's
+      // exact onPunch() path directly with a synthetic direction, axis,
+      // and swing stats (a plausible "solid, committed punch"). This is
+      // how the movement physics (gravity, drag, lock-on, hit-assist)
+      // got sanity-checked in a plain browser before ever touching a
+      // headset.
+      function simulatePunch(direction, maxSpeed, handTravelDist, headTravelDist, axis) {
+        var rig = document.querySelector('#rig');
+        var locomotion = rig && rig.components['punch-locomotion'];
+        if (locomotion) {
+          locomotion.onPunch({
+            target: null,
+            detail: {
+              direction: direction,
+              maxSpeed: maxSpeed,
+              handTravelDist: handTravelDist,
+              headTravelDist: headTravelDist,
+              extensionAxis: axis || 'forward',
+              fullyExtended: true,
+            },
+          });
+        }
+      }
+      document.querySelector('#sim-punch').addEventListener('click', function () {
+        simulatePunch(new THREE.Vector3(0, 0, -1), 3.5, 0.5, 0.1, 'forward');
+      });
+      document.querySelector('#sim-up').addEventListener('click', function () {
+        simulatePunch(new THREE.Vector3(0, 0.65, -0.75).normalize(), 3.5, 0.5, 0.1, 'overhead');
+      });
+      document.querySelector('#sim-down').addEventListener('click', function () {
+        simulatePunch(new THREE.Vector3(0, -0.65, -0.75).normalize(), 3.5, 0.5, 0.1, 'forward');
+      });
+    </script>
+  </body>
+</html>
