@@ -34,7 +34,7 @@
   </head>
   <body>
     <div id="overlay">
-      <span>Pistols at Dawn — grip near a holstered pistol, shotgun, or your hat to draw it. Guns fire on the trigger; let go of the grip while a finger still rests on the trigger to dangle and twirl whatever you're holding. Anything can snap into any anchor it's small enough for — glance at the glowing spheres for a hint — so go ahead and wear a gun like a hat, or hide one inside your hat. Turn around for the saloon bar: knock a bottle's cap on the counter edge to open it, then tip it over your face and drink what pours out. Fling a fistful of bottles skyward and shoot them apart. Strike a match on the counter or flip open the lighter and thumb a face button, then light a cigar off either — or off a barrel you just emptied, or a well-aimed bullet. Hold a cigar at your lips to draw on it and again to blow the smoke back out; flick or twirl it to knock the ash off. Let go and re-squeeze the grip quickly to keep hold of what you had and pick up the next thing too. Grab the shotgun's forend with your off hand to steady it. Spilled beer pools where it lands and burns if you light it, fire spreads along it and sets light to whatever it reaches, and a smashed bottle spills its own — so a lit puddle and a well-thrown beer make a Molotov out of parts that were already lying about. There's a jug of water for when that goes wrong. Throw overhand and it goes where you're looking; let go early to lob it, late to line-drive it. Both meters at the bottom of your view have opinions about your aim. <a href="../../index.html">All prototypes</a></span>
+      <span>Pistols at Dawn — grip near a holstered pistol, shotgun, or your hat to draw it. Guns fire on the trigger; let go of the grip while a finger still rests on the trigger to dangle and twirl whatever you're holding. Anything can snap into any anchor it's small enough for — glance at the glowing spheres for a hint — so go ahead and wear a gun like a hat, or hide one inside your hat. Turn around for the saloon bar: knock a bottle's cap on the counter edge to open it, then tip it over your face and drink what pours out. Fling a fistful of bottles skyward and shoot them apart. Strike a match on the counter or flip open the lighter and thumb a face button, then light a cigar off either — or off a barrel you just emptied, or a well-aimed bullet. Hold a cigar at your lips to draw on it and again to blow the smoke back out; flick or twirl it to knock the ash off. Let go and re-squeeze the grip quickly to keep hold of what you had and pick up the next thing too. Grab the shotgun's forend with your off hand to steady it. Spilled beer pools where it lands and burns if you light it, fire spreads along it and sets light to whatever it reaches, and a smashed bottle spills its own — so a lit puddle and a well-thrown beer make a Molotov out of parts that were already lying about. There's a jug of water for when that goes wrong — and yes, since fire is a liquid and liquid that reaches your mouth gets swallowed, you can drink it. Throw overhand and it goes where you're looking; let go early to lob it, late to line-drive it. Both meters at the bottom of your view have opinions about your aim. <a href="../../index.html">All prototypes</a></span>
     </div>
 
     <a-scene>
@@ -692,54 +692,61 @@
       var CIGAR_PUFF_INTERVAL_MS = 750; // how often a lit cigar coughs up a wisp
 
       // ==============================================================
-      // FIRE, FUEL, AND WATER
-      // Fire has fuel, and fuel is time: it burns down at
-      // FIRE_FUEL_PER_S and grows again if something feeds it. What
-      // feeds it is spilled alcohol, which is why pouring is now a
-      // supply line rather than a party trick.
+      // FIRE
+      // Fire is a liquid (see the LIQUIDS block): a burning patch of
+      // ground is a pool whose size is its remaining fuel, and it
+      // throws droplets of flame back into the air. Those droplets
+      // land somewhere slightly else and start burning there, which is
+      // the entire mechanism by which fire spreads — set FIRE_JUMP_RATE
+      // to 0 and fire simply stops travelling.
       // ==============================================================
-      var MAX_FIRES = 14; // hard cap, since each one is two meshes and a light contribution
-      var FIRE_MERGE_RADIUS = 0.22; // meters — new fire this close joins the existing one instead of stacking
-      var FIRE_START_FUEL = 2.2; // seconds of life a fresh fire gets
-      var FIRE_MAX_FUEL = 10;
-      var FIRE_FUEL_PER_S = 1; // burn rate
-      var FIRE_MIN_RADIUS = 0.028; // meters — note this is the SPHERE radius, so the flame is twice this across
-      var FIRE_MAX_RADIUS = 0.115; // meters at full fuel, i.e. ~23cm across and ~45cm tall once stretched — a campfire, not a pyre
-      var FIRE_WIGGLE_HZ = 6.5; // how fast the flame writhes
-      var FIRE_SPREAD_RADIUS = 0.55; // how far a flame reaches to set light to a puddle
-      var FIRE_DAMAGE_RADIUS = 0.5; // meters — targets inside this burn down
-      var FIRE_DAMAGE_DELAY_MS = 600; // exposure before a target actually goes over
+      var FIRE_MIN_RADIUS = 0.028; // sphere radius of the steady flame on a guttering pool
+      var FIRE_MAX_RADIUS = 0.115; // and on a roaring one — roughly 23cm across, 45cm tall once stretched
+      var FIRE_WIGGLE_HZ = 6.5; // how fast flames writhe
+      var FIRE_SPREAD_RADIUS = 0.4; // how close something hot has to be to set a spill alight
+      var FIRE_DAMAGE_RADIUS = 0.5; // meters past the pool's own edge that targets burn
+      var FIRE_DAMAGE_DELAY_MS = 600;
       var FIRE_DAMAGE_SCORE = 50;
-      var FIRE_ASH_MULTIPLIER = 5; // how much faster a burnable ashes while sitting in a flame
+      var FIRE_ASH_MULTIPLIER = 5; // how much faster a cigar ashes while sitting in a flame
       var FIRE_ASH_RADIUS = 0.3;
       var FIRE_LIGHT_COLOR = '#ff9a3c';
-      var FIRE_LIGHT_RANGE = 6; // meters of falloff on the shared point light
-      var FIRE_LIGHT_PER_FUEL = 0.35; // intensity per unit of the biggest fire's fuel
+      var FIRE_LIGHT_RANGE = 6;
       var FIRE_LIGHT_MAX = 2.4;
+      var FIRE_DROPLET_LIFETIME_MS = 1400; // a flame in the air doesn't last long if it never lands
+      var FIRE_LANDING_SPILL = 0.004; // meters a landed flame adds — deliberately less than it cost to jump
+
+      // The jumping. Rate scales with how big the burning patch is, so
+      // a small spill spits the occasional tongue and a big one is a
+      // constant fountain. This is both the look and the spread — turn
+      // it down for a tamer fire, up for a chaotic one.
+      var FIRE_JUMP_RATE = 7; // jumps per second at full size
+      var FIRE_JUMP_INTERVAL_MS = 1000; // divided by rate*strength to get the gap between jumps
+      var FIRE_JUMP_SPEED_MIN = 0.7; // m/s upward from a guttering pool
+      var FIRE_JUMP_SPEED_MAX = 2.1; // and from a roaring one
+      var FIRE_JUMP_SPREAD = 1.2; // m/s of sideways scatter — this is literally how far fire can reach, since spread is flames landing somewhere new
+      var FIRE_JUMP_COST = 0.014; // meters of the source pool spent per jump; must exceed FIRE_LANDING_SPILL or fire is perpetual
+
       var DROPLET_IGNITE_RADIUS = 0.14; // alcohol passing this close to anything lit catches
-      var DROPLET_FUEL = 0.5; // seconds of fire one burning droplet is worth
-      var FIRE_GRAVITY_SCALE = 0.45; // flame falls, but lazily — it has somewhere to be
-      var FIRE_LANDING_SPILL = 0.07; // meters of burning spill a falling flame leaves where it lands
+      var FIRE_DRINK_NICOTINE = 0.05; // what a mouthful of flame does to you: not much, comedically
+      var FIRE_DRINK_BURN_OFF = 0.02; // it does burn off some of what you'd already drunk
 
       // ==============================================================
-      // PUDDLES
+      // POOLS
       // Spilled liquid stays put for a while instead of vanishing, so
       // you can pour first and light it afterwards. Nearby drops merge
       // into one growing disc — both because that's what liquid does
       // and because otherwise a five-second pour would be four hundred
       // separate objects.
       // ==============================================================
-      var MAX_PUDDLES = 26;
-      var PUDDLE_MERGE_RADIUS = 0.3; // meters — a drop landing this close to a puddle joins it
-      var PUDDLE_START_RADIUS = 0.045;
-      var PUDDLE_GROWTH_PER_DROPLET = 0.011; // meters of radius each droplet adds
-      var PUDDLE_MAX_RADIUS = 0.45;
-      var PUDDLE_LIFETIME_MS = 25000; // how long before it soaks away
-      var PUDDLE_FADE_MS = 4000; // the tail end of that, spent shrinking
-      var PUDDLE_BURN_RATE = 0.06; // meters of radius consumed per second while alight
-      var PUDDLE_FUEL_PER_METER = 70; // seconds of fire per meter of radius burnt — comfortably more than FIRE_FUEL_PER_S, so a burning spill builds a real blaze rather than guttering at the minimum size
-      var PUDDLE_SPILL_RADIUS = 0.16; // how much a smashed bottle puts on the floor
-      var PUDDLE_RELIGHT_DELAY_MS = 2500; // a doused puddle stays too wet to catch again for this long
+      var MAX_POOLS = 26;
+      var POOL_MERGE_RADIUS = 0.3; // meters — a drop landing this close to a pool joins it
+      var POOL_START_RADIUS = 0.045;
+      var POOL_GROWTH_PER_DROPLET = 0.011; // meters of radius each droplet adds
+      var POOL_MAX_RADIUS = 0.45;
+            var POOL_FADE_MS = 4000; // the tail end of that, spent shrinking
+      var POOL_BURN_RATE = 0.035; // meters of radius consumed per second while alight — how long a spill burns for
+      var POOL_SPILL_RADIUS = 0.16; // how much a smashed bottle puts on the floor
+      var POOL_RELIGHT_DELAY_MS = 2500; // a doused puddle stays too wet to catch again for this long
 
       // ==============================================================
       // WATER
@@ -1076,66 +1083,106 @@
         });
       }
 
-      // Beer, mid-air. Poured droplets are ordinary particles with one
-      // extra job: they check whether they've landed in your mouth
-      // (see world-systems.updateParticles), which is the entire
-      // drinking mechanic. No fill level, no proximity-plus-tilt
-      // check — if the liquid hits your head, you drank it.
-      function spawnDroplet(worldPos, velocity, liquid) {
-        liquid = liquid || 'beer';
-        return addParticle(
-          'sphere',
-          worldPos,
-          liquid === 'water' ? '#7fb6d4' : '#d99a25',
-          DROPLET_RADIUS * (0.7 + Math.random() * 0.6),
-          {
-            kind: 'liquid',
-            liquid: liquid,
-            vel: velocity.clone(),
-            angVel: null,
-            life: DROPLET_LIFETIME_MS,
-            opacity: 0.85,
-            restY: 0.01,
-          }
-        );
-      }
-
       // ==============================================================
-      // FIRE AND PUDDLES
-      // Fire is its own kind of object rather than a particle: it has
-      // fuel, it grows and shrinks, it spreads, it sets light to
-      // things, it damages targets, and it lights the room. But it's
-      // pooled and hand-ticked exactly like a particle is, because
-      // there can be a dozen of them and each one is two meshes.
+      // LIQUIDS
+      // One system for everything that flows, with fire as a member of
+      // it rather than a special case bolted on the side.
       //
-      // The interesting half is what it burns. Poured alcohol doesn't
-      // vanish when it lands: it pools on whatever it hits (the floor,
-      // the bar), nearby drops merge into one bigger puddle rather
-      // than piling up hundreds of overlapping discs, and a puddle
-      // that touches fire catches. A burning puddle feeds its own
-      // fire as it's consumed, and that fire reaches far enough to
-      // light the next puddle along — which is the whole of "fire
-      // spreads," with no spread code as such.
+      // A liquid exists in exactly two states:
       //
-      // The payoff nobody had to implement: pour a line of beer, light
-      // it, throw a bottle into the middle. The bottle shatters, spills
-      // its own puddle, that puddle is touching flame, and you have
-      // made a Molotov out of parts that were already there.
+      //   DROPLET — in the air. A small sphere with a velocity, falling
+      //     under its own type's gravity and spreading out a little as
+      //     it goes, which is what makes a poured stream read as a
+      //     spray rather than a wire.
+      //   POOL — resting on a surface. A flat disc. Drops landing near
+      //     an existing pool join it and it grows, so a five-second
+      //     pour is one object instead of four hundred.
+      //
+      // A liquid TYPE is nothing but data (see LIQUIDS below): colour,
+      // weight, how much it spreads, how long it lasts, and what it
+      // does when it hits you or hits something hot. Adding a new one
+      // — gasoline, blood, whiskey — is a data blob and nothing else,
+      // and it immediately inherits pouring, pooling, merging,
+      // drinking, dousing and burning.
+      //
+      // FIRE IS A LIQUID. That's the whole trick of this file:
+      //   - a fire droplet is a flame in the air; it falls, lazily;
+      //   - a fire pool is a burning patch of ground, and its size IS
+      //     its remaining fuel;
+      //   - a fire pool throws droplets back up into the air, more
+      //     often and higher the bigger it is;
+      //   - those droplets land somewhere slightly else and make more
+      //     burning ground.
+      // That last step is the entire implementation of fire spreading.
+      // There is no spread function. Fire crawls along a spill because
+      // its droplets physically land further along it, and a flame
+      // blown sideways by the wind that already pushes smoke will
+      // spread downwind for free.
+      //
+      // Alcohol meeting fire doesn't "catch" in any special sense
+      // either: the pool changes type, and its volume becomes fuel.
       // ==============================================================
-      var FIRES = [];
-      var PUDDLES = [];
-      var FIRE_POOL = [];
-      var PUDDLE_POOL = [];
-      var HOT_POINTS = []; // every lit tip and every fire, refreshed once a frame
+      var LIQUIDS = {
+        beer: {
+          dropColor: '#d99a25',
+          poolColor: '#c8871f',
+          dropRadius: 0.011,
+          gravity: 1,
+          dispersion: 0.55, // m/s of sideways spread given at birth — this is what makes a pour a spray
+          startRadius: 0.045,
+          poolOpacity: 0.55,
+          evaporateMs: 25000,
+          flammable: true,
+          fuelMultiplier: 1.6, // a spill of this makes rather more fire than its own size
+          drink: 'alcohol',
+        },
+        water: {
+          dropColor: '#7fb6d4',
+          poolColor: '#6ea8c6',
+          dropRadius: 0.011,
+          gravity: 1,
+          dispersion: 0.5,
+          startRadius: 0.045,
+          poolOpacity: 0.45,
+          evaporateMs: 16000,
+          douses: true,
+          drink: 'sober',
+        },
+        fire: {
+          dropColor: '#ff6a1a',
+          poolColor: '#2c1a12', // the scorch under the flames
+          dropRadius: 0.042, // bigger than a liquid drop so a jumped flame reads as a tongue of fire, not a spark
+          gravity: 0.45, // flame falls, but lazily — it has somewhere to be
+          dispersion: 0.9, // and scatters much more widely, which is how far fire can reach
+          drift: 1.2, // plus ongoing meander in the air
+          // A landed flame starts a deliberately tiny patch. Bigger and
+          // fire sustains itself on bare ground forever, since each
+          // patch lives long enough to throw the flame that makes the
+          // next one.
+          startRadius: 0.012,
+          poolOpacity: 0.75,
+          evaporateMs: 0, // fire doesn't evaporate, it burns out
+          isFire: true,
+          drink: 'burn',
+        },
+        scorch: {
+          poolColor: '#241610',
+          poolOpacity: 0.6,
+          evaporateMs: 30000, // what's left behind once a fire has gone out
+          inert: true,
+        },
+      };
 
-      // One shared point light, moved to whichever fire is biggest. Real
-      // per-fire lights would mean recompiling materials and paying
-      // per-fragment cost for each one; a single light that follows the
-      // action gives you the flicker on the bar and the walls for the
-      // price of one. Added as a raw three.js light rather than an
-      // A-Frame light component on purpose: adding an <a-light> makes
-      // A-Frame remove its default lighting rig and the whole scene
-      // changes brightness.
+      var POOLS = [];
+      var POOL_POOL = []; // recycled pool entities (a disc and, for fire, a flame)
+      var HOT_POINTS = []; // every lit tip, burning pool and airborne flame, refreshed once a frame
+
+      // One shared point light, moved to whichever fire is biggest.
+      // Real per-fire lights would mean a material recompile and
+      // per-fragment cost each; one light that follows the action buys
+      // the flicker on the bar for the price of one. Added as a raw
+      // three.js light rather than an <a-light>, because adding an
+      // A-Frame light makes it tear out the scene's default rig.
       var fireLight = null;
 
       function ensureFireLight(sceneEl) {
@@ -1146,217 +1193,308 @@
       }
 
       // ---------------------------------------------------------------
-      // Fire
+      // Droplets
       // ---------------------------------------------------------------
-      function acquireFireEl() {
-        var el = FIRE_POOL.pop();
+      function spawnDroplet(worldPos, velocity, type) {
+        type = LIQUIDS[type] ? type : 'beer';
+        var liquid = LIQUIDS[type];
+        var scale = liquid.dropRadius * (0.7 + Math.random() * 0.6);
+
+        // Dispersion is seeded once, at birth, as a fixed sideways
+        // nudge. Applying it as per-frame noise instead makes a random
+        // walk that averages back to zero — measured, that was five
+        // millimetres of spread over a whole fall. A stream is a cone
+        // because each drop leaves on a slightly different heading.
+        var vel = velocity.clone();
+        if (liquid.dispersion) {
+          vel.x += (Math.random() - 0.5) * liquid.dispersion;
+          vel.z += (Math.random() - 0.5) * liquid.dispersion;
+        }
+
+        return addParticle('sphere', worldPos, liquid.dropColor, scale, {
+          kind: 'liquid',
+          liquid: type,
+          vel: vel,
+          angVel: null,
+          life: liquid.isFire ? FIRE_DROPLET_LIFETIME_MS : DROPLET_LIFETIME_MS,
+          opacity: liquid.isFire ? 0.9 : 0.85,
+          restY: 0.01,
+          phase: Math.random() * 100,
+        });
+      }
+
+      // ---------------------------------------------------------------
+      // Pools
+      // ---------------------------------------------------------------
+      function acquirePoolEl() {
+        var el = POOL_POOL.pop();
         if (el) {
           el.object3D.visible = true;
-          var source = el.components['ignition-source'];
-          if (source) source.hot = true;
           return el;
         }
 
         el = document.createElement('a-entity');
 
-        // Two nested elongated spheres: a wide dull-orange body and a
-        // brighter yellow heart. Flat-shaded so they read as emissive
-        // without needing a light of their own.
+        var disc = document.createElement('a-circle');
+        disc.setAttribute('radius', 1);
+        disc.setAttribute('rotation', '-90 0 0');
+        disc.setAttribute('material', 'shader: flat; transparent: true; opacity: 0.55; depthWrite: false; side: double');
+        disc.classList.add('pool-disc');
+        el.appendChild(disc);
+
+        // The steady flame every burning pool keeps, on top of the
+        // droplets it throws. Without it a fire reads as popcorn; with
+        // it, the jumping droplets are tongues coming off something
+        // solid. Set FIRE_JUMP_RATE to 0 and only this remains.
+        var flame = document.createElement('a-entity');
+        flame.classList.add('pool-flame');
+        flame.setAttribute('visible', false);
+
         var outer = document.createElement('a-sphere');
         outer.setAttribute('radius', 1);
-        outer.setAttribute('material', 'color: #ff6a1a; shader: flat; transparent: true; opacity: 0.75; depthWrite: false');
-        outer.classList.add('fire-outer');
-        el.appendChild(outer);
+        outer.setAttribute('material', 'color: #ff6a1a; shader: flat; transparent: true; opacity: 0.72; depthWrite: false');
+        flame.appendChild(outer);
 
         var inner = document.createElement('a-sphere');
         inner.setAttribute('radius', 0.55);
         inner.setAttribute('material', 'color: #ffd84a; shader: flat; transparent: true; opacity: 0.9; depthWrite: false');
-        inner.classList.add('fire-inner');
-        el.appendChild(inner);
+        flame.appendChild(inner);
 
-        // Fire is an ordinary ignition source, so it lights cigars and
-        // matches through the same proximity check a hot barrel uses.
-        el.setAttribute('ignition-source', '');
+        el.appendChild(flame);
         document.querySelector('a-scene').appendChild(el);
         return el;
       }
 
-      function releaseFire(index) {
-        var fire = FIRES[index];
-        fire.el.object3D.visible = false;
-        var source = fire.el.components['ignition-source'];
-        if (source) source.hot = false;
-        FIRE_POOL.push(fire.el);
-        FIRES.splice(index, 1);
+      function releasePool(index) {
+        var pool = POOLS[index];
+        pool.el.object3D.visible = false;
+        POOL_POOL.push(pool.el);
+        POOLS.splice(index, 1);
       }
 
-      // Fire merges rather than multiplies: dropping a match on a
-      // puddle that's already alight should make the existing flame
-      // bigger, not stack a second one inside it.
-      function spawnFire(worldPos, fuel) {
-        for (var i = 0; i < FIRES.length; i++) {
-          if (FIRES[i].pos.distanceTo(worldPos) < FIRE_MERGE_RADIUS) {
-            FIRES[i].fuel = Math.min(FIRES[i].fuel + fuel, FIRE_MAX_FUEL);
-            return FIRES[i];
+      // Liquid arriving on a surface. Joins whatever compatible pool is
+      // already there, or starts a new one. Merging is what keeps the
+      // count in the dozens however much you spill — and it's also why
+      // fire spreads as a growing patch rather than a scattering of
+      // separate flames.
+      function addToPool(worldPos, surfaceY, type, amount) {
+        for (var i = 0; i < POOLS.length; i++) {
+          var pool = POOLS[i];
+          if (Math.abs(pool.y - surfaceY) > 0.06) continue; // the bar and the floor are different places
+          var dx = pool.x - worldPos.x;
+          var dz = pool.z - worldPos.z;
+          var reach = POOL_MERGE_RADIUS + pool.radius;
+          if (dx * dx + dz * dz > reach * reach) continue;
+
+          // Fire landing in beer converts the whole spill to fuel; beer
+          // landing in fire just feeds it. Either way one pool, not two
+          // overlapping ones arguing about which is on top.
+          if (pool.type !== type) {
+            if (!mixPools(pool, type, amount)) continue;
+            return pool;
           }
+
+          pool.radius = Math.min(pool.radius + amount, POOL_MAX_RADIUS);
+          pool.age = 0;
+          // Creeps toward whatever is feeding it, so a moving pour
+          // draws a trail instead of growing one blob.
+          pool.x += (worldPos.x - pool.x) * 0.12;
+          pool.z += (worldPos.z - pool.z) * 0.12;
+          return pool;
         }
 
-        if (FIRES.length >= MAX_FIRES) return null;
+        if (POOLS.length >= MAX_POOLS) return null;
 
-        var el = acquireFireEl();
-        el.object3D.position.copy(worldPos);
-
-        var fire = {
+        var el = acquirePoolEl();
+        var created = {
           el: el,
-          // Its own vector, not an alias of the element's position:
-          // the element gets nudged upward every frame so the flame
-          // stands ON its base rather than being centred in it, and
-          // the base is what everything else measures against.
-          pos: worldPos.clone(),
-          baseY: worldPos.y,
-          // Fire falls. Beer that catches light in mid-air used to
-          // ignite and then simply hang there; it should drop like the
-          // burning liquid it is, land, and set fire to whatever it
-          // lands on. It falls slower than a solid — flame has
-          // somewhere to be — but it falls.
-          vel: new THREE.Vector3(),
-          grounded: false,
-          fuel: Math.min(fuel, FIRE_MAX_FUEL),
+          disc: el.querySelector('.pool-disc'),
+          flame: el.querySelector('.pool-flame'),
+          x: worldPos.x,
+          y: surfaceY,
+          z: worldPos.z,
+          radius: (LIQUIDS[type].startRadius || POOL_START_RADIUS) + amount,
+          type: type,
+          age: 0,
+          dousedUntil: 0,
+          jumpTimer: 0,
           phase: Math.random() * 100,
-          damageTimer: 0,
+          needsColor: true,
         };
-        FIRES.push(fire);
-        spawnSparks(worldPos, 6);
-        return fire;
+        POOLS.push(created);
+        return created;
       }
 
-      function nearestFire(worldPos, maxDistance) {
-        var best = null;
-        var bestDist = maxDistance;
-        for (var i = 0; i < FIRES.length; i++) {
-          var d = FIRES[i].pos.distanceTo(worldPos);
-          if (d < bestDist) {
-            bestDist = d;
-            best = FIRES[i];
-          }
+      // What happens when one liquid lands in a pool of another. Kept
+      // in one place so the interactions are legible rather than
+      // scattered through the update loop.
+      function mixPools(pool, incomingType, amount) {
+        var incoming = LIQUIDS[incomingType];
+        var existing = LIQUIDS[pool.type];
+
+        // Fire meeting something flammable: the spill becomes fuel.
+        if (incoming.isFire && existing.flammable) {
+          if (pool.dousedUntil > 0) return false;
+          ignitePool(pool);
+          return true;
+        }
+
+        // Something flammable poured onto fire: more fuel.
+        if (existing.isFire && incoming.flammable) {
+          pool.radius = Math.min(pool.radius + amount * incoming.fuelMultiplier, POOL_MAX_RADIUS);
+          return true;
+        }
+
+        // Water on fire: puts it out and leaves the scorch behind.
+        if (incoming.douses && existing.isFire) {
+          dousePool(pool);
+          return true;
+        }
+
+        // Fire meeting water, or anything meeting a scorch mark: the
+        // arrival simply doesn't stick.
+        if (incoming.isFire && (existing.douses || existing.inert)) return true;
+        if (existing.inert) {
+          pool.type = incomingType;
+          pool.needsColor = true;
+          pool.age = 0;
+          return true;
+        }
+
+        return false;
+      }
+
+      function ignitePool(pool) {
+        if (LIQUIDS[pool.type].isFire || pool.dousedUntil > 0) return;
+        if (!LIQUIDS[pool.type].flammable) return;
+
+        pool.radius = Math.min(pool.radius * LIQUIDS[pool.type].fuelMultiplier, POOL_MAX_RADIUS);
+        pool.type = 'fire';
+        pool.needsColor = true;
+        pool.age = 0;
+        spawnSparks(poolPosition(pool, _poolScratch), 6);
+      }
+
+      function dousePool(pool) {
+        if (!LIQUIDS[pool.type].isFire) return;
+        pool.type = 'scorch';
+        pool.needsColor = true;
+        pool.dousedUntil = POOL_RELIGHT_DELAY_MS;
+        pool.age = 0;
+        if (pool.flame) pool.flame.setAttribute('visible', false);
+        spawnSmoke(poolPosition(pool, _poolScratch), null, 0.7);
+      }
+
+      var _poolScratch = new THREE.Vector3();
+
+      function poolPosition(pool, out) {
+        return out.set(pool.x, pool.y, pool.z);
+      }
+
+      // Which surface is under a point — the bar top if you're over it,
+      // the floor otherwise. Shared by anything that needs to know
+      // where liquid would land.
+      function surfaceUnder(worldPos) {
+        var best = 0;
+        for (var i = 0; i < HARD_SURFACES.length; i++) {
+          var s = HARD_SURFACES[i];
+          if (s.y <= best || s.y > worldPos.y + 0.02) continue;
+          if (worldPos.x < s.minX || worldPos.x > s.maxX) continue;
+          if (worldPos.z < s.minZ || worldPos.z > s.maxZ) continue;
+          best = s.y;
         }
         return best;
       }
 
-      // Water's whole job. Puts out the flame AND stops the puddle
-      // underneath it burning — dousing only the fire meant a burning
-      // spill just relit itself from its own fuel the next frame,
-      // which is arguably realistic and definitely infuriating.
-      // Returns true if it hit something, so a droplet can be spent
-      // on it.
+      // Used by anything that spills without pouring — a bottle
+      // smashing, a flame landing.
+      function spillPuddle(worldPos, type, amount) {
+        return addToPool(worldPos, surfaceUnder(worldPos), type, amount);
+      }
+
+      // The nearest burning thing, for anything that wants to know if
+      // it's standing in a fire (see burnable).
+      function nearestFire(worldPos, maxDistance) {
+        var bestDist = maxDistance;
+        var best = null;
+
+        for (var i = 0; i < POOLS.length; i++) {
+          if (!LIQUIDS[POOLS[i].type].isFire) continue;
+          var d = poolPosition(POOLS[i], _poolScratch).distanceTo(worldPos);
+          if (d - POOLS[i].radius < bestDist) {
+            bestDist = Math.max(d - POOLS[i].radius, 0);
+            best = POOLS[i];
+          }
+        }
+
+        return best;
+      }
+
+      // Water's whole job, and the jug's reason to exist. Puts out both
+      // the flames in the air and the ground burning underneath them —
+      // dousing only the flame meant the spill relit itself the next
+      // frame, which is realistic and infuriating.
       function douseFires(worldPos, radius, amount) {
         var doused = false;
 
-        for (var i = FIRES.length - 1; i >= 0; i--) {
-          if (FIRES[i].pos.distanceTo(worldPos) > radius) continue;
-          FIRES[i].fuel -= amount;
-          doused = true;
-          spawnSmoke(FIRES[i].pos, null, 0.5);
-        }
-
-        for (var j = 0; j < PUDDLES.length; j++) {
-          var puddle = PUDDLES[j];
-          if (!puddle.burning) continue;
-          var dx = puddle.x - worldPos.x;
-          var dz = puddle.z - worldPos.z;
-          var reach = radius + puddle.radius;
+        for (var i = 0; i < POOLS.length; i++) {
+          var pool = POOLS[i];
+          if (!LIQUIDS[pool.type].isFire) continue;
+          var dx = pool.x - worldPos.x;
+          var dz = pool.z - worldPos.z;
+          var reach = radius + pool.radius;
           if (dx * dx + dz * dz > reach * reach) continue;
 
-          puddle.burning = false;
-          puddle.dousedUntil = PUDDLE_RELIGHT_DELAY_MS; // wet through, briefly
+          pool.radius -= amount;
+          if (pool.radius <= 0.02) dousePool(pool);
+          doused = true;
+        }
+
+        // Flames in mid-air are put out too, otherwise a thrown jug
+        // leaves the sparks it was aimed at still hanging there.
+        for (var j = 0; j < PARTICLES.length; j++) {
+          var p = PARTICLES[j];
+          if (p.dead || p.kind !== 'liquid' || p.liquid !== 'fire') continue;
+          if (p.el.object3D.position.distanceTo(worldPos) > radius) continue;
+          killParticle(p);
           doused = true;
         }
 
         return doused;
       }
 
-      // ---------------------------------------------------------------
-      // Puddles
-      // ---------------------------------------------------------------
-      function acquirePuddleEl() {
-        var el = PUDDLE_POOL.pop();
-        if (el) {
-          el.object3D.visible = true;
-          return el;
-        }
+      // Fire's party trick, and the reason it's a liquid at all: a
+      // burning patch spits flame back into the air. Bigger patch means
+      // more often, higher and larger, so a big spill looks like a
+      // proper blaze rather than a scaled-up candle — and since those
+      // droplets land somewhere slightly else, this IS how fire
+      // spreads.
+      function jumpFlame(pool) {
+        var strength = Math.min(pool.radius / POOL_MAX_RADIUS, 1);
+        var spread = pool.radius * 0.8;
 
-        el = document.createElement('a-circle');
-        el.setAttribute('radius', 1);
-        el.setAttribute('rotation', '-90 0 0');
-        el.setAttribute('material', 'shader: flat; transparent: true; opacity: 0.55; depthWrite: false; side: double');
-        document.querySelector('a-scene').appendChild(el);
-        return el;
-      }
+        _poolScratch.set(
+          pool.x + (Math.random() - 0.5) * spread,
+          pool.y + 0.02,
+          pool.z + (Math.random() - 0.5) * spread
+        );
 
-      function releasePuddle(index) {
-        PUDDLES[index].el.object3D.visible = false;
-        PUDDLE_POOL.push(PUDDLES[index].el);
-        PUDDLES.splice(index, 1);
-      }
+        var up = FIRE_JUMP_SPEED_MIN + (FIRE_JUMP_SPEED_MAX - FIRE_JUMP_SPEED_MIN) * strength;
+        var velocity = new THREE.Vector3(
+          (Math.random() - 0.5) * FIRE_JUMP_SPREAD,
+          up * (0.7 + Math.random() * 0.6),
+          (Math.random() - 0.5) * FIRE_JUMP_SPREAD
+        );
 
-      // A landed droplet either joins a puddle it's near enough to or
-      // starts one. Merging is what keeps a long pour from becoming
-      // four hundred overlapping discs — the count stays in the dozens
-      // however much you spill.
-      function addToPuddle(worldPos, surfaceY, liquid, amount) {
-        for (var i = 0; i < PUDDLES.length; i++) {
-          var p = PUDDLES[i];
-          if (p.liquid !== liquid) continue;
-          if (Math.abs(p.y - surfaceY) > 0.05) continue; // a puddle on the bar isn't the same puddle as one on the floor
-          var dx = p.x - worldPos.x;
-          var dz = p.z - worldPos.z;
-          if (dx * dx + dz * dz > PUDDLE_MERGE_RADIUS * PUDDLE_MERGE_RADIUS) continue;
+        // A jump costs the pool more fuel than the landing gives back,
+        // so a fire always runs down. Spread comes from a flame landing
+        // on something ELSE that will burn, never from fire creating
+        // its own fuel.
+        pool.radius -= FIRE_JUMP_COST;
 
-          p.radius = Math.min(p.radius + amount, PUDDLE_MAX_RADIUS);
-          p.age = 0;
-          // The puddle creeps toward whatever is feeding it, so a
-          // moving pour draws a trail rather than growing one blob.
-          p.x += (worldPos.x - p.x) * 0.12;
-          p.z += (worldPos.z - p.z) * 0.12;
-          return p;
-        }
-
-        if (PUDDLES.length >= MAX_PUDDLES) return null;
-
-        var el = acquirePuddleEl();
-        var puddle = {
-          el: el,
-          x: worldPos.x,
-          y: surfaceY,
-          z: worldPos.z,
-          radius: PUDDLE_START_RADIUS + amount,
-          liquid: liquid,
-          burning: false,
-          dousedUntil: 0,
-          age: 0,
-        };
-
-        var mesh = el.getObject3D('mesh');
-        if (mesh) mesh.material.color.set(liquid === 'water' ? '#7fb6d4' : '#c8871f');
-        else puddle.needsColor = true;
-
-        PUDDLES.push(puddle);
-        return puddle;
-      }
-
-      // Everything a puddle can be hit with, in one place: a bottle
-      // smashing spills one, a jug smashing spills water, and pouring
-      // just trickles into one.
-      function spillPuddle(worldPos, liquid, amount) {
-        var surfaceY = 0;
-        for (var i = 0; i < HARD_SURFACES.length; i++) {
-          var s = HARD_SURFACES[i];
-          if (worldPos.y < s.y - 0.05 || worldPos.y > s.y + 0.6) continue;
-          if (worldPos.x < s.minX || worldPos.x > s.maxX) continue;
-          if (worldPos.z < s.minZ || worldPos.z > s.maxZ) continue;
-          if (s.y > surfaceY) surfaceY = s.y;
-        }
-        return addToPuddle(worldPos, surfaceY, liquid, amount);
+        var droplet = spawnDroplet(_poolScratch, velocity, 'fire');
+        if (droplet) droplet.baseScale *= 0.7 + strength * 0.8;
+        return droplet;
       }
 
       // ==============================================================
@@ -4706,7 +4844,7 @@
         // leaves is already touching flame.
         onShattered: function (evt) {
           var point = (evt.detail && evt.detail.point) || this._spoutWorld;
-          spillPuddle(point, this.data.liquid, PUDDLE_SPILL_RADIUS);
+          spillPuddle(point, this.data.liquid, POOL_SPILL_RADIUS);
         },
 
         // Called by breakable when a shattered bottle comes back as a
@@ -6257,216 +6395,10 @@
           // puddles and lightables all ask the same question this
           // frame, so it gets answered once.
           this.updateHotPoints();
-          this.updateFires(time, dtSeconds);
-          this.updatePuddles(dtSeconds);
+          this.updatePools(time, dtSeconds);
           this.updateParticles(dtSeconds);
           this.updateIgnition();
           this.updateBlow();
-        },
-
-        // Every source of ignition in the world, in one flat list of
-        // positions. Fires are in here alongside lit cigars and hot
-        // barrels, which is why fire lights things without fire
-        // knowing what a cigar is.
-        updateHotPoints: function () {
-          HOT_POINTS.length = 0;
-
-          var sources = document.querySelectorAll('[ignition-source]');
-          for (var i = 0; i < sources.length; i++) {
-            var source = sources[i].components['ignition-source'];
-            if (!source || !source.hot) continue;
-
-            if (!this._hotPool[HOT_POINTS.length]) this._hotPool[HOT_POINTS.length] = { pos: new THREE.Vector3(), el: null };
-            var entry = this._hotPool[HOT_POINTS.length];
-            source.tipObject().getWorldPosition(entry.pos);
-            entry.el = sources[i];
-            HOT_POINTS.push(entry);
-          }
-        },
-
-        // Fire: burn down, writhe, spread to anything flammable
-        // nearby, scorch any target standing in it, and drive the one
-        // shared light.
-        updateFires: function (time, dtSeconds) {
-          var brightest = null;
-
-          for (var i = FIRES.length - 1; i >= 0; i--) {
-            var fire = FIRES[i];
-            fire.fuel -= FIRE_FUEL_PER_S * dtSeconds;
-            if (fire.fuel <= 0) {
-              spawnSmoke(fire.pos, null, 0.7);
-              releaseFire(i);
-              continue;
-            }
-
-            // Re-asserted every frame rather than at spawn: a pooled
-            // fire entity's component may not have initialized yet the
-            // instant it was handed out.
-            var source = fire.el.components['ignition-source'];
-            if (source) source.hot = true;
-
-            this.fallFire(fire, dtSeconds);
-
-            var t = Math.min(fire.fuel / FIRE_MAX_FUEL, 1);
-            var radius = FIRE_MIN_RADIUS + (FIRE_MAX_RADIUS - FIRE_MIN_RADIUS) * Math.sqrt(t);
-
-            // The writhe: a tall narrow teardrop whose height and lean
-            // wander on a couple of out-of-phase sines. Cheap, and
-            // enough to stop it reading as a glowing ball.
-            var phase = (time / 1000) * FIRE_WIGGLE_HZ + fire.phase;
-            var stretch = 1.7 + 0.35 * Math.sin(phase);
-            var lean = 0.12 * Math.sin(phase * 0.7);
-
-            fire.el.object3D.scale.set(radius * (1 + 0.12 * Math.sin(phase * 1.3)), radius * stretch, radius);
-            fire.el.object3D.rotation.set(lean, phase * 0.2, lean * 0.6);
-            // Sits on its own base rather than centred, so a flame on
-            // the floor looks like it's standing on the floor.
-            fire.el.object3D.position.set(fire.pos.x, fire.baseY + radius * stretch * 0.75, fire.pos.z);
-
-            this.burnTargets(fire, dtSeconds);
-
-            if (!brightest || fire.fuel > brightest.fuel) brightest = fire;
-          }
-
-          var light = ensureFireLight(this.el.sceneEl);
-          if (brightest) {
-            light.position.copy(brightest.pos);
-            light.intensity = Math.min(brightest.fuel * FIRE_LIGHT_PER_FUEL, FIRE_LIGHT_MAX) *
-              (0.82 + 0.18 * Math.sin((time / 1000) * FIRE_WIGGLE_HZ * 1.7));
-          } else {
-            light.intensity = 0;
-          }
-        },
-
-        // Flame in mid-air drops onto whatever is below it and keeps
-        // burning there, which is what makes pouring beer through a
-        // flame set the FLOOR alight rather than leaving a fire
-        // hanging in the air where the stream happened to catch.
-        fallFire: function (fire, dtSeconds) {
-          if (fire.grounded) return;
-
-          fire.vel.y -= GRAVITY * FIRE_GRAVITY_SCALE * dtSeconds;
-          fire.pos.addScaledVector(fire.vel, dtSeconds);
-          fire.baseY = fire.pos.y;
-
-          var surfaceY = 0;
-          for (var i = 0; i < HARD_SURFACES.length; i++) {
-            var s = HARD_SURFACES[i];
-            if (s.y <= surfaceY) continue;
-            if (fire.pos.x < s.minX || fire.pos.x > s.maxX) continue;
-            if (fire.pos.z < s.minZ || fire.pos.z > s.maxZ) continue;
-            if (fire.pos.y < s.y - 0.4) continue;
-            surfaceY = s.y;
-          }
-
-          if (fire.pos.y > surfaceY) return;
-
-          fire.pos.y = surfaceY;
-          fire.baseY = surfaceY;
-          fire.vel.set(0, 0, 0);
-          fire.grounded = true;
-
-          // Landing scorches what it lands on: the fire leaves a
-          // burning spill behind, so a dropped flame keeps burning
-          // where it fell instead of guttering out in mid-air.
-          var puddle = spillPuddle(fire.pos, 'beer', FIRE_LANDING_SPILL);
-          if (puddle) puddle.burning = true;
-        },
-
-        // Anything that can be knocked down can be burnt down. A
-        // target standing in a flame for FIRE_DAMAGE_DELAY_MS goes
-        // over exactly as if it had been shot, through pop-target's
-        // own fall() — fire has no idea what a target is beyond that.
-        burnTargets: function (fire, dtSeconds) {
-          fire.damageTimer -= dtSeconds * 1000;
-          if (fire.damageTimer > 0) return;
-          fire.damageTimer = FIRE_DAMAGE_DELAY_MS;
-
-          var hinges = document.querySelectorAll('[pop-target]');
-          for (var i = 0; i < hinges.length; i++) {
-            var popTarget = hinges[i].components['pop-target'];
-            if (!popTarget || popTarget.fallen) continue;
-
-            hinges[i].object3D.getWorldPosition(this._scratch);
-            if (this._scratch.distanceTo(fire.pos) > FIRE_DAMAGE_RADIUS) continue;
-
-            var manager = document.querySelector('#range-manager');
-            if (manager) manager.emit('ring-hit', { score: FIRE_DAMAGE_SCORE, label: 'BURNED' }, false);
-            popTarget.fall();
-          }
-        },
-
-        // Alcohol catches from anything hot enough to be in
-        // HOT_POINTS — a dropped match, a lit cigar, a hot barrel, or
-        // another fire. Fires being ignition sources themselves is
-        // what makes fire "spread": a burning puddle makes a fire, and
-        // that fire is what lights the next puddle along. There is no
-        // spreading code, only this.
-        checkPuddleIgnition: function (puddle) {
-          if (puddle.liquid === 'water') return;
-          if (puddle.dousedUntil > 0) return;
-
-          var reach = FIRE_SPREAD_RADIUS + puddle.radius;
-          for (var i = 0; i < HOT_POINTS.length; i++) {
-            var pos = HOT_POINTS[i].pos;
-            var dx = pos.x - puddle.x;
-            var dz = pos.z - puddle.z;
-            if (dx * dx + dz * dz > reach * reach) continue;
-            if (pos.y - puddle.y > FIRE_SPREAD_RADIUS || pos.y < puddle.y - 0.3) continue;
-
-            puddle.burning = true;
-            return;
-          }
-        },
-
-        // Puddles evaporate slowly, and burn quickly. A burning one
-        // hands its volume to a fire directly above it as fuel, which
-        // is the entire economy: how long a fire lasts is how much you
-        // spilled.
-        updatePuddles: function (dtSeconds) {
-          for (var i = PUDDLES.length - 1; i >= 0; i--) {
-            var puddle = PUDDLES[i];
-            puddle.age += dtSeconds * 1000;
-
-            if (puddle.dousedUntil > 0) puddle.dousedUntil -= dtSeconds * 1000;
-            if (!puddle.burning) this.checkPuddleIgnition(puddle);
-
-            if (puddle.burning) {
-              var consumed = Math.min(PUDDLE_BURN_RATE * dtSeconds, puddle.radius);
-              puddle.radius -= consumed;
-
-              this._scratch.set(puddle.x, puddle.y, puddle.z);
-              var fire = spawnFire(this._scratch, consumed * PUDDLE_FUEL_PER_METER);
-              if (fire) {
-                fire.baseY = puddle.y;
-                fire.grounded = true; // it's standing in the spill that feeds it
-              }
-              if (Math.random() < dtSeconds * 3) spawnSmoke(this._scratch, null, 0.6);
-            }
-
-            var fade = 1;
-            if (puddle.age > PUDDLE_LIFETIME_MS - PUDDLE_FADE_MS) {
-              fade = Math.max((PUDDLE_LIFETIME_MS - puddle.age) / PUDDLE_FADE_MS, 0);
-            }
-
-            if (puddle.radius <= 0.005 || fade <= 0) {
-              releasePuddle(i);
-              continue;
-            }
-
-            var obj = puddle.el.object3D;
-            obj.position.set(puddle.x, puddle.y + 0.004, puddle.z);
-            obj.scale.setScalar(puddle.radius);
-
-            var mesh = puddle.el.getObject3D('mesh');
-            if (mesh && mesh.material) {
-              if (puddle.needsColor) {
-                mesh.material.color.set(puddle.liquid === 'water' ? '#7fb6d4' : '#c8871f');
-                puddle.needsColor = false;
-              }
-              mesh.material.opacity = 0.55 * fade;
-            }
-          }
         },
 
         // One scan of the scene per frame, shared by every anchor-slot
@@ -6491,7 +6423,7 @@
         },
 
         // A snapshot of where the hands are and how fast they're
-        // moving, taken once and reused by every puff.
+        // moving, taken once and reused by every puff of smoke.
         updateWind: function () {
           var hands = document.querySelectorAll('.hand');
           WIND_HANDS.length = 0;
@@ -6505,6 +6437,196 @@
             WIND_HANDS.push({ pos: this._handPos.clone(), vel: handRig.velocity.clone() });
           }
         },
+
+        // Every source of ignition in the world, in one flat list of
+        // positions: lit cigars, hot barrels, burning ground, and
+        // every flame currently in the air. Droplets, pools and
+        // lightables all ask the same question each frame, so it gets
+        // answered once — and fire being IN this list is the whole
+        // reason fire lights things without fire knowing what a cigar
+        // is.
+        updateHotPoints: function () {
+          HOT_POINTS.length = 0;
+          var self = this;
+
+          function add(pos, el) {
+            if (!self._hotPool[HOT_POINTS.length]) {
+              self._hotPool[HOT_POINTS.length] = { pos: new THREE.Vector3(), el: null };
+            }
+            var entry = self._hotPool[HOT_POINTS.length];
+            entry.pos.copy(pos);
+            entry.el = el || null;
+            HOT_POINTS.push(entry);
+          }
+
+          var sources = document.querySelectorAll('[ignition-source]');
+          for (var i = 0; i < sources.length; i++) {
+            var source = sources[i].components['ignition-source'];
+            if (!source || !source.hot) continue;
+            source.tipObject().getWorldPosition(this._scratch);
+            add(this._scratch, sources[i]);
+          }
+
+          for (var j = 0; j < POOLS.length; j++) {
+            if (!LIQUIDS[POOLS[j].type].isFire) continue;
+            // Measured at the middle of the flame rather than at the
+            // ground it stands on, or liquid poured through a fire
+            // passes straight over the top of it without catching.
+            poolPosition(POOLS[j], this._scratch);
+            this._scratch.y += FIRE_MIN_RADIUS + (FIRE_MAX_RADIUS - FIRE_MIN_RADIUS) *
+              Math.sqrt(Math.min(POOLS[j].radius / POOL_MAX_RADIUS, 1));
+            add(this._scratch);
+          }
+
+          for (var k = 0; k < PARTICLES.length; k++) {
+            var p = PARTICLES[k];
+            if (p.dead || p.kind !== 'liquid' || p.liquid !== 'fire') continue;
+            add(p.el.object3D.position);
+          }
+        },
+
+        // Pools: evaporate, burn down, throw flames, and scorch
+        // whatever is standing in them.
+        updatePools: function (time, dtSeconds) {
+          var brightest = null;
+
+          for (var i = POOLS.length - 1; i >= 0; i--) {
+            var pool = POOLS[i];
+            var liquid = LIQUIDS[pool.type];
+            pool.age += dtSeconds * 1000;
+            if (pool.dousedUntil > 0) pool.dousedUntil -= dtSeconds * 1000;
+
+            if (liquid.isFire) {
+              this.updateFirePool(pool, time, dtSeconds);
+              if (!brightest || pool.radius > brightest.radius) brightest = pool;
+            } else {
+              if (pool.flame) pool.flame.setAttribute('visible', false);
+              if (liquid.flammable && pool.dousedUntil <= 0) this.checkPoolIgnition(pool);
+            }
+
+            var fade = 1;
+            if (liquid.evaporateMs > 0) {
+              var remaining = liquid.evaporateMs - pool.age;
+              if (remaining < POOL_FADE_MS) fade = Math.max(remaining / POOL_FADE_MS, 0);
+            }
+
+            if (pool.radius <= 0.008 || fade <= 0) {
+              releasePool(i);
+              continue;
+            }
+
+            this.drawPool(pool, liquid, fade);
+          }
+
+          var light = ensureFireLight(this.el.sceneEl);
+          if (brightest) {
+            light.position.set(brightest.x, brightest.y + 0.25, brightest.z);
+            light.intensity =
+              Math.min((brightest.radius / POOL_MAX_RADIUS) * FIRE_LIGHT_MAX, FIRE_LIGHT_MAX) *
+              (0.82 + 0.18 * Math.sin((time / 1000) * FIRE_WIGGLE_HZ * 1.7));
+          } else {
+            light.intensity = 0;
+          }
+        },
+
+        // A burning patch consumes itself, keeps a steady flame, and
+        // spits droplets. The droplets are what make it spread: they
+        // land a little way off and start burning ground there.
+        updateFirePool: function (pool, time, dtSeconds) {
+          pool.radius -= POOL_BURN_RATE * dtSeconds;
+          if (pool.radius <= 0.008) {
+            pool.type = 'scorch';
+            pool.needsColor = true;
+            pool.radius = POOL_START_RADIUS * 2;
+            pool.age = 0;
+            if (pool.flame) pool.flame.setAttribute('visible', false);
+            spawnSmoke(poolPosition(pool, this._scratch), null, 0.7);
+            return;
+          }
+
+          var strength = Math.min(pool.radius / POOL_MAX_RADIUS, 1);
+
+          if (pool.flame) {
+            pool.flame.setAttribute('visible', true);
+            var phase = (time / 1000) * FIRE_WIGGLE_HZ + pool.phase;
+            var height = FIRE_MIN_RADIUS + (FIRE_MAX_RADIUS - FIRE_MIN_RADIUS) * Math.sqrt(strength);
+            var stretch = 1.7 + 0.35 * Math.sin(phase);
+            pool.flame.object3D.scale.set(height * (1 + 0.12 * Math.sin(phase * 1.3)), height * stretch, height);
+            pool.flame.object3D.position.set(0, height * stretch * 0.75, 0);
+            pool.flame.object3D.rotation.set(0.12 * Math.sin(phase * 0.7), phase * 0.2, 0);
+          }
+
+          pool.jumpTimer -= dtSeconds * 1000;
+          if (pool.jumpTimer <= 0) {
+            pool.jumpTimer = FIRE_JUMP_INTERVAL_MS / Math.max(FIRE_JUMP_RATE * strength, 0.001);
+            if (FIRE_JUMP_RATE > 0) jumpFlame(pool);
+          }
+
+          if (Math.random() < dtSeconds * 2.5 * strength) {
+            spawnSmoke(poolPosition(pool, this._scratch), null, 0.6);
+          }
+
+          this.burnTargets(pool, dtSeconds);
+        },
+
+        // Alcohol catches from anything in HOT_POINTS — a dropped
+        // match, a lit cigar, a hot barrel, a flame in the air, or
+        // burning ground nearby.
+        checkPoolIgnition: function (pool) {
+          var reach = FIRE_SPREAD_RADIUS + pool.radius;
+          for (var i = 0; i < HOT_POINTS.length; i++) {
+            var pos = HOT_POINTS[i].pos;
+            var dx = pos.x - pool.x;
+            var dz = pos.z - pool.z;
+            if (dx * dx + dz * dz > reach * reach) continue;
+            if (pos.y - pool.y > FIRE_SPREAD_RADIUS || pos.y < pool.y - 0.3) continue;
+
+            ignitePool(pool);
+            return;
+          }
+        },
+
+        // Anything that can be knocked down can be burnt down. A target
+        // standing in a flame goes over exactly as if it had been shot,
+        // through pop-target's own fall() — fire has no idea what a
+        // target is beyond that.
+        burnTargets: function (pool, dtSeconds) {
+          pool.damageTimer = (pool.damageTimer || 0) - dtSeconds * 1000;
+          if (pool.damageTimer > 0) return;
+          pool.damageTimer = FIRE_DAMAGE_DELAY_MS;
+
+          var hinges = document.querySelectorAll('[pop-target]');
+          var reach = FIRE_DAMAGE_RADIUS + pool.radius;
+
+          for (var i = 0; i < hinges.length; i++) {
+            var popTarget = hinges[i].components['pop-target'];
+            if (!popTarget || popTarget.fallen) continue;
+
+            hinges[i].object3D.getWorldPosition(this._scratch);
+            var dx = this._scratch.x - pool.x;
+            var dz = this._scratch.z - pool.z;
+            if (dx * dx + dz * dz > reach * reach) continue;
+
+            var manager = document.querySelector('#range-manager');
+            if (manager) manager.emit('ring-hit', { score: FIRE_DAMAGE_SCORE, label: 'BURNED' }, false);
+            popTarget.fall();
+          }
+        },
+
+        drawPool: function (pool, liquid, fade) {
+          pool.el.object3D.position.set(pool.x, pool.y + 0.004, pool.z);
+          if (pool.disc) pool.disc.object3D.scale.setScalar(pool.radius);
+
+          var mesh = pool.disc && pool.disc.getObject3D('mesh');
+          if (!mesh || !mesh.material) return;
+
+          if (pool.needsColor) {
+            mesh.material.color.set(liquid.poolColor);
+            pool.needsColor = false;
+          }
+          mesh.material.opacity = liquid.poolOpacity * fade;
+        },
+
 
         updateParticles: function (dtSeconds) {
           // Length is captured up front and nothing is removed inside
@@ -6544,22 +6666,41 @@
                 obj.rotation.z += p.angVel.z * dtSeconds;
               }
             } else if (p.kind === 'liquid') {
-              p.vel.y -= GRAVITY * dtSeconds;
+              var liquid = LIQUIDS[p.liquid] || LIQUIDS.beer;
+
+              p.vel.y -= GRAVITY * liquid.gravity * dtSeconds;
+              // A touch of ongoing wander on top of the heading it was
+              // born with, so a flame in particular meanders rather
+              // than travelling like a thrown bead.
+              if (liquid.drift) {
+                p.vel.x += (Math.random() - 0.5) * liquid.drift * dtSeconds;
+                p.vel.z += (Math.random() - 0.5) * liquid.drift * dtSeconds;
+              }
               obj.position.addScaledVector(p.vel, dtSeconds);
+
+              // A flame in the air writhes rather than sitting there
+              // as a bead — same trick the steady flame on a burning
+              // pool uses, at droplet scale.
+              if (liquid.isFire) {
+                var flamePhase = (p.age / 1000) * FIRE_WIGGLE_HZ + p.phase;
+                obj.scale.set(
+                  p.baseScale * (0.85 + 0.2 * Math.sin(flamePhase * 1.3)),
+                  p.baseScale * (1.6 + 0.4 * Math.sin(flamePhase)),
+                  p.baseScale
+                );
+              }
 
               // THIS is drinking. A poured droplet that reaches your
               // mouth goes down your throat — there is no separate
               // "am I drinking" check anywhere, just beer and a head
               // in the way of it.
               if (this.mouthEl && obj.position.distanceTo(this._mouthPos) < DROPLET_SWALLOW_RADIUS) {
-                if (p.liquid === 'water') VICES.alcohol = Math.max(VICES.alcohol - WATER_SOBER_PER_DROPLET, 0);
-                else addAlcohol(ALCOHOL_PER_DROPLET);
-                this.glug();
+                this.swallow(liquid);
                 killParticle(p);
                 continue;
               }
 
-              if (this.updateLiquidContact(p, obj)) {
+              if (this.updateLiquidContact(p, obj, liquid)) {
                 killParticle(p);
                 continue;
               }
@@ -6595,27 +6736,61 @@
           sweepParticles();
         },
 
-        // Alcohol in mid-air catches from anything lit and becomes a
-        // small fire where it is — which is what makes pouring onto a
-        // flame set the stream itself alight, and what turns "pour on
-        // a lit cigar" into an accident. Water does the reverse.
-        updateLiquidContact: function (p, obj) {
-          if (p.liquid === 'water') {
+        // Drinking, and the one joke the unified system produced for
+        // free: if fire is a liquid and liquid that reaches your mouth
+        // gets swallowed, then yes, you can drink fire. It costs you
+        // nothing but dignity — a lungful of smoke, a jolt of nicotine,
+        // and it burns off some of what you'd already drunk.
+        swallow: function (liquid) {
+          if (liquid.drink === 'sober') {
+            VICES.alcohol = Math.max(VICES.alcohol - WATER_SOBER_PER_DROPLET, 0);
+            this.glug();
+          } else if (liquid.drink === 'burn') {
+            addNicotine(FIRE_DRINK_NICOTINE);
+            VICES.alcohol = Math.max(VICES.alcohol - FIRE_DRINK_BURN_OFF, 0);
+            if (this.mouthEl) {
+              this.mouthEl.object3D.getWorldPosition(this._scratch);
+              for (var i = 0; i < 3; i++) spawnSmoke(this._scratch, null, 0.9);
+              spawnSparks(this._scratch, 4);
+            }
+          } else {
+            addAlcohol(ALCOHOL_PER_DROPLET);
+            this.glug();
+          }
+        },
+
+        // What a droplet does when it meets something hot or something
+        // burning, in mid-air. Alcohol CATCHES — it doesn't spawn a
+        // fire beside itself, it becomes a fire droplet and carries on
+        // falling, which is why pouring onto a flame sets the stream
+        // alight and drops burning liquid on the floor. Water does the
+        // reverse.
+        updateLiquidContact: function (p, obj, liquid) {
+          if (liquid.douses) {
             return douseFires(obj.position, WATER_DOUSE_RADIUS, WATER_DOUSE_FUEL);
           }
+          if (!liquid.flammable) return false;
 
           for (var i = 0; i < HOT_POINTS.length; i++) {
             if (obj.position.distanceTo(HOT_POINTS[i].pos) > DROPLET_IGNITE_RADIUS) continue;
-            var fire = spawnFire(obj.position, DROPLET_FUEL);
-            if (fire) fire.baseY = obj.position.y;
-            return true;
+
+            p.liquid = 'fire';
+            p.baseScale = LIQUIDS.fire.dropRadius;
+            p.needsColor = true;
+            p.color = LIQUIDS.fire.dropColor;
+            p.life = FIRE_DROPLET_LIFETIME_MS;
+            p.age = 0;
+            return false; // it keeps falling, as fire
           }
           return false;
         },
 
-        // Where liquid ends up. Any registered hard surface counts, not
-        // just the floor, so you can pour a puddle along the bar and
-        // set the bar on fire.
+        // Where liquid ends up: a droplet meets a surface and stops
+        // being a droplet. Any registered hard surface counts, not just
+        // the floor, so you can pour along the bar — and set the bar
+        // alight. This is also the step that makes fire spread, since a
+        // jumped flame landing here is what starts the next patch of
+        // burning ground.
         landLiquid: function (p, obj) {
           var surfaceY = null;
 
@@ -6635,15 +6810,19 @@
 
           if (surfaceY === null) return false;
 
-          var puddle = addToPuddle(obj.position, surfaceY, p.liquid || 'beer', PUDDLE_GROWTH_PER_DROPLET);
-          // Liquid landing in something already alight feeds it rather
-          // than pooling next to it.
-          if (puddle && puddle.burning) {
-            this._scratch.set(puddle.x, puddle.y, puddle.z);
-            var fire = spawnFire(this._scratch, DROPLET_FUEL);
-            if (fire) fire.baseY = puddle.y;
+          var type = p.liquid || 'beer';
+          var amount = LIQUIDS[type].isFire ? FIRE_LANDING_SPILL : POOL_GROWTH_PER_DROPLET;
+          addToPool(obj.position, surfaceY, type, amount);
+
+          if (!LIQUIDS[type].isFire) {
+            spawnDebris(obj.position, {
+              count: 1,
+              color: LIQUIDS[type].dropColor,
+              size: 0.008,
+              speed: 0.4,
+              life: 400,
+            });
           }
-          spawnDebris(obj.position, { count: 1, color: p.liquid === 'water' ? '#7fb6d4' : '#d99a25', size: 0.008, speed: 0.4, life: 400 });
           return true;
         },
 

@@ -28,6 +28,8 @@ Things that were never implemented, and work:
 - Making a Molotov: pour a puddle, light it, throw a bottle into it.
   Bottles spill when they break, spills burn, fire spreads along spills.
   Nothing in the code knows what a Molotov is.
+- Drinking fire. Fire is a liquid, liquid that reaches your mouth gets
+  swallowed, so of course you can. It costs you nothing but dignity.
 
 When something *doesn't* combine and obviously should, that's the bug —
 not a missing feature. "Twirling a cigar should shake the ash off" was
@@ -65,6 +67,50 @@ hard landing into broken glass. `breakable` emits `shattered`, and it's
 appeared when matches needed the cigar's burn-down. `pourable` only
 appeared when the water jug needed the bottle's pouring. Guessing
 earlier would have got the shape wrong.
+
+## The liquid system
+
+The largest shared system, and the clearest example of the bet paying
+off. Everything that flows exists in exactly two states:
+
+- **Droplet** — in the air. A sphere with a velocity, falling under its
+  own type's gravity, given a sideways nudge at birth so a poured
+  stream reads as a spray rather than a wire.
+- **Pool** — resting on a surface. A flat disc. Drops landing near one
+  join it and it grows, which is both what liquid does and what keeps a
+  five-second pour to one object instead of four hundred.
+
+A liquid *type* is nothing but data: colour, weight, spread, lifetime,
+and what it does when it hits you or hits something hot. Adding
+gasoline or whiskey is a data blob, and it inherits pouring, pooling,
+merging, drinking, dousing and burning for free.
+
+**Fire is a liquid.** That is the whole design:
+
+- a fire droplet is a flame in the air, and it falls, lazily;
+- a fire pool is burning ground, and its radius *is* its fuel;
+- a burning pool throws droplets back into the air, more often and
+  higher the bigger it is;
+- those droplets land somewhere slightly else and start burning there.
+
+That last step is the entire implementation of fire spreading. There is
+no spread function. Fire crawls along a spill because its flames
+physically land further along it, it jumps small gaps because a flame
+can travel about a metre, and the wind that already pushes smoke will
+blow it downwind for free. Alcohol meeting fire doesn't "catch" in any
+special sense either — the pool changes type and its volume becomes
+fuel.
+
+The one rule this needs to stay honest: **a jump must cost the source
+more fuel than its landing returns**, or fire feeds itself off its own
+sparks and burns forever. Spread must come from flames reaching *new*
+fuel, never from fire creating fuel.
+
+A steady flame also sits on each burning pool, underneath the jumping.
+Without it the effect reads as popcorn; with it, the jumps are tongues
+coming off something solid. Setting the jump rate to zero leaves a
+perfectly good conventional fire, which is how the idea was de-risked
+before it was tried.
 
 ## Rules learned the hard way
 
