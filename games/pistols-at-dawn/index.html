@@ -298,6 +298,38 @@
 
     <script>
       // ==============================================================
+      // SAFE TICKS
+      // A-Frame runs every component's tick from one loop, so a single
+      // exception anywhere kills the render loop and the whole scene
+      // freezes. That is far too sharp an edge for a file whose entire
+      // premise is objects combining in ways nobody planned: a stale
+      // method name in a respawn path (which is exactly what happened
+      // — breakable was still calling cigar.restore() after that moved
+      // to burnable) shouldn't take the saloon down with it.
+      //
+      // So every component registered below gets its tick wrapped. The
+      // first failure is reported loudly, that one component's tick is
+      // switched off, and everything else keeps running. Losing one
+      // prop's behavior is a bug; losing the entire world is an
+      // outage.
+      // ==============================================================
+      function registerComponent(name, definition) {
+        var tick = definition.tick;
+        if (tick) {
+          definition.tick = function (time, dt) {
+            if (this._tickFailed) return;
+            try {
+              tick.call(this, time, dt);
+            } catch (error) {
+              this._tickFailed = true;
+              console.error('[pistols] "' + name + '" tick failed and has been disabled:', error);
+            }
+          };
+        }
+        AFRAME.registerComponent(name, definition);
+      }
+
+      // ==============================================================
       // LOW-POLY GEOMETRY DEFAULTS
       // A-Frame builds a-cylinder at 36 radial x 18 height segments and
       // a-sphere at 36 x 18, which is ~1300 triangles for a bottle neck
@@ -686,6 +718,8 @@
       var FIRE_LIGHT_MAX = 2.4;
       var DROPLET_IGNITE_RADIUS = 0.14; // alcohol passing this close to anything lit catches
       var DROPLET_FUEL = 0.5; // seconds of fire one burning droplet is worth
+      var FIRE_GRAVITY_SCALE = 0.45; // flame falls, but lazily — it has somewhere to be
+      var FIRE_LANDING_SPILL = 0.07; // meters of burning spill a falling flame leaves where it lands
 
       // ==============================================================
       // PUDDLES
@@ -923,15 +957,50 @@
         particle.shape = shape;
         particle.color = color;
         particle.age = 0;
+        particle.dead = false;
         particle.baseScale = typeof scale === 'number' ? scale : 1;
         particle.needsColor = true;
 
         PARTICLES.push(particle);
-        while (PARTICLES.length > MAX_PARTICLES) {
-          var oldest = PARTICLES.shift();
-          releaseParticleEl(oldest.el, oldest.shape);
+
+        // Over the cap, the oldest LIVE particle is marked dead rather
+        // than spliced out. Removing it here would renumber the array
+        // underneath world-systems.updateParticles, which spawns
+        // debris and sparks from inside its own iteration — the wrong
+        // particle would then be retired, and an element could end up
+        // owned by two particles at once. Dead ones are skipped and
+        // swept up at the end of the frame.
+        var live = 0;
+        for (var i = 0; i < PARTICLES.length; i++) {
+          if (PARTICLES[i].dead) continue;
+          live++;
+        }
+        if (live > MAX_PARTICLES) {
+          for (var j = 0; j < PARTICLES.length; j++) {
+            if (PARTICLES[j].dead) continue;
+            killParticle(PARTICLES[j]);
+            break;
+          }
         }
         return particle;
+      }
+
+      // Retiring a particle is always "mark it and move on"; the sweep
+      // at the end of the frame is the only thing that ever changes the
+      // array's shape.
+      function killParticle(particle) {
+        if (particle.dead) return;
+        particle.dead = true;
+        releaseParticleEl(particle.el, particle.shape);
+      }
+
+      function sweepParticles() {
+        var write = 0;
+        for (var i = 0; i < PARTICLES.length; i++) {
+          if (PARTICLES[i].dead) continue;
+          PARTICLES[write++] = PARTICLES[i];
+        }
+        PARTICLES.length = write;
       }
 
       function randomUnitVector() {
@@ -1145,6 +1214,13 @@
           // the base is what everything else measures against.
           pos: worldPos.clone(),
           baseY: worldPos.y,
+          // Fire falls. Beer that catches light in mid-air used to
+          // ignite and then simply hang there; it should drop like the
+          // burning liquid it is, land, and set fire to whatever it
+          // lands on. It falls slower than a solid — flame has
+          // somewhere to be — but it falls.
+          vel: new THREE.Vector3(),
+          grounded: false,
           fuel: Math.min(fuel, FIRE_MAX_FUEL),
           phase: Math.random() * 100,
           damageTimer: 0,
@@ -1985,7 +2061,7 @@
       // needing a separate offset. See boxy-hat, below, for the same
       // trick applied to a very differently-shaped object.
       // ==============================================================
-      AFRAME.registerComponent('boxy-gun', {
+      registerComponent('boxy-gun', {
         init: function () {
           var el = this.el;
           var metal = '#2b2b2f';
@@ -2040,7 +2116,7 @@
       // one like the pistols — it's sized to obviously not fit in a
       // hip holster.
       // ==============================================================
-      AFRAME.registerComponent('boxy-shotgun', {
+      registerComponent('boxy-shotgun', {
         init: function () {
           var el = this.el;
           var metal = '#2b2b2f';
@@ -2109,7 +2185,7 @@
       // boxy-gun's part dimensions and pistol's comOffset/heldRotation
       // are already just kept consistent by hand.
       // ==============================================================
-      AFRAME.registerComponent('boxy-hat', {
+      registerComponent('boxy-hat', {
         init: function () {
           var el = this.el;
           var felt = '#2b2320';
@@ -2173,7 +2249,7 @@
       // component (added separately in markup) that does the real
       // snapping work.
       // ==============================================================
-      AFRAME.registerComponent('body-anchor', {
+      registerComponent('body-anchor', {
         schema: {
           side: { type: 'string', default: 'right' }, // 'left' | 'right' | 'back'
         },
@@ -2262,7 +2338,7 @@
       // reflow() re-fans everything whenever one arrives or leaves, so
       // pulling the middle cigar out closes the gap.
       // ==============================================================
-      AFRAME.registerComponent('anchor-slot', {
+      registerComponent('anchor-slot', {
         schema: {
           size: { type: 'string', default: 'small' }, // 'small' | 'medium' | 'large'
           capacity: { type: 'number', default: 1 },
@@ -2457,7 +2533,7 @@
       // object's current world transform — the DOM tree is left alone,
       // since nothing here depends on DOM nesting.
       // ==============================================================
-      AFRAME.registerComponent('holsterable', {
+      registerComponent('holsterable', {
         schema: {
           holsterSelector: { type: 'selector' }, // starting holster anchor
           itemSize: { type: 'string', default: 'small' }, // 'small' | 'medium' | 'large' — which anchor-slot sizes this object fits into
@@ -3205,7 +3281,7 @@
       // both how much smoke a shot produces and whether the barrel is
       // hot enough to light a cigar off (see world-systems).
       // ==============================================================
-      AFRAME.registerComponent('firearm', {
+      registerComponent('firearm', {
         schema: {
           pellets: { type: 'number', default: 1 }, // rays per shot
           coneDeg: { type: 'number', default: 0 }, // half-angle of the spread cone
@@ -3412,7 +3488,7 @@
       // object-agnostic) read directly rather than going through
       // holsterable-specific accessors.
       // ==============================================================
-      AFRAME.registerComponent('hand-rig', {
+      registerComponent('hand-rig', {
         schema: {
           visual: { type: 'selector' }, // this hand's cosmetic twin, so the rendered hand shakes too
         },
@@ -3858,7 +3934,7 @@
       //     as already full, since you can't grab a second thing
       //     right now anyway
       // ==============================================================
-      AFRAME.registerComponent('proximity-haptics', {
+      registerComponent('proximity-haptics', {
         init: function () {
           this.handPos = new THREE.Vector3();
           this.targetPos = new THREE.Vector3();
@@ -3906,7 +3982,7 @@
       // altered on a hit. Ignores further hits while already fallen;
       // standUp() resets it.
       // ==============================================================
-      AFRAME.registerComponent('pop-target', {
+      registerComponent('pop-target', {
         init: function () {
           this.fallen = false;
         },
@@ -3948,7 +4024,7 @@
       // spinning with the wheel, tipped over; that's intentional, not
       // a bug, and matches how a hit conveyor target keeps sliding.
       // ==============================================================
-      AFRAME.registerComponent('wheel-target', {
+      registerComponent('wheel-target', {
         schema: {
           spokeCount: { type: 'number', default: 4 },
           wheelRadius: { type: 'number', default: 0.9 }, // meters, hub center to target center
@@ -4024,7 +4100,7 @@
       // line up a few of these with opposite directions for a belt
       // wall that alternates.
       // ==============================================================
-      AFRAME.registerComponent('conveyor-target', {
+      registerComponent('conveyor-target', {
         schema: {
           count: { type: 'number', default: 3 },
           length: { type: 'number', default: 3.2 }, // meters of track, end to end
@@ -4105,7 +4181,7 @@
       // different properties and neither one touches object3D
       // directly.
       // ==============================================================
-      AFRAME.registerComponent('popper-target', {
+      registerComponent('popper-target', {
         schema: {
           count: { type: 'number', default: 4 },
           spacing: { type: 'number', default: 0.8 },
@@ -4196,7 +4272,7 @@
       // bubbling, since target groups are now siblings of the range
       // manager (not descendants of it) — bubbling wouldn't reach it.
       // ==============================================================
-      AFRAME.registerComponent('scoring-ring', {
+      registerComponent('scoring-ring', {
         schema: {
           score: { type: 'number' },
           label: { type: 'string' },
@@ -4236,7 +4312,7 @@
       // target-group, below, since there are now multiple independent
       // groups of targets sharing this one HUD.
       // ==============================================================
-      AFRAME.registerComponent('shooting-range', {
+      registerComponent('shooting-range', {
         init: function () {
           this.score = 0;
           this.shots = 0;
@@ -4280,7 +4356,7 @@
       // this entity (the ancestor of the stands it spawned), not to
       // sibling groups or the range manager.
       // ==============================================================
-      AFRAME.registerComponent('target-group', {
+      registerComponent('target-group', {
         schema: {
           count: { type: 'number', default: 3 },
           distanceScale: { type: 'number', default: 1 }, // multiplies how far this group stands from the player
@@ -4374,7 +4450,7 @@
       var BOTTLE_CAP_Y = 0.049;
       var BOTTLE_SPOUT_Y = 0.043;
 
-      AFRAME.registerComponent('boxy-bottle', {
+      registerComponent('boxy-bottle', {
         schema: {
           glass: { type: 'color', default: '#3f6b3a' },
           label: { type: 'color', default: '#d9c27a' },
@@ -4482,7 +4558,7 @@
       //     separate mechanic: the droplets are real particles, and
       //     world-systems swallows any that reach your mouth.
       // ==============================================================
-      AFRAME.registerComponent('pourable', {
+      registerComponent('pourable', {
         schema: {
           liquid: { type: 'string', default: 'beer' }, // 'beer' burns and gets you drunk; 'water' puts fires out
           capped: { type: 'boolean', default: true }, // a jug has no cap to knock off
@@ -4664,7 +4740,7 @@
       // stub without also exploding every time you shoot it or drop
       // it — it has its own opinions about both of those.
       // ==============================================================
-      AFRAME.registerComponent('breakable', {
+      registerComponent('breakable', {
         schema: {
           color: { type: 'color', default: '#3f6b3a' },
           shards: { type: 'number', default: SHARD_COUNT },
@@ -4780,8 +4856,8 @@
 
           var pourable = this.el.components.pourable;
           if (pourable) pourable.recap();
-          var cigar = this.el.components.cigar;
-          if (cigar) cigar.restore();
+          var burnable = this.el.components.burnable;
+          if (burnable) burnable.restore();
 
           if (holsterable && homeSlot) {
             holsterable.state = 'holstered';
@@ -4817,7 +4893,7 @@
       // handler just calls ignite). Adding a lantern or a stick of
       // dynamite is two attributes.
       // ==============================================================
-      AFRAME.registerComponent('ignition-source', {
+      registerComponent('ignition-source', {
         schema: {
           tipSelector: { type: 'string', default: '' }, // empty = the entity's own origin
         },
@@ -4833,7 +4909,7 @@
         },
       });
 
-      AFRAME.registerComponent('lightable', {
+      registerComponent('lightable', {
         schema: {
           tipSelector: { type: 'string', default: '' },
         },
@@ -4935,7 +5011,7 @@
         parts.hitbox.object3D.position.set(0, 0, -length / 2);
       }
 
-      AFRAME.registerComponent('boxy-cigar', {
+      registerComponent('boxy-cigar', {
         init: function () {
           this.parts = buildBurnStick(this.el, {
             length: CIGAR_LENGTH,
@@ -4972,7 +5048,7 @@
       // A match: shorter, thinner, and with a red head that's visible
       // before it's lit — which matters, because the head is the bit
       // you have to strike against something.
-      AFRAME.registerComponent('boxy-match', {
+      registerComponent('boxy-match', {
         init: function () {
           this.parts = buildBurnStick(this.el, {
             length: MATCH_LENGTH,
@@ -5029,7 +5105,7 @@
       // burnMultiplier is a public field other components set: the
       // cigar cranks it while you're drawing on one.
       // ==============================================================
-      AFRAME.registerComponent('burnable', {
+      registerComponent('burnable', {
         schema: {
           visual: { type: 'string', default: '' }, // co-located component exposing layout()/setEmber()
           length: { type: 'number', default: CIGAR_LENGTH },
@@ -5208,7 +5284,7 @@
       // and yes, it means pointing a loaded pistol at your own face),
       // and a lit one gets knocked clean out of your teeth.
       // ==============================================================
-      AFRAME.registerComponent('cigar', {
+      registerComponent('cigar', {
         init: function () {
           this.puffTimer = 0;
           this.bankedSmoke = 0; // puffs suppressed while inhaling, released on the exhale
@@ -5358,7 +5434,7 @@
       // box — is burnable's, and being a fire source at all is
       // ignition-source's. There is nothing else to a match.
       // ==============================================================
-      AFRAME.registerComponent('match', {
+      registerComponent('match', {
         init: function () {
           this.headEl = this.el.querySelector('.match-head');
           this._head = new THREE.Vector3();
@@ -5423,7 +5499,7 @@
       // ==============================================================
       var JUG_BASE_Y = -0.28;
 
-      AFRAME.registerComponent('boxy-jug', {
+      registerComponent('boxy-jug', {
         init: function () {
           var el = this.el;
           var clay = '#9c8466';
@@ -5480,7 +5556,7 @@
       // it's lit. Origin at the middle of the body, where your fingers
       // would close around it.
       // ==============================================================
-      AFRAME.registerComponent('boxy-zippo', {
+      registerComponent('boxy-zippo', {
         init: function () {
           var el = this.el;
           var brass = '#b9962e';
@@ -5560,7 +5636,7 @@
       // check a hot barrel does, and needed no code of its own to do
       // that.
       // ==============================================================
-      AFRAME.registerComponent('zippo', {
+      registerComponent('zippo', {
         init: function () {
           this.open = false;
           this.lidFraction = 0; // 0 shut, 1 fully back
@@ -5698,7 +5774,7 @@
       // shelf is deliberately out of reach — those bottles are there
       // to be shot, not picked up.
       // ==============================================================
-      AFRAME.registerComponent('saloon-bar', {
+      registerComponent('saloon-bar', {
         init: function () {
           this.slotSerial = 0;
           var centerZ = BAR_NEAR_EDGE_Z + BAR_DEPTH / 2;
@@ -5999,7 +6075,7 @@
         VICES.nicotine = Math.min(VICES.nicotine + amount, 1);
       }
 
-      AFRAME.registerComponent('vice-meter', {
+      registerComponent('vice-meter', {
         init: function () {
           VICES.alcohol = 0;
           VICES.nicotine = 0;
@@ -6074,7 +6150,7 @@
       var TINT_PULSE_HZ = 0.35;
       var VIGNETTE_CURVE = 0.65; // <1 pushes the effect earlier, so being a bit drunk still reads
 
-      AFRAME.registerComponent('booze-overlay', {
+      registerComponent('booze-overlay', {
         init: function () {
           var vertexShader = [
             'varying vec2 vUv;',
@@ -6152,7 +6228,7 @@
       // hand's position is read once per frame instead of once per
       // particle.
       // ==============================================================
-      AFRAME.registerComponent('world-systems', {
+      registerComponent('world-systems', {
         init: function () {
           this.mouthEl = document.querySelector('#mouth-anchor');
           this.cameraEl = document.querySelector('#head-camera');
@@ -6229,6 +6305,8 @@
             var source = fire.el.components['ignition-source'];
             if (source) source.hot = true;
 
+            this.fallFire(fire, dtSeconds);
+
             var t = Math.min(fire.fuel / FIRE_MAX_FUEL, 1);
             var radius = FIRE_MIN_RADIUS + (FIRE_MAX_RADIUS - FIRE_MIN_RADIUS) * Math.sqrt(t);
 
@@ -6258,6 +6336,41 @@
           } else {
             light.intensity = 0;
           }
+        },
+
+        // Flame in mid-air drops onto whatever is below it and keeps
+        // burning there, which is what makes pouring beer through a
+        // flame set the FLOOR alight rather than leaving a fire
+        // hanging in the air where the stream happened to catch.
+        fallFire: function (fire, dtSeconds) {
+          if (fire.grounded) return;
+
+          fire.vel.y -= GRAVITY * FIRE_GRAVITY_SCALE * dtSeconds;
+          fire.pos.addScaledVector(fire.vel, dtSeconds);
+          fire.baseY = fire.pos.y;
+
+          var surfaceY = 0;
+          for (var i = 0; i < HARD_SURFACES.length; i++) {
+            var s = HARD_SURFACES[i];
+            if (s.y <= surfaceY) continue;
+            if (fire.pos.x < s.minX || fire.pos.x > s.maxX) continue;
+            if (fire.pos.z < s.minZ || fire.pos.z > s.maxZ) continue;
+            if (fire.pos.y < s.y - 0.4) continue;
+            surfaceY = s.y;
+          }
+
+          if (fire.pos.y > surfaceY) return;
+
+          fire.pos.y = surfaceY;
+          fire.baseY = surfaceY;
+          fire.vel.set(0, 0, 0);
+          fire.grounded = true;
+
+          // Landing scorches what it lands on: the fire leaves a
+          // burning spill behind, so a dropped flame keeps burning
+          // where it fell instead of guttering out in mid-air.
+          var puddle = spillPuddle(fire.pos, 'beer', FIRE_LANDING_SPILL);
+          if (puddle) puddle.burning = true;
         },
 
         // Anything that can be knocked down can be burnt down. A
@@ -6324,7 +6437,10 @@
 
               this._scratch.set(puddle.x, puddle.y, puddle.z);
               var fire = spawnFire(this._scratch, consumed * PUDDLE_FUEL_PER_METER);
-              if (fire) fire.baseY = puddle.y;
+              if (fire) {
+                fire.baseY = puddle.y;
+                fire.grounded = true; // it's standing in the spill that feeds it
+              }
               if (Math.random() < dtSeconds * 3) spawnSmoke(this._scratch, null, 0.6);
             }
 
@@ -6391,12 +6507,22 @@
         },
 
         updateParticles: function (dtSeconds) {
-          for (var i = PARTICLES.length - 1; i >= 0; i--) {
+          // Length is captured up front and nothing is removed inside
+          // the loop: several of the branches below spawn particles of
+          // their own (a droplet landing makes a splash, catching light
+          // makes sparks), and anything appended is simply picked up
+          // next frame. See addParticle/killParticle for the other half
+          // of this rule.
+          var count = PARTICLES.length;
+
+          for (var i = 0; i < count; i++) {
             var p = PARTICLES[i];
+            if (p.dead) continue;
+
             p.age += dtSeconds * 1000;
 
             if (p.age >= p.life) {
-              this.retireParticle(i);
+              killParticle(p);
               continue;
             }
 
@@ -6429,17 +6555,17 @@
                 if (p.liquid === 'water') VICES.alcohol = Math.max(VICES.alcohol - WATER_SOBER_PER_DROPLET, 0);
                 else addAlcohol(ALCOHOL_PER_DROPLET);
                 this.glug();
-                this.retireParticle(i);
+                killParticle(p);
                 continue;
               }
 
               if (this.updateLiquidContact(p, obj)) {
-                this.retireParticle(i);
+                killParticle(p);
                 continue;
               }
 
               if (this.landLiquid(p, obj)) {
-                this.retireParticle(i);
+                killParticle(p);
                 continue;
               }
             } else {
@@ -6465,6 +6591,8 @@
               mesh.material.opacity = p.kind === 'smoke' ? p.opacity * (1 - t * t) : p.opacity * Math.min((1 - t) * 4, 1);
             }
           }
+
+          sweepParticles();
         },
 
         // Alcohol in mid-air catches from anything lit and becomes a
@@ -6520,9 +6648,7 @@
         },
 
         retireParticle: function (index) {
-          var p = PARTICLES[index];
-          releaseParticleEl(p.el, p.shape);
-          PARTICLES.splice(index, 1);
+          if (PARTICLES[index]) killParticle(PARTICLES[index]);
         },
 
         // Rate-limited so a full stream of beer doesn't fire the
