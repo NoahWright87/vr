@@ -85,13 +85,12 @@
           position="0 -0.15 -0.02"
         ></a-plane>
 
-        <a-text
-          value="MAIN MENU"
-          align="center"
-          color="#9ad"
-          width="3"
-          position="0 0.65 0"
-        ></a-text>
+        <!-- Same buildMenuChrome() every projected-menu template goes
+             through (wired up directly below, since this panel isn't a
+             projected-menu clone) — a persistent "main menu" like this
+             one just doesn't need a ? or an X, which here is a
+             parameter, not a reason for its own bespoke title bar. -->
+        <a-entity class="menu-chrome-slot" data-title="MAIN MENU" data-help="false" data-close="false" data-width="1.9" data-bar-y="0.65"></a-entity>
 
         <a-entity
           class="menu-target"
@@ -153,13 +152,6 @@
             geometry="primitive: box; width: 0.032; height: 0.007; depth: 0.032"
             material="color: #111"
           >
-            <a-entity class="watch-proximity-ring"
-              geometry="primitive: ring; radiusInner: 0.013; radiusOuter: 0.0155; segmentsTheta: 32"
-              material="color: #0f0; shader: flat; side: double"
-              position="0 0.004 0"
-              rotation="-90 0 0"
-              visible="false"
-            ></a-entity>
             <a-text class="watch-text"
               value="00:00:00"
               font="sourcecodepro"
@@ -198,25 +190,10 @@
           <a-entity class="watch-menu-main">
             <a-plane width="1" height="1.3" color="#101827" position="0 -0.05 -0.01"></a-plane>
 
-            <a-text class="watch-menu-time" value="00:00:00" font="sourcecodepro" align="center" color="#9ad" width="2.4" position="0 0.5 0"></a-text>
-
-            <a-entity class="pm-target"
-              geometry="primitive: plane; width: 0.16; height: 0.16"
-              material="color: #182238"
-              menu-item="value: help; label: Help; hoverColor: #2a4a5c"
-              position="0.22 0.5 0"
-            >
-              <a-text value="?" align="center" color="#7cf" width="6" position="0 0 0.01"></a-text>
-            </a-entity>
-
-            <a-entity class="pm-target"
-              geometry="primitive: plane; width: 0.16; height: 0.16"
-              material="color: #182238"
-              menu-item="value: close; label: Close; hoverColor: #5c2a2a"
-              position="0.4 0.5 0"
-            >
-              <a-text value="X" align="center" color="#f66" width="6" position="0 0 0.01"></a-text>
-            </a-entity>
+            <!-- Chrome slot's title starts empty — hand-with-watch
+                 points its live clock at menu-chrome-title instead of a
+                 static string once this is built (see wireUpProjectedMenu). -->
+            <a-entity class="menu-chrome-slot" data-title="" data-help="true" data-close="true" data-width="1" data-bar-y="0.5"></a-entity>
 
             <a-entity class="pm-target"
               geometry="primitive: plane; width: 0.85; height: 0.2"
@@ -248,16 +225,11 @@
 
           <a-entity class="watch-menu-help-view" visible="false">
             <a-plane width="1" height="1.3" color="#101827" position="0 -0.05 -0.01"></a-plane>
-            <a-text value="HELP" align="center" color="#9ad" width="3" position="0 0.5 0"></a-text>
 
-            <a-entity class="pm-target"
-              geometry="primitive: plane; width: 0.16; height: 0.16"
-              material="color: #182238"
-              menu-item="value: help-close; label: Back; hoverColor: #5c2a2a"
-              position="0.4 0.5 0"
-            >
-              <a-text value="X" align="center" color="#f66" width="6" position="0 0 0.01"></a-text>
-            </a-entity>
+            <!-- No ? here (you're already in help) — just a close, using
+                 "help-close" instead of the reserved "close" so it backs
+                 out to the main view rather than shutting the whole menu. -->
+            <a-entity class="menu-chrome-slot" data-title="HELP" data-help="false" data-close="true" data-close-value="help-close" data-width="1" data-bar-y="0.5"></a-entity>
 
             <a-text class="watch-help-page-text" value="" align="center" color="#eee" width="1.7" wrap-count="22" position="0 0.12 0"></a-text>
 
@@ -322,25 +294,8 @@
       <template id="wall-screen-menu-template">
         <a-entity class="wall-screen-menu-panel" visible="false">
           <a-plane width="1" height="1" color="#101827" position="0 0 -0.01"></a-plane>
-          <a-text value="WALL PANEL" align="center" color="#9ad" width="2.6" position="0 0.4 0"></a-text>
 
-          <a-entity class="pm-target"
-            geometry="primitive: plane; width: 0.16; height: 0.16"
-            material="color: #182238"
-            menu-item="value: help; label: Help; hoverColor: #2a4a5c"
-            position="0.22 0.4 0"
-          >
-            <a-text value="?" align="center" color="#7cf" width="6" position="0 0 0.01"></a-text>
-          </a-entity>
-
-          <a-entity class="pm-target"
-            geometry="primitive: plane; width: 0.16; height: 0.16"
-            material="color: #182238"
-            menu-item="value: close; label: Close; hoverColor: #5c2a2a"
-            position="0.4 0.4 0"
-          >
-            <a-text value="X" align="center" color="#f66" width="6" position="0 0 0.01"></a-text>
-          </a-entity>
+          <a-entity class="menu-chrome-slot" data-title="WALL PANEL" data-help="true" data-close="true" data-width="1" data-bar-y="0.4"></a-entity>
 
           <a-entity class="pm-target"
             geometry="primitive: plane; width: 0.8; height: 0.18"
@@ -383,11 +338,11 @@
            visibility directly. -->
       <template id="wall-sidecar-template">
         <a-entity class="wall-sidecar-panel" visible="false">
-          <a-plane width="0.6" height="1" color="#152036" position="0 0 -0.01"></a-plane>
-          <a-text value="INFO" align="center" color="#9ad" width="4" position="0 0.38 0"></a-text>
+          <a-plane width="0.75" height="1" color="#152036" position="0 0 -0.01"></a-plane>
+          <a-entity class="menu-chrome-slot" data-title="INFO" data-help="false" data-close="false" data-width="0.75" data-bar-y="0.4"></a-entity>
           <a-text
             value="Brightness, Volume, and Info are placeholder rows for this demo screen -- swap in whatever your own menu actually needs."
-            align="center" color="#ccc" width="1.6" wrap-count="16" position="0 0.05 0"
+            align="center" color="#ccc" width="1.3" wrap-count="24" position="0 0.05 0"
           ></a-text>
         </a-entity>
       </template>
@@ -414,25 +369,8 @@
       <template id="pedestal-menu-template">
         <a-entity class="pedestal-menu-panel" visible="false">
           <a-plane width="1" height="1" color="#101827" position="0 0 -0.01"></a-plane>
-          <a-text value="PEDESTAL MENU" align="center" color="#9ad" width="2.2" position="0 0.4 0"></a-text>
 
-          <a-entity class="pm-target"
-            geometry="primitive: plane; width: 0.16; height: 0.16"
-            material="color: #182238"
-            menu-item="value: help; label: Help; hoverColor: #2a4a5c"
-            position="0.22 0.4 0"
-          >
-            <a-text value="?" align="center" color="#7cf" width="6" position="0 0 0.01"></a-text>
-          </a-entity>
-
-          <a-entity class="pm-target"
-            geometry="primitive: plane; width: 0.16; height: 0.16"
-            material="color: #182238"
-            menu-item="value: close; label: Close; hoverColor: #5c2a2a"
-            position="0.4 0.4 0"
-          >
-            <a-text value="X" align="center" color="#f66" width="6" position="0 0 0.01"></a-text>
-          </a-entity>
+          <a-entity class="menu-chrome-slot" data-title="PEDESTAL MENU" data-help="true" data-close="true" data-width="1" data-bar-y="0.4"></a-entity>
 
           <a-entity class="pm-target"
             geometry="primitive: plane; width: 0.8; height: 0.18"
@@ -613,6 +551,101 @@
       }
 
       // ==============================================================
+      // buildMenuChrome: THE one place every menu's title bar gets
+      // built — a dedicated strip along the top, title text confined to
+      // its own left-hand region, and 0-2 buttons anchored to the right
+      // edge, close outermost. Everything is laid out from `width`
+      // (and, for the buttons, fixed sizes) so nothing here can overlap
+      // anything else the way hand-placed per-template coordinates did
+      // before (title text and the ?/X used to just sit at the same
+      // hand-picked position and hope nothing got long enough to
+      // collide). This is the single component the fixed panel, the
+      // watch's two views, and the wall/pedestal panels all go through —
+      // whether a menu shows a ? and/or an X is a parameter here, not a
+      // reason to hand-roll a whole separate layout.
+      //
+      // Call directly for a one-off panel (the fixed panel does this),
+      // or — the usual case — just author a marker element with class
+      // "menu-chrome-slot" and data-* attributes inside a
+      // projected-menu template; projected-menu itself finds every such
+      // slot in the cloned panel and builds chrome for each one (the
+      // watch has two: its main view and its help view).
+      //
+      //   buildMenuChrome(containerEl, {
+      //     title: 'WALL PANEL',
+      //     showHelp: true, showClose: true,       // either/both/neither
+      //     helpValue: 'help', closeValue: 'close', // override for a
+      //                                             // sub-view whose ✕
+      //                                             // shouldn't fully
+      //                                             // close the menu —
+      //                                             // the watch's help
+      //                                             // view uses
+      //                                             // 'help-close' here
+      //     width: 1, barY: 0.5,                    // match the panel's
+      //                                             // own authored size
+      //   })
+      //
+      // Returns { titleEl, closeBtn, helpBtn } — titleEl in particular
+      // is meant to be grabbed and updated later (the watch points its
+      // live clock at it instead of a static title).
+      // ==============================================================
+      function buildMenuChrome (containerEl, opts) {
+        var width = opts.width || 1;
+        var barY = opts.barY;
+        var barHeight = 0.18;
+        var btnSize = 0.15;
+        var margin = 0.05;
+        var gap = 0.02;
+
+        var bar = document.createElement('a-plane');
+        bar.classList.add('menu-chrome-bar');
+        bar.setAttribute('width', width);
+        bar.setAttribute('height', barHeight);
+        bar.setAttribute('material', 'color: #0b1220; shader: flat');
+        bar.setAttribute('position', '0 ' + barY + ' -0.001');
+        containerEl.appendChild(bar);
+
+        var rightOccupiedEdge = width / 2 - margin; // shrinks left as buttons are placed, right to left
+
+        function addButton (value, label, glyph, glyphColor, hoverColor) {
+          var x = rightOccupiedEdge - btnSize / 2;
+          rightOccupiedEdge -= btnSize + gap;
+          var btn = document.createElement('a-entity');
+          btn.classList.add('pm-target');
+          btn.setAttribute('geometry', 'primitive: plane; width: ' + btnSize + '; height: ' + btnSize);
+          btn.setAttribute('material', 'color: #182238');
+          btn.setAttribute('menu-item', 'value: ' + value + '; label: ' + label + '; hoverColor: ' + hoverColor);
+          btn.setAttribute('position', x + ' ' + barY + ' 0');
+          var glyphEl = document.createElement('a-text');
+          glyphEl.setAttribute('value', glyph);
+          glyphEl.setAttribute('align', 'center');
+          glyphEl.setAttribute('color', glyphColor);
+          glyphEl.setAttribute('width', 6);
+          glyphEl.setAttribute('position', '0 0 0.01');
+          btn.appendChild(glyphEl);
+          containerEl.appendChild(btn);
+          return btn;
+        }
+
+        var closeBtn = opts.showClose ? addButton(opts.closeValue || 'close', 'Close', 'X', '#f66', '#5c2a2a') : null;
+        var helpBtn = opts.showHelp ? addButton(opts.helpValue || 'help', 'Help', '?', '#7cf', '#2a4a5c') : null;
+
+        var titleLeftEdge = -width / 2 + margin;
+        var titleAvailableWidth = Math.max(0.25, rightOccupiedEdge - titleLeftEdge);
+        var titleEl = document.createElement('a-text');
+        titleEl.classList.add('menu-chrome-title');
+        titleEl.setAttribute('value', opts.title || '');
+        titleEl.setAttribute('align', 'left');
+        titleEl.setAttribute('color', '#9ad');
+        titleEl.setAttribute('width', titleAvailableWidth);
+        titleEl.setAttribute('wrap-count', 20);
+        titleEl.setAttribute('position', titleLeftEdge + ' ' + barY + ' 0');
+        containerEl.appendChild(titleEl);
+
+        return { titleEl: titleEl, closeBtn: closeBtn, helpBtn: helpBtn };
+      }
+
+      // ==============================================================
       // COMPONENT: projected-menu
       // THE reusable primitive this whole scene is really about: turn
       // any entity into a "poke it, a menu grows out of it" trigger.
@@ -696,6 +729,7 @@
           facecamThreshold: { default: 0.45 },
           lookAwayThreshold: { default: 0.3 },
           lookAwayDelay: { default: 2500 },
+          pokeCooldown: { default: 400 },
         },
 
         init: function () {
@@ -717,6 +751,28 @@
           panel.object3D.scale.setScalar(this.scale);
           this.panelEl = panel;
 
+          // Build every title bar the template asked for (see
+          // buildMenuChrome's own comment) BEFORE pmTargets is captured
+          // below, so its help/close buttons are included automatically
+          // — same reason this all has to happen synchronously rather
+          // than through menu-chrome as its own attached component: a
+          // component on a freshly-cloned, not-yet-loaded entity doesn't
+          // run its init() synchronously (bit us twice already this
+          // project), and pmTargets needs these buttons to exist NOW.
+          this.chromes = Array.prototype.slice.call(panel.querySelectorAll('.menu-chrome-slot')).map(function (slot) {
+            var chrome = buildMenuChrome(slot.parentNode, {
+              title: slot.getAttribute('data-title') || '',
+              showHelp: slot.getAttribute('data-help') !== 'false',
+              showClose: slot.getAttribute('data-close') !== 'false',
+              helpValue: slot.getAttribute('data-help-value') || 'help',
+              closeValue: slot.getAttribute('data-close-value') || 'close',
+              width: parseFloat(slot.getAttribute('data-width')) || 1,
+              barY: parseFloat(slot.getAttribute('data-bar-y')),
+            });
+            slot.parentNode.removeChild(slot);
+            return chrome;
+          });
+
           this.updatePanelPosition();
 
           el.setAttribute('obb-collider', '');
@@ -729,16 +785,25 @@
           // touch mid-transition or in laser mode doesn't fire); pointing
           // (laser + trigger/face-button) always works once open, in any
           // mode, via the shared ".menu-target" class — see setItemsMode.
+          // A close-up poke naturally jitters right at the hitbox
+          // boundary — obb-collider fires a fresh "obbcollisionstarted"
+          // each time it re-enters, which without the cooldown below
+          // double- or triple-counts a single poke as the fingertip
+          // wobbles in and out of the boundary.
           this.pmTargets = Array.prototype.slice.call(panel.querySelectorAll('.pm-target'));
           this.pmTargets.forEach(function (item) {
             item.setAttribute('obb-collider', 'size: 0.035');
+            item._lastPokeAt = 0;
             item.addEventListener('obbcollisionstarted', function (evt) {
               var poker = evt.detail.withEl;
+              var now = performance.now();
               if (
                 self.mode === 'poke' && !self.suppressPointing &&
                 poker.handComponent && poker.handComponent.isPointing &&
-                isVisibleInHierarchy(item.object3D)
+                isVisibleInHierarchy(item.object3D) &&
+                now - item._lastPokeAt > self.data.pokeCooldown
               ) {
+                item._lastPokeAt = now;
                 item.emit('click');
               }
             });
@@ -951,13 +1016,6 @@
       // not assumed.
       var FINGER_POINT_DIR = { x: 0.0649, y: 0.0816, z: -0.9946 };
 
-      // Proximity ring: fully open at PROXIMITY_MAX_DIST away, closed down
-      // to a small dot right at contact. Purely visual — has no effect on
-      // whether a poke actually registers (that's obb-collider's job).
-      var PROXIMITY_MAX_DIST = 0.1;
-      var PROXIMITY_MAX_INNER_RADIUS = 0.013;
-      var PROXIMITY_MIN_INNER_RADIUS = 0.001;
-
       // The watch's projected menu: "poke" is ~4x the small watch face's
       // own width (0.032), aligned flush with it; "laser" is bigger
       // still and billboards to face the player instead. Both are
@@ -1041,12 +1099,17 @@
       // the trigger is what "pointing" means here, and even then the
       // laser waits out the hand's own point-pose crossfade (see
       // POINT_ANIMATION_SETTLE_MS) before showing, so it never appears
-      // mid-animation. Pulling the trigger visibly bends the finger, so
-      // the line hides for as long as it's held — but raycaster.enabled
-      // is left alone through that (only showLine toggles), so
-      // intersectedEl keeps tracking whatever's under it and cursor's
-      // own down/up click matching (wired via ACTIVATE_DOWN/UP_EVENTS
-      // below) still fires normally.
+      // mid-animation. On top of that, the line only actually renders
+      // while the raycast is hitting a real ".menu-target" — the same
+      // raycast already has to run continuously for hover/click
+      // detection, so this costs nothing extra, and it means the laser
+      // never draws off into empty space with nothing around to touch.
+      // Pulling the trigger visibly bends the finger, so the line hides
+      // for as long as it's held — but raycaster.enabled is left alone
+      // through all of this (only showLine toggles), so intersectedEl
+      // keeps tracking whatever's under it and cursor's own down/up
+      // click matching (wired via ACTIVATE_DOWN/UP_EVENTS below) still
+      // fires normally regardless of whether the line itself is drawn.
       function wireUpFingertipPointing (rawEl, fingertipEl, handComp, direction) {
         fingertipEl.setAttribute('raycaster', {
           objects: '.menu-target',
@@ -1060,6 +1123,20 @@
           upEvents: ACTIVATE_UP_EVENTS,
         });
 
+        var hasIntersection = false;
+        var triggerHeld = false;
+        function updateShowLine () {
+          fingertipEl.setAttribute('raycaster', 'showLine', handComp.laserActive && hasIntersection && !triggerHeld);
+        }
+        fingertipEl.addEventListener('raycaster-intersection', function () {
+          hasIntersection = true;
+          updateShowLine();
+        });
+        fingertipEl.addEventListener('raycaster-intersection-cleared', function () {
+          hasIntersection = false;
+          updateShowLine();
+        });
+
         var settleTimer = null;
         rawEl.addEventListener('gripdown', function () {
           handComp.isPointing = true;
@@ -1067,7 +1144,7 @@
           settleTimer = setTimeout(function () {
             handComp.laserActive = true;
             fingertipEl.setAttribute('raycaster', 'enabled', true);
-            fingertipEl.setAttribute('raycaster', 'showLine', true);
+            updateShowLine();
           }, POINT_ANIMATION_SETTLE_MS);
         });
         rawEl.addEventListener('gripup', function () {
@@ -1075,13 +1152,16 @@
           handComp.laserActive = false;
           clearTimeout(settleTimer);
           fingertipEl.setAttribute('raycaster', 'enabled', false);
-          fingertipEl.setAttribute('raycaster', 'showLine', false);
+          hasIntersection = false; // disabling the raycaster won't itself fire -cleared
+          updateShowLine();
         });
         rawEl.addEventListener('triggerdown', function () {
-          if (handComp.laserActive) fingertipEl.setAttribute('raycaster', 'showLine', false);
+          triggerHeld = true;
+          updateShowLine();
         });
         rawEl.addEventListener('triggerup', function () {
-          if (handComp.laserActive) fingertipEl.setAttribute('raycaster', 'showLine', true);
+          triggerHeld = false;
+          updateShowLine();
         });
 
         // CONTROL_COMPONENTS fire their button events on rawEl, but
@@ -1142,7 +1222,6 @@
           var textEl = watch.querySelector('.watch-text');
           textEl.setAttribute('rotation', '-90 0 ' + side * 90);
           this.textEl = textEl;
-          this.ringEl = watch.querySelector('.watch-proximity-ring');
           this.faceEl = faceEl;
 
           // ----- Button state -----
@@ -1231,7 +1310,13 @@
               y: outward.y * WATCH_MENU_MARGIN,
               z: outward.z * WATCH_MENU_MARGIN,
             };
-            self.panelTimeEl = pm.panelEl.querySelector('.watch-menu-time');
+            // chromes[0] is the main view's title bar (built before the
+            // help view's, same order as the two .menu-chrome-slot
+            // markers in the template) — repurposed to show the live
+            // clock instead of a static title. Monospace so the digits
+            // don't jitter in width as they update each second.
+            self.panelTimeEl = pm.chromes[0].titleEl;
+            self.panelTimeEl.setAttribute('font', 'sourcecodepro');
             self.stopwatchLabelEl = pm.panelEl.querySelector('.watch-menu-stopwatch-label');
 
             // The small watch face and the projected menu occupy the same
@@ -1272,41 +1357,6 @@
           }
           if (faceEl.hasLoaded) wireUpProjectedMenu();
           else faceEl.addEventListener('loaded', wireUpProjectedMenu);
-        },
-
-        tick: function () {
-          // faceEl's own async load (see wireUpProjectedMenu above) can
-          // still be pending a frame or two after this component's own
-          // init() returns.
-          if (!this.projectedMenu) return;
-
-          // Lazily find the other hand once both have initialized.
-          if (!this.otherHand) {
-            var otherId = this.data.hand === 'left' ? '#right-hand' : '#left-hand';
-            var otherEl = document.querySelector(otherId);
-            if (otherEl && otherEl.components['hand-with-watch']) {
-              this.otherHand = otherEl.components['hand-with-watch'];
-            }
-          }
-          if (!this.otherHand) return;
-
-          // The proximity ring is only a "should I poke to open" hint —
-          // irrelevant once the menu is already open (and the face it
-          // lives on is hidden then anyway).
-          if (this.projectedMenu.active || !this.otherHand.isPointing) {
-            this.ringEl.setAttribute('visible', false);
-            return;
-          }
-
-          var facePos = new AFRAME.THREE.Vector3();
-          var tipPos = new AFRAME.THREE.Vector3();
-          this.faceEl.object3D.getWorldPosition(facePos);
-          this.otherHand.fingertipEl.object3D.getWorldPosition(tipPos);
-          var dist = facePos.distanceTo(tipPos);
-          var t = Math.min(1, Math.max(0, dist / PROXIMITY_MAX_DIST));
-          var innerRadius = PROXIMITY_MIN_INNER_RADIUS + t * (PROXIMITY_MAX_INNER_RADIUS - PROXIMITY_MIN_INNER_RADIUS);
-          this.ringEl.setAttribute('visible', true);
-          this.ringEl.setAttribute('geometry', 'radiusInner', innerRadius);
         },
 
         toggleStopwatch: function () {
@@ -1417,6 +1467,17 @@
         });
         wallScreenTrigger.components['projected-menu'].panelEl.setAttribute('menu-feedback', '');
 
+        // The small TAP trigger and the big projected panel occupy
+        // (nearly) the same spot once open — same reasoning as the
+        // watch hiding its own face, otherwise TAP visibly peeks out
+        // from behind/around the panel.
+        wallScreenTrigger.addEventListener('projected-menu-opened', function () {
+          wallScreenTrigger.setAttribute('visible', false);
+        });
+        wallScreenTrigger.addEventListener('projected-menu-closed', function () {
+          wallScreenTrigger.setAttribute('visible', true);
+        });
+
         // DEMO 2 of 3 help styles — see the big comment on
         // #wall-sidecar-template. Sits just to the right of the main
         // panel (half its width, plus a gap, plus half the sidecar's
@@ -1424,8 +1485,17 @@
         // wall too. Toggles open/closed on repeat ❔ clicks, same as
         // the pedestal's tutorial; auto-hides if the main menu closes.
         var wallSidecar = document.getElementById('wall-sidecar-template').content.cloneNode(true).firstElementChild;
-        wallSidecar.setAttribute('position', '1.05 0 0.015');
+        wallSidecar.setAttribute('position', '1.125 0 0.015');
         wallScreenTrigger.parentNode.appendChild(wallSidecar);
+        var wallSidecarChromeSlot = wallSidecar.querySelector('.menu-chrome-slot');
+        buildMenuChrome(wallSidecarChromeSlot.parentNode, {
+          title: wallSidecarChromeSlot.getAttribute('data-title') || '',
+          showHelp: false,
+          showClose: false,
+          width: parseFloat(wallSidecarChromeSlot.getAttribute('data-width')) || 1,
+          barY: parseFloat(wallSidecarChromeSlot.getAttribute('data-bar-y')),
+        });
+        wallSidecarChromeSlot.parentNode.removeChild(wallSidecarChromeSlot);
         var wallSidecarOpen = false;
         wallScreenTrigger.addEventListener('projected-menu-help', function () {
           wallSidecarOpen = !wallSidecarOpen;
@@ -1495,9 +1565,31 @@
           TUTORIAL_NEXT_EVENTS.forEach(function (name) { handEl.addEventListener(name, function () { tutorialNav(1); }); });
         });
       }
+      // The STYLE 1 fixed panel isn't a projected-menu clone (it's
+      // always open, not a trigger's popup), so nothing else calls
+      // buildMenuChrome for it automatically — do it directly.
+      function setupFixedPanelChrome () {
+        var slot = document.querySelector('#menu-panel .menu-chrome-slot');
+        buildMenuChrome(slot.parentNode, {
+          title: slot.getAttribute('data-title') || '',
+          showHelp: slot.getAttribute('data-help') !== 'false',
+          showClose: slot.getAttribute('data-close') !== 'false',
+          width: parseFloat(slot.getAttribute('data-width')) || 1,
+          barY: parseFloat(slot.getAttribute('data-bar-y')),
+        });
+        slot.parentNode.removeChild(slot);
+      }
+
       var sceneEl = document.querySelector('a-scene');
-      if (sceneEl.hasLoaded) setupFixedProjectedMenus();
-      else sceneEl.addEventListener('loaded', setupFixedProjectedMenus);
+      if (sceneEl.hasLoaded) {
+        setupFixedProjectedMenus();
+        setupFixedPanelChrome();
+      } else {
+        sceneEl.addEventListener('loaded', function () {
+          setupFixedProjectedMenus();
+          setupFixedPanelChrome();
+        });
+      }
 
       function updateAllDisplays () {
         document.querySelectorAll('[hand-with-watch]').forEach(function (el) {
