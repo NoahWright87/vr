@@ -36,6 +36,13 @@ Things that were never implemented, and work:
 - Hanging a beer bottle on a gun peg, or laying your hat in a rifle
   cradle. A rack is a socket; a socket doesn't ask what you're putting
   in it.
+- Shooting a stick of dynamite out of the air, or out of somebody's
+  hand. It's `.shootable` and it explodes when hit; nothing had to
+  agree that this was allowed.
+- Blowing a rack of bottles across the room, catching one in mid-air,
+  and drinking it. A blast hands loose objects a velocity, which is
+  the same thing your arm does, so everything downstream of a throw
+  applies.
 
 When something *doesn't* combine and obviously should, that's the bug —
 not a missing feature. "Twirling a cigar should shake the ash off" was
@@ -117,6 +124,52 @@ Without it the effect reads as popcorn; with it, the jumps are tongues
 coming off something solid. Setting the jump rate to zero leaves a
 perfectly good conventional fire, which is how the idea was de-risked
 before it was tried.
+
+## Projectiles: a thrown thing is a slow bullet
+
+A bullet was an instant raycast; a thrown bottle was a falling object
+that only noticed the floor. So you could not knock a target over by
+throwing something at it, which is the "obviously should combine and
+doesn't" smell the whole design is supposed to catch.
+
+The fix isn't a collision system. Anything in flight fast enough casts
+along the short distance it covered this frame, and if it crosses
+something `.shootable` it emits the very same `shot` event a pistol
+emits. Targets fall, bottles shatter, cigars light — all through code
+that already existed and none of which learned a new word. What the
+impact means to the *thing that hit* is announced separately as
+`impact`, and left to whatever companion cares.
+
+Two details keep it honest. A **speed floor**, because setting a gun
+down on a bar covered in bottles is not an attack, and without one
+every gentle release near the shelf would smash something. And backing
+the ray up to where the object started the frame, so a fast throw
+can't tunnel between two positions.
+
+The scan of the scene is now shared: the first caster in a frame pays
+for it and everyone else reuses the list. That was already true within
+one shotgun blast; it needed to become true across casters once
+dynamite could put twenty objects in the air at once.
+
+## Explosions, and dynamite as an assembly of other people's parts
+
+`detonate()` is a plain function, not a component, because a stick of
+dynamite and (next) a rocket both want the same thing to happen at a
+point in space and neither wants to own it. It spills burning fuel,
+knocks over targets through the same `fall()` a bullet uses, shatters
+glass through the same `shatter()`, and hands every loose object a
+velocity — which is to say it *throws* them, through the ordinary
+throw path, so a blasted bottle is still catchable in mid-air and
+still shootable out of it.
+
+The stick itself is the clearest case yet of assembling rather than
+writing. Its fuse is `buildBurnStick` — literally the object a match
+is made of — so it ashes as it burns, can have its light flicked off,
+and is lit by every existing fire source without any of them being
+told dynamite exists. `holsterable` is the throw. `lightable` is the
+match. The only new component is `explosive`, which listens for the
+three ways anything here ends — a fuse running out, a hard impact, and
+being shot — and calls `detonate`. That is the whole weapon.
 
 ## The revolving bar
 

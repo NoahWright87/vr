@@ -567,6 +567,7 @@
       var ARMORY_SHELF_Y = 0.58; // the low shelf in the cavity under the bench
       var ARMORY_SHELF_Z = 0.76;
       var ARMORY_SHELF_SOCKETS = 6;
+      var ARMORY_DYNAMITE_PER_CRATE = 3;
 
       // Which of those start with something in them. Every other
       // socket is bare on purpose — they're for whatever you decide
@@ -602,6 +603,41 @@
       // nothing has to enforce.
       // ==============================================================
       var ARMORY_REFILL_MS = 10000;
+      var IMPACT_MIN_SPEED = 3.2; // m/s a flying object needs before it counts as hitting something rather than being put down near it
+      var IMPACT_COOLDOWN_MS = 180; // one contact per swing, not one per frame
+
+      // ==============================================================
+      // EXPLOSIONS
+      // One function, and nothing that calls it knows what the others
+      // are. It shoves a fireball's worth of debris and smoke out,
+      // spills burning fuel where it went off (so a blast in the
+      // saloon leaves the floor alight and the fire system takes it
+      // from there), knocks over every target in range through the
+      // same fall() a bullet uses, shatters glass in range through the
+      // same shatter() a bullet uses, and throws loose objects
+      // outward.
+      //
+      // That last one is the fun one: the blast doesn't special-case
+      // anything, it just hands every loose holsterable a velocity —
+      // which is the same thing your arm does. Blowing a rack of
+      // bottles across the room is throwing them, as far as the code
+      // is concerned.
+      // ==============================================================
+      var BLAST_RADIUS = 2.4;
+      var BLAST_SCORE = 60;
+      var BLAST_FUEL = 0.5; // how big a burning patch it leaves
+      var BLAST_SHOVE = 9; // m/s handed to a loose object at the centre
+      var BLAST_SHARDS = 22;
+
+      // A stick of dynamite is a fuse with a bundle attached, so its
+      // numbers are burnable's numbers. The fuse is deliberately long
+      // enough to be a decision and short enough to be a mistake: at
+      // this rate you get about four seconds, which is plenty to throw
+      // it and nowhere near enough to change your mind twice.
+      var DYNAMITE_STICK_LENGTH = 0.17;
+      var DYNAMITE_FUSE_LENGTH = 0.11;
+      var DYNAMITE_FUSE_RATE = 0.028; // meters/second — about four seconds of fuse
+      var DYNAMITE_FUSE_MIN = 0.004;
       var LOOSE_ITEM_LIFETIME_MS = 30000;
       var LOOSE_ITEM_FADE_MS = 1200; // it shrinks away over the last of that rather than blinking out
 
@@ -993,26 +1029,50 @@
         return null;
       }
 
+      // Everything that casts a ray shares one scan of the scene, and
+      // the first caster in a frame pays for it. That used to be a
+      // shotgun handing its own list to six pellets; now it's also
+      // every projectile in the air asking what it's about to hit, and
+      // there can be a lot of those the moment a stick of dynamite
+      // throws a rack of bottles across the room. FRAME_STAMP is
+      // bumped once per frame by world-systems.
+      var SHOOTABLE_ROOTS = [];
+      var SHOOTABLE_STAMP = -1;
+      var FRAME_STAMP = 0;
+
       function gatherShootableRoots() {
+        if (SHOOTABLE_STAMP === FRAME_STAMP) return SHOOTABLE_ROOTS;
+        SHOOTABLE_STAMP = FRAME_STAMP;
+
         var shootables = document.querySelectorAll('.shootable');
-        var roots = [];
+        SHOOTABLE_ROOTS.length = 0;
         for (var i = 0; i < shootables.length; i++) {
-          if (shootables[i].object3D && shootables[i].object3D.visible) roots.push(shootables[i].object3D);
+          if (shootables[i].object3D && shootables[i].object3D.visible) SHOOTABLE_ROOTS.push(shootables[i].object3D);
         }
-        return roots;
+        return SHOOTABLE_ROOTS;
       }
 
       // `roots` is optional; a shotgun gathers the list once and hands
       // it to all six pellets rather than re-querying the whole scene
-      // per pellet.
-      function castShot(origin, direction, roots) {
+      // per pellet. `range` and `ignoreEl` are for the slow kind of
+      // shot — see PROJECTILES — where the cast only covers the little
+      // bit of ground the thing moved this frame, and the thing doing
+      // the moving mustn't shoot itself.
+      var _castRay = new THREE.Raycaster();
+
+      function castShot(origin, direction, roots, range, ignoreEl) {
         roots = roots || gatherShootableRoots();
 
-        var raycaster = new THREE.Raycaster(origin, direction, 0, MAX_SHOT_RANGE);
-        var hits = raycaster.intersectObjects(roots, true);
+        _castRay.set(origin, direction);
+        _castRay.near = 0;
+        _castRay.far = range || MAX_SHOT_RANGE;
+
+        var hits = _castRay.intersectObjects(roots, true);
         for (var h = 0; h < hits.length; h++) {
           var el = resolveShootable(hits[h].object);
-          if (el) return { el: el, point: hits[h].point };
+          if (el && el !== ignoreEl && !(ignoreEl && ignoreEl.contains(el))) {
+            return { el: el, point: hits[h].point };
+          }
         }
         return null;
       }
@@ -1724,6 +1784,15 @@
         var seconds = durationMs / 1000;
         playNoise({ duration: seconds, freq: 130, q: 1.4, volume: 0.09, filterType: 'lowpass' });
         playTone({ type: 'sawtooth', freq: 46, sweep: 70, duration: seconds, volume: 0.05 });
+      }
+
+      // A stick of dynamite. Mostly noise with a low thud under it,
+      // and a long tail so it sounds like it happened to the room
+      // rather than to a speaker.
+      function playBoom() {
+        playNoise({ duration: 0.7, freq: 260, q: 0.5, volume: 0.28, filterType: 'lowpass' });
+        playTone({ type: 'sine', freq: 120, sweep: 32, duration: 0.6, volume: 0.3 });
+        playTone({ type: 'sawtooth', freq: 70, sweep: 24, duration: 0.35, volume: 0.14 });
       }
 
       // And the thump of it arriving.
@@ -2874,6 +2943,8 @@
           this.angularVelocity = new THREE.Vector3();
           this.fallVelocity = new THREE.Vector3();
           this.catchCooldown = 0; // ms left during which this can't be caught — see throwWithVelocity
+          this.impactCooldown = 0; // ms left during which it can't hit anything again — see checkImpact
+          this._impactDir = new THREE.Vector3();
           this.prevPivotPos = new THREE.Vector3();
           this.prevPivotVelocity = new THREE.Vector3();
 
@@ -3517,6 +3588,8 @@
             return;
           }
 
+          this.checkImpact(dt);
+
           if (this.el.object3D.position.y <= GROUND_REST_Y) {
             var impactSpeed = this.fallVelocity.length();
             this.el.object3D.position.y = GROUND_REST_Y;
@@ -3528,6 +3601,51 @@
             // a bottle (see breakable) does not.
             this.el.emit('landed', { speed: impactSpeed }, false);
           }
+        },
+
+        // ==========================================================
+        // PROJECTILES
+        // A thrown thing is a slow bullet. Anything moving fast enough
+        // casts along the little bit of ground it covered this frame,
+        // and if it crosses something shootable it emits the very same
+        // `shot` event a pistol would — so a bottle hurled at a target
+        // knocks it over, an arrow scores, and none of that needed a
+        // word of new target code. What the impact means to the THING
+        // THAT HIT is announced separately, as `impact`, and left to
+        // whatever companion cares: glass shatters, dynamite goes off,
+        // a pistol just clatters onward.
+        //
+        // The speed floor is what keeps this from being a menace.
+        // Setting a gun down on a bar covered in bottles is not an
+        // attack, and without a floor every gentle release next to the
+        // shelf would smash something.
+        // ==========================================================
+        checkImpact: function (dt) {
+          if (this.impactCooldown > 0) {
+            this.impactCooldown -= dt * 1000;
+            return;
+          }
+
+          var speed = this.fallVelocity.length();
+          if (speed < IMPACT_MIN_SPEED) return;
+
+          this._impactDir.copy(this.fallVelocity).divideScalar(speed);
+          this.el.object3D.getWorldPosition(this._worldPos);
+          // Back up to where it started the frame, so a fast thing
+          // can't tunnel through a target between two positions.
+          this._worldPos.addScaledVector(this._impactDir, -speed * dt);
+
+          var hit = castShot(this._worldPos, this._impactDir, gatherShootableRoots(), speed * dt + this.data.grabRadius, this.el);
+          if (!hit) return;
+
+          this.impactCooldown = IMPACT_COOLDOWN_MS;
+          hit.el.emit('shot', { point: hit.point.clone(), direction: this._impactDir.clone() }, false);
+          this.el.emit('impact', { point: hit.point.clone(), speed: speed, hitEl: hit.el }, false);
+
+          // Whatever it hit took most of the energy out of it. If it
+          // was something that ends on contact, its own impact handler
+          // has already dealt with it and this is moot.
+          this.fallVelocity.multiplyScalar(-0.15);
         },
 
         // Standard dq/dt = 0.5 * omega-as-pure-quaternion * q integration.
@@ -3633,6 +3751,39 @@
         el.setAttribute('boxy-shotgun', '');
       });
 
+      // A stick of dynamite, which is almost entirely other people's
+      // components. `lightable` and `burnable` are the fuse — the same
+      // pair a match is made of — so every way of lighting anything in
+      // this scene already lights it, and the fuse ashes down and can
+      // even have its light flicked off. `holsterable` is the throw.
+      // `explosive` is the two lines at the end. There is no dynamite
+      // code as such, which is the point.
+      defineItem('dynamite', function (el, slotId) {
+        el.setAttribute('holsterable', {
+          holsterSelector: '#' + slotId,
+          itemSize: 'small',
+          holsterRotation: { x: 0, y: 0, z: 0 },
+          heldRotation: { x: -90, y: 0, z: 0 },
+          grabRadius: 0.14,
+          comOffset: { x: 0, y: 0, z: -0.08 },
+          maxThrowSpeed: 11,
+        });
+        el.setAttribute('boxy-dynamite', '');
+        el.setAttribute('burnable', {
+          visual: 'boxy-dynamite',
+          length: DYNAMITE_FUSE_LENGTH,
+          ashRate: DYNAMITE_FUSE_RATE,
+          minLength: DYNAMITE_FUSE_MIN,
+          ashColor: '#2e2a24',
+        });
+        el.setAttribute('lightable', { tipSelector: '.ember' });
+        el.setAttribute('ignition-source', { tipSelector: '.ember' });
+        el.setAttribute('explosive', '');
+        // Shootable, so somebody with better aim than sense can set it
+        // off in your hand from across the room.
+        el.classList.add('shootable');
+      });
+
       // Taking something out of the world is deferred to the end of the
       // frame for exactly the reason particle removal is (see
       // killParticle): A-Frame runs every component's tick from one
@@ -3672,6 +3823,143 @@
 
         DOOMED.length = 0;
       }
+
+      // ==============================================================
+      // detonate
+      // See the EXPLOSIONS note. Deliberately a plain function rather
+      // than a component: a stick of dynamite, a rocket and (later)
+      // anything else that goes bang all want the same event to happen
+      // at a point in space, and none of them want to own it.
+      // ==============================================================
+      var _blastScratch = new THREE.Vector3();
+      var _blastPush = new THREE.Vector3();
+
+      function detonate(worldPos, options) {
+        options = options || {};
+        var radius = options.radius || BLAST_RADIUS;
+
+        playBoom();
+        spawnDebris(worldPos, { count: BLAST_SHARDS, color: '#4a3f39', size: SHARD_SIZE * 1.4, speed: SHARD_SPEED * 2.2 });
+        spawnSparks(worldPos, 14);
+        for (var s = 0; s < 6; s++) spawnSmoke(worldPos, randomUnitVector().multiplyScalar(2.2), 1.6);
+
+        // Burning fuel on whatever it went off over. Everything that
+        // makes fire interesting — spreading, being doused, lighting
+        // cigars — follows from this one line rather than from
+        // anything here.
+        var pool = spillPuddle(worldPos, 'fire', options.fuel || BLAST_FUEL);
+        if (pool) ignitePool(pool);
+
+        var manager = document.querySelector('#range-manager');
+
+        var hinges = document.querySelectorAll('[pop-target]');
+        for (var i = 0; i < hinges.length; i++) {
+          var popTarget = hinges[i].components['pop-target'];
+          if (!popTarget || popTarget.fallen) continue;
+          hinges[i].object3D.getWorldPosition(_blastScratch);
+          if (_blastScratch.distanceTo(worldPos) > radius) continue;
+          if (manager) manager.emit('ring-hit', { score: BLAST_SCORE, label: 'BLASTED' }, false);
+          popTarget.fall();
+        }
+
+        var breakables = document.querySelectorAll('[breakable]');
+        for (var b = 0; b < breakables.length; b++) {
+          var breakable = breakables[b].components.breakable;
+          if (!breakable || breakable.broken || !breakable.data.autoShatter) continue;
+          breakables[b].object3D.getWorldPosition(_blastScratch);
+          if (_blastScratch.distanceTo(worldPos) > radius) continue;
+          breakable.shatter(true);
+        }
+
+        // And everything loose gets thrown. Note it goes through the
+        // ordinary throw path, so a blasted bottle is catchable in
+        // mid-air and can be shot out of it like any other.
+        var loose = document.querySelectorAll('.grabbable');
+        for (var g = 0; g < loose.length; g++) {
+          var holsterable = loose[g].components.holsterable;
+          if (!holsterable) continue;
+          if (holsterable.state !== 'resting' && holsterable.state !== 'falling') continue;
+
+          loose[g].object3D.getWorldPosition(_blastScratch);
+          var distance = _blastScratch.distanceTo(worldPos);
+          if (distance > radius) continue;
+
+          _blastPush.copy(_blastScratch).sub(worldPos);
+          if (_blastPush.lengthSq() < 0.0001) _blastPush.set(0, 1, 0);
+          _blastPush.normalize().multiplyScalar(BLAST_SHOVE * (1 - distance / radius));
+          _blastPush.y = Math.abs(_blastPush.y) + BLAST_SHOVE * 0.35;
+          holsterable.throwWithVelocity(_blastPush.clone());
+        }
+      }
+
+      // ==============================================================
+      // COMPONENT: explosive
+      // The thing that goes bang, and it doesn't know what set it off.
+      // It listens for the three ways anything in this scene ends —
+      // a fuse running out (`burnt-out`, straight out of burnable),
+      // being hit hard (`impact`), and being shot (`shot`) — so a
+      // stick of dynamite can be lit and thrown, shot out of the air
+      // by someone with better aim than sense, or simply dropped from
+      // a height.
+      //
+      // Everything else about a stick of dynamite is components that
+      // already existed: `lightable` and `burnable` give it a fuse
+      // that any cigar, match, Zippo or hot barrel will light, and
+      // `holsterable` gives it the aimed overhand throw. This
+      // component is the last two lines of its life.
+      // ==============================================================
+      registerComponent('explosive', {
+        schema: {
+          radius: { type: 'number', default: BLAST_RADIUS },
+          fuel: { type: 'number', default: BLAST_FUEL },
+          armed: { type: 'boolean', default: false }, // true = a hard knock alone is enough, no fuse required
+        },
+
+        init: function () {
+          this.spent = false;
+          this._world = new THREE.Vector3();
+
+          this.onBurntOut = this.blow.bind(this);
+          this.onImpact = this.onImpact.bind(this);
+          this.onShot = this.onShot.bind(this);
+
+          this.el.addEventListener('burnt-out', this.onBurntOut);
+          this.el.addEventListener('impact', this.onImpact);
+          this.el.addEventListener('landed', this.onImpact);
+          this.el.addEventListener('shot', this.onShot);
+        },
+
+        remove: function () {
+          this.el.removeEventListener('burnt-out', this.onBurntOut);
+          this.el.removeEventListener('impact', this.onImpact);
+          this.el.removeEventListener('landed', this.onImpact);
+          this.el.removeEventListener('shot', this.onShot);
+        },
+
+        // A knock only sets it off if it's already lit or armed —
+        // otherwise a stick of dynamite would be unable to survive
+        // being dropped, which makes carrying a bundle of it much less
+        // funny than it should be.
+        onImpact: function (evt) {
+          var lightable = this.el.components.lightable;
+          if (!this.data.armed && !(lightable && lightable.lit)) return;
+          if (evt.detail && evt.detail.speed < IMPACT_MIN_SPEED) return;
+          this.blow();
+        },
+
+        onShot: function () {
+          this.blow();
+        },
+
+        blow: function () {
+          if (this.spent) return;
+          this.spent = true;
+
+          this.el.object3D.getWorldPosition(this._world);
+          detonate(this._world, { radius: this.data.radius, fuel: this.data.fuel });
+          despawnItem(this.el);
+        },
+      });
 
       // ==============================================================
       // COMPONENT: stocked
@@ -3715,7 +4003,7 @@
           var slot = this.el.components['anchor-slot'];
           if (!slot) return;
 
-          if (slot.occupants.length) {
+          if (slot.isFull()) {
             this.timer = this.data.refillMs;
             return;
           }
@@ -3723,10 +4011,17 @@
 
           this.timer -= dt || 16;
           if (this.timer > 0) return;
-
           this.timer = this.data.refillMs;
+
+          // The opening stock fills the socket outright — a crate with
+          // room for three sticks starts with three. After that they
+          // come back one at a time, so working through a crate is
+          // worth something. (The count is read from the slot rather
+          // than counted afterwards because a freshly built item takes
+          // a frame to claim its place.)
+          var wanted = this.filled ? 1 : slot.data.capacity - slot.occupants.length;
           this.filled = true;
-          makeItem(this.data.item, this.el);
+          for (var i = 0; i < wanted; i++) makeItem(this.data.item, this.el);
         },
       });
 
@@ -5307,12 +5602,19 @@
           this.el.addEventListener('shot', this.onShot);
           this.el.addEventListener('click', this.onShot);
           this.el.addEventListener('landed', this.onLanded);
+          // Hitting something on the way down is the same event as
+          // hitting the floor, as far as glass is concerned — which is
+          // what makes a bottle hurled at a target smash against it
+          // instead of sailing through and breaking on the ground
+          // behind.
+          this.el.addEventListener('impact', this.onLanded);
         },
 
         remove: function () {
           this.el.removeEventListener('shot', this.onShot);
           this.el.removeEventListener('click', this.onShot);
           this.el.removeEventListener('landed', this.onLanded);
+          this.el.removeEventListener('impact', this.onLanded);
         },
 
         onShot: function () {
@@ -6032,6 +6334,81 @@
         },
       });
 
+
+      // ==============================================================
+      // COMPONENT: boxy-dynamite
+      // Three red sticks in a bundle with a fuse out the end, and the
+      // fuse is a `buildBurnStick` — the same object a match and a
+      // cigar are made of, because "a thing that burns down from the
+      // tip" was already a shape this file knew how to draw. Which
+      // means the fuse ashes as it goes, can have its light knocked
+      // off it by a hard enough flick, and lights off anything hot,
+      // none of which is dynamite code.
+      //
+      // Same axis convention as the cigar: the entity origin is where
+      // your fist closes, and the fuse burns back toward you along -Z.
+      // ==============================================================
+      registerComponent('boxy-dynamite', {
+        init: function () {
+          var el = this.el;
+
+          for (var i = 0; i < 3; i++) {
+            var stick = document.createElement('a-cylinder');
+            stick.setAttribute('radius', 0.019);
+            stick.setAttribute('height', DYNAMITE_STICK_LENGTH);
+            stick.setAttribute('color', i === 1 ? '#a8342a' : '#8f2b22');
+            stick.setAttribute('rotation', '90 0 0');
+            stick.setAttribute('position', {
+              x: (i - 1) * 0.034,
+              y: i === 1 ? 0.016 : 0,
+              z: DYNAMITE_STICK_LENGTH / 2 - 0.02,
+            });
+            el.appendChild(stick);
+          }
+
+          var band = document.createElement('a-cylinder');
+          band.setAttribute('radius', 0.056);
+          band.setAttribute('height', 0.02);
+          band.setAttribute('color', '#4a3f2c');
+          band.setAttribute('rotation', '90 0 0');
+          band.setAttribute('position', { x: 0, y: 0.006, z: DYNAMITE_STICK_LENGTH / 2 - 0.02 });
+          el.appendChild(band);
+
+          this.parts = buildBurnStick(el, {
+            length: DYNAMITE_FUSE_LENGTH,
+            radius: 0.005,
+            bodyColor: '#6b5a3a',
+            ashColor: '#2e2a24',
+            headColor: '#6b5a3a',
+            litColor: '#ffd257',
+          });
+
+          this.layout(DYNAMITE_FUSE_LENGTH, 0);
+        },
+
+        layout: function (length, ashLength) {
+          layoutBurnStick(this.parts, length, ashLength);
+        },
+
+        setEmber: function (lit) {
+          this.parts.ember.setAttribute(
+            'material',
+            'color: ' + (lit ? this.parts.litColor : this.parts.headColor) + '; shader: flat'
+          );
+          // A lit fuse throws sparks, which is most of what sells it.
+          this.sparking = lit;
+        },
+
+        tick: function (time, dt) {
+          if (!this.sparking) return;
+          this.sparkTimer = (this.sparkTimer || 0) - (dt || 16);
+          if (this.sparkTimer > 0) return;
+          this.sparkTimer = 70;
+          spawnSparks(this.parts.ember.object3D.getWorldPosition(_dynamiteTip), 2);
+        },
+      });
+
+      var _dynamiteTip = new THREE.Vector3();
 
       // ==============================================================
       // COMPONENT: boxy-jug
@@ -7025,13 +7402,25 @@
           }
         },
 
-        // A low shelf under the bench, and a couple of crates on it for
-        // something to aim past. All of its sockets are empty.
+        // A low shelf under the bench, with a crate of dynamite at each
+        // end and empty sockets between them. The crate is nothing but
+        // a box behind a slot with a capacity of three: the fan that
+        // spreads five cigars across your teeth is what makes a bundle
+        // of sticks read as a bundle.
         buildAmmoShelf: function (face, iron) {
           this.addBox(BAR_WIDTH - 0.3, 0.05, 0.16, { x: 0, y: ARMORY_SHELF_Y, z: ARMORY_SHELF_Z }, iron, face);
 
-          this.addBox(0.24, 0.14, 0.13, { x: -1.28, y: ARMORY_SHELF_Y + 0.095, z: ARMORY_SHELF_Z }, '#5b3a29', face);
-          this.addBox(0.24, 0.14, 0.13, { x: 1.28, y: ARMORY_SHELF_Y + 0.095, z: ARMORY_SHELF_Z }, '#5b3a29', face);
+          var self = this;
+          [-1.28, 1.28].forEach(function (x) {
+            self.addBox(0.24, 0.14, 0.13, { x: x, y: ARMORY_SHELF_Y + 0.095, z: ARMORY_SHELF_Z }, '#5b3a29', face);
+            var slotId = self.addSlot(
+              { x: x, y: ARMORY_SHELF_Y + 0.12, z: ARMORY_SHELF_Z },
+              'small',
+              { capacity: ARMORY_DYNAMITE_PER_CRATE, fanSpread: 0.05, fanYaw: 9 },
+              face
+            );
+            self.stock(slotId, 'dynamite');
+          });
 
           var spacing = (BAR_WIDTH - 1.1) / (ARMORY_SHELF_SOCKETS - 1);
           for (var i = 0; i < ARMORY_SHELF_SOCKETS; i++) {
@@ -7247,6 +7636,7 @@
 
         tick: function (time, dt) {
           var dtSeconds = Math.min((dt || 16) / 1000, 0.05);
+          FRAME_STAMP++; // see gatherShootableRoots
           // Anything that asked to stop existing during the last frame
           // actually goes here, where nothing is mid-iteration.
           sweepDoomed();
