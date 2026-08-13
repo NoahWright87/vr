@@ -34,7 +34,7 @@
   </head>
   <body>
     <div id="overlay">
-      <span>Pistols at Dawn — grip near a holstered pistol, shotgun, or your hat to draw it. Guns fire on the trigger; let go of the grip while a finger still rests on the trigger to dangle and twirl whatever you're holding. Anything can snap into any anchor it's small enough for — glance at the glowing spheres for a hint — so go ahead and wear a gun like a hat, or hide one inside your hat. Turn around for the saloon bar: knock a bottle's cap on the counter edge to open it, then tip it over your face and drink what pours out. Fling a fistful of bottles skyward and shoot them apart. Strike a match on the counter or flip open the lighter and thumb a face button, then light a cigar off either — or off a barrel you just emptied, or a well-aimed bullet. Hold a cigar at your lips to draw on it and again to blow the smoke back out; flick or twirl it to knock the ash off. Let go and re-squeeze the grip quickly to keep hold of what you had and pick up the next thing too. Grab the shotgun's forend with your off hand to steady it. Spilled beer pools where it lands and burns if you light it, fire spreads along it and sets light to whatever it reaches, and a smashed bottle spills its own — so a lit puddle and a well-thrown beer make a Molotov out of parts that were already lying about. There's a jug of water for when that goes wrong — and yes, since fire is a liquid and liquid that reaches your mouth gets swallowed, you can drink it. Throw overhand and it goes where you're looking; let go early to lob it, late to line-drive it. Both meters at the bottom of your view have opinions about your aim. Shoot the brass bell hanging over the bar and the whole counter revolves — beers, cigars, lit matches and all — to show an armoury on its back: guns on the pegs, long guns in the cradles, and a lot of empty sockets to arrange your own loadout in. There's dynamite on the low shelf: light the fuse off anything hot and throw it, or shoot a stick out of the air. Take the bow in one hand and the string in the other and pull — how far apart your hands are is your draw, and where you're looking is where it'll land. The nock holds three, and it has no opinion about what: nock arrows, or a beer, or a lit stick of dynamite. Set an arrow alight first and it'll set alight whatever it lands in. The launcher works the same way — load the tube, point it somewhere you don't like, and stand well back. The armoury's racks refill ten seconds after you empty them; your own holsters don't, so what's on your hip is whatever you put there. Any weapon left lying loose goes up in smoke half a minute later. <a href="../../index.html">All prototypes</a></span>
+      <span>Pistols at Dawn — grip near a holstered pistol, shotgun, or your hat to draw it. Guns fire on the trigger; let go of the grip while a finger still rests on the trigger to dangle and twirl whatever you're holding. Anything can snap into any anchor it's small enough for — glance at the glowing spheres for a hint — so go ahead and wear a gun like a hat, or hide one inside your hat. Turn around for the saloon bar: knock a bottle's cap on the counter edge to open it, then tip it over your face and drink what pours out. Fling a fistful of bottles skyward and shoot them apart. Strike a match on the counter or flip open the lighter and thumb a face button, then light a cigar off either — or off a barrel you just emptied, or a well-aimed bullet. Hold a cigar at your lips to draw on it and again to blow the smoke back out; flick or twirl it to knock the ash off. Let go and re-squeeze the grip quickly to keep hold of what you had and pick up the next thing too. Grab the shotgun's forend with your off hand to steady it. Spilled beer pools where it lands and burns if you light it, fire spreads along it and sets light to whatever it reaches, and a smashed bottle spills its own — so a lit puddle and a well-thrown beer make a Molotov out of parts that were already lying about. There's a jug of water for when that goes wrong — and yes, since fire is a liquid and liquid that reaches your mouth gets swallowed, you can drink it. Throw overhand and it goes where you're looking; let go early to lob it, late to line-drive it. Both meters at the bottom of your view have opinions about your aim. Shoot the brass bell hanging over the bar and the whole counter revolves — beers, cigars, lit matches and all — to show an armoury on its back: guns on the pegs, long guns in the cradles, and a lot of empty sockets to arrange your own loadout in. There's dynamite on the low shelf: light the fuse off anything hot and throw it, or shoot a stick out of the air. Take the bow in one hand and the string in the other and pull — how far apart your hands are is your draw, and where you're looking is where it'll land. The nock holds three, and it has no opinion about what: nock arrows, or a beer, or a lit stick of dynamite. Set an arrow alight first and it'll set alight whatever it lands in. The launcher works the same way — load the tube, point it somewhere you don't like, and stand well back. There's a scoped rifle in the rack too: the glass is dark until you actually bring the eyepiece to your eye, and then it's a real magnified view of whatever the barrel is pointed at. The armoury's racks refill ten seconds after you empty them; your own holsters don't, so what's on your hip is whatever you put there. Any weapon left lying loose goes up in smoke half a minute later. <a href="../../index.html">All prototypes</a></span>
     </div>
 
     <a-scene>
@@ -561,7 +561,7 @@
       var ARMORY_PISTOL_PEGS = 9;
       var ARMORY_CRADLE_Y = 1.1; // long guns lie flat on the bench in rolled slots
       var ARMORY_CRADLE_Z = 0.78; // ditto for a shotgun's stock
-      var ARMORY_CRADLES = 3;
+      var ARMORY_CRADLES = 4;
       var ARMORY_BENCH_ROW_Z = 0.68; // the free-for-all row along the front of the bench
       var ARMORY_BENCH_SOCKETS = 5; // the free row; the arrow trough takes the left end of the bench
       var ARMORY_SHELF_Y = 0.58; // the low shelf in the cavity under the bench
@@ -573,7 +573,7 @@
       // socket is bare on purpose — they're for whatever you decide
       // belongs there.
       var ARMORY_PISTOL_STOCK = [0, 2, 4, 6, 8];
-      var ARMORY_CRADLE_STOCK = ['shotgun', 'bow', 'launcher']; // per cradle, left to right; null leaves one bare
+      var ARMORY_CRADLE_STOCK = ['shotgun', 'sniper', 'bow', 'launcher']; // per cradle, left to right; null leaves one bare
       var ARMORY_QUIVER_X = -1.36; // the arrow trough, along the front of the bench
       var ARMORY_QUIVER_Z = 0.63;
 
@@ -703,6 +703,29 @@
       var ROCKET_BURN_MS = 1400;
       var ROCKET_BLAST_RADIUS = 3.2;
       var ARMORY_ROCKETS = 2;
+
+      // ==============================================================
+      // THE SCOPE
+      // A real one: a second camera with a narrow field of view,
+      // rendering the scene to a texture that is then the glass in the
+      // eyepiece. Which is to say it costs an extra pass over the whole
+      // scene, and this one is about 160 draw calls.
+      //
+      // So it only runs when the eyepiece is actually at your eye. That
+      // started as the optimisation and turned out to be the mechanic:
+      // the glass is dark until you bring the rifle up and put your eye
+      // behind it, which is both what a scope does and what stops a
+      // magnified view hanging in the middle of the room costing frames
+      // while it dangles off your belt. The render target is small on
+      // purpose too — a scope image is allowed to look like a scope
+      // image.
+      // ==============================================================
+      var SCOPE_FOV = 11; // degrees — roughly 4x
+      var SCOPE_TEXTURE = 256; // square render target; deliberately modest
+      var SCOPE_WAKE_DISTANCE = 0.22; // metres from eyepiece to your eye before the glass lights up
+      var SCOPE_LENS_RADIUS = 0.026;
+
+      var SNIPER_LENGTH = 1.15;
       var LOOSE_ITEM_LIFETIME_MS = 30000;
       var LOOSE_ITEM_FADE_MS = 1200; // it shrinks away over the last of that rather than blinking out
 
@@ -3952,6 +3975,29 @@
         el.setAttribute('ignition-source', { tipSelector: '.ember' });
       });
 
+      // The rifle. A `firearm` with a tighter cone and a heavier kick,
+      // and a `scope` — which is a separate component precisely
+      // because seeing through a tube has nothing to do with firing
+      // one. The support grip at the forestock matters more here than
+      // anywhere else: one wrist cannot hold a magnified view still.
+      defineItem('sniper', function (el, slotId) {
+        el.setAttribute('holsterable', {
+          holsterSelector: '#' + slotId,
+          itemSize: 'large',
+          holsterRotation: { x: -90, y: 0, z: 0 },
+          heldRotation: { x: -90, y: 0, z: 0 },
+          grabRadius: 0.24,
+          comOffset: { x: 0, y: 0.02, z: -0.28 },
+          supportGrip: { x: 0, y: 0.005, z: -0.28 },
+          supportRadius: 0.22,
+          maxThrowSpeed: 6,
+        });
+        el.setAttribute('firearm', { pellets: 1, coneDeg: 0, kickDeg: -13, recoverMs: 320, heatPerShot: 0.5 });
+        el.setAttribute('ignition-source', { tipSelector: '.muzzle' });
+        el.setAttribute('boxy-sniper', '');
+        el.setAttribute('scope', { offset: { x: 0, y: 0.115, z: 0.03 } });
+      });
+
       // The launcher, and the thing that goes in it. Note how little
       // either declaration says: the tube is a holsterable with a
       // socket and a trigger hook, and the rocket is an armed
@@ -6924,6 +6970,175 @@
       });
 
       // ==============================================================
+      // COMPONENT: scope
+      // See THE SCOPE. Generic on purpose — it is "a disc on this
+      // object that shows what a narrow-angle camera pointed down this
+      // object's -Z can see", so it would work just as well on a
+      // spyglass, a periscope, or a mirror behind the bar.
+      //
+      // Three things it has to be careful about, all of them the same
+      // hazard: it renders in the middle of somebody else's frame.
+      // The renderer's current target has to be put back, WebXR has to
+      // be switched off for the duration (or three.js renders the
+      // off-screen pass in stereo into the headset's own framebuffer),
+      // and the lens itself has to be hidden or it films its own last
+      // frame — an infinite corridor, which is a lovely bug and quite
+      // useless as a sight.
+      // ==============================================================
+      registerComponent('scope', {
+        schema: {
+          fov: { type: 'number', default: SCOPE_FOV },
+          offset: { type: 'vec3', default: { x: 0, y: 0, z: 0 } }, // where the eyepiece sits on the object
+          radius: { type: 'number', default: SCOPE_LENS_RADIUS },
+          wake: { type: 'number', default: SCOPE_WAKE_DISTANCE },
+        },
+
+        init: function () {
+          this.awake = false;
+          this._eye = new THREE.Vector3();
+          this._lens = new THREE.Vector3();
+
+          this.target = new THREE.WebGLRenderTarget(SCOPE_TEXTURE, SCOPE_TEXTURE);
+          this.camera = new THREE.PerspectiveCamera(this.data.fov, 1, 0.05, 300);
+
+          // Parented to this object, looking straight down its -Z,
+          // which is the same axis every barrel in this file uses.
+          this.el.object3D.add(this.camera);
+          this.camera.position.set(this.data.offset.x, this.data.offset.y, this.data.offset.z);
+
+          this.lensMesh = new THREE.Mesh(
+            new THREE.CircleGeometry(this.data.radius, 20),
+            new THREE.MeshBasicMaterial({ color: '#0b0b0d' })
+          );
+          this.lensMesh.position.set(this.data.offset.x, this.data.offset.y, this.data.offset.z + 0.005);
+          this.lensMesh.rotation.y = Math.PI; // face back toward your eye
+          this.el.object3D.add(this.lensMesh);
+
+          this.liveMaterial = new THREE.MeshBasicMaterial({ map: this.target.texture });
+          this.darkMaterial = this.lensMesh.material;
+
+          // The crosshair rides on the glass, so it magnifies with it.
+          var reticle = new THREE.Mesh(
+            new THREE.RingGeometry(this.data.radius * 0.06, this.data.radius * 0.08, 16),
+            new THREE.MeshBasicMaterial({ color: '#1a1a1a' })
+          );
+          reticle.position.z = 0.001;
+          this.lensMesh.add(reticle);
+          this.reticle = reticle;
+          reticle.visible = false;
+
+          this.cameraEl = document.querySelector('#head-camera');
+        },
+
+        remove: function () {
+          this.el.object3D.remove(this.camera);
+          this.el.object3D.remove(this.lensMesh);
+          this.target.dispose();
+          this.lensMesh.geometry.dispose();
+          this.liveMaterial.dispose();
+          this.darkMaterial.dispose();
+        },
+
+        tick: function () {
+          if (!this.cameraEl) return;
+
+          this.lensMesh.getWorldPosition(this._lens);
+          this.cameraEl.object3D.getWorldPosition(this._eye);
+          var awake = this._lens.distanceTo(this._eye) < this.data.wake;
+
+          if (awake !== this.awake) {
+            this.awake = awake;
+            this.lensMesh.material = awake ? this.liveMaterial : this.darkMaterial;
+            this.reticle.visible = awake;
+          }
+          if (!awake) return;
+
+          this.renderThrough();
+        },
+
+        renderThrough: function () {
+          var sceneEl = this.el.sceneEl;
+          var renderer = sceneEl && sceneEl.renderer;
+          if (!renderer) return;
+
+          var wasXR = renderer.xr.enabled;
+          var wasTarget = renderer.getRenderTarget();
+
+          this.lensMesh.visible = false;
+          renderer.xr.enabled = false;
+          renderer.setRenderTarget(this.target);
+          renderer.render(sceneEl.object3D, this.camera);
+          renderer.setRenderTarget(wasTarget);
+          renderer.xr.enabled = wasXR;
+          this.lensMesh.visible = true;
+        },
+      });
+
+      // ==============================================================
+      // COMPONENT: boxy-sniper
+      // A long rifle with a tube on top. Same conventions as every
+      // other gun here — origin at the trigger guard, -Z down the
+      // barrel — so `firearm`, `holsterable` and `scope` all point the
+      // same way without being told to.
+      // ==============================================================
+      registerComponent('boxy-sniper', {
+        init: function () {
+          var el = this.el;
+          var metal = '#2b2b2f';
+          var wood = '#5b3a1c';
+
+          function box(w, h, d, pos, color, rot) {
+            var b = document.createElement('a-box');
+            b.setAttribute('width', w);
+            b.setAttribute('height', h);
+            b.setAttribute('depth', d);
+            b.setAttribute('position', pos);
+            b.setAttribute('color', color);
+            if (rot) b.setAttribute('rotation', rot);
+            el.appendChild(b);
+            return b;
+          }
+
+          box(0.045, 0.13, 0.05, '0 -0.05 0.02', wood, '12 0 0'); // grip
+          box(0.048, 0.055, 0.2, '0 0.02 -0.07', metal); // receiver
+          box(0.026, 0.026, SNIPER_LENGTH * 0.62, '0 0.045 -0.52', metal); // long barrel
+          box(0.05, 0.04, 0.3, '0 0.005 -0.28', wood); // forestock
+          box(0.055, 0.1, 0.3, '0 -0.025 0.26', wood, '-7 0 0'); // stock
+          box(0.045, 0.006, 0.06, '0 -0.028 -0.02', metal); // trigger guard
+          box(0.008, 0.03, 0.008, '0 -0.01 -0.035', '#c9962c'); // trigger
+          box(0.02, 0.05, 0.02, '0 0.05 0.03', metal, '30 0 0'); // bolt handle
+
+          // The scope tube. The eyepiece end is where `scope` puts its
+          // glass, so the two sets of numbers have to agree — the same
+          // hand-kept arrangement boxy-gun and the pistol's comOffset
+          // already live with.
+          var tube = document.createElement('a-cylinder');
+          tube.setAttribute('radius', 0.028);
+          tube.setAttribute('height', 0.34);
+          tube.setAttribute('color', metal);
+          tube.setAttribute('rotation', '90 0 0');
+          tube.setAttribute('position', { x: 0, y: 0.115, z: -0.14 });
+          el.appendChild(tube);
+
+          box(0.02, 0.05, 0.03, '0 0.085 -0.26', metal); // front mount
+          box(0.02, 0.05, 0.03, '0 0.085 -0.02', metal); // rear mount
+
+          var flash = document.createElement('a-circle');
+          flash.setAttribute('radius', 0.03);
+          flash.setAttribute('material', 'color: #ffe066; shader: flat; opacity: 0.9');
+          flash.setAttribute('position', { x: 0, y: 0.045, z: -SNIPER_LENGTH + 0.06 });
+          flash.setAttribute('visible', false);
+          flash.classList.add('muzzle-flash');
+          el.appendChild(flash);
+
+          var muzzle = document.createElement('a-entity');
+          muzzle.setAttribute('position', { x: 0, y: 0.045, z: -SNIPER_LENGTH + 0.05 });
+          muzzle.classList.add('muzzle');
+          el.appendChild(muzzle);
+        },
+      });
+
+      // ==============================================================
       // COMPONENT: boxy-launcher / launcher
       // A tube you put something in and a trigger that sends it. It is
       // the bow's idea again with a different silhouette: a socket at
@@ -8205,10 +8420,11 @@
         // bandolier" into "resting in a rack" without the gun being
         // told anything.
         buildLongGunCradles: function (face, iron) {
-          var spacing = (BAR_WIDTH - 1.2) / (ARMORY_CRADLES - 1);
+          var span = BAR_WIDTH - 0.7;
+          var spacing = span / (ARMORY_CRADLES - 1);
 
           for (var i = 0; i < ARMORY_CRADLES; i++) {
-            var x = -(BAR_WIDTH - 1.2) / 2 + i * spacing;
+            var x = -span / 2 + i * spacing;
             this.addBox(0.05, 0.09, 0.13, { x: x - 0.34, y: ARMORY_CRADLE_Y - 0.02, z: ARMORY_CRADLE_Z + 0.02 }, iron, face);
             this.addBox(0.05, 0.09, 0.13, { x: x + 0.42, y: ARMORY_CRADLE_Y - 0.02, z: ARMORY_CRADLE_Z + 0.02 }, iron, face);
 

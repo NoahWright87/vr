@@ -234,6 +234,33 @@ rather than a thrown brick. Flight, impact, scoring, fire, the blast
 throwing the furniture around — all of that is machinery that existed
 for thrown bottles and a stick of dynamite.
 
+## The scope is real, and that's why it's usually off
+
+The rifle's scope is a second camera with an 11-degree field of view
+rendering the scene to a 256px texture that is then the glass in the
+eyepiece. Which is to say it costs a whole extra pass over a scene of
+about 160 draw calls, per frame, and that is not a bill worth paying
+for a rifle hanging on a wall.
+
+So it only renders when the eyepiece is within 22cm of your head. The
+optimisation turned out to be the mechanic: the glass is dark until
+you bring the rifle up and put your eye behind it, which is what a
+scope does anyway. Cheapest kind of win — the thing that makes it
+affordable is the thing that makes it feel right.
+
+Three hazards, all the same hazard, all from rendering inside somebody
+else's frame: put the renderer's target back, switch WebXR off for the
+duration (or three.js renders the off-screen pass in stereo into the
+headset's own framebuffer), and hide the lens before rendering or it
+films its own last frame — an infinite corridor, which is a lovely bug
+and quite useless as a sight.
+
+`scope` is its own component rather than part of the rifle, because
+looking through a tube has nothing to do with firing one. It's "a disc
+on this object showing what a narrow camera down its -Z can see",
+which would work just as well as a spyglass or a mirror behind the
+bar.
+
 ## The revolving bar
 
 The clearest bill of health the "shared systems" bet has had. The
