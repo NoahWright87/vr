@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>Menus — WebXR Primitives</title>
+    <title>Showcase — WebXR Primitives</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
 
     <!-- Same vendored setup as the prototypes: no build step, just a
@@ -40,7 +40,7 @@
          watch style.
     ============================================================== -->
     <div id="overlay">
-      <span>Menus — panel ahead: point and pull the trigger (or any face button). Watches on your wrists: point with one hand (squeeze grip) and poke the other wrist's face to project a menu outward from it. Tilt that wrist toward your own face to poke its options directly; turn the face up instead and it grows bigger and turns to face you. Either way, pointing and pulling the trigger/a face button always works too — poke the ❌ or point-and-activate it (or just lower the wrist) to close it. To your right, a wall screen; to your left, a pedestal button — poke either to project a menu outward, then poke or point-and-activate its options. Each ❔ shows a different help style: the watch's swaps in a paged modal, the wall's opens a sidecar panel beside the screen, the pedestal's draws a tutorial overlay on top (step it with any A/X or B/Y face button). Walking far enough away, or looking away for a few seconds, auto-closes a menu. <a href="../../index.html">All prototypes</a></span>
+      <span>Showcase — this page is the shared VR engine surface for primitives and their reusable interaction patterns. Right now it demonstrates menus, but the goal is to make every primitive here usable by other experiences with the same core systems. To your right, a wall screen; to your left, a pedestal button — poke either to project a menu outward, then poke or point-and-activate its options. Each ❔ shows a different help style: the watch's swaps in a paged modal, the wall's opens a sidecar panel beside the screen, the pedestal's draws a tutorial overlay on top (step it with any A/X or B/Y face button). Walking far enough away, or looking away for a few seconds, auto-closes a menu. <a href="../../index.html">All prototypes</a></span>
     </div>
 
     <a-scene>
@@ -48,6 +48,11 @@
       <a-light type="directional" position="2 3 2" intensity="0.7"></a-light>
       <a-sky color="#0d1526"></a-sky>
       <a-plane id="floor" rotation="-90 0 0" width="20" height="20" color="#445" position="0 0 0"></a-plane>
+      <a-entity id="elevator-shaft" position="0 0 -3.5">
+        <a-cylinder radius="1.3" height="0.12" color="#6fd3ff" opacity="0.35" position="0 0.06 0"></a-cylinder>
+        <a-cylinder radius="1.3" height="0.12" color="#7d8cff" opacity="0.35" position="0 3.26 0"></a-cylinder>
+        <a-box width="2.4" height="3.2" depth="2.4" color="#24314d" opacity="0.28" position="0 1.6 0"></a-box>
+      </a-entity>
 
       <!-- Gaze reticle so the panel menu is testable from desktop/phone
            with no headset, same pattern as Cube Pop. The watch style
@@ -59,16 +64,18 @@
            hovering one item while a controller laser hovered another,
            highlighting two at once and letting a stray glance select the
            wrong item. -->
-      <a-camera>
-        <a-entity
-          id="gaze-cursor"
-          cursor="fuse: false"
-          position="0 0 -1"
-          geometry="primitive: ring; radiusInner: 0.005; radiusOuter: 0.008"
-          material="color: #FFFFFF; shader: flat; opacity: 0.8"
-          raycaster="objects: .menu-target; far: 10"
-        ></a-entity>
-      </a-camera>
+      <a-entity id="rig" position="0 0 0">
+        <a-camera>
+          <a-entity
+            id="gaze-cursor"
+            cursor="fuse: false"
+            position="0 0 -1"
+            geometry="primitive: ring; radiusInner: 0.005; radiusOuter: 0.008"
+            material="color: #FFFFFF; shader: flat; opacity: 0.8"
+            raycaster="objects: .menu-target; far: 10"
+          ></a-entity>
+        </a-camera>
+      </a-entity>
 
       <!-- ============================================================
            STYLE 1: fixed in-world panel.
@@ -80,46 +87,111 @@
       <a-entity id="menu-panel" menu-feedback position="0 1.8 -2.5">
         <a-plane
           width="1.9"
-          height="2"
+          height="3.2"
           color="#101827"
-          position="0 -0.15 -0.02"
+          position="0 -0.25 -0.02"
         ></a-plane>
 
-        <!-- Same buildMenuChrome() every projected-menu template goes
-             through (wired up directly below, since this panel isn't a
-             projected-menu clone) — a persistent "main menu" like this
-             one just doesn't need a ? or an X, which here is a
-             parameter, not a reason for its own bespoke title bar. -->
-        <a-entity class="menu-chrome-slot" data-title="MAIN MENU" data-help="false" data-close="false" data-width="1.9" data-bar-y="0.65"></a-entity>
+        <a-entity class="menu-chrome-slot" data-title="SHOWCASE" data-help="false" data-close="false" data-width="1.9" data-bar-y="0.9"></a-entity>
 
         <a-entity
           class="menu-target"
-          geometry="primitive: plane; width: 1.6; height: 0.3"
+          geometry="primitive: plane; width: 1.6; height: 0.26"
           material="color: #182238"
-          menu-item="value: start; label: Start"
-          position="0 0.25 0"
+          menu-item="value: move-smooth; label: Smooth move"
+          position="0 0.58 0"
         >
-          <a-text value="Start" align="center" color="#eee" width="3" position="0 0 0.01"></a-text>
+          <a-text value="Smooth move" align="center" color="#eee" width="3" position="0 0 0.01"></a-text>
         </a-entity>
 
         <a-entity
           class="menu-target"
-          geometry="primitive: plane; width: 1.6; height: 0.3"
+          geometry="primitive: plane; width: 1.6; height: 0.26"
           material="color: #182238"
-          menu-item="value: options; label: Options"
-          position="0 -0.15 0"
+          menu-item="value: move-teleport; label: Teleport"
+          position="0 0.24 0"
         >
-          <a-text value="Options" align="center" color="#eee" width="3" position="0 0 0.01"></a-text>
+          <a-text value="Teleport" align="center" color="#eee" width="3" position="0 0 0.01"></a-text>
         </a-entity>
 
         <a-entity
           class="menu-target"
-          geometry="primitive: plane; width: 1.6; height: 0.3"
+          geometry="primitive: plane; width: 1.6; height: 0.26"
           material="color: #182238"
-          menu-item="value: quit; label: Quit"
-          position="0 -0.55 0"
+          menu-item="value: turn-snap; label: Snap turn"
+          position="0 -0.12 0"
         >
-          <a-text value="Quit" align="center" color="#eee" width="3" position="0 0 0.01"></a-text>
+          <a-text value="Snap turn" align="center" color="#eee" width="3" position="0 0 0.01"></a-text>
+        </a-entity>
+
+        <a-entity
+          class="menu-target"
+          geometry="primitive: plane; width: 1.6; height: 0.26"
+          material="color: #182238"
+          menu-item="value: turn-smooth; label: Smooth turn"
+          position="0 -0.48 0"
+        >
+          <a-text value="Smooth turn" align="center" color="#eee" width="3" position="0 0 0.01"></a-text>
+        </a-entity>
+
+        <a-entity
+          class="menu-target"
+          geometry="primitive: plane; width: 1.6; height: 0.26"
+          material="color: #182238"
+          menu-item="value: turn-disabled; label: Disabled turning"
+          position="0 -0.84 0"
+        >
+          <a-text value="Disabled turning" align="center" color="#eee" width="3" position="0 0 0.01"></a-text>
+        </a-entity>
+
+        <a-entity
+          class="menu-target"
+          geometry="primitive: plane; width: 1.6; height: 0.26"
+          material="color: #182238"
+          menu-item="value: comfort-toggle; label: Toggle vignette"
+          position="0 -1.2 0"
+        >
+          <a-text value="Toggle vignette" align="center" color="#eee" width="3" position="0 0 0.01"></a-text>
+        </a-entity>
+
+        <a-entity
+          class="menu-target"
+          geometry="primitive: plane; width: 1.6; height: 0.26"
+          material="color: #182238"
+          menu-item="value: station-center; label: Station: Center"
+          position="0 -1.56 0"
+        >
+          <a-text value="Station: Center" align="center" color="#eee" width="3" position="0 0 0.01"></a-text>
+        </a-entity>
+
+        <a-entity
+          class="menu-target"
+          geometry="primitive: plane; width: 1.6; height: 0.26"
+          material="color: #182238"
+          menu-item="value: station-wall; label: Station: Wall"
+          position="0 -1.92 0"
+        >
+          <a-text value="Station: Wall" align="center" color="#eee" width="3" position="0 0 0.01"></a-text>
+        </a-entity>
+
+        <a-entity
+          class="menu-target"
+          geometry="primitive: plane; width: 1.6; height: 0.26"
+          material="color: #182238"
+          menu-item="value: station-pedestal; label: Station: Pedestal"
+          position="0 -2.28 0"
+        >
+          <a-text value="Station: Pedestal" align="center" color="#eee" width="3" position="0 0 0.01"></a-text>
+        </a-entity>
+
+        <a-entity
+          class="menu-target"
+          geometry="primitive: plane; width: 1.6; height: 0.26"
+          material="color: #182238"
+          menu-item="value: station-elevator; label: Station: Elevator"
+          position="0 -2.64 0"
+        >
+          <a-text value="Station: Elevator" align="center" color="#eee" width="3" position="0 0 0.01"></a-text>
         </a-entity>
 
         <a-text
@@ -128,7 +200,7 @@
           align="center"
           color="#aaa"
           width="2.2"
-          position="0 -0.95 0"
+          position="0 -3.06 0"
         ></a-text>
       </a-entity>
 
@@ -188,36 +260,99 @@
       <template id="watch-menu-template">
         <a-entity class="watch-menu-panel" visible="false">
           <a-entity class="watch-menu-main">
-            <a-plane width="1" height="1.3" color="#101827" position="0 -0.05 -0.01"></a-plane>
+            <a-plane width="1.2" height="2.4" color="#101827" position="0 -0.1 -0.01"></a-plane>
 
             <!-- Chrome slot's title starts empty — hand-with-watch
                  points its live clock at menu-chrome-title instead of a
                  static string once this is built (see wireUpProjectedMenu). -->
-            <a-entity class="menu-chrome-slot" data-title="" data-help="true" data-close="true" data-width="1" data-bar-y="0.5"></a-entity>
+            <a-entity class="menu-chrome-slot" data-title="" data-help="true" data-close="true" data-width="1.2" data-bar-y="0.65"></a-entity>
 
             <a-entity class="pm-target"
-              geometry="primitive: plane; width: 0.85; height: 0.2"
+              geometry="primitive: plane; width: 0.92; height: 0.18"
               material="color: #182238"
-              menu-item="value: stopwatch; label: Stopwatch"
-              position="0 0.22 0"
+              menu-item="value: move-smooth; label: Smooth move"
+              position="0 0.38 0"
             >
-              <a-text class="watch-menu-stopwatch-label" value="Stopwatch" align="center" color="#eee" width="2.6" position="0 0 0.01"></a-text>
+              <a-text value="Smooth move" align="center" color="#eee" width="2.6" position="0 0 0.01"></a-text>
             </a-entity>
 
             <a-entity class="pm-target"
-              geometry="primitive: plane; width: 0.85; height: 0.2"
+              geometry="primitive: plane; width: 0.92; height: 0.18"
+              material="color: #182238"
+              menu-item="value: move-teleport; label: Teleport"
+              position="0 0.12 0"
+            >
+              <a-text value="Teleport" align="center" color="#eee" width="2.6" position="0 0 0.01"></a-text>
+            </a-entity>
+
+            <a-entity class="pm-target"
+              geometry="primitive: plane; width: 0.92; height: 0.18"
+              material="color: #182238"
+              menu-item="value: move-disabled; label: Disabled move"
+              position="0 -0.14 0"
+            >
+              <a-text value="Disabled move" align="center" color="#eee" width="2.6" position="0 0 0.01"></a-text>
+            </a-entity>
+
+            <a-entity class="pm-target"
+              geometry="primitive: plane; width: 0.92; height: 0.18"
+              material="color: #182238"
+              menu-item="value: turn-snap; label: Snap turn"
+              position="0 -0.4 0"
+            >
+              <a-text value="Snap turn" align="center" color="#eee" width="2.6" position="0 0 0.01"></a-text>
+            </a-entity>
+
+            <a-entity class="pm-target"
+              geometry="primitive: plane; width: 0.92; height: 0.18"
+              material="color: #182238"
+              menu-item="value: turn-smooth; label: Smooth turn"
+              position="0 -0.66 0"
+            >
+              <a-text value="Smooth turn" align="center" color="#eee" width="2.6" position="0 0 0.01"></a-text>
+            </a-entity>
+
+            <a-entity class="pm-target"
+              geometry="primitive: plane; width: 0.92; height: 0.18"
+              material="color: #182238"
+              menu-item="value: comfort-toggle; label: Vignette"
+              position="0 -0.92 0"
+            >
+              <a-text value="Vignette" align="center" color="#eee" width="2.6" position="0 0 0.01"></a-text>
+            </a-entity>
+
+            <a-entity class="pm-target"
+              geometry="primitive: plane; width: 0.92; height: 0.18"
+              material="color: #182238"
+              menu-item="value: station-center; label: Station: Center"
+              position="0 -1.18 0"
+            >
+              <a-text value="Station: Center" align="center" color="#eee" width="2.6" position="0 0 0.01"></a-text>
+            </a-entity>
+
+            <a-entity class="pm-target"
+              geometry="primitive: plane; width: 0.92; height: 0.18"
+              material="color: #182238"
+              menu-item="value: station-elevator; label: Station: Elevator"
+              position="0 -1.44 0"
+            >
+              <a-text value="Station: Elevator" align="center" color="#eee" width="2.6" position="0 0 0.01"></a-text>
+            </a-entity>
+
+            <a-entity class="pm-target"
+              geometry="primitive: plane; width: 0.92; height: 0.18"
               material="color: #182238"
               menu-item="value: haptics; label: Haptics Test"
-              position="0 -0.05 0"
+              position="0 -1.7 0"
             >
               <a-text value="Haptics Test" align="center" color="#eee" width="2.6" position="0 0 0.01"></a-text>
             </a-entity>
 
             <a-entity class="pm-target"
-              geometry="primitive: plane; width: 0.85; height: 0.2"
+              geometry="primitive: plane; width: 0.92; height: 0.18"
               material="color: #182238"
               menu-item="value: about; label: About"
-              position="0 -0.32 0"
+              position="0 -1.96 0"
             >
               <a-text class="watch-menu-about-label" value="About" align="center" color="#eee" width="2.6" position="0 0 0.01"></a-text>
             </a-entity>
@@ -533,6 +668,234 @@
           });
         },
       });
+
+      AFRAME.registerComponent('locomotion-demo', {
+        schema: {
+          moveMode: { default: 'smooth' },
+          turnMode: { default: 'snap' },
+          speed: { default: 1.5 },
+          snapAngle: { default: 30 },
+          teleportDistance: { default: 2.8 },
+          comfortVignette: { default: true },
+        },
+
+        init: function () {
+          this.rigEl = this.el;
+          this.cameraEl = this.el.querySelector('a-camera') || document.querySelector('a-camera');
+          this.turnCooldown = 0;
+          this.teleportPreview = document.createElement('a-ring');
+          this.teleportPreview.setAttribute('radius-inner', '0.45');
+          this.teleportPreview.setAttribute('radius-outer', '0.6');
+          this.teleportPreview.setAttribute('rotation', '-90 0 0');
+          this.teleportPreview.setAttribute('material', 'color: #7dd3fc; transparent: true; opacity: 0.75; shader: flat');
+          this.teleportPreview.setAttribute('visible', false);
+          this.el.parentNode.appendChild(this.teleportPreview);
+
+          this.stationPositions = {
+            center: { x: 0, y: 0, z: -2.5 },
+            wall: { x: 1.1, y: 0, z: -0.7 },
+            pedestal: { x: -1.1, y: 0, z: -0.7 },
+            elevator: { x: 0, y: 3.2, z: -3.5 },
+          };
+
+          this.stationMarkers = [];
+          Object.keys(this.stationPositions).forEach(function (key) {
+            var pos = this.stationPositions[key];
+            var marker = document.createElement('a-ring');
+            marker.setAttribute('radius-inner', '0.35');
+            marker.setAttribute('radius-outer', '0.52');
+            marker.setAttribute('rotation', '-90 0 0');
+            marker.setAttribute('position', (pos.x || 0) + ' ' + (pos.y || 0) + ' ' + (pos.z || 0));
+            marker.setAttribute('material', 'color: #9ad; transparent: true; opacity: 0.7; shader: flat');
+            marker.setAttribute('visible', false);
+            this.el.parentNode.appendChild(marker);
+            this.stationMarkers.push({ key: key, pos: pos, el: marker });
+          }, this);
+
+          this.elevatorLevel = 0;
+
+          this.vignette = document.createElement('a-plane');
+          this.vignette.setAttribute('material', 'color: #000; transparent: true; opacity: 0.2; shader: flat');
+          this.vignette.setAttribute('width', '1.5');
+          this.vignette.setAttribute('height', '1.5');
+          this.vignette.setAttribute('position', '0 0 -0.3');
+          this.vignette.setAttribute('visible', false);
+          if (this.cameraEl) this.cameraEl.appendChild(this.vignette);
+        },
+
+        getPad: function (hand) {
+          var pads = navigator.getGamepads ? navigator.getGamepads() : [];
+          if (!pads) return { axes: [0, 0], buttons: [] };
+          for (var i = 0; i < pads.length; i++) {
+            if (!pads[i]) continue;
+            var id = String(pads[i].id || '');
+            if (hand === 'left' && (id.indexOf('Left') >= 0 || id.indexOf('left') >= 0)) return pads[i];
+            if (hand === 'right' && (id.indexOf('Right') >= 0 || id.indexOf('right') >= 0)) return pads[i];
+          }
+          return pads[0] || { axes: [0, 0], buttons: [] };
+        },
+
+        setMoveMode: function (mode) {
+          this.data.moveMode = mode;
+        },
+
+        setTurnMode: function (mode) {
+          this.data.turnMode = mode;
+        },
+
+        setVignette: function (enabled) {
+          this.data.comfortVignette = !!enabled;
+          if (this.vignette) this.vignette.setAttribute('visible', !!enabled && this.data.moveMode === 'smooth');
+        },
+
+        goToStation: function (key) {
+          var station = this.stationPositions[key];
+          if (!station) return;
+          this.rigEl.object3D.position.set(station.x || 0, station.y || 0, station.z || 0);
+        },
+
+        applyElevatorTransition: function () {
+          if (!this.rigEl) return;
+          var pos = this.rigEl.object3D.position;
+          var elevatorDist = Math.hypot(pos.x, pos.z + 3.5);
+          if (elevatorDist < 1.25 && pos.y < 1.5) {
+            pos.y = 3.2;
+            this.elevatorLevel = 1;
+          } else if (pos.y > 2.0 && elevatorDist > 2.2) {
+            pos.y = 0;
+            this.elevatorLevel = 0;
+          }
+        },
+
+        updateTeleportPreview: function (pad) {
+          if (!this.cameraEl || !pad) {
+            this.teleportPreview.setAttribute('visible', false);
+            return;
+          }
+          var axisX = pad.axes && pad.axes[2] !== undefined ? pad.axes[2] : pad.axes && pad.axes[0] !== undefined ? pad.axes[0] : 0;
+          var axisY = pad.axes && pad.axes[3] !== undefined ? pad.axes[3] : pad.axes && pad.axes[1] !== undefined ? pad.axes[1] : 0;
+          var active = this.data.moveMode === 'teleport' && (Math.abs(axisX) > 0.15 || Math.abs(axisY) > 0.15);
+          if (!active) {
+            this.teleportPreview.setAttribute('visible', false);
+            return;
+          }
+          var cameraPos = new AFRAME.THREE.Vector3();
+          this.cameraEl.object3D.getWorldPosition(cameraPos);
+          var forward = new AFRAME.THREE.Vector3(0, 0, -1).applyQuaternion(this.cameraEl.object3D.getWorldQuaternion(new AFRAME.THREE.Quaternion()));
+          forward.y = 0;
+          if (forward.lengthSq() === 0) forward.set(0, 0, -1);
+          forward.normalize();
+          var targetPos = cameraPos.clone().add(forward.multiplyScalar(this.data.teleportDistance));
+          targetPos.y = 0.02;
+          this.teleportPreview.object3D.position.copy(targetPos);
+          this.teleportPreview.setAttribute('visible', true);
+        },
+
+        applySmoothMove: function (pad, deltaMs) {
+          if (!pad || this.data.moveMode !== 'smooth') return;
+          var moveX = pad.axes && pad.axes[2] !== undefined ? pad.axes[2] : pad.axes && pad.axes[0] !== undefined ? pad.axes[0] : 0;
+          var moveY = pad.axes && pad.axes[3] !== undefined ? pad.axes[3] : pad.axes && pad.axes[1] !== undefined ? pad.axes[1] : 0;
+          var moveAmount = Math.hypot(moveX, moveY);
+          if (moveAmount < 0.08) return;
+          var direction = new AFRAME.THREE.Vector3(moveX, 0, moveY);
+          var cameraQuat = new AFRAME.THREE.Quaternion();
+          this.cameraEl.object3D.getWorldQuaternion(cameraQuat);
+          var worldMove = direction.applyQuaternion(cameraQuat).setY(0);
+          worldMove.normalize().multiplyScalar(this.data.speed * (deltaMs / 1000));
+          this.rigEl.object3D.position.add(worldMove);
+        },
+
+        applySmoothTurn: function (pad, deltaMs) {
+          if (!pad) return;
+          var turnX = pad.axes && pad.axes[2] !== undefined ? pad.axes[2] : pad.axes && pad.axes[0] !== undefined ? pad.axes[0] : 0;
+          if (Math.abs(turnX) < 0.08) return;
+          this.rigEl.object3D.rotation.y -= turnX * 1.25 * (deltaMs / 1000);
+        },
+
+        applySnapTurn: function (pad) {
+          if (!pad) return;
+          var turnX = pad.axes && pad.axes[2] !== undefined ? pad.axes[2] : pad.axes && pad.axes[0] !== undefined ? pad.axes[0] : 0;
+          if (Math.abs(turnX) < 0.8) {
+            this.turnCooldown = 0;
+            return;
+          }
+          if (!this.turnCooldown) {
+            this.turnCooldown = 1;
+            this.rigEl.object3D.rotation.y -= Math.sign(turnX) * AFRAME.THREE.MathUtils.degToRad(this.data.snapAngle);
+          }
+        },
+
+        tick: function (time, delta) {
+          var leftPad = this.getPad('left');
+          var rightPad = this.getPad('right');
+
+          this.applyElevatorTransition();
+
+          this.stationMarkers.forEach(function (marker) {
+            marker.el.setAttribute('visible', this.data.moveMode === 'teleport' || this.data.moveMode === 'stations');
+          }, this);
+
+          if (this.data.moveMode === 'smooth') this.applySmoothMove(leftPad, delta);
+          else if (this.data.moveMode === 'teleport') {
+            this.updateTeleportPreview(leftPad);
+            if (leftPad && Math.abs(leftPad.axes[0]) < 0.05 && Math.abs(leftPad.axes[1]) < 0.05) {
+              this.teleportPreview.setAttribute('visible', false);
+            }
+            if (leftPad && leftPad.buttons && leftPad.buttons[0] && leftPad.buttons[0].pressed) {
+              var cameraPos = new AFRAME.THREE.Vector3();
+              this.cameraEl.object3D.getWorldPosition(cameraPos);
+              var forward = new AFRAME.THREE.Vector3(0, 0, -1).applyQuaternion(this.cameraEl.object3D.getWorldQuaternion(new AFRAME.THREE.Quaternion()));
+              forward.y = 0;
+              if (forward.lengthSq() === 0) forward.set(0, 0, -1);
+              forward.normalize();
+              var targetPos = cameraPos.clone().add(forward.multiplyScalar(this.data.teleportDistance));
+              targetPos.y = 0;
+              this.rigEl.object3D.position.copy(targetPos);
+              this.teleportPreview.setAttribute('visible', false);
+            }
+          } else {
+            this.teleportPreview.setAttribute('visible', false);
+          }
+
+          if (this.data.turnMode === 'smooth') this.applySmoothTurn(rightPad, delta);
+          else if (this.data.turnMode === 'snap') this.applySnapTurn(rightPad);
+          else this.turnCooldown = 0;
+
+          if (this.vignette) {
+            this.vignette.setAttribute('visible', !!this.data.comfortVignette && this.data.moveMode === 'smooth' && (leftPad && Math.hypot(leftPad.axes[0] || 0, leftPad.axes[1] || 0) > 0.12));
+          }
+        },
+      });
+
+      var rigEl = document.querySelector('#rig');
+      if (rigEl && !rigEl.components['locomotion-demo']) {
+        rigEl.setAttribute('locomotion-demo', '');
+      }
+
+      function handleLocomotionSelection (value) {
+        var locomotion = rigEl && rigEl.components['locomotion-demo'];
+        if (!locomotion) return;
+
+        if (value === 'move-smooth') locomotion.setMoveMode('smooth');
+        else if (value === 'move-teleport') locomotion.setMoveMode('teleport');
+        else if (value === 'move-stations') locomotion.setMoveMode('stations');
+        else if (value === 'move-disabled') locomotion.setMoveMode('disabled');
+        else if (value === 'turn-snap') locomotion.setTurnMode('snap');
+        else if (value === 'turn-smooth') locomotion.setTurnMode('smooth');
+        else if (value === 'turn-disabled') locomotion.setTurnMode('disabled');
+        else if (value === 'comfort-toggle') locomotion.setVignette(!locomotion.data.comfortVignette);
+        else if (value === 'station-center') locomotion.goToStation('center');
+        else if (value === 'station-wall') locomotion.goToStation('wall');
+        else if (value === 'station-pedestal') locomotion.goToStation('pedestal');
+        else if (value === 'station-elevator') locomotion.goToStation('elevator');
+      }
+
+      var menuPanel = document.querySelector('#menu-panel');
+      if (menuPanel) {
+        menuPanel.addEventListener('menu-item-select', function (evt) {
+          handleLocomotionSelection(evt.detail.value);
+        });
+      }
 
       // three.js's own raycasting already skips a hidden object AND
       // everything under it (it bails the instant object.visible is
@@ -1330,12 +1693,14 @@
             });
 
             pm.panelEl.addEventListener('menu-item-select', function (evt) {
-              if (evt.detail.value === 'stopwatch') self.toggleStopwatch();
-              else if (evt.detail.value === 'haptics') self.triggerHaptics();
-              else if (evt.detail.value === 'about') self.showAbout();
-              else if (evt.detail.value === 'help-close') self.closeHelp();
-              else if (evt.detail.value === 'help-prev') self.turnHelpPage(-1);
-              else if (evt.detail.value === 'help-next') self.turnHelpPage(1);
+              var value = evt.detail.value;
+              if (value === 'stopwatch') self.toggleStopwatch();
+              else if (value === 'haptics') self.triggerHaptics();
+              else if (value === 'about') self.showAbout();
+              else if (value === 'help-close') self.closeHelp();
+              else if (value === 'help-prev') self.turnHelpPage(-1);
+              else if (value === 'help-next') self.turnHelpPage(1);
+              else handleLocomotionSelection(value);
             });
 
             // DEMO 1 of 3 help styles (see the wall screen and pedestal
