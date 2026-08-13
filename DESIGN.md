@@ -30,6 +30,12 @@ Things that were never implemented, and work:
   Nothing in the code knows what a Molotov is.
 - Drinking fire. Fire is a liquid, liquid that reaches your mouth gets
   swallowed, so of course you can. It costs you nothing but dignity.
+- Setting the bar alight and then revolving it, which delivers a
+  burning armoury. Fire is a pool, pools ride surfaces that move, and
+  the bar is a surface that moves.
+- Hanging a beer bottle on a gun peg, or laying your hat in a rifle
+  cradle. A rack is a socket; a socket doesn't ask what you're putting
+  in it.
 
 When something *doesn't* combine and obviously should, that's the bug —
 not a missing feature. "Twirling a cigar should shake the ash off" was
@@ -112,6 +118,72 @@ coming off something solid. Setting the jump rate to zero leaves a
 perfectly good conventional fire, which is how the idea was de-risked
 before it was tried.
 
+## The revolving bar
+
+The clearest bill of health the "shared systems" bet has had. The
+counter is a drum with the saloon on one face and an armoury on the
+other; shoot the bell hanging over it and the whole thing turns over.
+
+The interesting part is how little of it is the turn. Nothing on the
+bar is "on the bar" in any sense the code knows about — every beer,
+cigar, match and lighter is parented to an anchor slot, and every slot
+is parented to the counter. Rotating one entity brings the lot, and
+there is no take-the-bottles-with-it code because there was never a
+list of bottles to take. The armoury is likewise not a new kind of
+thing: it's the same `addBox`/`addSlot` calls the bar already used,
+authored in the same coordinates, on a child entity turned 180°.
+
+Only two things needed saying out loud, and both because they are the
+things in the scene that *aren't* parented to anything:
+
+- **Spilt liquid.** A pool is a world-space disc, so a spun bar would
+  leave your beer hanging in the air where the counter used to be.
+  Pools resting on a moving surface now ride it round.
+- **The counter as a hard surface.** A hard surface is an axis-aligned
+  rectangle, which stops being true the moment it turns. Surfaces can
+  now name the object they're mounted on and keep their rectangle in
+  *that* frame, so the counter goes on being a counter mid-spin — you
+  can still crack a bottle cap on it while it's moving.
+
+The geometry has one honest compromise in it. The axis has to be the
+counter's own centre or the faces don't swap places, and that axis is
+0.92m from where you stand while the bar is 3.4m wide, so the ends
+sweep straight through you. There is no pivot that avoids that: you
+are standing at the edge of a turntable. Rather than fight it, nothing
+on the drum reaches above chin height, so the sweep passes *under*
+your view rather than blacking it out — at the halfway point you're
+standing in the middle of the bar looking down its length, which is
+better than the effect anyone was aiming for. The tall back wall and
+the high shelves are scenery and don't move.
+
+## Restocking and perishing
+
+Two components that are only safe as a pair, and which say something
+about how to add supply to a world like this.
+
+`restocking` goes on a *slot*: ten seconds after it's bare, it builds
+another one of whatever it names. It never learns what became of the
+last one, which is what separates it from `breakable`'s respawn — that
+one is an object coming back from the dead, this one is a shop
+restocking a shelf. `perishable` goes on the *item*: a clock that only
+runs while the thing is loose on the floor or in the air, and stops
+dead the moment anything holds it — a fist, a fingertip it's twirling
+on, or any socket anywhere in the scene.
+
+Either one alone is a bug. A rack that refills itself is a gun printer:
+strip the wall, drop the lot, come back in ten seconds. An item that
+evaporates with nothing to replace it leaves you permanently unarmed.
+Together they mean the number of guns in the world is bounded by the
+number of places to put one — which no code enforces, counts, or even
+knows. A soak test that strips every rack eight times over settles
+back to exactly the number of home slots on its own.
+
+The knock-on: your hip holsters are restocking slots too, so there's
+no such thing as "the original pistol" any more. What a pistol IS had
+to move out of markup and into a maker function so a rack could build
+one, and once it had, three props in markup became one prop and three
+sockets.
+
 ## Rules learned the hard way
 
 **Never move the camera.** A view that drifts, rolls or sways
@@ -140,7 +212,10 @@ unplanned combinations, degrading beats freezing.
 **Never mutate a collection while iterating it.** Particles spawn other
 particles from inside the particle loop — a droplet landing makes a
 splash. Removal is deferred: mark dead, sweep once at the end of the
-frame.
+frame. The same rule caught the second case for free: A-Frame runs
+every component's tick from one list, so an entity removing *itself*
+from the scene mid-tick (a perished gun) mutates the list being walked.
+Same fix — mark it, sweep it once.
 
 **Aim assist is a feature, not a cheat.** Real hand velocity is too
 noisy for anyone to land a juggling catch or hit a target with a thrown
@@ -160,6 +235,13 @@ Measured, not guessed. On a scene of ~490 meshes:
   bottle necks was carrying **276,000 triangles**. Patching the
   registered primitives' schema defaults once, before the scene
   initializes, took it to **27,000** and touched no creation sites.
+- Writing a primitive's *dimension* rebuilds its geometry. Every
+  anchor slot pulses its indicator sphere by writing `radius` each
+  frame, which was free with five slots and is not free with the
+  armoury's rack of empty ones — an occupied slot early-outs, an empty
+  one never does, so a wall of bare sockets is a wall of spheres being
+  rebuilt to the size they already were. Writing only on an actual
+  change is a two-line guard.
 - Everything transient is pooled — particles, fires, puddles — reused
   from free lists at unit size and scaled, never created and destroyed.
   Entity creation is the expensive operation in A-Frame.

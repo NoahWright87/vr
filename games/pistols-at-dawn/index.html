@@ -34,7 +34,7 @@
   </head>
   <body>
     <div id="overlay">
-      <span>Pistols at Dawn — grip near a holstered pistol, shotgun, or your hat to draw it. Guns fire on the trigger; let go of the grip while a finger still rests on the trigger to dangle and twirl whatever you're holding. Anything can snap into any anchor it's small enough for — glance at the glowing spheres for a hint — so go ahead and wear a gun like a hat, or hide one inside your hat. Turn around for the saloon bar: knock a bottle's cap on the counter edge to open it, then tip it over your face and drink what pours out. Fling a fistful of bottles skyward and shoot them apart. Strike a match on the counter or flip open the lighter and thumb a face button, then light a cigar off either — or off a barrel you just emptied, or a well-aimed bullet. Hold a cigar at your lips to draw on it and again to blow the smoke back out; flick or twirl it to knock the ash off. Let go and re-squeeze the grip quickly to keep hold of what you had and pick up the next thing too. Grab the shotgun's forend with your off hand to steady it. Spilled beer pools where it lands and burns if you light it, fire spreads along it and sets light to whatever it reaches, and a smashed bottle spills its own — so a lit puddle and a well-thrown beer make a Molotov out of parts that were already lying about. There's a jug of water for when that goes wrong — and yes, since fire is a liquid and liquid that reaches your mouth gets swallowed, you can drink it. Throw overhand and it goes where you're looking; let go early to lob it, late to line-drive it. Both meters at the bottom of your view have opinions about your aim. <a href="../../index.html">All prototypes</a></span>
+      <span>Pistols at Dawn — grip near a holstered pistol, shotgun, or your hat to draw it. Guns fire on the trigger; let go of the grip while a finger still rests on the trigger to dangle and twirl whatever you're holding. Anything can snap into any anchor it's small enough for — glance at the glowing spheres for a hint — so go ahead and wear a gun like a hat, or hide one inside your hat. Turn around for the saloon bar: knock a bottle's cap on the counter edge to open it, then tip it over your face and drink what pours out. Fling a fistful of bottles skyward and shoot them apart. Strike a match on the counter or flip open the lighter and thumb a face button, then light a cigar off either — or off a barrel you just emptied, or a well-aimed bullet. Hold a cigar at your lips to draw on it and again to blow the smoke back out; flick or twirl it to knock the ash off. Let go and re-squeeze the grip quickly to keep hold of what you had and pick up the next thing too. Grab the shotgun's forend with your off hand to steady it. Spilled beer pools where it lands and burns if you light it, fire spreads along it and sets light to whatever it reaches, and a smashed bottle spills its own — so a lit puddle and a well-thrown beer make a Molotov out of parts that were already lying about. There's a jug of water for when that goes wrong — and yes, since fire is a liquid and liquid that reaches your mouth gets swallowed, you can drink it. Throw overhand and it goes where you're looking; let go early to lob it, late to line-drive it. Both meters at the bottom of your view have opinions about your aim. Shoot the brass bell hanging over the bar and the whole counter revolves — beers, cigars, lit matches and all — to show an armoury on its back: guns on the pegs, long guns in the cradles, and a lot of empty sockets to arrange your own loadout in. Racks refill ten seconds after you empty them, and any gun left lying about goes up in smoke half a minute later, so take what you want and don't put it down. <a href="../../index.html">All prototypes</a></span>
     </div>
 
     <a-scene>
@@ -175,41 +175,43 @@
            slot's translucent sphere brightens as a compatible carried
            item approaches, with a quick "click" bounce right as it
            enters snap range.
+
+           All three are also restocking: leave one empty for ten
+           seconds and the armoury's own item maker puts a fresh gun in
+           it (see the RESTOCKING AND PERISHING note). That's the same
+           attribute the wall racks carry, which is what makes it
+           impossible to end up permanently unarmed — and, paired with
+           every loose gun evaporating, what stops you ending up with
+           forty of them.
       ============================================================ -->
-      <a-entity id="hip-left" class="anchor-slot" body-anchor="side: left" anchor-slot="size: small"></a-entity>
-      <a-entity id="hip-right" class="anchor-slot" body-anchor="side: right" anchor-slot="size: small"></a-entity>
-      <a-entity id="back-anchor" class="anchor-slot" body-anchor="side: back" anchor-slot="size: large"></a-entity>
+      <a-entity id="hip-left" class="anchor-slot" body-anchor="side: left" anchor-slot="size: small" restocking="item: pistol"></a-entity>
+      <a-entity id="hip-right" class="anchor-slot" body-anchor="side: right" anchor-slot="size: small" restocking="item: pistol"></a-entity>
+      <a-entity id="back-anchor" class="anchor-slot" body-anchor="side: back" anchor-slot="size: large" restocking="item: shotgun"></a-entity>
 
       <!-- ============================================================
-           GUNS + HAT
-           Each is a free-standing entity (not nested under a hand) so
-           it can be reparented at runtime between a slot, a hand, or
-           loose in the world while dangling/falling. All the holster/
-           hold/dangle/fall/throw/catch state machine lives in the
-           generic "holsterable" component, configured per-object
-           below; "firearm" is a small companion that adds firing on
-           top, configured from a pistol's single ball to the shotgun's
-           spread by schema alone (the hat has no such companion —
-           nothing to fire). The "grabbable" class is what makes proximity-haptics
-           notice them, and is also how hand-rig finds anything
-           pickable — any future interactive prop just needs
-           holsterable (and optionally its own visual-builder
-           component, the way boxy-gun/boxy-hat/boxy-shotgun are
-           separate from holsterable itself) to join in.
+           THE HAT
+           The guns used to be declared here alongside it, as
+           free-standing entities. They aren't any more: a rack that
+           refills itself has to be able to build a pistol, so the
+           declaration of what a pistol IS moved into an item maker (see
+           ITEM MAKERS) and the holsters above just name it. What used
+           to be four props in markup is now one prop and three sockets.
 
-           itemSize is the only thing that decides which slots an
-           object can snap into (see holsterable.findNearestSlot) —
-           there's no per-object list of "which anchors." Pistols are
-           small (fit any slot), the hat is medium (head or the back
-           bandolier — NOT a hip holster, it's too big), the shotgun is
-           large (only the bandolier fits it).
+           Everything the guns relied on still applies to the hat, and
+           reads the same way in either place: it's a free-standing
+           entity rather than something nested under a hand, so it can
+           be reparented at runtime between a slot, a hand, or loose in
+           the world; the whole holster/hold/dangle/fall/throw/catch
+           state machine is the generic "holsterable" component; and
+           the "grabbable" class is what makes proximity-haptics notice
+           it and hand-rig willing to pick it up.
 
-           The shotgun additionally declares a supportGrip at its
-           forend: grip near that with your other hand and you're
-           holding it in two, at which point the barrel points along
-           the line between your hands instead of wherever one wrist
-           happens to be. Steadier by geometry rather than by damping.
-           Only the hand on the actual grip can fire it.
+           itemSize is the only thing that decides which slots an object
+           can snap into (see holsterable.findNearestSlot) — there's no
+           per-object list of "which anchors." Pistols are small (fit
+           any slot), the hat is medium (head or the back bandolier —
+           NOT a hip holster, it's too big), the shotgun is large (only
+           the bandolier and the armoury's cradles fit it).
 
            The hat's holsterPosition/comOffset look unusual compared to
            the guns' — see boxy-hat's comment for why: its origin is
@@ -222,31 +224,8 @@
       ============================================================ -->
       <a-entity
         class="grabbable"
-        holsterable="holsterSelector: #hip-left; itemSize: small; holsterRotation: -90 0 0; heldRotation: -90 0 0; heldPosition: 0 0 0; grabRadius: 0.15; comOffset: 0 0.03 -0.08"
-        firearm
-        ignition-source="tipSelector: .muzzle"
-        boxy-gun
-      ></a-entity>
-      <a-entity
-        class="grabbable"
-        holsterable="holsterSelector: #hip-right; itemSize: small; holsterRotation: -90 0 0; heldRotation: -90 0 0; heldPosition: 0 0 0; grabRadius: 0.15; comOffset: 0 0.03 -0.08"
-        firearm
-        ignition-source="tipSelector: .muzzle"
-        boxy-gun
-      ></a-entity>
-
-      <a-entity
-        class="grabbable"
         holsterable="holsterSelector: #head-anchor; itemSize: medium; holsterRotation: 0 0 0; heldRotation: 90 0 0; holsterPosition: 0.11 0 0; heldPosition: -0.1 0 0; grabRadius: 0.35; comOffset: 0.11 -0.065 0"
         boxy-hat
-      ></a-entity>
-
-      <a-entity
-        class="grabbable"
-        holsterable="holsterSelector: #back-anchor; itemSize: large; holsterRotation: -90 0 0; heldRotation: -90 0 0; heldPosition: 0 0 0; grabRadius: 0.28; comOffset: 0 0.02 -0.2; supportGrip: 0 0.01 -0.22; supportRadius: 0.22; maxThrowSpeed: 7"
-        firearm="pellets: 6; coneDeg: 4; kickDeg: -16; recoverMs: 200; heatPerShot: 0.4"
-        ignition-source="tipSelector: .muzzle"
-        boxy-shotgun
       ></a-entity>
 
       <!-- ============================================================
@@ -259,6 +238,13 @@
            the bar, into your hip holster, into your hat, or into your
            mouth, and a pistol can be set down on the bar, with no code
            anywhere that knows bottles belong on bars.
+
+           The counter is also a drum with a second face: ring the bell
+           hanging over it and the whole thing turns over to show an
+           armoury, beers and all. See THE REVOLVING BAR — the short
+           version is that everything on the bar is parented to a socket
+           and every socket is parented to the counter, so turning the
+           counter was most of the work already done.
 
            vice-meter and world-systems are the two scene-level
            bookkeepers: how drunk/shaky you currently are, and the
@@ -510,12 +496,106 @@
       var BAR_NEAR_EDGE_Z = 0.62; // meters behind the player, to the player-facing edge of the counter
       var BAR_BOTTLE_COUNT = 5;
       var BAR_BOTTLE_SPACING = 0.3; // meters between bottles standing on the counter — wide enough that grabbing picks the one you meant, tight enough that the row stays inside one reach
-      var BAR_BOTTLE_Z = 0.86; // where along the counter's depth the bottles stand
-      var BAR_NEAR_ROW_Z = 0.72; // the cigar tray and the two spare sockets sit in front of the bottles, where they're easiest to reach
+      var BAR_BOTTLE_Z = 0.84; // where along the counter's depth the bottles stand — just clear of the back board (see ARMORY_TOP_Y)
+      var BAR_NEAR_ROW_Z = 0.7; // the cigar tray and the two spare sockets sit in front of the bottles, where they're easiest to reach
       var BAR_CIGAR_COUNT = 4;
       var SHELF_Z = 1.9; // back-bar shelf: out of reach on purpose, so those bottles are for shooting
-      var SHELF_HEIGHTS = [1.02, 1.46];
+      var SHELF_HEIGHTS = [1.62, 2.04]; // high enough to stay in view over the back board — see ARMORY_TOP_Y
       var SHELF_BOTTLES_PER_ROW = 5;
+
+      // ==============================================================
+      // THE REVOLVING BAR
+      // The counter is a drum, decorated on both sides: the saloon
+      // you've been drinking in on one face, an armoury on the other.
+      // Shoot the bell hanging over it and the whole thing whips
+      // round.
+      //
+      // Almost none of this is new machinery, and that's the point.
+      // The beers, cigars, matches and lighter aren't "on the bar" in
+      // any sense the code knows about — each one is parented to an
+      // anchor slot and every one of those slots is parented to the
+      // counter, so turning the counter turns the lot. Nothing had to
+      // be told that a beer should come along.
+      //
+      // Two bits of geometry set every number below:
+      //
+      //   - The axis has to be the counter's own centre line, or the
+      //     two faces don't swap places. That puts it 0.92m from where
+      //     you're standing while the bar is 3.4m wide, so the ends of
+      //     it sweep straight through you. No pivot avoids that —
+      //     you're standing at the edge of a turntable — so instead
+      //     nothing mounted on the drum reaches above ARMORY_TOP_Y,
+      //     which passes under your chin rather than through your
+      //     view, and the spin is over quickly. Both of those are feel
+      //     numbers and want checking in a headset.
+      //   - Each face therefore owns only the half of the drum on its
+      //     own side of the axis (see saloon-bar.localTo). Anything
+      //     spanning both halves — the counter block itself — belongs
+      //     to the drum instead of to either face, which is why it
+      //     looks the same whichever way round it is.
+      // ==============================================================
+      var BAR_PIVOT_Z = BAR_NEAR_EDGE_Z + BAR_DEPTH / 2; // the counter's centre line, and the axis it turns on
+      var BAR_SPIN_MS = 850; // whole half-turn, eased at both ends
+      var BELL_X = -0.98; // off to one side, threaded between the sightlines to the shelf bottles rather than across them
+      var BELL_Y = 1.86;
+      var BELL_ARM_Y = 2.5; // the bracket clears the top shelf's bottles
+
+      // ==============================================================
+      // THE ARMOURY
+      // The far face of the drum: a gun bench with a board of pegs
+      // above it, a shelf underneath, and far more sockets than there
+      // are guns to put in them. Everything is authored in the same
+      // coordinates as the saloon face, so "z = 0.7" means "a hand's
+      // width in front of you" on both sides.
+      //
+      // The racks hold guns the same way the bar holds beer: an
+      // anchor-slot and nothing else. A cradle that lays a shotgun
+      // flat isn't a different kind of holder, it's a slot that has
+      // been rolled 90 degrees — the gun keeps its one holstered pose
+      // and the rack decides which way up that pose sits, which is
+      // also why you can hang a beer bottle on a gun peg.
+      // ==============================================================
+      var ARMORY_TOP_Y = 1.46; // top of the back board: under a standing player's chin as it sweeps past, and low enough to leave the back-bar shelves in view
+      var ARMORY_BOARD_Z = 0.905; // the board sits right against the axis; the saloon's own backboard is its other half
+      var ARMORY_PEG_Z = 0.8; // where the pegs hold a gun. Far enough proud of the board that a pistol's grip — which sticks out behind it, once the gun is hanging barrel-down — stays on the armoury's own side of the axis instead of poking through into the saloon
+      var ARMORY_PEG_Y = 1.4; // pistols hang barrel-down from here, muzzle clearing the bench
+      var ARMORY_PISTOL_PEGS = 9;
+      var ARMORY_CRADLE_Y = 1.1; // long guns lie flat on the bench in rolled slots
+      var ARMORY_CRADLE_Z = 0.78; // ditto for a shotgun's stock
+      var ARMORY_CRADLES = 3;
+      var ARMORY_BENCH_ROW_Z = 0.68; // the free-for-all row along the front of the bench
+      var ARMORY_BENCH_SOCKETS = 7;
+      var ARMORY_SHELF_Y = 0.58; // the low shelf in the cavity under the bench
+      var ARMORY_SHELF_Z = 0.76;
+      var ARMORY_SHELF_SOCKETS = 6;
+
+      // Which of those start with something in them. Every other
+      // socket is bare on purpose — they're for whatever you decide
+      // belongs there.
+      var ARMORY_PISTOL_STOCK = [0, 2, 4, 6, 8];
+      var ARMORY_CRADLE_STOCK = [0, 2];
+
+      // ==============================================================
+      // RESTOCKING AND PERISHING
+      // Two halves of one bargain, and neither is safe without the
+      // other. A rack refills a socket ten seconds after it goes bare
+      // — it doesn't care what happened to the gun that used to be
+      // there, only that the peg is empty, which is what separates it
+      // from the bar's respawn-when-smashed (see breakable). On its
+      // own that's a gun printer: strip the wall, drop the lot, come
+      // back in ten seconds.
+      //
+      // So anything the world hands out has a clock on it, and the
+      // clock only runs while it's LOOSE — on the floor or in the air.
+      // Held, dangling, or sitting in a socket anywhere at all (a
+      // holster, the bar, your hat, your teeth) it's yours for as long
+      // as you want it. The number of guns in the world is therefore
+      // bounded by the number of places to put one, which is a rule
+      // nothing has to enforce.
+      // ==============================================================
+      var SLOT_RESTOCK_MS = 10000;
+      var LOOSE_ITEM_LIFETIME_MS = 30000;
+      var LOOSE_ITEM_FADE_MS = 1200; // it shrinks away over the last of that rather than blinking out
 
       // ==============================================================
       // BOTTLES AND POURING
@@ -780,9 +860,38 @@
       // top on at init. A surface is just a horizontal rectangle —
       // enough for "did I whack this down onto something solid," and
       // nothing in the scene needs real collision beyond that.
+      //
+      // A surface may also name an `obj` it's mounted on, in which case
+      // its rectangle is in that object's own frame rather than the
+      // world's, and every test below brings the point being checked
+      // into that frame first. That's what lets the bar counter stay a
+      // counter while it revolves. Only yaw is ever involved, so
+      // heights need no conversion and `y` stays a world height.
       var HARD_SURFACES = [
         { y: 0, minX: -15, maxX: 15, minZ: -15, maxZ: 15 },
       ];
+
+      var _surfaceLocal = new THREE.Vector3();
+
+      function inSurfaceFrame(surface, worldPos) {
+        _surfaceLocal.copy(worldPos);
+        if (surface.obj) surface.obj.worldToLocal(_surfaceLocal);
+        return _surfaceLocal;
+      }
+
+      // Is this point over that rectangle, allowing for a margin? Split
+      // out because three different callers ask it and only one of them
+      // used to have to think about frames.
+      function overSurface(surface, worldPos, margin) {
+        margin = margin || 0;
+        var p = inSurfaceFrame(surface, worldPos);
+        return (
+          p.x >= surface.minX - margin &&
+          p.x <= surface.maxX + margin &&
+          p.z >= surface.minZ - margin &&
+          p.z <= surface.maxZ + margin
+        );
+      }
 
       // Live vice levels, both 0..1, written by vice-meter and read by
       // every held object (see viceWobble) plus the overlay. A plain
@@ -1399,8 +1508,7 @@
         for (var i = 0; i < HARD_SURFACES.length; i++) {
           var s = HARD_SURFACES[i];
           if (s.y <= best || s.y > worldPos.y + 0.02) continue;
-          if (worldPos.x < s.minX || worldPos.x > s.maxX) continue;
-          if (worldPos.z < s.minZ || worldPos.z > s.maxZ) continue;
+          if (!overSurface(s, worldPos)) continue;
           best = s.y;
         }
         return best;
@@ -1595,6 +1703,27 @@
         playTone({ type: 'triangle', freq: 900, sweep: 300, duration: 0.09, volume: 0.05 });
       }
 
+      // Struck brass: a bright partial over a body tone, both left to
+      // ring out well past the hit.
+      function playClang() {
+        playTone({ type: 'triangle', freq: 1180, duration: 0.9, volume: 0.09 });
+        playTone({ type: 'sine', freq: 1790, duration: 0.6, volume: 0.05 });
+        playNoise({ duration: 0.05, freq: 3000, q: 0.7, volume: 0.06, filterType: 'highpass' });
+      }
+
+      // Heavy machinery under the floorboards, for as long as it takes.
+      function playRumble(durationMs) {
+        var seconds = durationMs / 1000;
+        playNoise({ duration: seconds, freq: 130, q: 1.4, volume: 0.09, filterType: 'lowpass' });
+        playTone({ type: 'sawtooth', freq: 46, sweep: 70, duration: seconds, volume: 0.05 });
+      }
+
+      // And the thump of it arriving.
+      function playClunk() {
+        playTone({ type: 'sine', freq: 96, sweep: 42, duration: 0.22, volume: 0.16 });
+        playNoise({ duration: 0.11, freq: 320, q: 0.8, volume: 0.09, filterType: 'lowpass' });
+      }
+
       // ==============================================================
       // findHardSurfaceStrike
       // "Did this small collider just get driven down through
@@ -1620,8 +1749,7 @@
           if (prevPos.y <= contactY) continue; // wasn't clear of it to begin with
           if (worldPos.y > contactY) continue; // still hasn't reached it
           if (worldPos.y < s.y - radius * 3) continue; // already well past — a stale frame, not a strike
-          if (worldPos.x < s.minX - radius || worldPos.x > s.maxX + radius) continue;
-          if (worldPos.z < s.minZ - radius || worldPos.z > s.maxZ + radius) continue;
+          if (!overSurface(s, worldPos, radius)) continue;
           return s;
         }
         return null;
@@ -2493,7 +2621,9 @@
           this.clickElapsed = null; // ms into the click bounce, or null when idle
 
           this.sphere = document.createElement('a-sphere');
-          this.sphere.setAttribute('radius', SLOT_SPHERE_BASE_RADIUS[this.data.size] * this.data.indicatorScale);
+          this._shownRadius = SLOT_SPHERE_BASE_RADIUS[this.data.size] * this.data.indicatorScale;
+          this._shownOpacity = 0.35;
+          this.sphere.setAttribute('radius', this._shownRadius);
           this.sphere.setAttribute(
             'material',
             'color: ' + SLOT_COLOR[this.data.size] + '; shader: flat; opacity: 0.35; transparent: true; depthWrite: false'
@@ -2571,8 +2701,24 @@
             }
           }
 
-          this.sphere.setAttribute('radius', radius);
-          this.sphere.setAttribute('material', 'opacity', opacity);
+          this.setIndicator(radius, opacity);
+        },
+
+        // Writing `radius` rebuilds the sphere's geometry outright, so
+        // it's only written when the number has actually moved. That
+        // was free with five slots in the scene; with the armoury's
+        // rack of empty sockets — none of which are ever full, so none
+        // of which take the early-out above — it's forty spheres a
+        // frame being rebuilt to the same size they already were.
+        setIndicator: function (radius, opacity) {
+          if (Math.abs(radius - this._shownRadius) > 0.0004) {
+            this._shownRadius = radius;
+            this.sphere.setAttribute('radius', radius);
+          }
+          if (Math.abs(opacity - this._shownOpacity) > 0.004) {
+            this._shownOpacity = opacity;
+            this.sphere.setAttribute('material', 'opacity', opacity);
+          }
         },
 
         // Nearest currently-HELD (actively gripped, not dangling —
@@ -3396,6 +3542,235 @@
       });
 
       // ==============================================================
+      // ITEM MAKERS
+      // A rack that restocks itself has to be able to BUILD the thing
+      // it's short of, which means "what a pistol is" can't only exist
+      // as a line of markup. So it lives here, once, and the armoury's
+      // opening stock, your hip holsters and every later restock all
+      // go through the same maker — there is no such thing as the
+      // original pistol any more, only the current one.
+      //
+      // A maker gets a bare entity and the id of the socket it's being
+      // built into, and does exactly what the markup used to do:
+      // choose components. Everything a maker produces is perishable,
+      // which is not the maker's business to opt into — see the
+      // RESTOCKING AND PERISHING note for why the two always come as
+      // a pair.
+      // ==============================================================
+      var ITEM_MAKERS = {};
+
+      function defineItem(name, build) {
+        ITEM_MAKERS[name] = build;
+      }
+
+      function makeItem(name, slotEl) {
+        var build = ITEM_MAKERS[name];
+        if (!build || !slotEl || !slotEl.id) return null;
+
+        var el = document.createElement('a-entity');
+        el.classList.add('grabbable');
+        build(el, slotEl.id);
+        el.setAttribute('perishable', '');
+        document.querySelector('a-scene').appendChild(el);
+        return el;
+      }
+
+      // itemSize is the only thing deciding which sockets a gun can go
+      // in (see holsterable.findNearestSlot) — there's no per-object
+      // list of "which anchors" anywhere. A pistol is small and fits
+      // everything, up to and including your mouth and the crown of
+      // your hat; a shotgun is large and only the bandolier and the
+      // armoury's cradles will take it.
+      defineItem('pistol', function (el, slotId) {
+        el.setAttribute('holsterable', {
+          holsterSelector: '#' + slotId,
+          itemSize: 'small',
+          holsterRotation: { x: -90, y: 0, z: 0 },
+          heldRotation: { x: -90, y: 0, z: 0 },
+          heldPosition: { x: 0, y: 0, z: 0 },
+          grabRadius: 0.15,
+          comOffset: { x: 0, y: 0.03, z: -0.08 },
+        });
+        el.setAttribute('firearm', '');
+        el.setAttribute('ignition-source', { tipSelector: '.muzzle' });
+        el.setAttribute('boxy-gun', '');
+      });
+
+      // The same declaration with different numbers, which is the
+      // point of firearm having a schema at all: a pistol is
+      // pellets:1, coneDeg:0, and the spread is the only thing that
+      // makes this a shotgun.
+      //
+      // supportGrip/supportRadius are what put a second place to hold
+      // it at the forend: grip near there with your off hand and the
+      // barrel points along the line between your two hands instead of
+      // wherever one wrist happens to be. Steadier by geometry rather
+      // than by damping, and only the hand on the actual grip can fire
+      // it.
+      defineItem('shotgun', function (el, slotId) {
+        el.setAttribute('holsterable', {
+          holsterSelector: '#' + slotId,
+          itemSize: 'large',
+          holsterRotation: { x: -90, y: 0, z: 0 },
+          heldRotation: { x: -90, y: 0, z: 0 },
+          heldPosition: { x: 0, y: 0, z: 0 },
+          grabRadius: 0.28,
+          comOffset: { x: 0, y: 0.02, z: -0.2 },
+          supportGrip: { x: 0, y: 0.01, z: -0.22 },
+          supportRadius: 0.22,
+          maxThrowSpeed: 7,
+        });
+        el.setAttribute('firearm', { pellets: 6, coneDeg: 4, kickDeg: -16, recoverMs: 200, heatPerShot: 0.4 });
+        el.setAttribute('ignition-source', { tipSelector: '.muzzle' });
+        el.setAttribute('boxy-shotgun', '');
+      });
+
+      // Taking something out of the world is deferred to the end of the
+      // frame for exactly the reason particle removal is (see
+      // killParticle): A-Frame runs every component's tick from one
+      // list, and removing an entity mid-tick mutates the list it's
+      // walking. Mark it, sweep it once, same as everything else here.
+      var DOOMED = [];
+
+      function despawnItem(el) {
+        if (DOOMED.indexOf(el) === -1) DOOMED.push(el);
+      }
+
+      function sweepDoomed() {
+        if (!DOOMED.length) return;
+
+        for (var i = 0; i < DOOMED.length; i++) {
+          var el = DOOMED[i];
+
+          // Out of everyone's hands and out of whatever socket it was
+          // claiming, first — an occupant that stops existing without
+          // saying so leaves a slot that looks full forever, and a
+          // rack that looks full never restocks.
+          var hands = document.querySelectorAll('.hand');
+          for (var h = 0; h < hands.length; h++) {
+            var handRig = hands[h].components['hand-rig'];
+            if (handRig) handRig.discard(el);
+          }
+
+          var holsterable = el.components && el.components.holsterable;
+          if (holsterable) {
+            holsterable.hand = null;
+            holsterable.vacateSlot();
+          }
+
+          if (el.parentNode) el.parentNode.removeChild(el);
+          if (el.object3D && el.object3D.parent) el.object3D.parent.remove(el.object3D);
+        }
+
+        DOOMED.length = 0;
+      }
+
+      // ==============================================================
+      // COMPONENT: restocking
+      // A socket that keeps something in it. Whenever it's been bare
+      // for delayMs it builds another one, and that's the whole
+      // component — it never learns what became of the last one, which
+      // is the difference between this and breakable's respawn (that
+      // one is the object coming back from the dead; this one is the
+      // shop putting a new one on the shelf).
+      //
+      // It goes on the slot rather than on the item for the same
+      // reason: the item might not be there. Put it on any anchor-slot
+      // in the scene and that spot is now permanently stocked with
+      // whatever you name — a rack of rifles, a hip holster, or, if
+      // you wanted, a bar that never runs out of matches.
+      // ==============================================================
+      registerComponent('restocking', {
+        schema: {
+          item: { type: 'string' }, // a key into ITEM_MAKERS
+          delayMs: { type: 'number', default: SLOT_RESTOCK_MS },
+        },
+
+        init: function () {
+          // Zero, so the opening stock arrives on the first tick rather
+          // than ten seconds into the game. Deferring it that far is
+          // also what guarantees the sibling anchor-slot component has
+          // initialized — the same reason holsterable claims its slot
+          // from tick() instead of init().
+          this.timer = 0;
+        },
+
+        tick: function (time, dt) {
+          var slot = this.el.components['anchor-slot'];
+          if (!slot) return;
+
+          if (slot.occupants.length) {
+            this.timer = this.data.delayMs;
+            return;
+          }
+
+          this.timer -= dt || 16;
+          if (this.timer > 0) return;
+
+          this.timer = this.data.delayMs;
+          makeItem(this.data.item, this.el);
+        },
+      });
+
+      // ==============================================================
+      // COMPONENT: perishable
+      // The other half of that bargain. The clock only runs while this
+      // object is loose — lying on the floor or still in the air.
+      // Anything holding it counts, and every kind of holding counts
+      // equally: a fist, a fingertip it's twirling on, or any socket
+      // anywhere in the scene. Pick a dropped pistol back up with one
+      // second left and it's as good as new.
+      //
+      // It shrinks away over the last of its life instead of blinking
+      // out, so a gun you were about to go back for tells you it's
+      // going.
+      // ==============================================================
+      registerComponent('perishable', {
+        schema: {
+          lifetimeMs: { type: 'number', default: LOOSE_ITEM_LIFETIME_MS },
+          fadeMs: { type: 'number', default: LOOSE_ITEM_FADE_MS },
+        },
+
+        init: function () {
+          this.remaining = this.data.lifetimeMs;
+          this.expired = false;
+          this._world = new THREE.Vector3();
+        },
+
+        tick: function (time, dt) {
+          if (this.expired) return;
+
+          var holsterable = this.el.components.holsterable;
+          if (!holsterable) return;
+
+          if (holsterable.state !== 'resting' && holsterable.state !== 'falling') {
+            if (this.remaining !== this.data.lifetimeMs) {
+              this.remaining = this.data.lifetimeMs;
+              this.el.object3D.scale.setScalar(1);
+            }
+            return;
+          }
+
+          this.remaining -= dt || 16;
+          if (this.remaining <= 0) {
+            this.expire();
+            return;
+          }
+          if (this.remaining < this.data.fadeMs) {
+            this.el.object3D.scale.setScalar(Math.max(this.remaining / this.data.fadeMs, 0.04));
+          }
+        },
+
+        expire: function () {
+          this.expired = true;
+          this.el.object3D.getWorldPosition(this._world);
+          spawnSmoke(this._world, null, 0.7);
+          spawnSmoke(this._world, null, 0.45);
+          despawnItem(this.el);
+        },
+      });
+
+      // ==============================================================
       // COMPONENT: firearm
       // Everything that can be fired, in one component. This used to
       // be two nearly identical components ("pistol" and "shotgun")
@@ -3828,6 +4203,19 @@
             this.danglingObjects.splice(d, 1);
             this.reflowStack(this.danglingObjects);
           }
+        },
+
+        // Everything this hand might still be remembering about an
+        // object that has stopped existing. forget() covers the two
+        // lists it's actively holding by; the stash in particular has
+        // to go too, or a quick re-grip reaches for a gun that isn't
+        // in the scene any more.
+        discard: function (objEl) {
+          this.forget(objEl);
+          var s = this.supportObjects.indexOf(objEl);
+          if (s !== -1) this.supportObjects.splice(s, 1);
+          var t = this.stash.indexOf(objEl);
+          if (t !== -1) this.stash.splice(t, 1);
         },
 
         // Re-tells every item where it sits in the fistful. Same idea
@@ -5898,6 +6286,183 @@
       });
 
       // ==============================================================
+      // COMPONENT: turntable
+      // Something with two faces that turns to show one or the other.
+      // It has no idea what's mounted on it: whatever is parented here
+      // comes round, and since every prop in this scene is parented to
+      // an anchor slot rather than floating at a world position, that
+      // means every beer, cigar, match and lit flame on the bar arrives
+      // on the far side still in its socket. There is no "take the
+      // bottles with it" code anywhere, and there was never going to
+      // need to be.
+      //
+      // It listens for a `toggle` event on itself rather than being
+      // driven directly, so anything at all can be the switch — see
+      // shot-switch, and note that nothing here knows a bell exists.
+      //
+      // Two things do need saying explicitly, because they aren't
+      // parented to anything:
+      //
+      //   - Spilt liquid. A puddle is a world-space disc, so without
+      //     ridePools() a spun bar leaves your beer (or your fire)
+      //     hanging in the air where the counter used to be.
+      //   - The counter as a hard surface. That one is handled where
+      //     it's registered, by giving the surface a frame to live in
+      //     — see HARD_SURFACES.
+      // ==============================================================
+      registerComponent('turntable', {
+        schema: {
+          spinMs: { type: 'number', default: BAR_SPIN_MS },
+          faces: { type: 'number', default: 2 },
+        },
+
+        init: function () {
+          this.face = 0;
+          this.fromAngle = 0;
+          this.toAngle = 0;
+          this.elapsed = this.data.spinMs; // "already arrived"
+          this._pivot = new THREE.Vector3();
+          this._poolPos = new THREE.Vector3();
+
+          this.onToggle = this.onToggle.bind(this);
+          this.el.addEventListener('toggle', this.onToggle);
+        },
+
+        remove: function () {
+          this.el.removeEventListener('toggle', this.onToggle);
+        },
+
+        spinning: function () {
+          return this.elapsed < this.data.spinMs;
+        },
+
+        // Mid-spin toggles are ignored rather than queued: emptying a
+        // revolver into the bell should ring it, not wind it up.
+        onToggle: function () {
+          if (this.spinning()) return;
+
+          this.face = (this.face + 1) % this.data.faces;
+          this.fromAngle = this.el.object3D.rotation.y;
+          this.toAngle = this.fromAngle + (Math.PI * 2) / this.data.faces;
+          this.elapsed = 0;
+          playRumble(this.data.spinMs);
+        },
+
+        tick: function (time, dt) {
+          if (!this.spinning()) return;
+
+          this.elapsed = Math.min(this.elapsed + (dt || 16), this.data.spinMs);
+          var t = this.elapsed / this.data.spinMs;
+          var eased = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+          var angle = this.fromAngle + (this.toAngle - this.fromAngle) * eased;
+
+          // Pools are moved by the same delta and BEFORE the drum
+          // turns, so the "is this puddle on my counter" test below
+          // runs against the frame the puddle is still standing in.
+          this.ridePools(angle - this.el.object3D.rotation.y);
+          this.el.object3D.rotation.y = angle;
+
+          if (!this.spinning()) playClunk();
+        },
+
+        // Every surface belonging to this turntable drags whatever has
+        // been spilt on it round with it. A pool is a flat disc about a
+        // vertical axis, so riding along is a rotation of its centre
+        // and nothing else — and because a burning pool is just a pool,
+        // setting the bar alight and then spinning it delivers a
+        // burning armoury without anything here knowing what fire is.
+        ridePools: function (deltaRad) {
+          if (!deltaRad) return;
+
+          this.el.object3D.getWorldPosition(this._pivot);
+          var cos = Math.cos(deltaRad);
+          var sin = Math.sin(deltaRad);
+
+          for (var i = 0; i < POOLS.length; i++) {
+            var pool = POOLS[i];
+            if (!this.carries(pool)) continue;
+
+            var dx = pool.x - this._pivot.x;
+            var dz = pool.z - this._pivot.z;
+            pool.x = this._pivot.x + dx * cos + dz * sin;
+            pool.z = this._pivot.z - dx * sin + dz * cos;
+          }
+        },
+
+        carries: function (pool) {
+          for (var i = 0; i < HARD_SURFACES.length; i++) {
+            var s = HARD_SURFACES[i];
+            if (!s.obj || Math.abs(s.y - pool.y) > 0.06) continue;
+            if (!this.owns(s.obj)) continue;
+            if (overSurface(s, this._poolPos.set(pool.x, pool.y, pool.z))) return true;
+          }
+          return false;
+        },
+
+        owns: function (obj) {
+          while (obj) {
+            if (obj === this.el.object3D) return true;
+            obj = obj.parent;
+          }
+          return false;
+        },
+      });
+
+      // ==============================================================
+      // COMPONENT: shot-switch
+      // A shootable thing that throws a switch somewhere else. It emits
+      // `toggle` at whatever it's pointed at and takes a visible knock
+      // for it — that's the entire component, and it's deliberately
+      // ignorant of both ends: any shootable can be the switch, and
+      // anything that listens for `toggle` can be the machine. Also
+      // wired to `click` so the desktop reticle can work it without a
+      // headset, the same way breakable is.
+      // ==============================================================
+      registerComponent('shot-switch', {
+        schema: {
+          target: { type: 'selector' },
+          knockDeg: { type: 'number', default: 26 },
+        },
+
+        init: function () {
+          this.swing = 0; // radians of knock left in it
+          this.swingVel = 0;
+
+          this.onShot = this.onShot.bind(this);
+          this.el.addEventListener('shot', this.onShot);
+          this.el.addEventListener('click', this.onShot);
+        },
+
+        remove: function () {
+          this.el.removeEventListener('shot', this.onShot);
+          this.el.removeEventListener('click', this.onShot);
+        },
+
+        onShot: function () {
+          this.swingVel = (this.data.knockDeg * Math.PI) / 180 * 9;
+          playClang();
+          if (this.data.target) this.data.target.emit('toggle', null, false);
+        },
+
+        // A damped swing about z, so hitting it reads as a hit even
+        // when the machine it's wired to is busy and ignores it.
+        tick: function (time, dt) {
+          if (!this.swing && !this.swingVel) return;
+
+          var dtSeconds = Math.min((dt || 16) / 1000, 0.05);
+          this.swingVel -= this.swing * 240 * dtSeconds;
+          this.swingVel *= Math.max(1 - 3.2 * dtSeconds, 0);
+          this.swing += this.swingVel * dtSeconds;
+
+          if (Math.abs(this.swing) < 0.002 && Math.abs(this.swingVel) < 0.02) {
+            this.swing = 0;
+            this.swingVel = 0;
+          }
+          this.el.object3D.rotation.z = this.swing;
+        },
+      });
+
+      // ==============================================================
       // COMPONENT: saloon-bar
       // Furniture, and then a row of ordinary anchor-slots on top of
       // it. Nothing here knows that bottles belong on bars — it builds
@@ -5911,61 +6476,78 @@
       // someone standing at the origin (see BAR_NEAR_EDGE_Z). The back
       // shelf is deliberately out of reach — those bottles are there
       // to be shot, not picked up.
+      //
+      // The counter itself is a drum with a face on each side (see the
+      // THE REVOLVING BAR note): saloon on one, armoury on the other,
+      // both authored in the same coordinates because the armoury's
+      // frame is this one turned around.
       // ==============================================================
       registerComponent('saloon-bar', {
         init: function () {
           this.slotSerial = 0;
-          var centerZ = BAR_NEAR_EDGE_Z + BAR_DEPTH / 2;
 
-          this.addBox(BAR_WIDTH, 0.07, BAR_DEPTH + 0.08, { x: 0, y: BAR_TOP_Y - 0.035, z: centerZ }, '#6b4429'); // counter top
-          this.addBox(BAR_WIDTH, BAR_TOP_Y - 0.07, BAR_DEPTH, { x: 0, y: (BAR_TOP_Y - 0.07) / 2, z: centerZ }, '#4a2f1c'); // counter body
-          this.addBox(BAR_WIDTH, 0.05, 0.05, { x: 0, y: 0.14, z: BAR_NEAR_EDGE_Z - 0.09 }, '#8a7a45'); // brass foot rail
-          this.addBox(BAR_WIDTH + 1.6, 3, 0.12, { x: 0, y: 1.5, z: SHELF_Z + 0.35 }, '#3c2a1c'); // back wall
+          // Three frames, and this component is the only thing that
+          // knows the difference between them. `room` is the building:
+          // the back wall, the out-of-reach shelves and the bell, none
+          // of which move. `drum` is the counter block, which turns.
+          // Its two faces hang off it and are authored identically,
+          // because the armoury's frame IS the saloon's, turned around.
+          this.roomEl = this.addChild(this.el, { x: 0, y: 0, z: 0 });
 
-          var self = this;
-          SHELF_HEIGHTS.forEach(function (y) {
-            self.addBox(BAR_WIDTH - 0.4, 0.06, 0.28, { x: 0, y: y, z: SHELF_Z }, '#5b3a29');
-          });
+          this.drumEl = this.addChild(this.el, { x: 0, y: 0, z: BAR_PIVOT_Z });
+          this.drumEl.setAttribute('id', 'bar-turntable');
+          this.drumEl.setAttribute('turntable', { spinMs: BAR_SPIN_MS });
 
-          // The counter surface, registered as somewhere a bottle can
-          // be cracked open. This is the only "collision" in the
-          // scene and it exists purely for that one move.
-          HARD_SURFACES.push({
-            y: BAR_TOP_Y,
-            minX: -BAR_WIDTH / 2,
-            maxX: BAR_WIDTH / 2,
-            minZ: BAR_NEAR_EDGE_Z - 0.04,
-            maxZ: BAR_NEAR_EDGE_Z + BAR_DEPTH + 0.04,
-          });
+          this.barFaceEl = this.addChild(this.drumEl, { x: 0, y: 0, z: 0 });
+          this.armoryFaceEl = this.addChild(this.drumEl, { x: 0, y: 0, z: 0 });
+          this.armoryFaceEl.setAttribute('rotation', { x: 0, y: 180, z: 0 });
 
-          this.buildCounterBottles();
-          this.buildShelfBottles();
-          this.buildCigarBox();
-          this.buildMatchbox();
-          this.buildLighter();
-          this.buildWaterJug();
-
-          // Two spare sockets on the bar for whatever you're carrying —
-          // a place to set your gun down, or your hat, while you drink.
-          this.addSlot({ x: -0.92, y: BAR_TOP_Y, z: BAR_NEAR_ROW_Z }, 'medium', {});
-          this.addSlot({ x: 0.92, y: BAR_TOP_Y, z: BAR_NEAR_ROW_Z }, 'medium', {});
+          this.buildRoom();
+          this.buildDrum();
+          this.buildSaloonFace();
+          this.buildArmoryFace();
         },
 
-        addBox: function (w, h, d, pos, color) {
+        addChild: function (parentEl, pos) {
+          var el = document.createElement('a-entity');
+          el.setAttribute('position', pos);
+          parentEl.appendChild(el);
+          return el;
+        },
+
+        // Both faces and the drum are authored in the same "as you see
+        // it" coordinates — x across the bar, z out toward the player —
+        // and this is the only place that knows which of them are
+        // mounted on the drum and therefore need the axis subtracted
+        // out. The room is already in those coordinates.
+        localTo: function (faceEl, pos) {
+          if (faceEl === this.roomEl) return pos;
+          return { x: pos.x, y: pos.y, z: pos.z - BAR_PIVOT_Z };
+        },
+
+        addBox: function (w, h, d, pos, color, faceEl, rot) {
+          faceEl = faceEl || this.barFaceEl;
           var box = document.createElement('a-box');
           box.setAttribute('width', w);
           box.setAttribute('height', h);
           box.setAttribute('depth', d);
-          box.setAttribute('position', pos);
+          box.setAttribute('position', this.localTo(faceEl, pos));
           box.setAttribute('color', color);
-          this.el.appendChild(box);
+          if (rot) box.setAttribute('rotation', rot);
+          faceEl.appendChild(box);
           return box;
         },
 
         // Slots are created (and given ids) before the things that
         // start in them, so each item's holsterable="holsterSelector:
         // #..." resolves the moment it initializes.
-        addSlot: function (pos, size, extra) {
+        //
+        // `rot` rolls the socket itself, which is how the armoury's
+        // cradles lay a long gun flat: the gun keeps the one holstered
+        // pose it has everywhere else and the rack decides which way up
+        // that pose sits.
+        addSlot: function (pos, size, extra, faceEl, rot) {
+          faceEl = faceEl || this.barFaceEl;
           var id = 'bar-slot-' + this.slotSerial++;
           var slot = document.createElement('a-entity');
           slot.setAttribute('id', id);
@@ -5976,9 +6558,90 @@
             config[k] = extra[k];
           });
           slot.setAttribute('anchor-slot', config);
-          slot.setAttribute('position', pos);
-          this.el.appendChild(slot);
+          slot.setAttribute('position', this.localTo(faceEl, pos));
+          if (rot) slot.setAttribute('rotation', rot);
+          faceEl.appendChild(slot);
           return id;
+        },
+
+        // Sockets that start with something in them say so by naming a
+        // maker; that one attribute is also what keeps them stocked
+        // afterwards. See restocking.
+        stock: function (slotId, item) {
+          var slot = document.getElementById(slotId);
+          if (slot) slot.setAttribute('restocking', { item: item });
+        },
+
+        // The parts of the saloon that stay where they are: the wall,
+        // the high shelves that were always meant to be shot at rather
+        // than reached, and the bell.
+        buildRoom: function () {
+          var self = this;
+
+          this.addBox(BAR_WIDTH + 1.6, 3, 0.12, { x: 0, y: 1.5, z: SHELF_Z + 0.35 }, '#3c2a1c', this.roomEl);
+
+          SHELF_HEIGHTS.forEach(function (y) {
+            self.addBox(BAR_WIDTH - 0.4, 0.06, 0.28, { x: 0, y: y, z: SHELF_Z }, '#5b3a29', self.roomEl);
+          });
+
+          this.buildShelfBottles();
+          this.buildBell();
+        },
+
+        // The drum: the counter block, which belongs to neither face
+        // because it straddles the axis and looks the same from either
+        // side. It's a spine and two end caps rather than one solid
+        // lump, so each face has a cavity of its own underneath — the
+        // saloon uses it for nothing at all and the armoury keeps a
+        // shelf in it, and neither can see through to the other.
+        buildDrum: function () {
+          var bodyH = BAR_TOP_Y - 0.07;
+          var bodyY = bodyH / 2;
+
+          this.addBox(BAR_WIDTH, 0.07, BAR_DEPTH + 0.08, { x: 0, y: BAR_TOP_Y - 0.035, z: BAR_PIVOT_Z }, '#6b4429', this.drumEl); // counter top
+          this.addBox(BAR_WIDTH, bodyH, 0.14, { x: 0, y: bodyY, z: BAR_PIVOT_Z }, '#4a2f1c', this.drumEl); // spine, on the axis
+          this.addBox(0.05, bodyH, BAR_DEPTH, { x: -(BAR_WIDTH / 2 - 0.025), y: bodyY, z: BAR_PIVOT_Z }, '#4a2f1c', this.drumEl);
+          this.addBox(0.05, bodyH, BAR_DEPTH, { x: BAR_WIDTH / 2 - 0.025, y: bodyY, z: BAR_PIVOT_Z }, '#4a2f1c', this.drumEl);
+
+          // The counter surface, registered as somewhere a bottle can
+          // be cracked open. This is the only "collision" in the scene
+          // and it exists purely for that one move. It's registered in
+          // the drum's own frame, so it goes on turning being a counter
+          // while the counter turns.
+          HARD_SURFACES.push({
+            obj: this.drumEl.object3D,
+            y: BAR_TOP_Y,
+            minX: -BAR_WIDTH / 2,
+            maxX: BAR_WIDTH / 2,
+            minZ: BAR_NEAR_EDGE_Z - 0.04 - BAR_PIVOT_Z,
+            maxZ: BAR_NEAR_EDGE_Z + BAR_DEPTH + 0.04 - BAR_PIVOT_Z,
+          });
+        },
+
+        buildSaloonFace: function () {
+          var bodyH = BAR_TOP_Y - 0.07;
+          this.addBox(BAR_WIDTH - 0.1, bodyH, 0.05, { x: 0, y: bodyH / 2, z: BAR_NEAR_EDGE_Z + 0.025 }, '#4a2f1c'); // the front of the bar
+          this.addBox(BAR_WIDTH, 0.05, 0.05, { x: 0, y: 0.14, z: BAR_NEAR_EDGE_Z - 0.09 }, '#8a7a45'); // brass foot rail
+
+          // The saloon side of the board the armoury's pegs are driven
+          // into: from here it's the back of the bar, with a brass rail
+          // along the top. Both halves stop dead on the axis — see
+          // localTo — so together they read as one board with a
+          // different idea on each side.
+          var boardH = ARMORY_TOP_Y - BAR_TOP_Y;
+          this.addBox(BAR_WIDTH - 0.2, boardH, 0.03, { x: 0, y: BAR_TOP_Y + boardH / 2, z: BAR_PIVOT_Z - 0.015 }, '#432c1b');
+          this.addBox(BAR_WIDTH - 0.2, 0.035, 0.06, { x: 0, y: ARMORY_TOP_Y, z: BAR_PIVOT_Z - 0.03 }, '#8a7a45');
+
+          this.buildCounterBottles();
+          this.buildCigarBox();
+          this.buildMatchbox();
+          this.buildLighter();
+          this.buildWaterJug();
+
+          // Two spare sockets on the bar for whatever you're carrying —
+          // a place to set your gun down, or your hat, while you drink.
+          this.addSlot({ x: -0.92, y: BAR_TOP_Y, z: BAR_NEAR_ROW_Z }, 'medium', {});
+          this.addSlot({ x: 0.92, y: BAR_TOP_Y, z: BAR_NEAR_ROW_Z }, 'medium', {});
         },
 
         spawnBottle: function (slotId, color) {
@@ -6031,7 +6694,8 @@
               var slotId = self.addSlot(
                 { x: -(BAR_WIDTH - 0.8) / 2 + i * spacing, y: y + 0.03, z: SHELF_Z },
                 'small',
-                {}
+                {},
+                self.roomEl
               );
               self.spawnBottle(slotId, colors[(i + row * 2) % colors.length]);
             }
@@ -6183,6 +6847,183 @@
           el.setAttribute('lightable', { tipSelector: '.flame' });
           el.setAttribute('ignition-source', { tipSelector: '.flame' });
           this.el.sceneEl.appendChild(el);
+        },
+
+        // The bell that turns the bar over, on a bracket out from the
+        // wall. It's part of the room rather than of the drum, so it
+        // stays put whichever face is showing.
+        //
+        // Its position is picked to stay out of the way twice over: the
+        // arm runs above the top shelf's bottles, and the bell itself
+        // hangs off-centre, threaded between the sightlines from where
+        // you stand to those bottles rather than sitting across one.
+        //
+        // It's an ordinary .shootable, so everything that can already
+        // hit a bottle can already ring it: a pistol, a pellet from the
+        // shotgun, or the desktop reticle.
+        buildBell: function () {
+          var brass = '#b98c2a';
+          var hangerY = BELL_Y + 0.17;
+
+          this.addBox(
+            0.06,
+            0.06,
+            SHELF_Z + 0.29 - BAR_PIVOT_Z,
+            { x: BELL_X, y: BELL_ARM_Y, z: (BAR_PIVOT_Z + SHELF_Z + 0.29) / 2 },
+            '#3c2a1c',
+            this.roomEl
+          ); // bracket arm, out from the wall
+          this.addBox(
+            0.03,
+            BELL_ARM_Y - hangerY,
+            0.03,
+            { x: BELL_X, y: (BELL_ARM_Y + hangerY) / 2, z: BAR_PIVOT_Z },
+            '#3c2a1c',
+            this.roomEl
+          ); // and the rod it hangs on
+
+          var hanger = this.addChild(this.roomEl, { x: BELL_X, y: hangerY, z: BAR_PIVOT_Z });
+          hanger.classList.add('shootable');
+          hanger.setAttribute('shot-switch', { target: '#bar-turntable' });
+
+          var stem = document.createElement('a-box');
+          stem.setAttribute('width', 0.014);
+          stem.setAttribute('height', 0.1);
+          stem.setAttribute('depth', 0.014);
+          stem.setAttribute('position', { x: 0, y: -0.05, z: 0 });
+          stem.setAttribute('color', '#2b2b2f');
+          hanger.appendChild(stem);
+
+          var dome = document.createElement('a-cylinder');
+          dome.setAttribute('radius', 0.11);
+          dome.setAttribute('height', 0.15);
+          dome.setAttribute('color', brass);
+          dome.setAttribute('position', { x: 0, y: -0.175, z: 0 });
+          hanger.appendChild(dome);
+
+          var lip = document.createElement('a-cylinder');
+          lip.setAttribute('radius', 0.13);
+          lip.setAttribute('height', 0.03);
+          lip.setAttribute('color', '#8a6a1c');
+          lip.setAttribute('position', { x: 0, y: -0.26, z: 0 });
+          hanger.appendChild(lip);
+
+          var clapper = document.createElement('a-box');
+          clapper.setAttribute('width', 0.03);
+          clapper.setAttribute('height', 0.05);
+          clapper.setAttribute('depth', 0.03);
+          clapper.setAttribute('position', { x: 0, y: -0.29, z: 0 });
+          clapper.setAttribute('color', '#2b2b2f');
+          hanger.appendChild(clapper);
+        },
+
+        // ============================================================
+        // THE ARMOURY
+        // The far face. Authored in exactly the coordinates the saloon
+        // uses, so every number below is "where it'll be when it's your
+        // turn" — the bench top IS the counter top, seen from the other
+        // side.
+        //
+        // Every rack here is anchor-slots and boxes. Nothing in it
+        // knows what a gun is: the pegs would take bottles, the cradles
+        // would take your hat, and a pistol left in the free row is
+        // holstered by exactly the same code that puts a beer back on
+        // the bar. Only the sockets that START with something in them
+        // get a `restocking`; the rest are bare on purpose.
+        // ============================================================
+        buildArmoryFace: function () {
+          var face = this.armoryFaceEl;
+          var iron = '#3a3f43';
+          var board = '#4a3b2c';
+
+          // Back board, its frame, and the pegs driven into it.
+          var boardH = ARMORY_TOP_Y - BAR_TOP_Y;
+          this.addBox(BAR_WIDTH - 0.2, boardH, 0.03, { x: 0, y: BAR_TOP_Y + boardH / 2, z: ARMORY_BOARD_Z }, board, face);
+          this.addBox(0.08, boardH, 0.05, { x: -(BAR_WIDTH - 0.2) / 2, y: BAR_TOP_Y + boardH / 2, z: BAR_PIVOT_Z - 0.025 }, iron, face);
+          this.addBox(0.08, boardH, 0.05, { x: (BAR_WIDTH - 0.2) / 2, y: BAR_TOP_Y + boardH / 2, z: BAR_PIVOT_Z - 0.025 }, iron, face);
+          this.addBox(BAR_WIDTH - 0.2, 0.035, 0.06, { x: 0, y: ARMORY_TOP_Y, z: BAR_PIVOT_Z - 0.03 }, iron, face);
+
+          this.buildPistolPegs(face, iron);
+          this.buildLongGunCradles(face, iron);
+
+          // The free row along the front of the bench: nothing in it,
+          // ever. It's a place to lay out what you're taking.
+          var spacing = (BAR_WIDTH - 0.4) / (ARMORY_BENCH_SOCKETS - 1);
+          for (var i = 0; i < ARMORY_BENCH_SOCKETS; i++) {
+            this.addSlot(
+              { x: -(BAR_WIDTH - 0.4) / 2 + i * spacing, y: BAR_TOP_Y, z: ARMORY_BENCH_ROW_Z },
+              'medium',
+              {},
+              face
+            );
+          }
+
+          // The armoury's front is a low panel rather than a full one,
+          // leaving the shelf in the cavity behind it visible and in
+          // reach — the saloon's side of the same cavity is boarded
+          // right up, because a bar front is a bar front.
+          this.addBox(BAR_WIDTH - 0.1, 0.34, 0.05, { x: 0, y: 0.17, z: BAR_NEAR_EDGE_Z + 0.025 }, iron, face);
+          this.buildAmmoShelf(face, iron);
+
+          this.addBox(BAR_WIDTH, 0.05, 0.05, { x: 0, y: 0.14, z: BAR_NEAR_EDGE_Z - 0.09 }, iron, face); // kick rail, the armoury's answer to a brass foot rail
+        },
+
+        // Pistols hang barrel-down, which is the pose they hold in a
+        // hip holster and in the crown of a hat — one holsterRotation,
+        // everywhere, forever.
+        buildPistolPegs: function (face, iron) {
+          var spacing = (BAR_WIDTH - 0.6) / (ARMORY_PISTOL_PEGS - 1);
+
+          for (var i = 0; i < ARMORY_PISTOL_PEGS; i++) {
+            var x = -(BAR_WIDTH - 0.6) / 2 + i * spacing;
+            this.addBox(0.02, 0.02, ARMORY_BOARD_Z - ARMORY_PEG_Z, { x: x, y: ARMORY_PEG_Y + 0.03, z: (ARMORY_BOARD_Z + ARMORY_PEG_Z) / 2 }, iron, face);
+
+            var slotId = this.addSlot({ x: x, y: ARMORY_PEG_Y, z: ARMORY_PEG_Z }, 'small', {}, face);
+            if (ARMORY_PISTOL_STOCK.indexOf(i) !== -1) this.stock(slotId, 'pistol');
+          }
+        },
+
+        // Long guns lie flat, in sockets rolled a quarter turn. The
+        // shotgun's own holstered pose is barrel-down like everything
+        // else; rolling the socket is what turns "hanging in a
+        // bandolier" into "resting in a rack" without the gun being
+        // told anything.
+        buildLongGunCradles: function (face, iron) {
+          var spacing = (BAR_WIDTH - 1.2) / (ARMORY_CRADLES - 1);
+
+          for (var i = 0; i < ARMORY_CRADLES; i++) {
+            var x = -(BAR_WIDTH - 1.2) / 2 + i * spacing;
+            this.addBox(0.05, 0.09, 0.13, { x: x - 0.34, y: ARMORY_CRADLE_Y - 0.02, z: ARMORY_CRADLE_Z + 0.02 }, iron, face);
+            this.addBox(0.05, 0.09, 0.13, { x: x + 0.42, y: ARMORY_CRADLE_Y - 0.02, z: ARMORY_CRADLE_Z + 0.02 }, iron, face);
+
+            var slotId = this.addSlot(
+              { x: x, y: ARMORY_CRADLE_Y, z: ARMORY_CRADLE_Z },
+              'large',
+              {},
+              face,
+              { x: 0, y: 0, z: 90 }
+            );
+            if (ARMORY_CRADLE_STOCK.indexOf(i) !== -1) this.stock(slotId, 'shotgun');
+          }
+        },
+
+        // A low shelf under the bench, and a couple of crates on it for
+        // something to aim past. All of its sockets are empty.
+        buildAmmoShelf: function (face, iron) {
+          this.addBox(BAR_WIDTH - 0.3, 0.05, 0.16, { x: 0, y: ARMORY_SHELF_Y, z: ARMORY_SHELF_Z }, iron, face);
+
+          this.addBox(0.24, 0.14, 0.13, { x: -1.28, y: ARMORY_SHELF_Y + 0.095, z: ARMORY_SHELF_Z }, '#5b3a29', face);
+          this.addBox(0.24, 0.14, 0.13, { x: 1.28, y: ARMORY_SHELF_Y + 0.095, z: ARMORY_SHELF_Z }, '#5b3a29', face);
+
+          var spacing = (BAR_WIDTH - 1.1) / (ARMORY_SHELF_SOCKETS - 1);
+          for (var i = 0; i < ARMORY_SHELF_SOCKETS; i++) {
+            this.addSlot(
+              { x: -(BAR_WIDTH - 1.1) / 2 + i * spacing, y: ARMORY_SHELF_Y + 0.03, z: ARMORY_SHELF_Z },
+              'medium',
+              {},
+              face
+            );
+          }
         },
       });
 
@@ -6388,6 +7229,9 @@
 
         tick: function (time, dt) {
           var dtSeconds = Math.min((dt || 16) / 1000, 0.05);
+          // Anything that asked to stop existing during the last frame
+          // actually goes here, where nothing is mid-iteration.
+          sweepDoomed();
           this.updateHeldItems();
           this.updateWind();
           if (this.mouthEl) this.mouthEl.object3D.getWorldPosition(this._mouthPos);
@@ -6801,8 +7645,7 @@
               var s = HARD_SURFACES[i];
               if (s.y <= 0) continue; // the ground is handled above, by restY
               if (obj.position.y > s.y + 0.02 || obj.position.y < s.y - 0.12) continue;
-              if (obj.position.x < s.minX || obj.position.x > s.maxX) continue;
-              if (obj.position.z < s.minZ || obj.position.z > s.maxZ) continue;
+              if (!overSurface(s, obj.position)) continue;
               surfaceY = s.y;
               break;
             }
