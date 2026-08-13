@@ -43,6 +43,12 @@ Things that were never implemented, and work:
   and drinking it. A blast hands loose objects a velocity, which is
   the same thing your arm does, so everything downstream of a throw
   applies.
+- Loosing a beer bottle, or a lit stick of dynamite, from the bow. The
+  nock is an anchor slot and slots have never asked what you're
+  putting in them.
+- Shooting a flaming arrow into a puddle of spilled beer on the far
+  side of the room and setting the floor alight. An arrow is
+  lightable, a lit one publishes heat, and pools catch from heat.
 
 When something *doesn't* combine and obviously should, that's the bug —
 not a missing feature. "Twirling a cigar should shake the ash off" was
@@ -170,6 +176,42 @@ told dynamite exists. `holsterable` is the throw. `lightable` is the
 match. The only new component is `explosive`, which listens for the
 three ways anything here ends — a fuse running out, a hard impact, and
 being shot — and calls `detonate`. That is the whole weapon.
+
+## The bow: two hands, and neither of them presses anything
+
+Almost none of the bow is bow code. The second hand on the string is
+the *support grip* the shotgun's forend already introduced — the only
+new idea is `supportBehind`, one boolean meaning "the second hand is
+behind this rather than out along it", which makes a drawn bow aim
+down the line between your hands the same way a braced shotgun does,
+read backwards. The draw is then simply how far apart your hands are,
+and loosing is letting go, which holsterable already announces.
+
+What flies is whatever is in the nock, and the nock is an ordinary
+anchor slot with room for three. Nothing says it takes arrows, so it
+doesn't: three arrows leave as a fanned volley, a beer bottle leaves
+as a beer bottle and smashes into whatever it reaches (because a
+thrown thing is already a slow bullet), and a lit stick of dynamite
+leaves as somebody else's problem.
+
+The aim cheats on purpose, and the cheat is the mirror of the overhand
+throw's. That one fixes the ANGLE your swing picked and solves for
+speed; the bow fixes the SPEED your draw earned and solves for the
+angle, then leans most of the way from where the bow is pointing
+toward that answer. Judging an arrow's arc by eye in VR is not fun;
+watching one drop onto a target across the room very much is.
+
+Two bugs worth remembering, both found by the harness rather than by
+reading:
+
+- **A bow catches its own arrow.** The nock is a slot on a held
+  object, and a held object with a slot on it is supposed to catch
+  things — that's "use your hat to catch your gun". The arrow was
+  being snatched back on the frame it left. The fix was the existing
+  hurl flag, which already means "this is emphatically leaving".
+- **Lerping two equal-length vectors gives a shorter one.** Blending
+  the bow's aim toward the solved arc quietly robbed a full draw of a
+  third of its power. Blend the directions, then put the speed back.
 
 ## The revolving bar
 

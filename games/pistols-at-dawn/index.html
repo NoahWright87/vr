@@ -563,7 +563,7 @@
       var ARMORY_CRADLE_Z = 0.78; // ditto for a shotgun's stock
       var ARMORY_CRADLES = 3;
       var ARMORY_BENCH_ROW_Z = 0.68; // the free-for-all row along the front of the bench
-      var ARMORY_BENCH_SOCKETS = 7;
+      var ARMORY_BENCH_SOCKETS = 5; // the free row; the arrow trough takes the left end of the bench
       var ARMORY_SHELF_Y = 0.58; // the low shelf in the cavity under the bench
       var ARMORY_SHELF_Z = 0.76;
       var ARMORY_SHELF_SOCKETS = 6;
@@ -573,7 +573,9 @@
       // socket is bare on purpose — they're for whatever you decide
       // belongs there.
       var ARMORY_PISTOL_STOCK = [0, 2, 4, 6, 8];
-      var ARMORY_CRADLE_STOCK = [0, 2];
+      var ARMORY_CRADLE_STOCK = ['shotgun', 'bow', 'shotgun']; // per cradle, left to right; null leaves one bare
+      var ARMORY_QUIVER_X = -1.36; // the arrow trough, along the front of the bench
+      var ARMORY_QUIVER_Z = 0.63;
 
       // ==============================================================
       // STOCK AND PERISHING
@@ -638,6 +640,44 @@
       var DYNAMITE_FUSE_LENGTH = 0.11;
       var DYNAMITE_FUSE_RATE = 0.028; // meters/second — about four seconds of fuse
       var DYNAMITE_FUSE_MIN = 0.004;
+
+      // ==============================================================
+      // THE BOW
+      // Two hands, and neither of them presses anything. The bow hand
+      // holds and aims it; the other takes hold of the string — which
+      // is the *support grip* the shotgun's forend already introduced,
+      // just mounted behind the weapon instead of along it, so a drawn
+      // bow points down the line between your hands the same way a
+      // braced shotgun does, read backwards. Pull that hand away from
+      // the bow and the draw is simply how far apart your hands are.
+      // Let go of the grip and it looses.
+      //
+      // What flies is whatever is sitting in the nock, which is an
+      // ordinary anchor-slot mounted on the string. It has room for
+      // three, and the fan that spreads five cigars across your teeth
+      // is what makes three arrows read as three arrows. Nothing
+      // anywhere says the nock takes arrows, so it doesn't: a beer
+      // bottle, a lit cigar or a stick of dynamite will all sit in it
+      // perfectly happily and all leave at the same speed.
+      //
+      // The aim cheats, deliberately and in the same way an overhand
+      // throw does. Where you're LOOKING picks the point it's solving
+      // for, and the elevation to reach that point at the speed your
+      // draw earned is worked out for you — because judging the arc of
+      // an arrow by eye in VR is not fun, and watching one drop onto a
+      // target two-thirds of a field away very much is.
+      // ==============================================================
+      var BOW_REST_DRAW = 0.14; // metres between hands that counts as "not drawn yet"
+      var BOW_MAX_DRAW = 0.62; // and a full draw
+      var BOW_MIN_LOOSE = 0.18; // below this the string just slips off your fingers, no shot
+      var BOW_LIMB_LENGTH = 0.46; // one limb, from the grip
+      var BOW_STRING_REST_Z = 0.05; // where the string sits undrawn, behind the grip
+      var ARROW_MIN_SPEED = 9; // m/s at the shortest draw that still looses
+      var ARROW_MAX_SPEED = 30; // and at a full one
+      var ARROW_AIM_ASSIST = 0.85; // 0 = raw bow direction, 1 = solved straight at what you're looking at
+      var ARROW_LENGTH = 0.62;
+      var ARROW_STACK = 3; // how many the nock will hold at once
+      var ARMORY_ARROWS = 5; // how many stand in the quiver on the bench
       var LOOSE_ITEM_LIFETIME_MS = 30000;
       var LOOSE_ITEM_FADE_MS = 1200; // it shrinks away over the last of that rather than blinking out
 
@@ -1786,6 +1826,20 @@
         playTone({ type: 'sawtooth', freq: 46, sweep: 70, duration: seconds, volume: 0.05 });
       }
 
+      // A bowstring. Pitched by how far you drew it, and a dry slap
+      // rather than a note if there was nothing on the string.
+      function playBowstring(power, loaded) {
+        var base = 150 + power * 130;
+        playTone({ type: 'triangle', freq: base, sweep: base * 0.55, duration: loaded ? 0.2 : 0.09, volume: 0.11 });
+        playNoise({ duration: 0.07, freq: 1400, q: 1.2, volume: 0.06 });
+      }
+
+      // Something driven into something else and staying there.
+      function playThunk() {
+        playTone({ type: 'sine', freq: 210, sweep: 90, duration: 0.1, volume: 0.13 });
+        playNoise({ duration: 0.05, freq: 900, q: 1.5, volume: 0.07 });
+      }
+
       // A stick of dynamite. Mostly noise with a low thud under it,
       // and a long tail so it sounds like it happened to the room
       // rather than to a speaker.
@@ -2219,6 +2273,44 @@
         );
         velocity.isHurl = true; // same catch suppression a hurl gets
         return velocity;
+      }
+
+      // ==============================================================
+      // solveArcAtSpeed
+      // The other half of the same problem computeOverhandVelocity
+      // solves, from the other end. That one fixes the ANGLE (which
+      // your swing picked) and solves for the speed; this one fixes
+      // the SPEED (which your draw earned) and solves for the angle —
+      // which is what a bow wants, since how hard you pulled is not
+      // negotiable but where you point it is.
+      //
+      // Standard projectile solve: for speed v, horizontal distance d
+      // and height difference h,
+      //     tan(theta) = (v² ± sqrt(v⁴ - g(g·d² + 2·h·v²))) / (g·d)
+      // and the minus root is the flat, fast trajectory rather than
+      // the mortar shot. A negative discriminant means it's simply out
+      // of range at that speed, in which case the honest answer is 45
+      // degrees — the angle that gets furthest — and it falls short
+      // where you can see it fall short.
+      // ==============================================================
+      function solveArcAtSpeed(fromPos, target, speed, gravity, out) {
+        var dx = target.x - fromPos.x;
+        var dz = target.z - fromPos.z;
+        var d = Math.sqrt(dx * dx + dz * dz);
+        if (d < 0.2) return null;
+
+        var h = target.y - fromPos.y;
+        var v2 = speed * speed;
+        var discriminant = v2 * v2 - gravity * (gravity * d * d + 2 * h * v2);
+        var angle;
+        if (discriminant < 0) {
+          angle = Math.PI / 4;
+        } else {
+          angle = Math.atan((v2 - Math.sqrt(discriminant)) / (gravity * d));
+        }
+
+        var flat = Math.cos(angle) * speed;
+        return out.set((dx / d) * flat, Math.sin(angle) * speed, (dz / d) * flat);
       }
 
       // What you're looking at: the first shootable thing along the
@@ -2908,6 +3000,7 @@
           gravityScale: { type: 'number', default: 1 }, // multiplies gravity while falling — under 1 keeps a thrown object up longer, which is what makes shooting bottles out of the air possible
           supportGrip: { type: 'vec3', default: { x: 0, y: 0, z: 0 } }, // local position of a second place to hold this, if any
           supportRadius: { type: 'number', default: 0 }, // 0 disables the second grip entirely
+          supportBehind: { type: 'boolean', default: false }, // the second hand is BEHIND this rather than out along it — a bowstring rather than a forend, so the aim runs the other way down the same line
         },
 
         init: function () {
@@ -3095,7 +3188,14 @@
           // to target, and the object's own -Z is its barrel, so this
           // aims the gun straight down the line between your hands.
           this._aimUp.set(0, 1, 0).applyQuaternion(parent.getWorldQuaternion(this._parentQuat));
-          this._aimMatrix.lookAt(this._gripWorld, this._supportWorld, this._aimUp);
+          if (this.data.supportBehind) {
+            // A drawn bow points AWAY from the hand on the string,
+            // where a braced shotgun points toward the hand on the
+            // forend. Same line between your hands, read backwards.
+            this._aimMatrix.lookAt(this._supportWorld, this._gripWorld, this._aimUp);
+          } else {
+            this._aimMatrix.lookAt(this._gripWorld, this._supportWorld, this._aimUp);
+          }
           this._aimQuat.setFromRotationMatrix(this._aimMatrix);
 
           // Into the parent's frame, since that's where local
@@ -3126,8 +3226,23 @@
           this.supportHand = handEl;
         },
 
+        // Announced rather than acted on, like everything else here:
+        // letting go of a forend means nothing, and letting go of a
+        // bowstring means an arrow leaves. holsterable knows about
+        // neither.
         releaseSupport: function () {
+          if (!this.supportHand) return;
           this.supportHand = null;
+          this.el.emit('support-released', { draw: this.supportDraw() }, false);
+        },
+
+        // How far the second hand has been pulled from the first, in
+        // metres. Zero when there's nobody on it.
+        supportDraw: function () {
+          if (!this.supportHand || !this.el.object3D.parent) return 0;
+          this.el.object3D.parent.getWorldPosition(this._gripWorld);
+          this.supportHand.object3D.getWorldPosition(this._supportWorld);
+          return this._gripWorld.distanceTo(this._supportWorld);
         },
 
         setHandStack: function (index, count) {
@@ -3749,6 +3864,55 @@
         el.setAttribute('firearm', { pellets: 6, coneDeg: 4, kickDeg: -16, recoverMs: 200, heatPerShot: 0.4 });
         el.setAttribute('ignition-source', { tipSelector: '.muzzle' });
         el.setAttribute('boxy-shotgun', '');
+      });
+
+      // The bow declares the second grip BEHIND itself, which is the
+      // one line that turns the shotgun's forend into a bowstring.
+      // Everything else about drawing and loosing is in the `bow`
+      // component, and everything about holding, holstering, twirling
+      // and catching it is holsterable's, unchanged.
+      defineItem('bow', function (el, slotId) {
+        el.setAttribute('holsterable', {
+          holsterSelector: '#' + slotId,
+          itemSize: 'large',
+          // Unlike the guns, a bow racks FLAT: limbs up, string toward
+          // you. That reads as a bow slung on your back in the
+          // bandolier, and the armoury's cradle rolls the socket a
+          // quarter turn to lay the same pose down on the bench.
+          holsterRotation: { x: 0, y: 0, z: 0 },
+          heldRotation: { x: -90, y: 0, z: 0 },
+          grabRadius: 0.2,
+          comOffset: { x: 0, y: 0.02, z: 0 },
+          supportGrip: { x: 0, y: 0, z: BOW_STRING_REST_Z },
+          supportRadius: 0.24,
+          supportBehind: true,
+          maxThrowSpeed: 8,
+        });
+        el.setAttribute('boxy-bow', '');
+        el.setAttribute('bow', '');
+      });
+
+      // An arrow is a small holsterable with a point on it. It's
+      // lightable, so every existing way of setting something alight
+      // sets an arrow alight, and an ignition-source, so a lit one
+      // sets alight whatever it lands in — including a puddle of
+      // spilled beer on the far side of the room, which is a sentence
+      // nobody had to write any code for.
+      defineItem('arrow', function (el, slotId) {
+        el.setAttribute('holsterable', {
+          holsterSelector: '#' + slotId,
+          itemSize: 'small',
+          holsterRotation: { x: 90, y: 0, z: 0 }, // standing point-up in a quiver
+          heldRotation: { x: -90, y: 0, z: 0 },
+          grabRadius: 0.13,
+          comOffset: { x: 0, y: 0, z: -0.2 },
+          gravityScale: 0.85,
+          maxThrowSpeed: 9, // by hand it's a poor javelin; off a string it's something else
+        });
+        el.setAttribute('boxy-arrow', '');
+        el.setAttribute('arrow', '');
+        el.setAttribute('lightable', { tipSelector: '.ember' });
+        el.setAttribute('ignition-source', { tipSelector: '.ember' });
       });
 
       // A stick of dynamite, which is almost entirely other people's
@@ -6336,6 +6500,366 @@
 
 
       // ==============================================================
+      // COMPONENT: boxy-bow
+      // Two limbs, a grip, a string, and a nock. Same axis convention
+      // as the guns — the entity origin is where your fist closes and
+      // -Z is where the thing you loosed goes — so the bow holsters,
+      // dangles, twirls and is caught by exactly the code that does
+      // that for a pistol.
+      //
+      // The string and the nock are children, and the nock is an
+      // ordinary anchor-slot, which is the entire reason a bow can
+      // fire a beer bottle.
+      // ==============================================================
+      registerComponent('boxy-bow', {
+        init: function () {
+          var el = this.el;
+          var wood = '#6b4a24';
+
+          function limb(sign) {
+            // Two segments per limb, the outer one angled forward, so
+            // the silhouette curves instead of being a plank.
+            var inner = document.createElement('a-box');
+            inner.setAttribute('width', 0.028);
+            inner.setAttribute('height', BOW_LIMB_LENGTH * 0.55);
+            inner.setAttribute('depth', 0.022);
+            inner.setAttribute('position', { x: 0, y: sign * BOW_LIMB_LENGTH * 0.28, z: 0 });
+            inner.setAttribute('color', wood);
+            el.appendChild(inner);
+
+            var outer = document.createElement('a-box');
+            outer.setAttribute('width', 0.022);
+            outer.setAttribute('height', BOW_LIMB_LENGTH * 0.5);
+            outer.setAttribute('depth', 0.018);
+            outer.setAttribute('position', { x: 0, y: sign * BOW_LIMB_LENGTH * 0.76, z: -0.055 });
+            outer.setAttribute('rotation', { x: sign * 24, y: 0, z: 0 });
+            outer.setAttribute('color', wood);
+            el.appendChild(outer);
+          }
+
+          limb(1);
+          limb(-1);
+
+          var grip = document.createElement('a-box');
+          grip.setAttribute('width', 0.038);
+          grip.setAttribute('height', 0.13);
+          grip.setAttribute('depth', 0.04);
+          grip.setAttribute('color', '#4a3218');
+          el.appendChild(grip);
+
+          // One string, drawn as two segments meeting at the nock, so
+          // pulling it back makes the V a real bow makes.
+          this.upper = this.addString(1);
+          this.lower = this.addString(-1);
+
+          this.nockEl = document.createElement('a-entity');
+          this.nockEl.classList.add('anchor-slot');
+          this.nockEl.setAttribute('anchor-slot', {
+            size: 'small',
+            capacity: ARROW_STACK,
+            fanSpread: 0.028,
+            fanYaw: 5,
+          });
+          this.nockEl.setAttribute('position', { x: 0, y: 0, z: BOW_STRING_REST_Z });
+          el.appendChild(this.nockEl);
+
+          this.setDraw(0);
+        },
+
+        addString: function (sign) {
+          var seg = document.createElement('a-box');
+          seg.setAttribute('width', 0.006);
+          seg.setAttribute('height', 1);
+          seg.setAttribute('depth', 0.006);
+          seg.setAttribute('color', '#d8cfae');
+          this.el.appendChild(seg);
+          seg.sign = sign;
+          return seg;
+        },
+
+        // Lays the string out for a given draw, and takes the nock
+        // (and therefore anything sitting in it) with it.
+        setDraw: function (draw) {
+          var tipY = BOW_LIMB_LENGTH * 0.95;
+          var tipZ = -0.04;
+          var nockZ = BOW_STRING_REST_Z + draw;
+
+          this.nockEl.object3D.position.z = nockZ;
+
+          [this.upper, this.lower].forEach(function (seg) {
+            var dy = seg.sign * tipY;
+            var dz = tipZ - nockZ;
+            var length = Math.sqrt(dy * dy + dz * dz);
+            seg.object3D.scale.y = length;
+            seg.object3D.position.set(0, dy / 2, nockZ + dz / 2);
+            seg.object3D.rotation.set(Math.atan2(dz, dy) * seg.sign, 0, 0);
+          });
+        },
+      });
+
+      // ==============================================================
+      // COMPONENT: bow
+      // The behaviour half, and it's smaller than the geometry. Every
+      // hard part already existed: the second hand is holsterable's
+      // support grip, the draw is how far that hand has gone, and the
+      // shot is the ordinary throw with a velocity worked out by
+      // solveArcAtSpeed.
+      //
+      // It looses whatever is in the nock without looking at it. Three
+      // arrows leave as three arrows; a bottle leaves as a bottle and
+      // smashes into whatever it reaches, because a thrown thing is
+      // already a slow bullet (see PROJECTILES). A lit stick of
+      // dynamite leaves as a problem you have made for someone else.
+      // ==============================================================
+      registerComponent('bow', {
+        init: function () {
+          this.draw = 0;
+          this._from = new THREE.Vector3();
+          this._velocity = new THREE.Vector3();
+          this._solved = new THREE.Vector3();
+          this._aim = new THREE.Vector3();
+          this._quat = new THREE.Quaternion();
+
+          this.onSupportReleased = this.onSupportReleased.bind(this);
+          this.el.addEventListener('support-released', this.onSupportReleased);
+        },
+
+        remove: function () {
+          this.el.removeEventListener('support-released', this.onSupportReleased);
+        },
+
+        visual: function () {
+          return this.el.components['boxy-bow'];
+        },
+
+        nock: function () {
+          var visual = this.visual();
+          return visual && visual.nockEl;
+        },
+
+        tick: function () {
+          var holsterable = this.el.components.holsterable;
+          var visual = this.visual();
+          if (!holsterable || !visual) return;
+
+          var draw = holsterable.supportHand
+            ? Math.min(Math.max(holsterable.supportDraw() - BOW_REST_DRAW, 0), BOW_MAX_DRAW - BOW_REST_DRAW)
+            : 0;
+
+          if (Math.abs(draw - this.draw) > 0.001) {
+            this.draw = draw;
+            visual.setDraw(draw);
+          }
+        },
+
+        onSupportReleased: function (evt) {
+          var pulled = (evt.detail && evt.detail.draw) || 0;
+          var visual = this.visual();
+          if (visual) visual.setDraw(0);
+          this.draw = 0;
+
+          if (pulled < BOW_MIN_LOOSE) return; // slipped off your fingers
+          this.loose(Math.min((pulled - BOW_REST_DRAW) / (BOW_MAX_DRAW - BOW_REST_DRAW), 1));
+        },
+
+        loose: function (power) {
+          var nock = this.nock();
+          var slot = nock && nock.components['anchor-slot'];
+          if (!slot || !slot.occupants.length) {
+            playBowstring(power, false);
+            return;
+          }
+
+          var speed = ARROW_MIN_SPEED + (ARROW_MAX_SPEED - ARROW_MIN_SPEED) * power;
+          playBowstring(power, true);
+
+          // Copied, because each one vacating the slot mutates the
+          // list this is walking — the same rule the particle loop
+          // follows.
+          var leaving = slot.occupants.slice();
+          for (var i = 0; i < leaving.length; i++) {
+            this.launch(leaving[i], speed, i, leaving.length);
+          }
+        },
+
+        launch: function (holsterable, speed, index, count) {
+          // Freshly nocked things can still be carrying last frame's
+          // world matrix, and both the arc solve below and the
+          // reparent inside throwWithVelocity read it. Loosing an
+          // arrow the same frame you nocked it would otherwise fire it
+          // from wherever it used to be, which is exactly the sort of
+          // bug that only shows up when someone is quick.
+          holsterable.el.object3D.updateWorldMatrix(true, false);
+          holsterable.el.object3D.getWorldPosition(this._from);
+
+          // Straight out of the bow, before any help.
+          this.el.object3D.getWorldQuaternion(this._quat);
+          this._aim.set(0, 0, -1).applyQuaternion(this._quat).normalize();
+          this._velocity.copy(this._aim).multiplyScalar(speed);
+
+          // And then the help: solve for what you're looking at and
+          // lean most of the way toward that answer. See the note on
+          // THE BOW for why this cheats on purpose.
+          var cameraEl = document.querySelector('#head-camera');
+          if (cameraEl) {
+            var headPos = new THREE.Vector3();
+            cameraEl.object3D.getWorldPosition(headPos);
+            var target = findLookTarget(cameraEl, headPos);
+            var gravity = GRAVITY * holsterable.data.gravityScale;
+            if (target && solveArcAtSpeed(this._from, target, speed, gravity, this._solved)) {
+              // Blend the DIRECTIONS and then put the speed back.
+              // Lerping two vectors of equal length gives a shorter
+              // one, which would quietly rob a full draw of a third of
+              // its power the moment the assist had any work to do.
+              this._velocity.lerp(this._solved, ARROW_AIM_ASSIST).setLength(speed);
+            }
+          }
+
+          // A volley fans, so three arrows read as three arrows rather
+          // than one arrow with a rendering bug.
+          if (count > 1) {
+            this._aim.set(-this._velocity.z, 0, this._velocity.x);
+            if (this._aim.lengthSq() > 0.0001) {
+              this._velocity.addScaledVector(this._aim.normalize(), fanOffset(index, count, 1.1));
+            }
+          }
+
+          // Flagged as a hurl, which is the existing "this is
+          // emphatically leaving, stop trying to catch it" signal.
+          // Without it the nock catches its own arrow back on the
+          // first frame — the bow is a held object with a slot on it,
+          // and that is precisely what a held object with a slot on it
+          // is supposed to do (see findCatchingSlot).
+          var launched = this._velocity.clone();
+          launched.isHurl = true;
+          holsterable.vacateSlot();
+          holsterable.throwWithVelocity(launched);
+          // A loosed arrow flies, it doesn't tumble; throwWithVelocity
+          // seeds a toss's spin, which is right for a bottle out of
+          // your hand and wrong for anything off a string.
+          holsterable.angularVelocity.set(0, 0, 0);
+        },
+      });
+
+      // ==============================================================
+      // COMPONENT: boxy-arrow / arrow
+      // A shaft, a head and three fletches. The only behaviour it
+      // needs beyond holsterable is: point where you're going, publish
+      // heat when you're alight, and stop dead when you hit something.
+      //
+      // Nothing here knows about the bow. An arrow is a small
+      // holsterable, so it sits in a quiver, a hip holster, your
+      // mouth, or the crown of your hat, and you can throw one by
+      // hand — badly, which is the joke.
+      // ==============================================================
+      registerComponent('boxy-arrow', {
+        init: function () {
+          var el = this.el;
+
+          var shaft = document.createElement('a-cylinder');
+          shaft.setAttribute('radius', 0.006);
+          shaft.setAttribute('height', ARROW_LENGTH);
+          shaft.setAttribute('color', '#8a6a3a');
+          shaft.setAttribute('rotation', '90 0 0');
+          shaft.setAttribute('position', { x: 0, y: 0, z: -ARROW_LENGTH / 2 + 0.08 });
+          el.appendChild(shaft);
+
+          var head = document.createElement('a-cone');
+          head.setAttribute('radius-bottom', 0.016);
+          head.setAttribute('radius-top', 0);
+          head.setAttribute('height', 0.055);
+          head.setAttribute('color', '#3a3f43');
+          head.setAttribute('rotation', '-90 0 0');
+          head.setAttribute('position', { x: 0, y: 0, z: -ARROW_LENGTH + 0.055 });
+          el.appendChild(head);
+
+          for (var i = 0; i < 3; i++) {
+            var fletch = document.createElement('a-box');
+            fletch.setAttribute('width', 0.002);
+            fletch.setAttribute('height', 0.026);
+            fletch.setAttribute('depth', 0.07);
+            fletch.setAttribute('position', { x: 0, y: 0, z: 0.04 });
+            fletch.setAttribute('rotation', { x: 0, y: 0, z: i * 120 });
+            fletch.setAttribute('color', i ? '#c4c0b4' : '#a83b2c');
+            var pivot = document.createElement('a-entity');
+            pivot.setAttribute('rotation', { x: 0, y: 0, z: i * 120 });
+            pivot.appendChild(fletch);
+            el.appendChild(pivot);
+          }
+
+          // The head doubles as the hot tip, so a lit arrow lights
+          // whatever it touches through the ordinary contract.
+          var ember = document.createElement('a-sphere');
+          ember.setAttribute('radius', 0.02);
+          ember.setAttribute('material', 'color: #ffb02a; shader: flat; opacity: 0.9');
+          ember.setAttribute('position', { x: 0, y: 0, z: -ARROW_LENGTH + 0.02 });
+          ember.setAttribute('visible', false);
+          ember.classList.add('ember');
+          el.appendChild(ember);
+          this.ember = ember;
+        },
+      });
+
+      registerComponent('arrow', {
+        init: function () {
+          this._dir = new THREE.Vector3();
+          this._quat = new THREE.Quaternion();
+          this._forward = new THREE.Vector3(0, 0, -1);
+          this._world = new THREE.Vector3();
+
+          this.onImpact = this.onImpact.bind(this);
+          this.el.addEventListener('impact', this.onImpact);
+        },
+
+        remove: function () {
+          this.el.removeEventListener('impact', this.onImpact);
+        },
+
+        tick: function (time, dt) {
+          var lightable = this.el.components.lightable;
+          var lit = !!(lightable && lightable.lit);
+
+          var visual = this.el.components['boxy-arrow'];
+          if (visual && visual.ember) visual.ember.setAttribute('visible', lit);
+
+          var source = this.el.components['ignition-source'];
+          if (source) source.hot = lit;
+
+          if (lit) {
+            this.trailTimer = (this.trailTimer || 0) - (dt || 16);
+            if (this.trailTimer <= 0) {
+              this.trailTimer = 90;
+              spawnSmoke(this.el.object3D.getWorldPosition(this._world), null, 0.4);
+            }
+          }
+
+          // Nose over into the arc. Only while genuinely flying — a
+          // dropped arrow tumbles like anything else.
+          var holsterable = this.el.components.holsterable;
+          if (!holsterable || holsterable.state !== 'falling') return;
+          if (holsterable.fallVelocity.lengthSq() < 1) return;
+
+          this._dir.copy(holsterable.fallVelocity).normalize();
+          this._quat.setFromUnitVectors(this._forward, this._dir);
+          this.el.object3D.quaternion.copy(this._quat);
+          holsterable.angularVelocity.set(0, 0, 0);
+        },
+
+        // Sticks where it lands. Freezing in place reads as buried in
+        // the thing it hit, and a stuck arrow is an ordinary resting
+        // object again — pick it back up, or leave it and it'll be
+        // gone in half a minute like anything else loose.
+        onImpact: function () {
+          var holsterable = this.el.components.holsterable;
+          if (!holsterable) return;
+          holsterable.fallVelocity.set(0, 0, 0);
+          holsterable.angularVelocity.set(0, 0, 0);
+          holsterable.state = 'resting';
+          playThunk();
+        },
+      });
+
+      // ==============================================================
       // COMPONENT: boxy-dynamite
       // Three red sticks in a bundle with a fuse out the end, and the
       // fuse is a `buildBurnStick` — the same object a match and a
@@ -7340,13 +7864,15 @@
 
           this.buildPistolPegs(face, iron);
           this.buildLongGunCradles(face, iron);
+          this.buildQuiver(face, iron);
 
           // The free row along the front of the bench: nothing in it,
           // ever. It's a place to lay out what you're taking.
-          var spacing = (BAR_WIDTH - 0.4) / (ARMORY_BENCH_SOCKETS - 1);
+          var rowStart = -0.5;
+          var spacing = (BAR_WIDTH / 2 - 0.2 - rowStart) / (ARMORY_BENCH_SOCKETS - 1);
           for (var i = 0; i < ARMORY_BENCH_SOCKETS; i++) {
             this.addSlot(
-              { x: -(BAR_WIDTH - 0.4) / 2 + i * spacing, y: BAR_TOP_Y, z: ARMORY_BENCH_ROW_Z },
+              { x: rowStart + i * spacing, y: BAR_TOP_Y, z: ARMORY_BENCH_ROW_Z },
               'medium',
               {},
               face
@@ -7398,8 +7924,30 @@
               face,
               { x: 0, y: 0, z: 90 }
             );
-            if (ARMORY_CRADLE_STOCK.indexOf(i) !== -1) this.stock(slotId, 'shotgun');
+            if (ARMORY_CRADLE_STOCK[i]) this.stock(slotId, ARMORY_CRADLE_STOCK[i]);
           }
+        },
+
+        // A trough of arrows along the front of the bench. They lie
+        // flat rather than standing in a barrel, and that isn't
+        // decoration: an arrow stood on end here is nearly two metres
+        // of drum, and the whole thing has to pass under your chin
+        // (see THE REVOLVING BAR). One socket with room for five and
+        // the usual fan, which is all a quiver has ever been.
+        buildQuiver: function (face, iron) {
+          var x = ARMORY_QUIVER_X;
+          this.addBox(0.72, 0.03, 0.09, { x: x + 0.31, y: BAR_TOP_Y + 0.015, z: ARMORY_QUIVER_Z }, '#5b3a29', face);
+          this.addBox(0.05, 0.06, 0.11, { x: x, y: BAR_TOP_Y + 0.03, z: ARMORY_QUIVER_Z }, iron, face);
+          this.addBox(0.05, 0.06, 0.11, { x: x + 0.6, y: BAR_TOP_Y + 0.03, z: ARMORY_QUIVER_Z }, iron, face);
+
+          var slotId = this.addSlot(
+            { x: x, y: BAR_TOP_Y + 0.05, z: ARMORY_QUIVER_Z },
+            'small',
+            { capacity: ARMORY_ARROWS, fanSpread: 0.03, fanYaw: 0 },
+            face,
+            { x: 0, y: 0, z: -90 } // rolled, so the arrows lie down the bench instead of standing up off it
+          );
+          this.stock(slotId, 'arrow');
         },
 
         // A low shelf under the bench, with a crate of dynamite at each
