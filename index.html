@@ -42,6 +42,35 @@
         color: #aaa;
         font-size: 0.85rem;
       }
+      h2 {
+        font-size: 1.1rem;
+        font-weight: 600;
+        margin-top: 2.5rem;
+      }
+      .section-desc {
+        max-width: 32rem;
+      }
+      .game-link.disabled {
+        color: #778;
+        cursor: default;
+        position: relative;
+      }
+      .game-link.disabled:hover {
+        border-color: #2a3a5c;
+      }
+      .soon-badge {
+        display: inline-block;
+        margin-left: 0.5rem;
+        padding: 0.1rem 0.5rem;
+        background: #2a3a5c;
+        color: #9ad;
+        border-radius: 1rem;
+        font-size: 0.7rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+        vertical-align: middle;
+      }
     </style>
   </head>
   <body>
@@ -65,6 +94,41 @@
           Pistols at Dawn
           <span class="desc">Draw a holstered pistol, shotgun, or your hat and shoot up a whole gallery — stationary targets, spinning wheels, conveyor belts, and pop-up surprises. Twirl anything you're holding, toss it hand to hand, or snap it into any anchor it fits — including a gun tucked inside your hat, or worn on your head like one. Turn around for the saloon: knock a cap off on the counter, pour the beer into your own face, throw a fistful of bottles up and shoot them to pieces, light a cigar off your own hot barrel, and find out what happens to your aim when you overdo either. Spilled beer pools and burns, fire spreads along it and takes the targets with it, and a thrown bottle spills its own — so the Molotov builds itself out of parts that were already there.</span>
         </a>
+      </li>
+    </ul>
+
+    <h2>Primitives</h2>
+    <p class="section-desc">Reusable interaction building blocks, each demoed on its own here first, then stitched together into the prototypes above &mdash; a small design system for VR interactions.</p>
+    <ul>
+      <li>
+        <a class="game-link" href="primitives/menus/">
+          Menus
+          <span class="desc">Every menu style in one place: a fixed in-world panel, and a wrist-worn watch you poke with your other hand.</span>
+        </a>
+      </li>
+      <li>
+        <span class="game-link disabled">
+          Movement<span class="soon-badge">Coming soon</span>
+          <span class="desc">Locomotion and turning &mdash; teleport, smooth movement, snap turn, and smooth turn.</span>
+        </span>
+      </li>
+      <li>
+        <span class="game-link disabled">
+          Vibration / Haptics<span class="soon-badge">Coming soon</span>
+          <span class="desc">Controller rumble feedback tied to grabs, collisions, and UI events.</span>
+        </span>
+      </li>
+      <li>
+        <span class="game-link disabled">
+          Object Manipulation<span class="soon-badge">Coming soon</span>
+          <span class="desc">Grab, throw, and two-handed scale/rotate for physical objects.</span>
+        </span>
+      </li>
+      <li>
+        <span class="game-link disabled">
+          Audio<span class="soon-badge">Coming soon</span>
+          <span class="desc">Positional/spatial sound cues tied to events and objects in the scene.</span>
+        </span>
       </li>
     </ul>
   </body>

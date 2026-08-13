@@ -1,0 +1,1604 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Menus — WebXR Primitives</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <!-- Same vendored setup as the prototypes: no build step, just a
+         checked-in copy. See /vendor/README.md for why. -->
+    <script>window.AFRAME_CDN_ROOT = '../../vendor/aframe-1.6.0/';</script>
+    <script src="../../vendor/aframe-1.6.0/aframe-v1.6.0.min.js"></script>
+
+    <style>
+      body {
+        margin: 0;
+        font-family: system-ui, sans-serif;
+      }
+      #overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        padding: 0.75rem 1rem;
+        background: rgba(0, 0, 0, 0.55);
+        color: white;
+        z-index: 1;
+        font-size: 0.9rem;
+      }
+      #overlay a {
+        color: #9ad;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- ==============================================================
+         Every menu STYLE this project has built lives in this one
+         experience, same idea as a Storybook page listing every variant
+         of a "Menu" component — walk up to the panel ahead of you for
+         the fixed in-world style, or look at your own wrists for the
+         watch style.
+    ============================================================== -->
+    <div id="overlay">
+      <span>Menus — panel ahead: point and pull the trigger (or any face button). Watches on your wrists: point with one hand (squeeze grip) and poke the other wrist's face to project a menu outward from it. Tilt that wrist toward your own face to poke its options directly; turn the face up instead and it grows bigger and turns to face you. Either way, pointing and pulling the trigger/a face button always works too — poke the ❌ or point-and-activate it (or just lower the wrist) to close it. To your right, a wall screen; to your left, a pedestal button — poke either to project a menu outward, then poke or point-and-activate its options. Each ❔ shows a different help style: the watch's swaps in a paged modal, the wall's opens a sidecar panel beside the screen, the pedestal's draws a tutorial overlay on top (step it with any A/X or B/Y face button). Walking far enough away, or looking away for a few seconds, auto-closes a menu. <a href="../../index.html">All prototypes</a></span>
+    </div>
+
+    <a-scene>
+      <a-light type="ambient" color="#fff" intensity="0.7"></a-light>
+      <a-light type="directional" position="2 3 2" intensity="0.7"></a-light>
+      <a-sky color="#0d1526"></a-sky>
+      <a-plane id="floor" rotation="-90 0 0" width="20" height="20" color="#445" position="0 0 0"></a-plane>
+
+      <!-- Gaze reticle so the panel menu is testable from desktop/phone
+           with no headset, same pattern as Cube Pop. The watch style
+           needs two real tracked hands (to point with one and poke the
+           other) so it's headset-only — see the overlay text and the
+           write-up in the repo history. Disabled the moment a real
+           controller connects (see disableGazeOnControllers below) — with
+           real hands present it was possible to have the gaze reticle
+           hovering one item while a controller laser hovered another,
+           highlighting two at once and letting a stray glance select the
+           wrong item. -->
+      <a-camera>
+        <a-entity
+          id="gaze-cursor"
+          cursor="fuse: false"
+          position="0 0 -1"
+          geometry="primitive: ring; radiusInner: 0.005; radiusOuter: 0.008"
+          material="color: #FFFFFF; shader: flat; opacity: 0.8"
+          raycaster="objects: .menu-target; far: 10"
+        ></a-entity>
+      </a-camera>
+
+      <!-- ============================================================
+           STYLE 1: fixed in-world panel.
+           Every clickable row is just an entity with its own
+           geometry/material plus the "menu-item" component below —
+           that component is the reusable part; the background plane
+           and title here are just this demo's dressing.
+      ============================================================ -->
+      <a-entity id="menu-panel" menu-feedback position="0 1.8 -2.5">
+        <a-plane
+          width="1.9"
+          height="2"
+          color="#101827"
+          position="0 -0.15 -0.02"
+        ></a-plane>
+
+        <!-- Same buildMenuChrome() every projected-menu template goes
+             through (wired up directly below, since this panel isn't a
+             projected-menu clone) — a persistent "main menu" like this
+             one just doesn't need a ? or an X, which here is a
+             parameter, not a reason for its own bespoke title bar. -->
+        <a-entity class="menu-chrome-slot" data-title="MAIN MENU" data-help="false" data-close="false" data-width="1.9" data-bar-y="0.65"></a-entity>
+
+        <a-entity
+          class="menu-target"
+          geometry="primitive: plane; width: 1.6; height: 0.3"
+          material="color: #182238"
+          menu-item="value: start; label: Start"
+          position="0 0.25 0"
+        >
+          <a-text value="Start" align="center" color="#eee" width="3" position="0 0 0.01"></a-text>
+        </a-entity>
+
+        <a-entity
+          class="menu-target"
+          geometry="primitive: plane; width: 1.6; height: 0.3"
+          material="color: #182238"
+          menu-item="value: options; label: Options"
+          position="0 -0.15 0"
+        >
+          <a-text value="Options" align="center" color="#eee" width="3" position="0 0 0.01"></a-text>
+        </a-entity>
+
+        <a-entity
+          class="menu-target"
+          geometry="primitive: plane; width: 1.6; height: 0.3"
+          material="color: #182238"
+          menu-item="value: quit; label: Quit"
+          position="0 -0.55 0"
+        >
+          <a-text value="Quit" align="center" color="#eee" width="3" position="0 0 0.01"></a-text>
+        </a-entity>
+
+        <a-text
+          class="menu-feedback-text"
+          value="Selected: (none)"
+          align="center"
+          color="#aaa"
+          width="2.2"
+          position="0 -0.95 0"
+        ></a-text>
+      </a-entity>
+
+      <!-- ============================================================
+           STYLE 2: wrist-worn watch menu.
+           The logic entities (below, id left-hand/right-hand) carry the
+           watch (band + face + poke hitbox — see hand-with-watch) AND
+           point a laser at the panel above, since cursor/raycaster and
+           obb-collider are independent, non-conflicting components on
+           the same entity. The actual visible/animated hand is a
+           separate, decoupled hand-controls entity — see the big
+           comment above the HTML for both, further down.
+      ============================================================ -->
+      <template id="watch-template">
+        <a-entity>
+          <a-entity class="watch-band"
+            geometry="primitive: torus; radius: 0.030; radiusTubular: 0.005; segmentsRadial: 24; segmentsTubular: 12"
+            material="color: #ccc; metalness: 0.6; roughness: 0.4"
+          ></a-entity>
+          <a-entity class="watch-face"
+            geometry="primitive: box; width: 0.032; height: 0.007; depth: 0.032"
+            material="color: #111"
+          >
+            <a-text class="watch-text"
+              value="00:00:00"
+              font="sourcecodepro"
+              align="center"
+              color="#0F0"
+              width="0.09"
+              position="0 0.0045 0"
+              rotation="-90 0 0"
+            ></a-text>
+          </a-entity>
+        </a-entity>
+      </template>
+
+      <!-- ============================================================
+           The menu the watch projects outward from its face when
+           poked — one of three "projected-menu" examples in this
+           scene (the wall screen and pedestal button, further down,
+           are the other two). Authored in a "design unit" space
+           (background ~1 wide) and scaled up/down wholesale by the
+           generic projected-menu component — see its big comment
+           below for how a trigger picks poke vs. laser mode, and why
+           a single component covers all three examples here.
+           ".pm-target" marks every row projected-menu wires up for
+           poke (always) and laser click (only in laser mode, via the
+           shared ".menu-target" class toggled dynamically).
+      ============================================================ -->
+      <!-- The watch's ❔ demonstrates a MODAL help style: a second view
+           inside the same panel, swapped in for the main one entirely
+           (covers it by replacing it, not by drawing on top) — good for
+           "what is this whole screen" explanations. watch-menu-main and
+           watch-menu-help-view are mutually exclusive; hand-with-watch
+           toggles between them on "help"/"help-close" and flips pages
+           with "help-prev"/"help-next". -->
+      <template id="watch-menu-template">
+        <a-entity class="watch-menu-panel" visible="false">
+          <a-entity class="watch-menu-main">
+            <a-plane width="1" height="1.3" color="#101827" position="0 -0.05 -0.01"></a-plane>
+
+            <!-- Chrome slot's title starts empty — hand-with-watch
+                 points its live clock at menu-chrome-title instead of a
+                 static string once this is built (see wireUpProjectedMenu). -->
+            <a-entity class="menu-chrome-slot" data-title="" data-help="true" data-close="true" data-width="1" data-bar-y="0.5"></a-entity>
+
+            <a-entity class="pm-target"
+              geometry="primitive: plane; width: 0.85; height: 0.2"
+              material="color: #182238"
+              menu-item="value: stopwatch; label: Stopwatch"
+              position="0 0.22 0"
+            >
+              <a-text class="watch-menu-stopwatch-label" value="Stopwatch" align="center" color="#eee" width="2.6" position="0 0 0.01"></a-text>
+            </a-entity>
+
+            <a-entity class="pm-target"
+              geometry="primitive: plane; width: 0.85; height: 0.2"
+              material="color: #182238"
+              menu-item="value: haptics; label: Haptics Test"
+              position="0 -0.05 0"
+            >
+              <a-text value="Haptics Test" align="center" color="#eee" width="2.6" position="0 0 0.01"></a-text>
+            </a-entity>
+
+            <a-entity class="pm-target"
+              geometry="primitive: plane; width: 0.85; height: 0.2"
+              material="color: #182238"
+              menu-item="value: about; label: About"
+              position="0 -0.32 0"
+            >
+              <a-text class="watch-menu-about-label" value="About" align="center" color="#eee" width="2.6" position="0 0 0.01"></a-text>
+            </a-entity>
+          </a-entity>
+
+          <a-entity class="watch-menu-help-view" visible="false">
+            <a-plane width="1" height="1.3" color="#101827" position="0 -0.05 -0.01"></a-plane>
+
+            <!-- No ? here (you're already in help) — just a close, using
+                 "help-close" instead of the reserved "close" so it backs
+                 out to the main view rather than shutting the whole menu. -->
+            <a-entity class="menu-chrome-slot" data-title="HELP" data-help="false" data-close="true" data-close-value="help-close" data-width="1" data-bar-y="0.5"></a-entity>
+
+            <a-text class="watch-help-page-text" value="" align="center" color="#eee" width="1.7" wrap-count="22" position="0 0.12 0"></a-text>
+
+            <a-entity class="pm-target"
+              geometry="primitive: plane; width: 0.4; height: 0.16"
+              material="color: #182238"
+              menu-item="value: help-prev; label: Prev"
+              position="-0.27 -0.48 0"
+            >
+              <a-text value="&lt; Prev" align="center" color="#eee" width="4" position="0 0 0.01"></a-text>
+            </a-entity>
+
+            <a-text class="watch-help-page-indicator" value="1 / 2" align="center" color="#aaa" width="3" position="0 -0.48 0"></a-text>
+
+            <a-entity class="pm-target"
+              geometry="primitive: plane; width: 0.4; height: 0.16"
+              material="color: #182238"
+              menu-item="value: help-next; label: Next"
+              position="0.27 -0.48 0"
+            >
+              <a-text value="Next &gt;" align="center" color="#eee" width="4" position="0 0 0.01"></a-text>
+            </a-entity>
+          </a-entity>
+        </a-entity>
+      </template>
+
+      <!-- Two entities per hand, deliberately decoupled — same pattern
+           Pistols at Dawn uses, for the same reason: hand-controls'
+           rendered mesh applies its own "looks natural" corrective
+           rotation (±90° yaw plus a WebXR-only pitch) that does NOT match
+           "-Z is where you're pointing," so raycasting/aiming needs an
+           entity carrying that SAME correction to actually match where
+           the rendered finger appears to point — see hand-with-watch's
+           "fingertip" entity (a child of its corrective wrapper), which
+           is where cursor+raycaster actually live now, not here on the
+           raw tracked entity. The visible hand is a separate, decoupled
+           hand-controls entity — the only thing that actually animates
+           (fist on grip, point on trigger, etc). This raw entity's own
+           job is just real controller button events (see
+           CONTROL_COMPONENTS) and, via hand-with-watch, building both
+           the watch and the fingertip. -->
+      <a-entity id="left-hand" position="-0.2 1.35 -0.4"
+        hand-with-watch="hand: left"
+      ></a-entity>
+      <a-entity hand-controls="hand: left; handModelStyle: lowPoly"></a-entity>
+
+      <a-entity id="right-hand" position="0.2 1.35 -0.4"
+        hand-with-watch="hand: right"
+      ></a-entity>
+      <a-entity hand-controls="hand: right; handModelStyle: lowPoly"></a-entity>
+
+      <!-- ============================================================
+           STYLE 3: wall screen. A world-fixed trigger — no wrist, no
+           orientation to read — so it uses projected-menu's "poke"
+           fixed mode: always grows in place, always poke-driven,
+           closes if the player walks far enough away instead of by
+           reading an orientation that doesn't apply here.
+           Rotation was found empirically (screenshot, adjust, repeat)
+           rather than derived — the fastest reliable way to point an
+           arbitrary new prop at wherever the player spawns.
+      ============================================================ -->
+      <template id="wall-screen-menu-template">
+        <a-entity class="wall-screen-menu-panel" visible="false">
+          <a-plane width="1" height="1" color="#101827" position="0 0 -0.01"></a-plane>
+
+          <a-entity class="menu-chrome-slot" data-title="WALL PANEL" data-help="true" data-close="true" data-width="1" data-bar-y="0.4"></a-entity>
+
+          <a-entity class="pm-target"
+            geometry="primitive: plane; width: 0.8; height: 0.18"
+            material="color: #182238"
+            menu-item="value: brightness; label: Brightness"
+            position="0 0.15 0"
+          >
+            <a-text value="Brightness" align="center" color="#eee" width="2.4" position="0 0 0.01"></a-text>
+          </a-entity>
+
+          <a-entity class="pm-target"
+            geometry="primitive: plane; width: 0.8; height: 0.18"
+            material="color: #182238"
+            menu-item="value: volume; label: Volume"
+            position="0 -0.08 0"
+          >
+            <a-text value="Volume" align="center" color="#eee" width="2.4" position="0 0 0.01"></a-text>
+          </a-entity>
+
+          <a-entity class="pm-target"
+            geometry="primitive: plane; width: 0.8; height: 0.18"
+            material="color: #182238"
+            menu-item="value: info; label: Info"
+            position="0 -0.31 0"
+          >
+            <a-text value="Info" align="center" color="#eee" width="2.4" position="0 0 0.01"></a-text>
+          </a-entity>
+
+          <a-text class="menu-feedback-text" value="Selected: (none)" align="center" color="#aaa" width="1.8" position="0 -0.48 0"></a-text>
+        </a-entity>
+      </template>
+
+      <!-- DEMO 2 of 3 help styles: a SIDECAR — a small secondary panel
+           attached to one side of the main one, toggled by the same ❔
+           without hiding or covering the shop screen itself. Good for
+           "stats for the thing you're looking at" alongside a screen
+           that needs to stay fully visible and usable. Not built on
+           projected-menu itself (it's not a trigger, just a companion
+           panel) — the wall screen setup code below toggles its
+           visibility directly. -->
+      <template id="wall-sidecar-template">
+        <a-entity class="wall-sidecar-panel" visible="false">
+          <a-plane width="0.75" height="1" color="#152036" position="0 0 -0.01"></a-plane>
+          <a-entity class="menu-chrome-slot" data-title="INFO" data-help="false" data-close="false" data-width="0.75" data-bar-y="0.4"></a-entity>
+          <a-text
+            value="Brightness, Volume, and Info are placeholder rows for this demo screen -- swap in whatever your own menu actually needs."
+            align="center" color="#ccc" width="1.3" wrap-count="24" position="0 0.05 0"
+          ></a-text>
+        </a-entity>
+      </template>
+
+      <a-entity id="wall-slab" position="1.1 1.4 -0.7" rotation="0 -58 0">
+        <a-box width="1.4" height="1.8" depth="0.1" color="#2b2f38"></a-box>
+        <a-entity id="wall-screen-trigger"
+          geometry="primitive: plane; width: 0.4; height: 0.28"
+          material="color: #16324a; side: double"
+          position="0 0 0.051"
+        >
+          <a-text value="TAP" align="center" color="#7fd" width="4" position="0 0 0.002"></a-text>
+        </a-entity>
+      </a-entity>
+
+      <!-- ============================================================
+           STYLE 4: pedestal button. Also world-fixed, but this one is
+           locked to projected-menu's "laser" fixed mode instead: poke
+           the button and the menu always grows large and billboards
+           to face the player right away, no orientation dance — a
+           small physical button obviously isn't itself pokeable once
+           the resulting menu is floating a third of a meter above it.
+      ============================================================ -->
+      <template id="pedestal-menu-template">
+        <a-entity class="pedestal-menu-panel" visible="false">
+          <a-plane width="1" height="1" color="#101827" position="0 0 -0.01"></a-plane>
+
+          <a-entity class="menu-chrome-slot" data-title="PEDESTAL MENU" data-help="true" data-close="true" data-width="1" data-bar-y="0.4"></a-entity>
+
+          <a-entity class="pm-target"
+            geometry="primitive: plane; width: 0.8; height: 0.18"
+            material="color: #182238"
+            menu-item="value: option-a; label: Option A"
+            position="0 0.15 0"
+          >
+            <a-text value="Option A" align="center" color="#eee" width="2.4" position="0 0 0.01"></a-text>
+          </a-entity>
+
+          <a-entity class="pm-target"
+            geometry="primitive: plane; width: 0.8; height: 0.18"
+            material="color: #182238"
+            menu-item="value: option-b; label: Option B"
+            position="0 -0.08 0"
+          >
+            <a-text value="Option B" align="center" color="#eee" width="2.4" position="0 0 0.01"></a-text>
+          </a-entity>
+
+          <a-entity class="pm-target"
+            geometry="primitive: plane; width: 0.8; height: 0.18"
+            material="color: #182238"
+            menu-item="value: option-c; label: Option C"
+            position="0 -0.31 0"
+          >
+            <a-text value="Option C" align="center" color="#eee" width="2.4" position="0 0 0.01"></a-text>
+          </a-entity>
+
+          <a-text class="menu-feedback-text" value="Selected: (none)" align="center" color="#aaa" width="1.8" position="0 -0.48 0"></a-text>
+        </a-entity>
+      </template>
+
+      <!-- DEMO 3 of 3 help styles: a TUTORIAL HINT SLIDESHOW, drawn ON
+           TOP of the still-visible menu (a dim scrim plus an arrow and
+           caption, not a swap or a companion panel) — good for
+           step-by-step "here's what this does" walkthroughs of a
+           mechanic. Face buttons step through it directly (no on-screen
+           prev/next row needed): A/X back, B/Y next, matching the real
+           Quest layout (X/Y left controller, A/B right). Appended as a
+           CHILD of the pedestal's own panel (not a sibling like the
+           wall's sidecar) specifically so it inherits that panel's
+           billboarding position/rotation/scale for free, same as any
+           other row on it — a sibling would need its own tracking code
+           to follow a panel that re-orients itself every frame. -->
+      <template id="pedestal-tutorial-template">
+        <a-entity class="pedestal-tutorial" visible="false" position="0 0 0.02">
+          <a-plane width="1.05" height="1.05" material="color: #000; opacity: 0.6; transparent: true; shader: flat" position="0 0 -0.005"></a-plane>
+          <a-text class="tutorial-arrow" value="➤" align="center" color="#ffd166" width="6" position="-0.6 0.15 0"></a-text>
+          <a-text class="tutorial-text" value="" align="left" color="#fff" width="0.85" wrap-count="26" position="-0.52 0.15 0"></a-text>
+          <a-text class="tutorial-page-indicator" value="1 / 3" align="center" color="#aaa" width="2.4" position="0 -0.4 0"></a-text>
+          <a-text value="(A/X) Back      Next (B/Y)" align="center" color="#9ad" width="1.8" position="0 -0.48 0"></a-text>
+        </a-entity>
+      </template>
+
+      <a-entity id="pedestal" position="-1.1 0 -0.7">
+        <a-cylinder radius="0.15" height="0.9" position="0 0.45 0" color="#555"></a-cylinder>
+        <a-entity id="pedestal-button"
+          geometry="primitive: cylinder; radius: 0.08; height: 0.04"
+          material="color: #b33"
+          position="0 0.92 0"
+        ></a-entity>
+      </a-entity>
+    </a-scene>
+
+    <script>
+      // A plain color floor gave no sense of scale or footing — a small
+      // checkerboard, tiled across the 20x20 floor plane, is the
+      // quickest fix. Generated at runtime (a couple of fillRects on a
+      // throwaway canvas) rather than checking in an image file, since
+      // it's simpler than shipping+loading an asset for two flat colors.
+      // Doesn't need the scene (or even the floor entity) to be loaded —
+      // setAttribute() on a not-yet-loaded static entity still applies
+      // once it does load, no synchronous readback needed here (unlike
+      // the projected-menu setup further down, which does need one).
+      (function () {
+        var canvas = document.createElement('canvas');
+        canvas.width = canvas.height = 64;
+        var ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#3a4358';
+        ctx.fillRect(0, 0, 64, 64);
+        ctx.fillStyle = '#2a3040';
+        ctx.fillRect(0, 0, 32, 32);
+        ctx.fillRect(32, 32, 32, 32);
+        var floorEl = document.querySelector('#floor');
+        floorEl.setAttribute('material', 'src', canvas.toDataURL());
+        floorEl.setAttribute('material', 'repeat', '20 20');
+      })();
+
+      // ==============================================================
+      // COMPONENT: menu-item
+      // The reusable primitive. Drop this on any entity that already has
+      // its own geometry + material, and it becomes a clickable menu row:
+      // highlights on hover (mouseenter/mouseleave, fired by the cursor/
+      // raycaster on whatever's aiming at it), and on click emits
+      // "menu-item-select" with {value, label} bubbling up to whatever
+      // manager is listening.
+      // ==============================================================
+      AFRAME.registerComponent('menu-item', {
+        schema: {
+          value: { type: 'string' },
+          label: { type: 'string' },
+          hoverColor: { type: 'color', default: '#2a3a5c' },
+        },
+
+        init: function () {
+          // Remember the color set on the entity's own material so
+          // mouseleave can restore it, without this component having to
+          // know or care what that base color is.
+          this.baseColor = this.el.getAttribute('material').color;
+
+          this.onMouseEnter = this.onMouseEnter.bind(this);
+          this.onMouseLeave = this.onMouseLeave.bind(this);
+          this.onClick = this.onClick.bind(this);
+
+          this.el.addEventListener('mouseenter', this.onMouseEnter);
+          this.el.addEventListener('mouseleave', this.onMouseLeave);
+          this.el.addEventListener('click', this.onClick);
+        },
+
+        onMouseEnter: function () {
+          this.el.setAttribute('material', 'color', this.data.hoverColor);
+          this.el.setAttribute('scale', '1.05 1.05 1.05');
+        },
+
+        onMouseLeave: function () {
+          this.el.setAttribute('material', 'color', this.baseColor);
+          this.el.setAttribute('scale', '1 1 1');
+        },
+
+        onClick: function () {
+          this.el.emit(
+            'menu-item-select',
+            { value: this.data.value, label: this.data.label },
+            true
+          );
+        },
+
+        remove: function () {
+          this.el.removeEventListener('mouseenter', this.onMouseEnter);
+          this.el.removeEventListener('mouseleave', this.onMouseLeave);
+          this.el.removeEventListener('click', this.onClick);
+        },
+      });
+
+      // ==============================================================
+      // COMPONENT: menu-feedback
+      // Demo-only: listens for the bubbled selection event from any
+      // menu-item under this panel and reflects it back in text, so you
+      // can see the primitive actually fired without checking devtools.
+      // ==============================================================
+      AFRAME.registerComponent('menu-feedback', {
+        init: function () {
+          this.feedbackText = this.el.querySelector('.menu-feedback-text');
+          this.el.addEventListener('menu-item-select', (evt) => {
+            this.feedbackText.setAttribute(
+              'text',
+              'value',
+              'Selected: ' + evt.detail.label
+            );
+          });
+        },
+      });
+
+      // three.js's own raycasting already skips a hidden object AND
+      // everything under it (it bails the instant object.visible is
+      // false, never descending into children), so the laser is
+      // naturally safe to point through a hidden view. obb-collider's
+      // poke detection doesn't have that same built-in guard, so pmTargets
+      // sitting under a toggled-off view (the watch's help pages, e.g.)
+      // need this checked explicitly before a poke is allowed to fire.
+      function isVisibleInHierarchy (object3D) {
+        var node = object3D;
+        while (node) {
+          if (!node.visible) return false;
+          node = node.parent;
+        }
+        return true;
+      }
+
+      // ==============================================================
+      // buildMenuChrome: THE one place every menu's title bar gets
+      // built — a dedicated strip along the top, title text confined to
+      // its own left-hand region, and 0-2 buttons anchored to the right
+      // edge, close outermost. Everything is laid out from `width`
+      // (and, for the buttons, fixed sizes) so nothing here can overlap
+      // anything else the way hand-placed per-template coordinates did
+      // before (title text and the ?/X used to just sit at the same
+      // hand-picked position and hope nothing got long enough to
+      // collide). This is the single component the fixed panel, the
+      // watch's two views, and the wall/pedestal panels all go through —
+      // whether a menu shows a ? and/or an X is a parameter here, not a
+      // reason to hand-roll a whole separate layout.
+      //
+      // Call directly for a one-off panel (the fixed panel does this),
+      // or — the usual case — just author a marker element with class
+      // "menu-chrome-slot" and data-* attributes inside a
+      // projected-menu template; projected-menu itself finds every such
+      // slot in the cloned panel and builds chrome for each one (the
+      // watch has two: its main view and its help view).
+      //
+      //   buildMenuChrome(containerEl, {
+      //     title: 'WALL PANEL',
+      //     showHelp: true, showClose: true,       // either/both/neither
+      //     helpValue: 'help', closeValue: 'close', // override for a
+      //                                             // sub-view whose ✕
+      //                                             // shouldn't fully
+      //                                             // close the menu —
+      //                                             // the watch's help
+      //                                             // view uses
+      //                                             // 'help-close' here
+      //     width: 1, barY: 0.5,                    // match the panel's
+      //                                             // own authored size
+      //   })
+      //
+      // Returns { titleEl, closeBtn, helpBtn } — titleEl in particular
+      // is meant to be grabbed and updated later (the watch points its
+      // live clock at it instead of a static title).
+      // ==============================================================
+      function buildMenuChrome (containerEl, opts) {
+        var width = opts.width || 1;
+        var barY = opts.barY;
+        var barHeight = 0.18;
+        var btnSize = 0.15;
+        var margin = 0.05;
+        var gap = 0.02;
+
+        var bar = document.createElement('a-plane');
+        bar.classList.add('menu-chrome-bar');
+        bar.setAttribute('width', width);
+        bar.setAttribute('height', barHeight);
+        bar.setAttribute('material', 'color: #0b1220; shader: flat');
+        bar.setAttribute('position', '0 ' + barY + ' -0.001');
+        containerEl.appendChild(bar);
+
+        var rightOccupiedEdge = width / 2 - margin; // shrinks left as buttons are placed, right to left
+
+        function addButton (value, label, glyph, glyphColor, hoverColor) {
+          var x = rightOccupiedEdge - btnSize / 2;
+          rightOccupiedEdge -= btnSize + gap;
+          var btn = document.createElement('a-entity');
+          btn.classList.add('pm-target');
+          btn.setAttribute('geometry', 'primitive: plane; width: ' + btnSize + '; height: ' + btnSize);
+          btn.setAttribute('material', 'color: #182238');
+          btn.setAttribute('menu-item', 'value: ' + value + '; label: ' + label + '; hoverColor: ' + hoverColor);
+          btn.setAttribute('position', x + ' ' + barY + ' 0');
+          var glyphEl = document.createElement('a-text');
+          glyphEl.setAttribute('value', glyph);
+          glyphEl.setAttribute('align', 'center');
+          glyphEl.setAttribute('color', glyphColor);
+          glyphEl.setAttribute('width', 6);
+          glyphEl.setAttribute('position', '0 0 0.01');
+          btn.appendChild(glyphEl);
+          containerEl.appendChild(btn);
+          return btn;
+        }
+
+        var closeBtn = opts.showClose ? addButton(opts.closeValue || 'close', 'Close', 'X', '#f66', '#5c2a2a') : null;
+        var helpBtn = opts.showHelp ? addButton(opts.helpValue || 'help', 'Help', '?', '#7cf', '#2a4a5c') : null;
+
+        var titleLeftEdge = -width / 2 + margin;
+        var titleAvailableWidth = Math.max(0.25, rightOccupiedEdge - titleLeftEdge);
+        var titleEl = document.createElement('a-text');
+        titleEl.classList.add('menu-chrome-title');
+        titleEl.setAttribute('value', opts.title || '');
+        titleEl.setAttribute('align', 'left');
+        titleEl.setAttribute('color', '#9ad');
+        titleEl.setAttribute('width', titleAvailableWidth);
+        titleEl.setAttribute('wrap-count', 20);
+        titleEl.setAttribute('position', titleLeftEdge + ' ' + barY + ' 0');
+        containerEl.appendChild(titleEl);
+
+        return { titleEl: titleEl, closeBtn: closeBtn, helpBtn: helpBtn };
+      }
+
+      // ==============================================================
+      // COMPONENT: projected-menu
+      // THE reusable primitive this whole scene is really about: turn
+      // any entity into a "poke it, a menu grows out of it" trigger.
+      // Started as watch-specific code; generalized once it became
+      // clear the wall screen and pedestal button below wanted the
+      // exact same mechanics with different trigger shapes, sizes, and
+      // menu content — which is the actual point of building these as
+      // primitives instead of one-off game code.
+      //
+      // Attach to ANY entity with its own geometry (obb-collider
+      // auto-sizes the poke hitbox from it, so a box, a plane, a
+      // cylinder — whatever — all just work):
+      //
+      //   el.setAttribute('projected-menu', {
+      //     template: '#my-menu-template',   // <template> content = the menu; any element
+      //                                       // with class "pm-target" + a menu-item
+      //                                       // attribute becomes a wired-up row
+      //     mode: 'auto' | 'poke' | 'laser',  // 'auto': watch-style — poke-sized while the
+      //                                       // trigger's local +Y faces roughly toward the
+      //                                       // player, laser-sized+billboarded while it faces
+      //                                       // roughly straight up, closed otherwise. 'poke'
+      //                                       // or 'laser': always that one size once open.
+      //                                       // Pointing (laser + trigger/face-button) can
+      //                                       // always select an open menu's rows regardless
+      //                                       // of mode; poke additionally works while in
+      //                                       // poke mode specifically. Closes via the
+      //                                       // reserved "close" menu-item value, or by the
+      //                                       // player moving too far away, or ('poke'/
+      //                                       // 'laser' only — 'auto' already closes on its
+      //                                       // own via orientation) by looking away for a
+      //                                       // while — see lookAwayThreshold/lookAwayDelay.
+      //                                       // "help" is reserved too: selecting it just
+      //                                       // emits "projected-menu-help" on the trigger —
+      //                                       // what that actually shows is entirely up to
+      //                                       // the caller (see the three different demos of
+      //                                       // it further down: a modal replacing the watch's
+      //                                       // own view, a wall sidecar panel, a pedestal
+      //                                       // tutorial overlay). A caller building a help
+      //                                       // view that covers the menu without hiding it
+      //                                       // (an overlay, not a swap) should set
+      //                                       // el.components['projected-menu'].suppressPointing
+      //                                       // = true while it's up, so covered rows stop
+      //                                       // reacting to poke/pointing underneath it.
+      //     pokeScale: 0.3, laserScale: 0.6,  // customizable per instance — the template's
+      //                                       // own content is authored ~1 unit wide/tall
+      //     offset: {x, y, z},                // menu position relative to the trigger — pick
+      //                                       // this so the panel's near edge clears the
+      //                                       // trigger's own geometry at max scale instead
+      //                                       // of visibly intersecting it
+      //     closeDistance: 2.5,               // 'poke'/'laser' modes only
+      //     lookAwayThreshold: 0.3,           // 'poke'/'laser' only — camera-forward · to-panel
+      //     lookAwayDelay: 2500,              // dot below this, sustained this many ms, closes it
+      //   });
+      //
+      // The template's own root element supplies the "poke" orientation
+      // (captured once, as-authored) — for a fixed prop like the wall
+      // screen or pedestal, whatever rotation you already gave it is
+      // enough; a moving trigger that needs a computed one (the watch,
+      // mirrored per hand) can override el.components['projected-menu']
+      // .pokeQuat right after attaching.
+      //
+      // The menu is appended as a SIBLING of the trigger (not a child)
+      // specifically so a caller can hide the trigger's own visible
+      // geometry while the menu is open (as hand-with-watch
+      // does with the small watch face) without that hiding the menu
+      // too, which is exactly what would happen if the menu lived
+      // inside the same entity three.js is told to stop rendering.
+      // Listen for "projected-menu-opened"/"projected-menu-closed" on
+      // the trigger to hook that kind of thing up.
+      // ==============================================================
+      AFRAME.registerComponent('projected-menu', {
+        schema: {
+          template: { type: 'selector' },
+          mode: { default: 'auto', oneOf: ['auto', 'poke', 'laser'] },
+          pokeScale: { default: 0.3 },
+          laserScale: { default: 0.6 },
+          offset: { type: 'vec3' },
+          lerp: { default: 0.15 },
+          closeDistance: { default: 2.5 },
+          faceupThreshold: { default: 0.6 },
+          facecamThreshold: { default: 0.45 },
+          lookAwayThreshold: { default: 0.3 },
+          lookAwayDelay: { default: 2500 },
+          pokeCooldown: { default: 400 },
+        },
+
+        init: function () {
+          var self = this;
+          var el = this.el;
+
+          this.active = false; // set by open()/close(); tick() derives mode from it each frame
+          this.mode = 'closed'; // 'closed' | 'poke' | 'laser'
+          this.scale = 0.0001; // never literally 0 — keeps scale/rotation math well-defined
+          this.visible = false;
+          this.lastItemsMode = null;
+          this.lookAwaySince = null; // timestamp the camera stopped facing the panel, or null while it still is
+          this.suppressPointing = false; // a caller-drawn overlay (a help view, say) can set this to make covered rows inert without hiding them
+          this.cameraEl = document.querySelector('a-camera');
+
+          var panel = this.data.template.content.cloneNode(true).firstElementChild;
+          el.parentNode.appendChild(panel); // sibling, not child — see the big comment above
+          this.pokeQuat = panel.object3D.quaternion.clone(); // template's own authored rotation = the "flush with trigger" default
+          panel.object3D.scale.setScalar(this.scale);
+          this.panelEl = panel;
+
+          // Build every title bar the template asked for (see
+          // buildMenuChrome's own comment) BEFORE pmTargets is captured
+          // below, so its help/close buttons are included automatically
+          // — same reason this all has to happen synchronously rather
+          // than through menu-chrome as its own attached component: a
+          // component on a freshly-cloned, not-yet-loaded entity doesn't
+          // run its init() synchronously (bit us twice already this
+          // project), and pmTargets needs these buttons to exist NOW.
+          this.chromes = Array.prototype.slice.call(panel.querySelectorAll('.menu-chrome-slot')).map(function (slot) {
+            var chrome = buildMenuChrome(slot.parentNode, {
+              title: slot.getAttribute('data-title') || '',
+              showHelp: slot.getAttribute('data-help') !== 'false',
+              showClose: slot.getAttribute('data-close') !== 'false',
+              helpValue: slot.getAttribute('data-help-value') || 'help',
+              closeValue: slot.getAttribute('data-close-value') || 'close',
+              width: parseFloat(slot.getAttribute('data-width')) || 1,
+              barY: parseFloat(slot.getAttribute('data-bar-y')),
+            });
+            slot.parentNode.removeChild(slot);
+            return chrome;
+          });
+
+          this.updatePanelPosition();
+
+          el.setAttribute('obb-collider', '');
+          el.addEventListener('obbcollisionstarted', function (evt) {
+            var poker = evt.detail.withEl;
+            if (poker.handComponent && poker.handComponent.isPointing && !self.active) self.open();
+          });
+
+          // Poke only works in poke mode (gated inline below, so a stray
+          // touch mid-transition or in laser mode doesn't fire); pointing
+          // (laser + trigger/face-button) always works once open, in any
+          // mode, via the shared ".menu-target" class — see setItemsMode.
+          // A close-up poke naturally jitters right at the hitbox
+          // boundary — obb-collider fires a fresh "obbcollisionstarted"
+          // each time it re-enters, which without the cooldown below
+          // double- or triple-counts a single poke as the fingertip
+          // wobbles in and out of the boundary.
+          this.pmTargets = Array.prototype.slice.call(panel.querySelectorAll('.pm-target'));
+          this.pmTargets.forEach(function (item) {
+            item.setAttribute('obb-collider', 'size: 0.035');
+            item._lastPokeAt = 0;
+            item.addEventListener('obbcollisionstarted', function (evt) {
+              var poker = evt.detail.withEl;
+              var now = performance.now();
+              if (
+                self.mode === 'poke' && !self.suppressPointing &&
+                poker.handComponent && poker.handComponent.isPointing &&
+                isVisibleInHierarchy(item.object3D) &&
+                now - item._lastPokeAt > self.data.pokeCooldown
+              ) {
+                item._lastPokeAt = now;
+                item.emit('click');
+              }
+            });
+          });
+
+          // "close" and "help" are reserved menu-item values: any row
+          // using either works with no extra wiring from the caller —
+          // "close" shuts the menu down, "help" just announces itself
+          // (see the big comment above) for the caller to react to.
+          panel.addEventListener('menu-item-select', function (evt) {
+            if (evt.detail.value === 'close') self.close();
+            else if (evt.detail.value === 'help') el.emit('projected-menu-help');
+          });
+        },
+
+        // Re-derived every tick (not just once) since the trigger itself
+        // may move — a wrist, notably.
+        updatePanelPosition: function () {
+          var t = this.el.object3D.position;
+          var o = this.data.offset;
+          this.panelEl.object3D.position.set(t.x + o.x, t.y + o.y, t.z + o.z);
+        },
+
+        tick: function () {
+          if (this.active) {
+            var mode = this.computeMode();
+            if (!mode) this.active = false; // e.g. the watch got lowered, or the player walked away
+            this.mode = mode || 'closed';
+          } else {
+            this.mode = 'closed';
+          }
+          this.applyState();
+        },
+
+        computeMode: function () {
+          var THREE = AFRAME.THREE;
+          var camPos = new THREE.Vector3();
+          this.cameraEl.object3D.getWorldPosition(camPos);
+          var pos = new THREE.Vector3();
+          this.el.object3D.getWorldPosition(pos);
+
+          if (this.data.mode === 'poke' || this.data.mode === 'laser') {
+            if (camPos.distanceTo(pos) > this.data.closeDistance) return null;
+            if (this.isLookedAwayTooLong(camPos)) return null;
+            return this.data.mode;
+          }
+
+          // 'auto': which of the two poses (if either) the trigger is
+          // currently in, read off its own world rotation — the local
+          // +Y axis is this system's "outward normal" convention.
+          var worldQuat = new THREE.Quaternion();
+          this.el.object3D.getWorldQuaternion(worldQuat);
+          var normal = new THREE.Vector3(0, 1, 0).applyQuaternion(worldQuat);
+          var toCam = camPos.clone().sub(pos).normalize();
+
+          var dotUp = normal.dot(new THREE.Vector3(0, 1, 0));
+          var dotCam = normal.dot(toCam);
+          if (dotUp > this.data.faceupThreshold) return 'laser';
+          if (dotCam > this.data.facecamThreshold) return 'poke';
+          return null;
+        },
+
+        // "fixed" ('poke'/'laser') triggers have no orientation of their
+        // own to read (unlike 'auto', which closes when the watch face
+        // stops facing the player) so distance is only half the story —
+        // a player could stand right next to a wall panel with their
+        // back to it indefinitely. Tracks how long the camera's own
+        // forward vector has continuously pointed away from the panel;
+        // only actually closes once that's held for lookAwayDelay, so a
+        // quick glance elsewhere (at the item you just picked, say)
+        // doesn't close the menu out from under you.
+        isLookedAwayTooLong: function (camPos) {
+          var THREE = AFRAME.THREE;
+          var camQuat = new THREE.Quaternion();
+          this.cameraEl.object3D.getWorldQuaternion(camQuat);
+          var forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camQuat);
+
+          var panelPos = new THREE.Vector3();
+          this.panelEl.object3D.getWorldPosition(panelPos);
+          var toPanel = panelPos.clone().sub(camPos).normalize();
+
+          var now = performance.now();
+          if (forward.dot(toPanel) < this.data.lookAwayThreshold) {
+            if (!this.lookAwaySince) this.lookAwaySince = now;
+            return now - this.lookAwaySince > this.data.lookAwayDelay;
+          }
+          this.lookAwaySince = null;
+          return false;
+        },
+
+        // The local quaternion that makes the panel's front face the
+        // camera, computed via Object3D.lookAt() rather than hand-derived
+        // matrix math — lookAt() already correctly accounts for the
+        // panel's current parent rotation, which is exactly the step
+        // easiest to get backwards doing it by hand. Verified directly
+        // (not just by eye) when this was first built: with the panel's
+        // own +Z as "front" and no extra flip, its world-space front
+        // vector dots to ~+1 against the direction toward the camera.
+        computeLaserLocalQuat: function () {
+          var THREE = AFRAME.THREE;
+          this.panelEl.object3D.updateMatrixWorld(true);
+          var camPos = new THREE.Vector3();
+          this.cameraEl.object3D.getWorldPosition(camPos);
+
+          var savedQuat = this.panelEl.object3D.quaternion.clone();
+          this.panelEl.object3D.lookAt(camPos);
+          var lookQuat = this.panelEl.object3D.quaternion.clone();
+          this.panelEl.object3D.quaternion.copy(savedQuat);
+          return lookQuat;
+        },
+
+        applyState: function () {
+          this.updatePanelPosition();
+
+          var targetScale;
+          var targetQuat;
+          if (this.mode === 'poke') {
+            targetScale = this.data.pokeScale;
+            targetQuat = this.pokeQuat;
+          } else if (this.mode === 'laser') {
+            targetScale = this.data.laserScale;
+            targetQuat = this.computeLaserLocalQuat();
+          } else {
+            targetScale = 0.0001;
+            targetQuat = null; // freeze rotation while shrinking closed
+          }
+
+          this.scale += (targetScale - this.scale) * this.data.lerp;
+          this.panelEl.object3D.scale.setScalar(this.scale);
+          if (targetQuat) this.panelEl.object3D.quaternion.slerp(targetQuat, this.data.lerp);
+
+          if (this.mode === 'closed') {
+            if (this.scale < 0.005 && this.visible) {
+              this.panelEl.setAttribute('visible', false);
+              this.visible = false;
+              this.setItemsMode('closed');
+              this.el.emit('projected-menu-closed');
+            }
+          } else {
+            if (!this.visible) {
+              this.panelEl.setAttribute('visible', true);
+              this.visible = true;
+              this.el.emit('projected-menu-opened');
+            }
+            this.setItemsMode(this.mode);
+          }
+        },
+
+        // Poke (gated on mode === 'poke' at the point of contact, inside
+        // each row's own handler above) is only reachable in poke mode,
+        // since a fixed laser-only trigger's menu may float somewhere a
+        // finger can't reach. Pointing, though, always works, regardless
+        // of poke/laser/auto or which of those an "auto" trigger is
+        // currently in — every open menu is reachable the same way, so
+        // e.g. the wall screen's close button (poke-only trigger) is
+        // still reachable by backing up and pointing at it instead of
+        // reaching all the way into the projected menu.
+        setItemsMode: function (mode) {
+          if (this.suppressPointing) mode = 'closed'; // still visible, just inert — e.g. covered by a help overlay
+          if (mode === this.lastItemsMode) return;
+          this.lastItemsMode = mode;
+          this.pmTargets.forEach(function (item) {
+            if (mode === 'closed') item.classList.remove('menu-target');
+            else item.classList.add('menu-target');
+          });
+        },
+
+        open: function () {
+          if (this.active) return;
+          this.active = true;
+        },
+
+        close: function () {
+          this.active = false;
+        },
+      });
+
+      // Position/size numbers below came from actually loading the raw
+      // GLB and measuring it (bone positions + eyeballing render
+      // screenshots) rather than guessing — see the repo history for how.
+      // x is the calibrated offset for the LEFT hand specifically;
+      // hand-with-watch flips its sign for the right hand below.
+      var WATCH_OFFSET = { x: -0.009, y: -0.006, z: 0.100 };
+      var FACE_Y_OFFSET = 0.0345;
+
+      // Where the index fingertip actually ends up, sampled by loading the
+      // same hand GLB, playing its built-in "Point" animation clip to
+      // completion, and reading the index-fingertip bone's (F1c) resulting
+      // world position — not guessed. It barely differs from the resting
+      // pose (this model's rest pose already keeps the index finger mostly
+      // extended), nudged ~1.5cm further along the finger's own direction
+      // to land at the fingertip surface rather than the tip bone's own
+      // (more proximal) joint origin.
+      var FINGERTIP_OFFSET = { x: 0.038, y: 0.026, z: -0.089 };
+      var FINGERTIP_SIZE = 0.03;
+
+      // The direction the index finger actually points, in the Point
+      // pose — NOT the same as FINGERTIP_OFFSET normalized (that's the
+      // vector from the WRIST origin to the fingertip, which bakes in
+      // however far the whole hand sits from the wrist and comes out
+      // some 20+ degrees off the finger's own axis — visibly "crooked"
+      // as a laser direction). Measured the same rigorous way as
+      // FINGERTIP_OFFSET: loaded the raw GLB, played "Point" to
+      // completion, then took the vector from the base knuckle bone
+      // (F1a) to the fingertip bone (F1c) instead of a single point —
+      // an actual direction along the finger, not a point's offset from
+      // an unrelated origin. Confirmed both hand GLBs are exact X
+      // mirrors of each other at these bones, so mirroring just the x
+      // component below (same convention as FINGERTIP_OFFSET) is exact,
+      // not assumed.
+      var FINGER_POINT_DIR = { x: 0.0649, y: 0.0816, z: -0.9946 };
+
+      // The watch's projected menu: "poke" is ~4x the small watch face's
+      // own width (0.032), aligned flush with it; "laser" is bigger
+      // still and billboards to face the player instead. Both are
+      // overall-scale multipliers on projected-menu's ~1-wide design
+      // space, customizable per instance — the wall screen and pedestal
+      // button further down use their own, bigger numbers.
+      var WATCH_MENU_SCALE_POKE = 0.12;
+      var WATCH_MENU_SCALE_LASER = 0.26;
+
+      // Demo 1 of 3 help styles — a modal that replaces the whole menu.
+      // Multiple pages, on purpose, to show that style off too.
+      var WATCH_HELP_PAGES = [
+        'This watch projects a menu off its face. Point with your other hand (squeeze grip) and poke this face to open it.',
+        'Tilt the face toward you for quick poke access, or turn it palm-up to go bigger and switch to your other hand\'s laser instead.',
+      ];
+
+      // Same vendor controller components hand-controls itself attaches,
+      // with model:false so nothing renders from them — they're here only
+      // for real button events (gripdown/gripup/triggerdown/triggerup,
+      // face buttons, etc.) on real hardware, on the RAW entity. The
+      // actual visible, animated hand is a separate hand-controls entity
+      // declared in HTML (see the comment above it); the actual raycaster/
+      // cursor live on hand-with-watch's own fingertip entity, forwarded
+      // these events since they don't bubble — see wireUpFingertipPointing.
+      var CONTROL_COMPONENTS = [
+        'magicleap-controls', 'vive-controls', 'oculus-touch-controls',
+        'pico-controls', 'windows-motion-controls', 'hp-mixed-reality-controls',
+        'oculus-go-controls', 'vive-focus-controls', 'valve-index-controls',
+        'generic-tracked-controller-controls',
+      ];
+
+      // Any of these activates whatever the laser is over — same
+      // treatment for the trigger and every face button, so a menu never
+      // needs to special-case which one the player used. x/y only exist
+      // on the left controller and a/b only on the right, per real Quest
+      // hardware, but oculus-touch-controls itself already only emits
+      // the pair that matches the hand it's attached to, so listing all
+      // four here is harmless on either hand.
+      var ACTIVATE_DOWN_EVENTS = ['triggerdown', 'abuttondown', 'bbuttondown', 'xbuttondown', 'ybuttondown'];
+      var ACTIVATE_UP_EVENTS = ['triggerup', 'abuttonup', 'bbuttonup', 'xbuttonup', 'ybuttonup'];
+
+      // Demo 3 of 3 help styles (see #pedestal-tutorial-template): the
+      // "bottom" face button on either controller (A on the right, X on
+      // the left) steps back; the "top" one (B / Y) steps forward — a
+      // fixed, hand-independent convention, same idea as ACTIVATE_*
+      // above.
+      var TUTORIAL_BACK_EVENTS = ['abuttondown', 'xbuttondown'];
+      var TUTORIAL_NEXT_EVENTS = ['bbuttondown', 'ybuttondown'];
+
+      var PEDESTAL_TUTORIAL_STEPS = [
+        { y: 0.15, text: 'Option A -- poke it, or point and pull the trigger / any face button.' },
+        { y: -0.08, text: 'Option B works the same way -- every row responds to poke or pointing.' },
+        { y: -0.31, text: 'Option C -- the pattern repeats for as many rows as your menu needs.' },
+      ];
+
+      // hand-controls (see its vendored source) crossfades into its
+      // "point" pose over 150ms once grip is held without the trigger —
+      // measured from the actual crossFadeTo() call it makes, not
+      // guessed. The laser waits this long past gripdown before showing,
+      // so it doesn't appear while the hand is still mid-animation.
+      var POINT_ANIMATION_SETTLE_MS = 180;
+
+      function degToRad (d) { return (d * Math.PI) / 180; }
+
+      // Once any real controller connects, the gaze reticle can no longer
+      // be the only way to select something, but it doesn't turn itself
+      // off — so it kept "helping," letting a stray glance highlight (or
+      // select) an item independently of whatever a controller laser was
+      // pointed at. Disabling its raycaster is enough; cursor depends on
+      // it and goes inert too.
+      function disableGazeCursor () {
+        var gaze = document.querySelector('#gaze-cursor');
+        if (!gaze) return;
+        gaze.setAttribute('raycaster', 'enabled', false);
+        gaze.setAttribute('visible', false);
+      }
+
+      // The laser (and the hover/click detection that comes with it)
+      // lives entirely on the fingertip hitbox — see the comment where
+      // it's created. cursor/raycaster start disabled: gripping without
+      // the trigger is what "pointing" means here, and even then the
+      // laser waits out the hand's own point-pose crossfade (see
+      // POINT_ANIMATION_SETTLE_MS) before showing, so it never appears
+      // mid-animation. On top of that, the line only actually renders
+      // while the raycast is hitting a real ".menu-target" — the same
+      // raycast already has to run continuously for hover/click
+      // detection, so this costs nothing extra, and it means the laser
+      // never draws off into empty space with nothing around to touch.
+      // Pulling the trigger visibly bends the finger, so the line hides
+      // for as long as it's held — but raycaster.enabled is left alone
+      // through all of this (only showLine toggles), so intersectedEl
+      // keeps tracking whatever's under it and cursor's own down/up
+      // click matching (wired via ACTIVATE_DOWN/UP_EVENTS below) still
+      // fires normally regardless of whether the line itself is drawn.
+      function wireUpFingertipPointing (rawEl, fingertipEl, handComp, direction) {
+        fingertipEl.setAttribute('raycaster', {
+          objects: '.menu-target',
+          far: 10,
+          enabled: false,
+          direction: direction,
+        });
+        fingertipEl.setAttribute('cursor', {
+          fuse: false,
+          downEvents: ACTIVATE_DOWN_EVENTS,
+          upEvents: ACTIVATE_UP_EVENTS,
+        });
+
+        var hasIntersection = false;
+        var triggerHeld = false;
+        function updateShowLine () {
+          fingertipEl.setAttribute('raycaster', 'showLine', handComp.laserActive && hasIntersection && !triggerHeld);
+        }
+        fingertipEl.addEventListener('raycaster-intersection', function () {
+          hasIntersection = true;
+          updateShowLine();
+        });
+        fingertipEl.addEventListener('raycaster-intersection-cleared', function () {
+          hasIntersection = false;
+          updateShowLine();
+        });
+
+        var settleTimer = null;
+        rawEl.addEventListener('gripdown', function () {
+          handComp.isPointing = true;
+          clearTimeout(settleTimer);
+          settleTimer = setTimeout(function () {
+            handComp.laserActive = true;
+            fingertipEl.setAttribute('raycaster', 'enabled', true);
+            updateShowLine();
+          }, POINT_ANIMATION_SETTLE_MS);
+        });
+        rawEl.addEventListener('gripup', function () {
+          handComp.isPointing = false;
+          handComp.laserActive = false;
+          clearTimeout(settleTimer);
+          fingertipEl.setAttribute('raycaster', 'enabled', false);
+          hasIntersection = false; // disabling the raycaster won't itself fire -cleared
+          updateShowLine();
+        });
+        rawEl.addEventListener('triggerdown', function () {
+          triggerHeld = true;
+          updateShowLine();
+        });
+        rawEl.addEventListener('triggerup', function () {
+          triggerHeld = false;
+          updateShowLine();
+        });
+
+        // CONTROL_COMPONENTS fire their button events on rawEl, but
+        // cursor's downEvents/upEvents listen on fingertipEl — these
+        // don't bubble on their own, so forward them across. Explicitly
+        // non-bubbling on the way out: emit() defaults to bubbles=true,
+        // and fingertipEl is a descendant of rawEl, so a bubbling emit
+        // here would climb straight back up to this same rawEl and
+        // re-trigger this same listener — infinite recursion.
+        ACTIVATE_DOWN_EVENTS.concat(ACTIVATE_UP_EVENTS).forEach(function (name) {
+          rawEl.addEventListener(name, function () { fingertipEl.emit(name, null, false); });
+        });
+      }
+
+      AFRAME.registerComponent('hand-with-watch', {
+        schema: {
+          hand: { default: 'left', oneOf: ['left', 'right'] },
+        },
+
+        init: function () {
+          var el = this.el;
+          var self = this;
+          var side = this.data.hand === 'left' ? 1 : -1;
+
+          // hand-controls' own mesh gets this exact rotation applied on
+          // top of the entity's real tracked pose (see its source: a ±90°
+          // yaw depending on hand, plus a WebXR-only pitch) so that the
+          // rendered hand looks natural rather than "-Z is forward." Our
+          // watch/fingertip/menu live on a wrapper carrying that same
+          // correction, so their calibrated numbers (measured against the
+          // RAW, uncorrected model) land in the right place relative to
+          // what's actually rendered — not the raw entity underneath it.
+          var correctionZ = side === 1 ? 90 : -90;
+          var correctionX = el.sceneEl.hasWebXR ? -90 : 0;
+          var wrapper = document.createElement('a-entity');
+          wrapper.setAttribute('rotation', correctionX + ' 0 ' + correctionZ);
+          el.appendChild(wrapper);
+          this.wrapperEl = wrapper;
+
+          var template = document.getElementById('watch-template');
+          var watch = template.content.cloneNode(true).firstElementChild;
+          wrapper.appendChild(watch);
+
+          var bandX = side * WATCH_OFFSET.x;
+          watch
+            .querySelector('.watch-band')
+            .setAttribute('position', bandX + ' ' + WATCH_OFFSET.y + ' ' + WATCH_OFFSET.z);
+          var faceEl = watch.querySelector('.watch-face');
+          faceEl.setAttribute('position', bandX + ' ' + FACE_Y_OFFSET + ' ' + WATCH_OFFSET.z);
+
+          // Rotate the text a further 90° around the face's own normal so
+          // "up" reads toward the side of the hand rather than toward the
+          // fingertips — that's how a watch actually gets read: you turn
+          // your wrist so the back of the hand faces you with the fingers
+          // off to one side, not pointing straight up. Left/right mirror
+          // each other (same relative rotation, opposite sign) since the
+          // two hand models are themselves exact mirror images.
+          var textEl = watch.querySelector('.watch-text');
+          textEl.setAttribute('rotation', '-90 0 ' + side * 90);
+          this.textEl = textEl;
+          this.faceEl = faceEl;
+
+          // ----- Button state -----
+          // Real events, not simulated: attach the same vendor control
+          // components hand-controls uses (muted — model:false — so they
+          // contribute no visuals of their own) purely to get real button
+          // events on actual hardware, on this RAW entity.
+          this.isPointing = false;
+          this.laserActive = false;
+          CONTROL_COMPONENTS.forEach(function (name) {
+            el.setAttribute(name, { hand: self.data.hand, model: false });
+          });
+          el.addEventListener('controllerconnected', disableGazeCursor);
+
+          // Invisible hitbox at the fingertip, a child of the corrective
+          // wrapper (see above) rather than of the raw tracked entity —
+          // that's what makes it track where the rendered/animated hand
+          // actually appears to point, not the raw controller's own
+          // uncorrected forward. obb-collider does the poke overlap test
+          // (oriented-bounding-box, no physics engine) against the watch
+          // face and, once open, menu items; cursor+raycaster (wired up
+          // below) are what make it the laser's origin too — the laser
+          // literally comes out of this same hitbox, unifying poke and
+          // point-based selection around one entity instead of two.
+          var fingertip = document.createElement('a-entity');
+          fingertip.setAttribute(
+            'position',
+            side * FINGERTIP_OFFSET.x + ' ' + FINGERTIP_OFFSET.y + ' ' + FINGERTIP_OFFSET.z
+          );
+          fingertip.setAttribute('obb-collider', 'size: ' + FINGERTIP_SIZE);
+          fingertip.handComponent = this;
+          wrapper.appendChild(fingertip);
+          this.fingertipEl = fingertip;
+
+          // The laser's direction is FINGER_POINT_DIR (mirrored per
+          // hand, same convention as every other measured offset here),
+          // not a fixed axis like the entity's own -Z — that axis
+          // pointed straight down at rest, nowhere near the visible
+          // finger, confirmed by screenshot.
+          var fingertipDir = new AFRAME.THREE.Vector3(
+            side * FINGER_POINT_DIR.x, FINGER_POINT_DIR.y, FINGER_POINT_DIR.z
+          );
+          wireUpFingertipPointing(el, fingertip, self, fingertipDir);
+
+          // ----- The projected menu -----
+          // projected-menu owns opening/closing, poke-vs-laser mode, and
+          // wiring every ".pm-target" row — see its own big comment.
+          // hand-with-watch only supplies what makes THIS instance a
+          // watch: where the menu attaches, how big its two sizes are,
+          // the per-hand mirrored "poke" orientation (a moving trigger's
+          // own local rotation isn't a reliable default the way a fixed
+          // prop's is, hence the override), and what its own three items
+          // actually do.
+          this.stopwatch = { running: false, elapsedMs: 0, startedAt: 0 };
+
+          // faceEl was only just created and appended a few lines up, so
+          // — unlike the static wall-screen/pedestal triggers, already
+          // loaded by the time the scene's own "loaded" fires — it has
+          // NOT finished its own async load yet: setAttribute here does
+          // register the projected-menu component instance, but defers
+          // actually running its init() (the part that populates
+          // panelEl) until faceEl loads. Reading pm.panelEl synchronously
+          // right after setAttribute would still find it undefined.
+          faceEl.setAttribute('projected-menu', {
+            template: '#watch-menu-template',
+            mode: 'auto',
+            pokeScale: WATCH_MENU_SCALE_POKE,
+            laserScale: WATCH_MENU_SCALE_LASER,
+          });
+          function wireUpProjectedMenu () {
+            var pm = faceEl.components['projected-menu'];
+            self.projectedMenu = pm;
+            pm.pokeQuat = new AFRAME.THREE.Quaternion().setFromEuler(
+              new AFRAME.THREE.Euler(degToRad(-90), 0, degToRad(side * 90), 'XYZ')
+            );
+            // Nudge the menu outward along the same normal pokeQuat
+            // itself faces (its local +Z) so it clears the wrist/hand
+            // once open instead of spawning flush with the face — the
+            // wall screen and pedestal get this for free from their own
+            // authored offset, but the watch's default (no offset,
+            // centered right on the face) has no room to spare.
+            var outward = new AFRAME.THREE.Vector3(0, 0, 1).applyQuaternion(pm.pokeQuat);
+            var WATCH_MENU_MARGIN = 0.045;
+            pm.data.offset = {
+              x: outward.x * WATCH_MENU_MARGIN,
+              y: outward.y * WATCH_MENU_MARGIN,
+              z: outward.z * WATCH_MENU_MARGIN,
+            };
+            // chromes[0] is the main view's title bar (built before the
+            // help view's, same order as the two .menu-chrome-slot
+            // markers in the template) — repurposed to show the live
+            // clock instead of a static title. Monospace so the digits
+            // don't jitter in width as they update each second.
+            self.panelTimeEl = pm.chromes[0].titleEl;
+            self.panelTimeEl.setAttribute('font', 'sourcecodepro');
+            self.stopwatchLabelEl = pm.panelEl.querySelector('.watch-menu-stopwatch-label');
+
+            // The small watch face and the projected menu occupy the same
+            // spot, so swap one for the other rather than showing both.
+            faceEl.addEventListener('projected-menu-opened', function () {
+              faceEl.setAttribute('visible', false);
+            });
+            faceEl.addEventListener('projected-menu-closed', function () {
+              faceEl.setAttribute('visible', true);
+              self.closeHelp(); // don't leave it stuck open for next time
+            });
+
+            pm.panelEl.addEventListener('menu-item-select', function (evt) {
+              if (evt.detail.value === 'stopwatch') self.toggleStopwatch();
+              else if (evt.detail.value === 'haptics') self.triggerHaptics();
+              else if (evt.detail.value === 'about') self.showAbout();
+              else if (evt.detail.value === 'help-close') self.closeHelp();
+              else if (evt.detail.value === 'help-prev') self.turnHelpPage(-1);
+              else if (evt.detail.value === 'help-next') self.turnHelpPage(1);
+            });
+
+            // DEMO 1 of 3 help styles (see the wall screen and pedestal
+            // for the other two): a MODAL that swaps in for the watch's
+            // whole normal view, covering it entirely rather than
+            // drawing over it — the two views are siblings, so this is a
+            // pure visibility swap, not a scale/mode change.
+            self.mainViewEl = pm.panelEl.querySelector('.watch-menu-main');
+            self.helpViewEl = pm.panelEl.querySelector('.watch-menu-help-view');
+            self.helpTextEl = pm.panelEl.querySelector('.watch-help-page-text');
+            self.helpIndicatorEl = pm.panelEl.querySelector('.watch-help-page-indicator');
+            self.helpPageIndex = 0;
+            faceEl.addEventListener('projected-menu-help', function () {
+              self.mainViewEl.setAttribute('visible', false);
+              self.helpViewEl.setAttribute('visible', true);
+              self.helpPageIndex = 0;
+              self.updateHelpPage();
+            });
+          }
+          if (faceEl.hasLoaded) wireUpProjectedMenu();
+          else faceEl.addEventListener('loaded', wireUpProjectedMenu);
+        },
+
+        toggleStopwatch: function () {
+          var s = this.stopwatch;
+          if (!s.running) {
+            s.startedAt = performance.now();
+            s.running = true;
+          } else {
+            s.elapsedMs += performance.now() - s.startedAt;
+            s.running = false;
+          }
+        },
+
+        // A real haptic pulse (Gamepad API, same mechanism discussed for
+        // the future Vibration/Haptics primitive) on the hand actually
+        // wearing this watch — a genuinely working "trivial option," not
+        // just a placeholder.
+        triggerHaptics: function () {
+          var tracked = this.el.components['tracked-controls'];
+          var actuators = tracked && tracked.controller && tracked.controller.hapticActuators;
+          if (actuators && actuators[0]) actuators[0].pulse(1.0, 200);
+        },
+
+        showAbout: function () {
+          var label = this.projectedMenu.panelEl.querySelector('.watch-menu-about-label');
+          var original = label.getAttribute('text').value;
+          label.setAttribute('text', 'value', 'WebXR Primitives');
+          setTimeout(function () {
+            label.setAttribute('text', 'value', original);
+          }, 1500);
+        },
+
+        closeHelp: function () {
+          if (!this.helpViewEl || !this.helpViewEl.getAttribute('visible')) return;
+          this.helpViewEl.setAttribute('visible', false);
+          this.mainViewEl.setAttribute('visible', true);
+        },
+
+        turnHelpPage: function (dir) {
+          this.helpPageIndex = Math.max(0, Math.min(WATCH_HELP_PAGES.length - 1, this.helpPageIndex + dir));
+          this.updateHelpPage();
+        },
+
+        updateHelpPage: function () {
+          this.helpTextEl.setAttribute('text', 'value', WATCH_HELP_PAGES[this.helpPageIndex]);
+          this.helpIndicatorEl.setAttribute('text', 'value', (this.helpPageIndex + 1) + ' / ' + WATCH_HELP_PAGES.length);
+        },
+
+        updateDisplay: function () {
+          if (!this.panelTimeEl) return; // same brief async window as tick()
+
+          var pad = function (n) { return String(n).padStart(2, '0'); };
+          var d = new Date();
+          var clockValue = pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+          this.textEl.setAttribute('text', 'value', clockValue);
+          this.panelTimeEl.setAttribute('text', 'value', clockValue);
+
+          var s = this.stopwatch;
+          var label;
+          if (s.running || s.elapsedMs > 0) {
+            var ms = s.elapsedMs + (s.running ? performance.now() - s.startedAt : 0);
+            var totalSec = Math.floor(ms / 1000);
+            label =
+              (s.running ? 'Stop ' : 'Resume ') +
+              pad(Math.floor(totalSec / 3600)) + ':' + pad(Math.floor(totalSec / 60) % 60) + ':' + pad(totalSec % 60);
+          } else {
+            label = 'Stopwatch';
+          }
+          this.stopwatchLabelEl.setAttribute('text', 'value', label);
+        },
+      });
+
+      // ==============================================================
+      // STYLE 3 & 4 setup: wall screen (poke, fixed) and pedestal
+      // button (laser, fixed) — the two "fixed prop" projected-menu
+      // examples. Unlike the watch, neither tracks a moving trigger or
+      // needs its own component: both are just "attach projected-menu
+      // with this prop's own mode/scale/offset, then let menu-feedback
+      // reflect selections back" the same way the STYLE 1 fixed panel
+      // does. Offsets are in the trigger's OWN PARENT's local space
+      // (see updatePanelPosition on projected-menu) — wall-slab and
+      // pedestal each supply their own rotation/position once, and
+      // every number below is relative to that, not world space.
+      // Poking either one reuses the same two hands' fingertips as the
+      // watch — there's no separate "poker" per prop, just whichever
+      // hand happens to be pointing (squeeze grip) and touches it.
+      // ==============================================================
+      // Components only attach once their entity has loaded — true
+      // immediately for freshly-appended elements like the watch's own
+      // faceEl (already inside a loaded tree by the time hand-with-watch
+      // runs), but NOT for these two: they're part of the scene's
+      // initial markup, and this top-level script block runs before
+      // a-scene's own "loaded" event fires. Deref'ing .components right
+      // after setAttribute() here — before that event — finds nothing yet.
+      function setupFixedProjectedMenus () {
+        // Sits just barely proud of the wall's own front face (0.051)
+        // rather than floating out with a visible gap — at roughly the
+        // wall box's own width, the effect reads as the small TAP
+        // button expanding to fill the whole wall, not a separate panel
+        // hovering in front of it.
+        var wallScreenTrigger = document.querySelector('#wall-screen-trigger');
+        wallScreenTrigger.setAttribute('projected-menu', {
+          template: '#wall-screen-menu-template',
+          mode: 'poke',
+          pokeScale: 1.4,
+          offset: { x: 0, y: 0, z: 0.015 },
+          closeDistance: 2.2, // roughly the trigger's own reach plus a foot or so of slack
+        });
+        wallScreenTrigger.components['projected-menu'].panelEl.setAttribute('menu-feedback', '');
+
+        // The small TAP trigger and the big projected panel occupy
+        // (nearly) the same spot once open — same reasoning as the
+        // watch hiding its own face, otherwise TAP visibly peeks out
+        // from behind/around the panel.
+        wallScreenTrigger.addEventListener('projected-menu-opened', function () {
+          wallScreenTrigger.setAttribute('visible', false);
+        });
+        wallScreenTrigger.addEventListener('projected-menu-closed', function () {
+          wallScreenTrigger.setAttribute('visible', true);
+        });
+
+        // DEMO 2 of 3 help styles — see the big comment on
+        // #wall-sidecar-template. Sits just to the right of the main
+        // panel (half its width, plus a gap, plus half the sidecar's
+        // own width), same z as the main panel so it's flush with the
+        // wall too. Toggles open/closed on repeat ❔ clicks, same as
+        // the pedestal's tutorial; auto-hides if the main menu closes.
+        var wallSidecar = document.getElementById('wall-sidecar-template').content.cloneNode(true).firstElementChild;
+        wallSidecar.setAttribute('position', '1.125 0 0.015');
+        wallScreenTrigger.parentNode.appendChild(wallSidecar);
+        var wallSidecarChromeSlot = wallSidecar.querySelector('.menu-chrome-slot');
+        buildMenuChrome(wallSidecarChromeSlot.parentNode, {
+          title: wallSidecarChromeSlot.getAttribute('data-title') || '',
+          showHelp: false,
+          showClose: false,
+          width: parseFloat(wallSidecarChromeSlot.getAttribute('data-width')) || 1,
+          barY: parseFloat(wallSidecarChromeSlot.getAttribute('data-bar-y')),
+        });
+        wallSidecarChromeSlot.parentNode.removeChild(wallSidecarChromeSlot);
+        var wallSidecarOpen = false;
+        wallScreenTrigger.addEventListener('projected-menu-help', function () {
+          wallSidecarOpen = !wallSidecarOpen;
+          wallSidecar.setAttribute('visible', wallSidecarOpen);
+        });
+        wallScreenTrigger.addEventListener('projected-menu-closed', function () {
+          wallSidecarOpen = false;
+          wallSidecar.setAttribute('visible', false);
+        });
+
+        var pedestalButton = document.querySelector('#pedestal-button');
+        pedestalButton.setAttribute('projected-menu', {
+          template: '#pedestal-menu-template',
+          mode: 'laser',
+          laserScale: 1.3,
+          offset: { x: 0, y: 0.85, z: 0 },
+          closeDistance: 2.2,
+        });
+        pedestalButton.components['projected-menu'].panelEl.setAttribute('menu-feedback', '');
+
+        // DEMO 3 of 3 help styles — see the big comment on
+        // #pedestal-tutorial-template. A child of the panel itself (not
+        // a sibling), so it tracks the panel's own billboard rotation
+        // for free. While it's up, suppressPointing makes the covered
+        // rows inert (still visible, per the "on top" idea) so a face
+        // button steps the tutorial instead of also activating whatever
+        // happens to be behind it.
+        var pedestalPm = pedestalButton.components['projected-menu'];
+        var pedestalTutorial = document.getElementById('pedestal-tutorial-template').content.cloneNode(true).firstElementChild;
+        pedestalPm.panelEl.appendChild(pedestalTutorial);
+        var tutorialArrowEl = pedestalTutorial.querySelector('.tutorial-arrow');
+        var tutorialTextEl = pedestalTutorial.querySelector('.tutorial-text');
+        var tutorialIndicatorEl = pedestalTutorial.querySelector('.tutorial-page-indicator');
+        var tutorialOpen = false;
+        var tutorialStep = 0;
+
+        function updateTutorialStep () {
+          var step = PEDESTAL_TUTORIAL_STEPS[tutorialStep];
+          tutorialArrowEl.setAttribute('position', '-0.6 ' + step.y + ' 0');
+          tutorialTextEl.setAttribute('position', '-0.52 ' + step.y + ' 0');
+          tutorialTextEl.setAttribute('text', 'value', step.text);
+          tutorialIndicatorEl.setAttribute('text', 'value', (tutorialStep + 1) + ' / ' + PEDESTAL_TUTORIAL_STEPS.length);
+        }
+
+        pedestalButton.addEventListener('projected-menu-help', function () {
+          tutorialOpen = !tutorialOpen;
+          pedestalTutorial.setAttribute('visible', tutorialOpen);
+          pedestalPm.suppressPointing = tutorialOpen;
+          if (tutorialOpen) {
+            tutorialStep = 0;
+            updateTutorialStep();
+          }
+        });
+        pedestalButton.addEventListener('projected-menu-closed', function () {
+          tutorialOpen = false;
+          pedestalTutorial.setAttribute('visible', false);
+          pedestalPm.suppressPointing = false;
+        });
+
+        function tutorialNav (dir) {
+          if (!tutorialOpen) return;
+          tutorialStep = Math.max(0, Math.min(PEDESTAL_TUTORIAL_STEPS.length - 1, tutorialStep + dir));
+          updateTutorialStep();
+        }
+        [document.querySelector('#left-hand'), document.querySelector('#right-hand')].forEach(function (handEl) {
+          TUTORIAL_BACK_EVENTS.forEach(function (name) { handEl.addEventListener(name, function () { tutorialNav(-1); }); });
+          TUTORIAL_NEXT_EVENTS.forEach(function (name) { handEl.addEventListener(name, function () { tutorialNav(1); }); });
+        });
+      }
+      // The STYLE 1 fixed panel isn't a projected-menu clone (it's
+      // always open, not a trigger's popup), so nothing else calls
+      // buildMenuChrome for it automatically — do it directly.
+      function setupFixedPanelChrome () {
+        var slot = document.querySelector('#menu-panel .menu-chrome-slot');
+        buildMenuChrome(slot.parentNode, {
+          title: slot.getAttribute('data-title') || '',
+          showHelp: slot.getAttribute('data-help') !== 'false',
+          showClose: slot.getAttribute('data-close') !== 'false',
+          width: parseFloat(slot.getAttribute('data-width')) || 1,
+          barY: parseFloat(slot.getAttribute('data-bar-y')),
+        });
+        slot.parentNode.removeChild(slot);
+      }
+
+      var sceneEl = document.querySelector('a-scene');
+      if (sceneEl.hasLoaded) {
+        setupFixedProjectedMenus();
+        setupFixedPanelChrome();
+      } else {
+        sceneEl.addEventListener('loaded', function () {
+          setupFixedProjectedMenus();
+          setupFixedPanelChrome();
+        });
+      }
+
+      function updateAllDisplays () {
+        document.querySelectorAll('[hand-with-watch]').forEach(function (el) {
+          var comp = el.components['hand-with-watch'];
+          if (comp) comp.updateDisplay();
+        });
+      }
+      updateAllDisplays();
+      setInterval(updateAllDisplays, 1000);
+    </script>
+  </body>
+</html>
