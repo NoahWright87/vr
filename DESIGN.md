@@ -213,6 +213,27 @@ reading:
   the bow's aim toward the solved arc quietly robbed a full draw of a
   third of its power. Blend the directions, then put the speed back.
 
+## Loading, as a shared idea
+
+Three weapons now, and the interesting thing is that the third one
+cost almost nothing. A bow is a socket on a string; a launcher is a
+socket in a tube. Both hand whatever is in that socket a velocity and
+let the projectile system take it from there.
+
+That's the whole design, and it produces the jokes for free, because
+an `anchor-slot` has never asked what you're putting in it: you can
+nock a beer bottle, ram a lit stick of dynamite down the launcher, or
+put a rocket in your hat. Nothing had to permit any of that, and
+nothing would have to be touched to add a blunderbuss.
+
+The rocket is the clearest measure of how much was already built. It
+is: an `explosive` that's armed, so contact is enough; plus a motor
+that pushes along its own velocity and cancels most of gravity while
+it burns, which is the one behaviour that makes it read as a rocket
+rather than a thrown brick. Flight, impact, scoring, fire, the blast
+throwing the furniture around — all of that is machinery that existed
+for thrown bottles and a stick of dynamite.
+
 ## The revolving bar
 
 The clearest bill of health the "shared systems" bet has had. The

@@ -34,7 +34,7 @@
   </head>
   <body>
     <div id="overlay">
-      <span>Pistols at Dawn — grip near a holstered pistol, shotgun, or your hat to draw it. Guns fire on the trigger; let go of the grip while a finger still rests on the trigger to dangle and twirl whatever you're holding. Anything can snap into any anchor it's small enough for — glance at the glowing spheres for a hint — so go ahead and wear a gun like a hat, or hide one inside your hat. Turn around for the saloon bar: knock a bottle's cap on the counter edge to open it, then tip it over your face and drink what pours out. Fling a fistful of bottles skyward and shoot them apart. Strike a match on the counter or flip open the lighter and thumb a face button, then light a cigar off either — or off a barrel you just emptied, or a well-aimed bullet. Hold a cigar at your lips to draw on it and again to blow the smoke back out; flick or twirl it to knock the ash off. Let go and re-squeeze the grip quickly to keep hold of what you had and pick up the next thing too. Grab the shotgun's forend with your off hand to steady it. Spilled beer pools where it lands and burns if you light it, fire spreads along it and sets light to whatever it reaches, and a smashed bottle spills its own — so a lit puddle and a well-thrown beer make a Molotov out of parts that were already lying about. There's a jug of water for when that goes wrong — and yes, since fire is a liquid and liquid that reaches your mouth gets swallowed, you can drink it. Throw overhand and it goes where you're looking; let go early to lob it, late to line-drive it. Both meters at the bottom of your view have opinions about your aim. Shoot the brass bell hanging over the bar and the whole counter revolves — beers, cigars, lit matches and all — to show an armoury on its back: guns on the pegs, long guns in the cradles, and a lot of empty sockets to arrange your own loadout in. The armoury's racks refill ten seconds after you empty them; your own holsters don't, so what's on your hip is whatever you put there. Any gun left lying loose goes up in smoke half a minute later — take what you want, and don't put it down. <a href="../../index.html">All prototypes</a></span>
+      <span>Pistols at Dawn — grip near a holstered pistol, shotgun, or your hat to draw it. Guns fire on the trigger; let go of the grip while a finger still rests on the trigger to dangle and twirl whatever you're holding. Anything can snap into any anchor it's small enough for — glance at the glowing spheres for a hint — so go ahead and wear a gun like a hat, or hide one inside your hat. Turn around for the saloon bar: knock a bottle's cap on the counter edge to open it, then tip it over your face and drink what pours out. Fling a fistful of bottles skyward and shoot them apart. Strike a match on the counter or flip open the lighter and thumb a face button, then light a cigar off either — or off a barrel you just emptied, or a well-aimed bullet. Hold a cigar at your lips to draw on it and again to blow the smoke back out; flick or twirl it to knock the ash off. Let go and re-squeeze the grip quickly to keep hold of what you had and pick up the next thing too. Grab the shotgun's forend with your off hand to steady it. Spilled beer pools where it lands and burns if you light it, fire spreads along it and sets light to whatever it reaches, and a smashed bottle spills its own — so a lit puddle and a well-thrown beer make a Molotov out of parts that were already lying about. There's a jug of water for when that goes wrong — and yes, since fire is a liquid and liquid that reaches your mouth gets swallowed, you can drink it. Throw overhand and it goes where you're looking; let go early to lob it, late to line-drive it. Both meters at the bottom of your view have opinions about your aim. Shoot the brass bell hanging over the bar and the whole counter revolves — beers, cigars, lit matches and all — to show an armoury on its back: guns on the pegs, long guns in the cradles, and a lot of empty sockets to arrange your own loadout in. There's dynamite on the low shelf: light the fuse off anything hot and throw it, or shoot a stick out of the air. Take the bow in one hand and the string in the other and pull — how far apart your hands are is your draw, and where you're looking is where it'll land. The nock holds three, and it has no opinion about what: nock arrows, or a beer, or a lit stick of dynamite. Set an arrow alight first and it'll set alight whatever it lands in. The launcher works the same way — load the tube, point it somewhere you don't like, and stand well back. The armoury's racks refill ten seconds after you empty them; your own holsters don't, so what's on your hip is whatever you put there. Any weapon left lying loose goes up in smoke half a minute later. <a href="../../index.html">All prototypes</a></span>
     </div>
 
     <a-scene>
@@ -573,7 +573,7 @@
       // socket is bare on purpose — they're for whatever you decide
       // belongs there.
       var ARMORY_PISTOL_STOCK = [0, 2, 4, 6, 8];
-      var ARMORY_CRADLE_STOCK = ['shotgun', 'bow', 'shotgun']; // per cradle, left to right; null leaves one bare
+      var ARMORY_CRADLE_STOCK = ['shotgun', 'bow', 'launcher']; // per cradle, left to right; null leaves one bare
       var ARMORY_QUIVER_X = -1.36; // the arrow trough, along the front of the bench
       var ARMORY_QUIVER_Z = 0.63;
 
@@ -677,7 +677,32 @@
       var ARROW_AIM_ASSIST = 0.85; // 0 = raw bow direction, 1 = solved straight at what you're looking at
       var ARROW_LENGTH = 0.62;
       var ARROW_STACK = 3; // how many the nock will hold at once
-      var ARMORY_ARROWS = 5; // how many stand in the quiver on the bench
+      var ARMORY_ARROWS = 5; // how many lie in the trough on the bench
+
+      // ==============================================================
+      // THE LAUNCHER
+      // A tube with a socket in the back. Everything about it is the
+      // bow again with a trigger instead of a string, which is why
+      // there is so little of it: load, point, press.
+      //
+      // The rocket flies flat while its motor is lit and then gives up,
+      // which is the difference between it and everything else in the
+      // air here. It is `armed`, so it goes off on contact with
+      // anything rather than needing a fuse — and since it goes off by
+      // calling the same detonate() a stick of dynamite does, firing
+      // one indoors sets the saloon alight, throws the furniture, and
+      // is entirely your own fault.
+      // ==============================================================
+      var LAUNCHER_LENGTH = 0.95;
+      var LAUNCHER_MUZZLE_Z = 0.42; // how far the muzzle sits ahead of the grip
+      var LAUNCHER_KICK_DEG = -26; // it is not a comfortable weapon
+      var LAUNCHER_RECOVER_MS = 420;
+      var LAUNCH_SPEED = 14; // m/s leaving the tube, before the motor does anything
+      var ROCKET_THRUST = 34; // m/s² while the motor burns
+      var ROCKET_LIFT = 0.85; // fraction of gravity the motor cancels, so it flies flat and then drops
+      var ROCKET_BURN_MS = 1400;
+      var ROCKET_BLAST_RADIUS = 3.2;
+      var ARMORY_ROCKETS = 2;
       var LOOSE_ITEM_LIFETIME_MS = 30000;
       var LOOSE_ITEM_FADE_MS = 1200; // it shrinks away over the last of that rather than blinking out
 
@@ -1824,6 +1849,18 @@
         var seconds = durationMs / 1000;
         playNoise({ duration: seconds, freq: 130, q: 1.4, volume: 0.09, filterType: 'lowpass' });
         playTone({ type: 'sawtooth', freq: 46, sweep: 70, duration: seconds, volume: 0.05 });
+      }
+
+      // Show the muzzle flash on anything that has one, briefly. Two
+      // components want this now, so it stopped being the firearm's.
+      function flashMuzzle(el) {
+        var flash = el.querySelector('.muzzle-flash');
+        if (!flash) return;
+        flash.setAttribute('visible', true);
+        clearTimeout(el._flashTimeout);
+        el._flashTimeout = setTimeout(function () {
+          flash.setAttribute('visible', false);
+        }, 80);
       }
 
       // A bowstring. Pitched by how far you drew it, and a dry slap
@@ -3915,6 +3952,42 @@
         el.setAttribute('ignition-source', { tipSelector: '.ember' });
       });
 
+      // The launcher, and the thing that goes in it. Note how little
+      // either declaration says: the tube is a holsterable with a
+      // socket and a trigger hook, and the rocket is an armed
+      // explosive with a motor. Neither mentions the other.
+      defineItem('launcher', function (el, slotId) {
+        el.setAttribute('holsterable', {
+          holsterSelector: '#' + slotId,
+          itemSize: 'large',
+          holsterRotation: { x: -90, y: 0, z: 0 },
+          heldRotation: { x: -90, y: 0, z: 0 },
+          grabRadius: 0.26,
+          comOffset: { x: 0, y: 0.03, z: -0.18 },
+          supportGrip: { x: 0, y: 0.02, z: -0.24 },
+          supportRadius: 0.22,
+          maxThrowSpeed: 6,
+        });
+        el.setAttribute('boxy-launcher', '');
+        el.setAttribute('launcher', '');
+      });
+
+      defineItem('rocket', function (el, slotId) {
+        el.setAttribute('holsterable', {
+          holsterSelector: '#' + slotId,
+          itemSize: 'small',
+          holsterRotation: { x: -90, y: 0, z: 0 },
+          heldRotation: { x: -90, y: 0, z: 0 },
+          grabRadius: 0.13,
+          comOffset: { x: 0, y: 0, z: -0.02 },
+          maxThrowSpeed: 8, // thrown by hand it is a poor club with a warhead on it
+        });
+        el.setAttribute('boxy-rocket', '');
+        el.setAttribute('rocket', '');
+        el.setAttribute('explosive', { armed: true, radius: ROCKET_BLAST_RADIUS, fuel: 0.75 });
+        el.classList.add('shootable');
+      });
+
       // A stick of dynamite, which is almost entirely other people's
       // components. `lightable` and `burnable` are the fuse — the same
       // pair a match is made of — so every way of lighting anything in
@@ -4424,16 +4497,7 @@
           this.sinceLastShot = 0;
           this.curlRemaining = 0; // still shooting — the curl waits
 
-          var flash = this.el.querySelector('.muzzle-flash');
-          if (flash) {
-            flash.setAttribute('visible', true);
-            clearTimeout(this.flashTimeout);
-            var flashEl = flash;
-            this.flashTimeout = setTimeout(function () {
-              flashEl.setAttribute('visible', false);
-            }, 80);
-          }
-
+          flashMuzzle(this.el);
           spawnSparks(this._origin, 3);
         },
       });
@@ -6860,6 +6924,237 @@
       });
 
       // ==============================================================
+      // COMPONENT: boxy-launcher / launcher
+      // A tube you put something in and a trigger that sends it. It is
+      // the bow's idea again with a different silhouette: a socket at
+      // the loading end, and a release that hands whatever is in there
+      // a velocity. That the socket doesn't ask what it's holding is
+      // now a habit rather than a surprise — a rocket goes down the
+      // tube, and so does a beer, and so does a lit stick of dynamite,
+      // and the launcher can tell the difference between none of them.
+      //
+      // Firing empty is a click and a puff, because a man should be
+      // allowed to find that out the hard way.
+      // ==============================================================
+      registerComponent('boxy-launcher', {
+        init: function () {
+          var el = this.el;
+          var metal = '#3f4429';
+          var wood = '#4a2f1c';
+
+          function box(w, h, d, pos, color, rot) {
+            var b = document.createElement('a-box');
+            b.setAttribute('width', w);
+            b.setAttribute('height', h);
+            b.setAttribute('depth', d);
+            b.setAttribute('position', pos);
+            b.setAttribute('color', color);
+            if (rot) b.setAttribute('rotation', rot);
+            el.appendChild(b);
+            return b;
+          }
+
+          var tube = document.createElement('a-cylinder');
+          tube.setAttribute('radius', 0.055);
+          tube.setAttribute('height', LAUNCHER_LENGTH);
+          tube.setAttribute('color', metal);
+          tube.setAttribute('rotation', '90 0 0');
+          tube.setAttribute('position', { x: 0, y: 0.06, z: LAUNCHER_LENGTH / 2 - LAUNCHER_MUZZLE_Z });
+          el.appendChild(tube);
+
+          box(0.05, 0.14, 0.055, '0 -0.05 0.02', wood, '10 0 0'); // grip
+          box(0.045, 0.006, 0.06, '0 -0.028 -0.02', metal); // trigger guard
+          box(0.008, 0.03, 0.008, '0 -0.01 -0.035', '#c9962c'); // trigger
+          box(0.09, 0.03, 0.1, '0 0.12 -0.16', metal); // crude sight block
+          box(0.05, 0.05, 0.12, '0 0.05 0.3', wood); // shoulder pad
+
+          var flash = document.createElement('a-circle');
+          flash.setAttribute('radius', 0.08);
+          flash.setAttribute('material', 'color: #ffe066; shader: flat; opacity: 0.9');
+          flash.setAttribute('position', { x: 0, y: 0.06, z: -LAUNCHER_MUZZLE_Z });
+          flash.setAttribute('visible', false);
+          flash.classList.add('muzzle-flash');
+          el.appendChild(flash);
+
+          var muzzle = document.createElement('a-entity');
+          muzzle.setAttribute('position', { x: 0, y: 0.06, z: -LAUNCHER_MUZZLE_Z });
+          muzzle.classList.add('muzzle');
+          el.appendChild(muzzle);
+
+          // The breech: an ordinary socket at the back of the tube.
+          this.breechEl = document.createElement('a-entity');
+          this.breechEl.classList.add('anchor-slot');
+          this.breechEl.setAttribute('anchor-slot', { size: 'small', indicatorScale: 1.3 });
+          this.breechEl.setAttribute('position', { x: 0, y: 0.06, z: LAUNCHER_LENGTH - LAUNCHER_MUZZLE_Z - 0.16 });
+          el.appendChild(this.breechEl);
+        },
+      });
+
+      registerComponent('launcher', {
+        init: function () {
+          this._muzzle = new THREE.Vector3();
+          this._dir = new THREE.Vector3();
+          this._quat = new THREE.Quaternion();
+        },
+
+        breech: function () {
+          var visual = this.el.components['boxy-launcher'];
+          return visual && visual.breechEl;
+        },
+
+        // hand-rig's generic press dispatch, same hook a gun's trigger
+        // uses — which is why holding the launcher and a pistol in one
+        // fist fires both.
+        onTriggerUse: function () {
+          var holsterable = this.el.components.holsterable;
+          if (!holsterable || holsterable.state !== 'held') return;
+
+          var breech = this.breech();
+          var slot = breech && breech.components['anchor-slot'];
+
+          var muzzleEl = this.el.querySelector('.muzzle');
+          if (muzzleEl) {
+            muzzleEl.object3D.updateWorldMatrix(true, false);
+            muzzleEl.object3D.getWorldPosition(this._muzzle);
+            muzzleEl.object3D.getWorldQuaternion(this._quat);
+            this._dir.set(0, 0, -1).applyQuaternion(this._quat).normalize();
+          }
+
+          if (!slot || !slot.occupants.length) {
+            playTone({ type: 'square', freq: 240, duration: 0.05, volume: 0.06 });
+            return;
+          }
+
+          var payload = slot.occupants[0];
+          payload.el.object3D.updateWorldMatrix(true, false);
+          payload.vacateSlot();
+
+          var velocity = this._dir.clone().multiplyScalar(LAUNCH_SPEED);
+          velocity.isHurl = true; // don't let the tube catch its own rocket back
+          payload.throwWithVelocity(velocity);
+          payload.angularVelocity.set(0, 0, 0);
+          payload.el.object3D.quaternion.setFromUnitVectors(_launchForward, this._dir);
+
+          this.report();
+        },
+
+        // Muzzle flash, backblast and a shove. The kick goes through
+        // holsterable.extraPitchDeg, the same channel a pistol's recoil
+        // uses, so it composes with drunken sway instead of fighting it.
+        report: function () {
+          playBoom();
+          flashMuzzle(this.el);
+
+          var holsterable = this.el.components.holsterable;
+          if (holsterable) holsterable.extraPitchDeg = LAUNCHER_KICK_DEG;
+          this.recoil = LAUNCHER_RECOVER_MS;
+
+          // Backblast, out the far end and straight at whatever is
+          // standing behind you.
+          this.el.object3D.getWorldPosition(this._muzzle);
+          for (var i = 0; i < 5; i++) {
+            spawnSmoke(this._muzzle, this._dir.clone().multiplyScalar(-3.4), 1.4);
+          }
+          spawnSparks(this._muzzle, 8);
+        },
+
+        tick: function (time, dt) {
+          if (!this.recoil) return;
+          this.recoil = Math.max(this.recoil - (dt || 16), 0);
+          var holsterable = this.el.components.holsterable;
+          if (holsterable) holsterable.extraPitchDeg = LAUNCHER_KICK_DEG * (this.recoil / LAUNCHER_RECOVER_MS);
+        },
+      });
+
+      var _launchForward = new THREE.Vector3(0, 0, -1);
+
+      // ==============================================================
+      // COMPONENT: rocket
+      // The thing that goes in the tube, and it is barely a thing. It's
+      // an `explosive` that's armed — so anything it touches sets it
+      // off, no fuse required — plus a motor: while it's in the air it
+      // pushes itself along, fights most of gravity, and leaves a
+      // trail. Everything about how it flies, what it hits and what it
+      // does to what it hit is machinery that was already here for
+      // thrown bottles and dynamite.
+      // ==============================================================
+      registerComponent('rocket', {
+        init: function () {
+          this._world = new THREE.Vector3();
+          this._dir = new THREE.Vector3();
+          this._quat = new THREE.Quaternion();
+          this.burn = ROCKET_BURN_MS;
+        },
+
+        tick: function (time, dt) {
+          var holsterable = this.el.components.holsterable;
+          if (!holsterable || holsterable.state !== 'falling') return;
+
+          var dtSeconds = Math.min((dt || 16) / 1000, 0.05);
+          var speed = holsterable.fallVelocity.length();
+          if (speed < 0.5) return;
+
+          this._dir.copy(holsterable.fallVelocity).divideScalar(speed);
+
+          if (this.burn > 0) {
+            this.burn -= dt || 16;
+            holsterable.fallVelocity.addScaledVector(this._dir, ROCKET_THRUST * dtSeconds);
+            // The motor holds it up while it's lit, so a rocket flies
+            // flat and then drops, rather than arcing like a thrown
+            // bottle from the moment it leaves.
+            holsterable.fallVelocity.y += GRAVITY * ROCKET_LIFT * dtSeconds;
+          }
+
+          holsterable.angularVelocity.set(0, 0, 0);
+          this._quat.setFromUnitVectors(_launchForward, this._dir);
+          this.el.object3D.quaternion.copy(this._quat);
+
+          this.trail = (this.trail || 0) - (dt || 16);
+          if (this.trail > 0) return;
+          this.trail = 26;
+          this.el.object3D.getWorldPosition(this._world);
+          spawnSmoke(this._world, this._dir.clone().multiplyScalar(-1.5), 0.8);
+          spawnSparks(this._world, 1);
+        },
+      });
+
+      registerComponent('boxy-rocket', {
+        init: function () {
+          var el = this.el;
+
+          var body = document.createElement('a-cylinder');
+          body.setAttribute('radius', 0.042);
+          body.setAttribute('height', 0.2);
+          body.setAttribute('color', '#5b6b3a');
+          body.setAttribute('rotation', '90 0 0');
+          body.setAttribute('position', { x: 0, y: 0, z: 0.02 });
+          el.appendChild(body);
+
+          var nose = document.createElement('a-cone');
+          nose.setAttribute('radius-bottom', 0.042);
+          nose.setAttribute('radius-top', 0);
+          nose.setAttribute('height', 0.1);
+          nose.setAttribute('color', '#a8342a');
+          nose.setAttribute('rotation', '-90 0 0');
+          nose.setAttribute('position', { x: 0, y: 0, z: -0.13 });
+          el.appendChild(nose);
+
+          for (var i = 0; i < 4; i++) {
+            var fin = document.createElement('a-box');
+            fin.setAttribute('width', 0.004);
+            fin.setAttribute('height', 0.055);
+            fin.setAttribute('depth', 0.06);
+            fin.setAttribute('position', { x: 0, y: 0.05, z: 0.1 });
+            fin.setAttribute('color', '#3f4429');
+            var pivot = document.createElement('a-entity');
+            pivot.setAttribute('rotation', { x: 0, y: 0, z: i * 90 });
+            pivot.appendChild(fin);
+            el.appendChild(pivot);
+          }
+        },
+      });
+
+      // ==============================================================
       // COMPONENT: boxy-dynamite
       // Three red sticks in a bundle with a fuse out the end, and the
       // fuse is a `buildBurnStick` — the same object a match and a
@@ -7959,15 +8254,18 @@
           this.addBox(BAR_WIDTH - 0.3, 0.05, 0.16, { x: 0, y: ARMORY_SHELF_Y, z: ARMORY_SHELF_Z }, iron, face);
 
           var self = this;
-          [-1.28, 1.28].forEach(function (x) {
-            self.addBox(0.24, 0.14, 0.13, { x: x, y: ARMORY_SHELF_Y + 0.095, z: ARMORY_SHELF_Z }, '#5b3a29', face);
+          [
+            { x: -1.28, item: 'dynamite', capacity: ARMORY_DYNAMITE_PER_CRATE },
+            { x: 1.28, item: 'rocket', capacity: ARMORY_ROCKETS },
+          ].forEach(function (crate) {
+            self.addBox(0.24, 0.14, 0.13, { x: crate.x, y: ARMORY_SHELF_Y + 0.095, z: ARMORY_SHELF_Z }, '#5b3a29', face);
             var slotId = self.addSlot(
-              { x: x, y: ARMORY_SHELF_Y + 0.12, z: ARMORY_SHELF_Z },
+              { x: crate.x, y: ARMORY_SHELF_Y + 0.12, z: ARMORY_SHELF_Z },
               'small',
-              { capacity: ARMORY_DYNAMITE_PER_CRATE, fanSpread: 0.05, fanYaw: 9 },
+              { capacity: crate.capacity, fanSpread: 0.07, fanYaw: 9 },
               face
             );
-            self.stock(slotId, 'dynamite');
+            self.stock(slotId, crate.item);
           });
 
           var spacing = (BAR_WIDTH - 1.1) / (ARMORY_SHELF_SOCKETS - 1);
