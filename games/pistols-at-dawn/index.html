@@ -913,7 +913,29 @@
       // that's a permission prompt and a headset-specific gamble, so
       // the gesture stands in for it.)
       // ==============================================================
-      var MAX_PARTICLES = 110; // oldest get recycled past this, so a shotgun into a shelf of bottles can't tank the framerate
+      // Two budgets, not one, and the split is by what a particle is
+      // FOR rather than what it looks like. Smoke and glass are
+      // scenery: run out of room and the oldest puff can simply stop
+      // existing, and nobody can tell. Liquid is not scenery — a
+      // droplet is a unit of beer that will get you drunk, or a unit of
+      // fire that will burn the place down — so deleting one changes
+      // the game, not the picture.
+      //
+      // They used to share one pool of 110 with oldest-dies eviction,
+      // which meant a spreading fire (a jumping flame is a droplet, and
+      // each burning pool smokes) could fill the whole thing and then
+      // eat every drop of beer you poured about an inch out of the
+      // bottle. Two budgets means visuals can never evict gameplay.
+      //
+      // The liquid budget is deliberately large, and it is a MERGE
+      // threshold rather than a delete threshold: see
+      // relieveLiquidPressure. Over it, the oldest droplet joins its
+      // neighbour or lands early, so the liquid is still there — it has
+      // just stopped being two things. Nothing is ever simply dropped.
+      var MAX_LIQUID_DROPS = 420;
+      var MAX_EFFECT_PARTICLES = 150; // smoke, glass and sparks together
+      var DROP_MERGE_RADIUS = 0.55; // two droplets further apart than this are different events, not one splitting stream
+      var DROP_MERGE_MAX_SCALE = 3.2; // times the liquid's own drop radius, so a merged blob stays a droplet
       var SHARD_COUNT = 16;
       var SHARD_SPEED = 2.8; // m/s initial burst speed
       var SHARD_SIZE = 0.022;
@@ -993,7 +1015,7 @@
       // and because otherwise a five-second pour would be four hundred
       // separate objects.
       // ==============================================================
-      var MAX_POOLS = 26;
+      var MAX_POOLS = 60; // and when even this runs out, liquid joins the nearest puddle rather than vanishing — see addToPool
       var POOL_MERGE_RADIUS = 0.3; // meters — a drop landing this close to a pool joins it
       var POOL_START_RADIUS = 0.045;
       var POOL_GROWTH_PER_DROPLET = 0.011; // meters of radius each droplet adds
@@ -1277,35 +1299,130 @@
         particle.needsColor = true;
 
         PARTICLES.push(particle);
+        LIVE_PARTICLES[bucketOf(particle)]++;
 
-        // Over the cap, the oldest LIVE particle is marked dead rather
-        // than spliced out. Removing it here would renumber the array
-        // underneath world-systems.updateParticles, which spawns
-        // debris and sparks from inside its own iteration — the wrong
-        // particle would then be retired, and an element could end up
-        // owned by two particles at once. Dead ones are skipped and
-        // swept up at the end of the frame.
-        var live = 0;
-        for (var i = 0; i < PARTICLES.length; i++) {
-          if (PARTICLES[i].dead) continue;
-          live++;
-        }
-        if (live > MAX_PARTICLES) {
-          for (var j = 0; j < PARTICLES.length; j++) {
-            if (PARTICLES[j].dead) continue;
-            killParticle(PARTICLES[j]);
-            break;
-          }
+        // Nothing is ever spliced out here. Removing it would renumber
+        // the array underneath world-systems.updateParticles, which
+        // spawns debris and sparks from inside its own iteration — the
+        // wrong particle would then be retired, and an element could
+        // end up owned by two particles at once. Things are marked
+        // dead, skipped, and swept up at the end of the frame.
+        if (particle.kind === 'liquid') {
+          if (LIVE_PARTICLES.liquid > MAX_LIQUID_DROPS) relieveLiquidPressure();
+        } else if (LIVE_PARTICLES.effect > MAX_EFFECT_PARTICLES) {
+          killOldest('effect');
         }
         return particle;
+      }
+
+      // Which budget a particle draws on. Everything that isn't liquid
+      // is scenery.
+      function bucketOf(particle) {
+        return particle.kind === 'liquid' ? 'liquid' : 'effect';
+      }
+
+      function killOldest(bucket) {
+        for (var i = 0; i < PARTICLES.length; i++) {
+          if (PARTICLES[i].dead || bucketOf(PARTICLES[i]) !== bucket) continue;
+          killParticle(PARTICLES[i]);
+          return PARTICLES[i];
+        }
+        return null;
+      }
+
+      // What happens instead of culling a droplet, and the whole reason
+      // the liquid budget can be a number rather than a compromise.
+      //
+      // The oldest drop in the air gives up being its own object, but
+      // not being liquid. First choice: it merges into the next drop of
+      // the same stuff nearby, which grows to hold both — volume adds,
+      // so the radius goes as the cube root, and a dense pour turns
+      // into fewer, fatter drops rather than fewer drops. Second
+      // choice, if there's nothing near enough to join: it lands where
+      // it is, onto whatever surface is underneath, and becomes puddle
+      // early. Either way the beer is still beer and the fire is still
+      // fire; the count came down and the liquid didn't.
+      function relieveLiquidPressure() {
+        var oldest = null;
+        var oldestIndex = -1;
+        for (var i = 0; i < PARTICLES.length; i++) {
+          if (PARTICLES[i].dead || PARTICLES[i].kind !== 'liquid') continue;
+          oldest = PARTICLES[i];
+          oldestIndex = i;
+          break;
+        }
+        if (!oldest) return;
+
+        var target = null;
+        var bestDist = DROP_MERGE_RADIUS;
+        var ceiling = (LIQUIDS[oldest.liquid] || LIQUIDS.beer).dropRadius * DROP_MERGE_MAX_SCALE;
+        for (var j = oldestIndex + 1; j < PARTICLES.length; j++) {
+          var other = PARTICLES[j];
+          if (other.dead || other.kind !== 'liquid' || other.liquid !== oldest.liquid) continue;
+          // A drop that's already as fat as a drop is allowed to get
+          // can't absorb any more without the surplus being quietly
+          // clamped away, which is the culling this whole thing exists
+          // to avoid. It lands instead.
+          if (other.baseScale >= ceiling - 0.0001) continue;
+          var d = other.el.object3D.position.distanceTo(oldest.el.object3D.position);
+          if (d >= bestDist) continue;
+          target = other;
+          bestDist = d;
+        }
+
+        if (target) {
+          mergeDroplets(oldest, target);
+        } else {
+          landDropletEarly(oldest);
+        }
+        killParticle(oldest);
+      }
+
+      function mergeDroplets(from, into) {
+        var liquid = LIQUIDS[into.liquid] || LIQUIDS.beer;
+        var ceiling = liquid.dropRadius * DROP_MERGE_MAX_SCALE;
+        var merged = Math.cbrt(Math.pow(into.baseScale, 3) + Math.pow(from.baseScale, 3));
+
+        // Any volume that won't fit under the ceiling is spilled rather
+        // than rounded off — see landDropletEarly. Rounding it off is
+        // how liquid goes missing.
+        if (merged > ceiling) {
+          var surplus = Math.pow(merged, 3) - Math.pow(ceiling, 3);
+          spillSurplus(from, Math.cbrt(surplus));
+          merged = ceiling;
+        }
+
+        into.baseScale = merged;
+        into.el.object3D.scale.setScalar(into.baseScale);
+        // It also inherits the older drop's remaining life, so merging
+        // never shortens how long that liquid stays in the air.
+        into.age = Math.min(into.age, from.age);
+      }
+
+      function landDropletEarly(drop) {
+        spillSurplus(drop, drop.baseScale);
+      }
+
+      // A drop's worth of liquid arriving on the ground under `drop`,
+      // scaled by how much of a drop it actually is.
+      function spillSurplus(drop, radius) {
+        var pos = drop.el.object3D.position;
+        var type = drop.liquid || 'beer';
+        var liquid = LIQUIDS[type] || LIQUIDS.beer;
+        var full = liquid.isFire ? FIRE_LANDING_SPILL : POOL_GROWTH_PER_DROPLET;
+        var share = liquid.dropRadius > 0 ? Math.pow(radius / liquid.dropRadius, 3) : 1;
+        addToPool(pos, surfaceUnder(pos), type, full * share);
       }
 
       // Retiring a particle is always "mark it and move on"; the sweep
       // at the end of the frame is the only thing that ever changes the
       // array's shape.
+      var LIVE_PARTICLES = { liquid: 0, effect: 0 };
+
       function killParticle(particle) {
         if (particle.dead) return;
         particle.dead = true;
+        LIVE_PARTICLES[bucketOf(particle)]--;
         releaseParticleEl(particle.el, particle.shape);
       }
 
@@ -1611,7 +1728,28 @@
           return pool;
         }
 
-        if (POOLS.length >= MAX_POOLS) return null;
+        // Out of puddles. The liquid does NOT disappear: it joins
+        // whichever puddle is nearest, however far that is. A spill
+        // arriving in slightly the wrong place is a small lie; a spill
+        // arriving nowhere is a bucket of beer the game quietly threw
+        // away, and that used to be what happened.
+        if (POOLS.length >= MAX_POOLS) {
+          var nearest = null;
+          var nearestDist = Infinity;
+          for (var n = 0; n < POOLS.length; n++) {
+            if (POOLS[n].type !== type) continue;
+            var ndx = POOLS[n].x - worldPos.x;
+            var ndz = POOLS[n].z - worldPos.z;
+            var nd = ndx * ndx + ndz * ndz;
+            if (nd >= nearestDist) continue;
+            nearest = POOLS[n];
+            nearestDist = nd;
+          }
+          if (!nearest) return null;
+          nearest.radius = Math.min(nearest.radius + amount, POOL_MAX_RADIUS);
+          nearest.age = 0;
+          return nearest;
+        }
 
         var el = acquirePoolEl();
         var created = {

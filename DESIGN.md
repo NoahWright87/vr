@@ -136,6 +136,46 @@ coming off something solid. Setting the jump rate to zero leaves a
 perfectly good conventional fire, which is how the idea was de-risked
 before it was tried.
 
+## Liquid is not scenery
+
+The particle pool held 110 of everything, and when it filled, the
+oldest thing in it died. That's the right rule for smoke and broken
+glass and completely wrong for liquid, and the bug it produced was
+reported from playtest as "beer only pours an inch out of the bottle
+and then disappears". It wasn't the beer. A spreading fire is made of
+particles — every jumping flame is a droplet and every burning patch
+smokes — so a good fire could fill the pool on its own, and after that
+every drop you poured was evicted within a couple of frames by the
+next drop behind it.
+
+Two changes, and the first is the important one.
+
+**Two budgets, split by what a particle is FOR.** Smoke and glass are
+scenery: run out of room and the oldest puff can stop existing, and
+nobody can tell. A droplet is a unit of beer that will get you drunk
+or a unit of fire that will burn the saloon down — deleting one
+changes the game, not the picture. Visuals can now never evict
+gameplay, whatever else is happening.
+
+**The liquid budget is a merge threshold, not a delete threshold.**
+Over it, the oldest drop in the air stops being its own object but
+does not stop being liquid: it joins the nearest drop of the same
+stuff, which grows to hold both (volume adds, so the radius goes as
+the cube root, and a dense pour becomes fewer, fatter drops rather
+than fewer drops). If there's nothing near enough to join, it lands
+where it is and becomes puddle early. Whatever won't fit under the
+maximum drop size is spilled rather than rounded off, because rounding
+it off is exactly how liquid goes missing.
+
+The same rule now applies one level up: puddles used to stop being
+created past a cap of 26, which silently threw away every spill after
+that. They merge into the nearest puddle instead, and the cap is 60.
+
+Measured after: a sustained pour next to a burning pool peaks at ~22
+live droplets against a budget of 420, because merging and pooling do
+the work that culling used to. The budget is there for the pathological
+case, not the normal one.
+
 ## Projectiles: a thrown thing is a slow bullet
 
 A bullet was an instant raycast; a thrown bottle was a falling object
