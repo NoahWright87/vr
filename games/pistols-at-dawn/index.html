@@ -34,7 +34,7 @@
   </head>
   <body>
     <div id="overlay">
-      <span>Pistols at Dawn — grip near a holstered pistol, shotgun, or your hat to draw it. Guns fire on the trigger; let go of the grip while a finger still rests on the trigger to dangle and twirl whatever you're holding. Anything can snap into any anchor it's small enough for — glance at the glowing spheres for a hint — so go ahead and wear a gun like a hat, or hide one inside your hat. Turn around for the saloon bar: knock a bottle's cap on the counter edge to open it, then tip it over your face and drink what pours out. Fling a fistful of bottles skyward and shoot them apart. Strike a match on the counter or flip open the lighter and thumb a face button, then light a cigar off either — or off a barrel you just emptied, or a well-aimed bullet. Hold a cigar at your lips to draw on it and again to blow the smoke back out; flick or twirl it to knock the ash off. Let go and re-squeeze the grip quickly to keep hold of what you had and pick up the next thing too. Grab the shotgun's forend with your off hand to steady it. Spilled beer pools where it lands and burns if you light it, fire spreads along it and sets light to whatever it reaches, and a smashed bottle spills its own — so a lit puddle and a well-thrown beer make a Molotov out of parts that were already lying about. There's a jug of water for when that goes wrong — and yes, since fire is a liquid and liquid that reaches your mouth gets swallowed, you can drink it. Throw overhand and it goes where you're looking; let go early to lob it, late to line-drive it. Both meters at the bottom of your view have opinions about your aim. Shoot the brass bell hanging over the bar and the whole counter revolves — beers, cigars, lit matches and all — to show an armoury on its back: guns on the pegs, long guns in the cradles, and a lot of empty sockets to arrange your own loadout in. Racks refill ten seconds after you empty them, and any gun left lying about goes up in smoke half a minute later, so take what you want and don't put it down. <a href="../../index.html">All prototypes</a></span>
+      <span>Pistols at Dawn — grip near a holstered pistol, shotgun, or your hat to draw it. Guns fire on the trigger; let go of the grip while a finger still rests on the trigger to dangle and twirl whatever you're holding. Anything can snap into any anchor it's small enough for — glance at the glowing spheres for a hint — so go ahead and wear a gun like a hat, or hide one inside your hat. Turn around for the saloon bar: knock a bottle's cap on the counter edge to open it, then tip it over your face and drink what pours out. Fling a fistful of bottles skyward and shoot them apart. Strike a match on the counter or flip open the lighter and thumb a face button, then light a cigar off either — or off a barrel you just emptied, or a well-aimed bullet. Hold a cigar at your lips to draw on it and again to blow the smoke back out; flick or twirl it to knock the ash off. Let go and re-squeeze the grip quickly to keep hold of what you had and pick up the next thing too. Grab the shotgun's forend with your off hand to steady it. Spilled beer pools where it lands and burns if you light it, fire spreads along it and sets light to whatever it reaches, and a smashed bottle spills its own — so a lit puddle and a well-thrown beer make a Molotov out of parts that were already lying about. There's a jug of water for when that goes wrong — and yes, since fire is a liquid and liquid that reaches your mouth gets swallowed, you can drink it. Throw overhand and it goes where you're looking; let go early to lob it, late to line-drive it. Both meters at the bottom of your view have opinions about your aim. Shoot the brass bell hanging over the bar and the whole counter revolves — beers, cigars, lit matches and all — to show an armoury on its back: guns on the pegs, long guns in the cradles, and a lot of empty sockets to arrange your own loadout in. The armoury's racks refill ten seconds after you empty them; your own holsters don't, so what's on your hip is whatever you put there. Any gun left lying loose goes up in smoke half a minute later — take what you want, and don't put it down. <a href="../../index.html">All prototypes</a></span>
     </div>
 
     <a-scene>
@@ -176,17 +176,16 @@
            item approaches, with a quick "click" bounce right as it
            enters snap range.
 
-           All three are also restocking: leave one empty for ten
-           seconds and the armoury's own item maker puts a fresh gun in
-           it (see the RESTOCKING AND PERISHING note). That's the same
-           attribute the wall racks carry, which is what makes it
-           impossible to end up permanently unarmed — and, paired with
-           every loose gun evaporating, what stops you ending up with
-           forty of them.
+           All three are stocked at scene load and never again (see
+           STOCK AND PERISHING): a pistol on each hip and a shotgun on
+           your back when you start, and after that they're pockets.
+           What's in them is whatever you put there. The armoury's pegs
+           carry the same attribute with a refill on it, because an
+           armoury is where guns come from and a hip holster isn't.
       ============================================================ -->
-      <a-entity id="hip-left" class="anchor-slot" body-anchor="side: left" anchor-slot="size: small" restocking="item: pistol"></a-entity>
-      <a-entity id="hip-right" class="anchor-slot" body-anchor="side: right" anchor-slot="size: small" restocking="item: pistol"></a-entity>
-      <a-entity id="back-anchor" class="anchor-slot" body-anchor="side: back" anchor-slot="size: large" restocking="item: shotgun"></a-entity>
+      <a-entity id="hip-left" class="anchor-slot" body-anchor="side: left" anchor-slot="size: small" stocked="item: pistol"></a-entity>
+      <a-entity id="hip-right" class="anchor-slot" body-anchor="side: right" anchor-slot="size: small" stocked="item: pistol"></a-entity>
+      <a-entity id="back-anchor" class="anchor-slot" body-anchor="side: back" anchor-slot="size: large" stocked="item: shotgun"></a-entity>
 
       <!-- ============================================================
            THE HAT
@@ -576,16 +575,25 @@
       var ARMORY_CRADLE_STOCK = [0, 2];
 
       // ==============================================================
-      // RESTOCKING AND PERISHING
+      // STOCK AND PERISHING
       // Two halves of one bargain, and neither is safe without the
-      // other. A rack refills a socket ten seconds after it goes bare
-      // — it doesn't care what happened to the gun that used to be
-      // there, only that the peg is empty, which is what separates it
-      // from the bar's respawn-when-smashed (see breakable). On its
-      // own that's a gun printer: strip the wall, drop the lot, come
-      // back in ten seconds.
+      // other.
       //
-      // So anything the world hands out has a clock on it, and the
+      // A socket can know what belongs in it, and puts one there at
+      // scene load. THE ARMOURY'S sockets go further and keep doing it
+      // — ten seconds after a peg goes bare, there's another rifle on
+      // it. The armoury doesn't care what became of the last one, only
+      // that the peg is empty, which is what separates it from the
+      // bar's respawn-when-smashed (see breakable).
+      //
+      // Your holsters do NOT do that. They're stocked once and then
+      // they're just pockets: what's in them is whatever you put there.
+      // A gunslinger whose hip quietly refills itself isn't carrying a
+      // gun, he's standing next to a vending machine — and the armoury
+      // is right behind you if you need another.
+      //
+      // The armoury being an infinite source is what the other half is
+      // for: anything the world hands out has a clock on it, and the
       // clock only runs while it's LOOSE — on the floor or in the air.
       // Held, dangling, or sitting in a socket anywhere at all (a
       // holster, the bar, your hat, your teeth) it's yours for as long
@@ -593,7 +601,7 @@
       // bounded by the number of places to put one, which is a rule
       // nothing has to enforce.
       // ==============================================================
-      var SLOT_RESTOCK_MS = 10000;
+      var ARMORY_REFILL_MS = 10000;
       var LOOSE_ITEM_LIFETIME_MS = 30000;
       var LOOSE_ITEM_FADE_MS = 1200; // it shrinks away over the last of that rather than blinking out
 
@@ -3666,33 +3674,41 @@
       }
 
       // ==============================================================
-      // COMPONENT: restocking
-      // A socket that keeps something in it. Whenever it's been bare
-      // for delayMs it builds another one, and that's the whole
-      // component — it never learns what became of the last one, which
-      // is the difference between this and breakable's respawn (that
-      // one is the object coming back from the dead; this one is the
-      // shop putting a new one on the shelf).
+      // COMPONENT: stocked
+      // A socket that knows what belongs in it. It puts one there at
+      // scene load, and that's all it does unless you give it a
+      // refillMs, in which case it keeps doing it however many times
+      // the socket goes bare.
       //
-      // It goes on the slot rather than on the item for the same
+      // That one number is the whole difference between a holster and
+      // a shop. A holster is stocked: there's a pistol in it when you
+      // start and after that it holds whatever you put in it. An
+      // armoury peg refills, because an armoury is where guns come
+      // from. Neither knows what became of the last one, which is also
+      // what separates both from breakable's respawn — that one is an
+      // object coming back from the dead, this is a shelf being
+      // restocked.
+      //
+      // It goes on the slot rather than on the item for the obvious
       // reason: the item might not be there. Put it on any anchor-slot
-      // in the scene and that spot is now permanently stocked with
-      // whatever you name — a rack of rifles, a hip holster, or, if
-      // you wanted, a bar that never runs out of matches.
+      // in the scene and that spot starts with whatever you name — a
+      // rack of rifles, a hip holster, or, if you wanted, a bar that
+      // never runs out of matches.
       // ==============================================================
-      registerComponent('restocking', {
+      registerComponent('stocked', {
         schema: {
           item: { type: 'string' }, // a key into ITEM_MAKERS
-          delayMs: { type: 'number', default: SLOT_RESTOCK_MS },
+          refillMs: { type: 'number', default: 0 }, // 0 = the opening stock was the whole offer
         },
 
         init: function () {
           // Zero, so the opening stock arrives on the first tick rather
-          // than ten seconds into the game. Deferring it that far is
-          // also what guarantees the sibling anchor-slot component has
+          // than a delay into the game. Deferring it that far is also
+          // what guarantees the sibling anchor-slot component has
           // initialized — the same reason holsterable claims its slot
           // from tick() instead of init().
           this.timer = 0;
+          this.filled = false;
         },
 
         tick: function (time, dt) {
@@ -3700,14 +3716,16 @@
           if (!slot) return;
 
           if (slot.occupants.length) {
-            this.timer = this.data.delayMs;
+            this.timer = this.data.refillMs;
             return;
           }
+          if (this.filled && !this.data.refillMs) return;
 
           this.timer -= dt || 16;
           if (this.timer > 0) return;
 
-          this.timer = this.data.delayMs;
+          this.timer = this.data.refillMs;
+          this.filled = true;
           makeItem(this.data.item, this.el);
         },
       });
@@ -6564,12 +6582,12 @@
           return id;
         },
 
-        // Sockets that start with something in them say so by naming a
-        // maker; that one attribute is also what keeps them stocked
-        // afterwards. See restocking.
+        // Armoury sockets that start with something in them say so by
+        // naming a maker, and unlike a holster they carry a refill —
+        // this is the shop, so the shelf gets restocked. See stocked.
         stock: function (slotId, item) {
           var slot = document.getElementById(slotId);
-          if (slot) slot.setAttribute('restocking', { item: item });
+          if (slot) slot.setAttribute('stocked', { item: item, refillMs: ARMORY_REFILL_MS });
         },
 
         // The parts of the saloon that stay where they are: the wall,
@@ -6929,7 +6947,7 @@
         // would take your hat, and a pistol left in the free row is
         // holstered by exactly the same code that puts a beer back on
         // the bar. Only the sockets that START with something in them
-        // get a `restocking`; the rest are bare on purpose.
+        // get a `stocked`; the rest are bare on purpose.
         // ============================================================
         buildArmoryFace: function () {
           var face = this.armoryFaceEl;

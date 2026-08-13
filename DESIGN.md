@@ -156,33 +156,40 @@ standing in the middle of the bar looking down its length, which is
 better than the effect anyone was aiming for. The tall back wall and
 the high shelves are scenery and don't move.
 
-## Restocking and perishing
+## Stock and perishing
 
 Two components that are only safe as a pair, and which say something
 about how to add supply to a world like this.
 
-`restocking` goes on a *slot*: ten seconds after it's bare, it builds
-another one of whatever it names. It never learns what became of the
-last one, which is what separates it from `breakable`'s respawn — that
-one is an object coming back from the dead, this one is a shop
-restocking a shelf. `perishable` goes on the *item*: a clock that only
-runs while the thing is loose on the floor or in the air, and stops
-dead the moment anything holds it — a fist, a fingertip it's twirling
-on, or any socket anywhere in the scene.
+`stocked` goes on a *slot* and means "this socket knows what belongs in
+it": one gets built there at scene load. Give it a `refillMs` and it
+keeps doing it, however many times the socket goes bare. It never
+learns what became of the last one, which is what separates it from
+`breakable`'s respawn — that one is an object coming back from the
+dead, this one is a shop restocking a shelf. `perishable` goes on the
+*item*: a clock that only runs while the thing is loose on the floor or
+in the air, and stops dead the moment anything holds it — a fist, a
+fingertip it's twirling on, or any socket anywhere in the scene.
 
-Either one alone is a bug. A rack that refills itself is a gun printer:
-strip the wall, drop the lot, come back in ten seconds. An item that
-evaporates with nothing to replace it leaves you permanently unarmed.
-Together they mean the number of guns in the world is bounded by the
-number of places to put one — which no code enforces, counts, or even
-knows. A soak test that strips every rack eight times over settles
-back to exactly the number of home slots on its own.
+That one number, `refillMs`, is the whole difference between a holster
+and a shop, and it took a wrong turn to notice. Making the hip holsters
+refill was defended at the time as "no special cases" — but it's a
+gunslinger standing next to a vending machine, and it robs the armoury
+of the only job it has. A holster is stocked once and is thereafter a
+pocket: what's in it is what you put there. An armoury peg refills,
+because an armoury is where guns come from. Same component, one
+number, and the *uniform* rule turned out to be the wrong rule.
 
-The knock-on: your hip holsters are restocking slots too, so there's
-no such thing as "the original pistol" any more. What a pistol IS had
-to move out of markup and into a maker function so a rack could build
-one, and once it had, three props in markup became one prop and three
-sockets.
+Either component alone is still a bug. A refilling rack on its own is a
+gun printer: strip the wall, drop the lot, come back in ten seconds. A
+perishing item with nothing that replaces it eventually leaves an empty
+world. Together, the number of guns settles at the number of refilling
+sockets — which no code enforces, counts, or even knows. A soak test
+that strips everything eight times over lands there on its own.
+
+The knock-on: what a pistol IS had to move out of markup and into a
+maker function so a rack could build one, and once it had, three props
+in markup became one prop and three sockets.
 
 ## Rules learned the hard way
 
