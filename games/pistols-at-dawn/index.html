@@ -34,7 +34,7 @@
   </head>
   <body>
     <div id="overlay">
-      <span>Pistols at Dawn — grip near a holstered pistol, shotgun, or your hat to draw it. Guns fire on the trigger; let go of the grip while a finger still rests on the trigger to dangle and twirl whatever you're holding. Anything can snap into any anchor it's small enough for — glance at the glowing spheres for a hint — so go ahead and wear a gun like a hat, or hide one inside your hat. Turn around for the saloon bar: knock a bottle's cap on the counter edge to open it, then tip it over your face and drink what pours out. Fling a fistful of bottles skyward and shoot them apart. Strike a match on the counter or flip open the lighter and thumb a face button, then light a cigar off either — or off a barrel you just emptied, or a well-aimed bullet. Hold a cigar at your lips to draw on it and again to blow the smoke back out; flick or twirl it to knock the ash off. Let go and re-squeeze the grip quickly to keep hold of what you had and pick up the next thing too. Grab the shotgun's forend with your off hand to steady it. Spilled beer pools where it lands and burns if you light it, fire spreads along it and sets light to whatever it reaches, and a smashed bottle spills its own — so a lit puddle and a well-thrown beer make a Molotov out of parts that were already lying about. There's a jug of water for when that goes wrong — and yes, since fire is a liquid and liquid that reaches your mouth gets swallowed, you can drink it. Throw overhand and it goes where you're looking; let go early to lob it, late to line-drive it. Both meters at the bottom of your view have opinions about your aim. Shoot the brass bell hanging over the bar and the whole counter revolves — beers, cigars, lit matches and all — to show an armoury on its back: guns on the pegs, long guns in the cradles, and a lot of empty sockets to arrange your own loadout in. There's dynamite on the low shelf: light the fuse off anything hot and throw it, or shoot a stick out of the air. Take the bow in one hand and the string in the other and pull — how far apart your hands are is your draw, and where you're looking is where it'll land. The nock holds three, and it has no opinion about what: nock arrows, or a beer, or a lit stick of dynamite. Set an arrow alight first and it'll set alight whatever it lands in. The launcher works the same way — load the tube, point it somewhere you don't like, and stand well back. There's a scoped rifle in the rack too: the glass is dark until you actually bring the eyepiece to your eye, and then it's a real magnified view of whatever the barrel is pointed at. The armoury's racks refill ten seconds after you empty them; your own holsters don't, so what's on your hip is whatever you put there. Any weapon left lying loose goes up in smoke half a minute later. <a href="../../index.html">All prototypes</a></span>
+      <span>Pistols at Dawn — grip near a holstered pistol, shotgun, or your hat to draw it. Guns fire on the trigger; let go of the grip while a finger still rests on the trigger to dangle and twirl whatever you're holding. Anything can snap into any anchor it's small enough for — glance at the glowing spheres for a hint — so go ahead and wear a gun like a hat, or hide one inside your hat. Turn around for the saloon bar: knock a bottle's cap on the counter edge to open it, then tip it over your face and drink what pours out. Fling a fistful of bottles skyward and shoot them apart. Strike a match on the counter or flip open the lighter and thumb a face button, then light a cigar off either — or off a barrel you just emptied, or a well-aimed bullet. Hold a cigar at your lips to draw on it and again to blow the smoke back out; flick or twirl it to knock the ash off. Let go and re-squeeze the grip quickly to keep hold of what you had and pick up the next thing too. Grab the shotgun's forend with your off hand to steady it. Spilled beer pools where it lands and burns if you light it, fire spreads along it and sets light to whatever it reaches, and a smashed bottle spills its own — so a lit puddle and a well-thrown beer make a Molotov out of parts that were already lying about. There's a jug of water for when that goes wrong — and yes, since fire is a liquid and liquid that reaches your mouth gets swallowed, you can drink it. Throw overhand and it goes where you're looking; let go early to lob it, late to line-drive it. Both meters at the bottom of your view have opinions about your aim. Shoot the brass bell hanging over the bar and the whole counter revolves — beers, cigars, lit matches and all — to show an armoury on its back: guns on the pegs, long guns in the cradles, and a lot of empty sockets to arrange your own loadout in. There's dynamite on the low shelf: light the fuse off anything hot and throw it, or shoot a stick out of the air. Take the bow in one hand and the string in the other and pull — how far apart your hands are is your draw, and where you're looking is where it'll land. The nock holds three, and it has no opinion about what: nock arrows, or a beer, or a lit stick of dynamite. Set an arrow alight first and it'll set alight whatever it lands in. The launcher works the same way — load the tube, point it somewhere you don't like, and stand well back. There's a scoped rifle in the rack too: the glass is dark until you actually bring the eyepiece to your eye, and then it's a real magnified view of whatever the barrel is pointed at. On the shelf under the bench there's a tank with a hose: pull the trigger on it to flip the hatch open, pour something in — beer, water, or a beer you've set alight — sling it on your back, and take the nozzle off the chest clip. It sprays whatever you put in it, so it's a flamethrower, a fire hose or a way to get a whole room drunk depending on what you last poured. The hatch falls shut on its own, and an open tank of beer will catch light off anything hot. The armoury's racks refill ten seconds after you empty them; your own holsters don't, so what's on your hip is whatever you put there. Any weapon left lying loose goes up in smoke half a minute later. <a href="../../index.html">All prototypes</a></span>
     </div>
 
     <a-scene>
@@ -566,7 +566,7 @@
       var ARMORY_BENCH_SOCKETS = 5; // the free row; the arrow trough takes the left end of the bench
       var ARMORY_SHELF_Y = 0.58; // the low shelf in the cavity under the bench
       var ARMORY_SHELF_Z = 0.76;
-      var ARMORY_SHELF_SOCKETS = 6;
+      var ARMORY_SHELF_SOCKET_X = [-0.95, -0.55, 0.55, 0.95]; // free sockets, leaving the middle of the shelf for the pack
       var ARMORY_DYNAMITE_PER_CRATE = 3;
 
       // Which of those start with something in them. Every other
@@ -726,6 +726,49 @@
       var SCOPE_LENS_RADIUS = 0.026;
 
       var SNIPER_LENGTH = 1.15;
+
+      // ==============================================================
+      // THE TANK AND THE HOSE
+      // A backpack with a hatch and a nozzle on the end of a hose, and
+      // it is not a flamethrower. It's a thing that sprays whatever is
+      // in the tank, and what's in the tank is whatever you last poured
+      // in through the open hatch. Water makes it a fire hose. Beer
+      // makes it a way to get a room drunk, or to drink from a distance
+      // if your aim is poor enough to hit your own face. Fire makes it
+      // the obvious thing.
+      //
+      // None of those are modes. There is no list of what the tank can
+      // hold: it takes a droplet's liquid type, whatever that happens
+      // to be, and the nozzle sprays droplets of it. Everything after
+      // that — burning, dousing, pooling, getting you drunk, catching
+      // light off a hot barrel — is the liquid system doing what it
+      // already does. Light the beer you're pouring in and you fill the
+      // tank with fire; hold a match over an open tank of beer and it
+      // catches by itself.
+      //
+      // THE NOZZLE is a separate object with its home socket on the
+      // pack's chest strap, and that placement is the whole answer to
+      // "how do I grab the hose rather than the pack". Worn, the tank
+      // is behind you and the nozzle is at your chest: reaching over
+      // your shoulder takes the pack off, reaching to your chest draws
+      // the nozzle. Two different gestures, no rule needed. The hose
+      // itself is drawn, not simulated — and if the nozzle ends up
+      // loose further away than the hose is long, it reels home.
+      // ==============================================================
+      var TANK_WIDTH = 0.3;
+      var TANK_HEIGHT = 0.34;
+      var TANK_DEPTH = 0.17;
+      var TANK_MOUTH_RADIUS = 0.09; // how near the hatch a poured droplet has to fall to go in
+      var HATCH_OPEN_DEG = -115;
+      var HATCH_SPEED_DEG = 420; // degrees/second — a hatch swings, it doesn't snap like a Zippo
+      var HATCH_AUTOCLOSE_MS = 12000; // long enough to pour, short enough that you'll be caught out once
+      var HOSE_LENGTH = 1.5;
+      var HOSE_SEGMENTS = 5;
+      var HOSE_SAG = 0.22;
+      var SPRAY_RATE = 60; // droplets/second out of the nozzle
+      var SPRAY_SPEED = 7.5; // m/s, which is what makes it a jet rather than a pour
+      var SPRAY_SPREAD = 0.9; // m/s of sideways scatter at the nozzle, so it cones out
+      var NOZZLE_REFILL_MS = 5000;
       var LOOSE_ITEM_LIFETIME_MS = 30000;
       var LOOSE_ITEM_FADE_MS = 1200; // it shrinks away over the last of that rather than blinking out
 
@@ -3061,6 +3104,7 @@
           supportGrip: { type: 'vec3', default: { x: 0, y: 0, z: 0 } }, // local position of a second place to hold this, if any
           supportRadius: { type: 'number', default: 0 }, // 0 disables the second grip entirely
           supportBehind: { type: 'boolean', default: false }, // the second hand is BEHIND this rather than out along it — a bowstring rather than a forend, so the aim runs the other way down the same line
+          supportGrab: { type: 'string', default: 'grip' }, // 'grip' or 'trigger' — which button the second hand uses. A forend is held; a bowstring is drawn, and drawing wants the finger that shoots so that gripping can still mean "take the arrow off it"
         },
 
         init: function () {
@@ -3292,8 +3336,12 @@
         // neither.
         releaseSupport: function () {
           if (!this.supportHand) return;
+          // Measured BEFORE letting go, obviously — supportDraw is the
+          // distance to a hand that is about to stop existing as far as
+          // this object is concerned.
+          var draw = this.supportDraw();
           this.supportHand = null;
-          this.el.emit('support-released', { draw: this.supportDraw() }, false);
+          this.el.emit('support-released', { draw: draw }, false);
         },
 
         // How far the second hand has been pulled from the first, in
@@ -3946,6 +3994,7 @@
           supportGrip: { x: 0, y: 0, z: BOW_STRING_REST_Z },
           supportRadius: 0.24,
           supportBehind: true,
+          supportGrab: 'trigger', // draw with the finger that shoots; grip stays free to take the arrow back off the string
           maxThrowSpeed: 8,
         });
         el.setAttribute('boxy-bow', '');
@@ -3973,6 +4022,39 @@
         el.setAttribute('arrow', '');
         el.setAttribute('lightable', { tipSelector: '.ember' });
         el.setAttribute('ignition-source', { tipSelector: '.ember' });
+      });
+
+      // The pack and the nozzle. Note that neither declaration says
+      // anything about fire, water or beer: the tank holds a liquid
+      // type and the nozzle sprays it, and which one it is arrives
+      // later, through the hatch, as ordinary droplets.
+      defineItem('tank', function (el, slotId) {
+        el.setAttribute('holsterable', {
+          holsterSelector: '#' + slotId,
+          itemSize: 'large',
+          holsterRotation: { x: 0, y: 0, z: 0 },
+          heldRotation: { x: -90, y: 0, z: 0 },
+          holsterPosition: { x: 0, y: 0, z: 0.06 },
+          grabRadius: 0.24,
+          comOffset: { x: 0, y: -0.1, z: 0 },
+          maxThrowSpeed: 5,
+        });
+        el.setAttribute('boxy-tank', '');
+        el.setAttribute('hatch', '');
+        el.setAttribute('liquid-tank', '');
+      });
+
+      defineItem('nozzle', function (el, slotId) {
+        el.setAttribute('holsterable', {
+          holsterSelector: '#' + slotId,
+          itemSize: 'small',
+          holsterRotation: { x: -60, y: 0, z: 0 },
+          heldRotation: { x: -90, y: 0, z: 0 },
+          grabRadius: 0.17, // generous, because this is the thing you mean to grab
+          comOffset: { x: 0, y: 0, z: -0.1 },
+        });
+        el.setAttribute('boxy-nozzle', '');
+        el.setAttribute('nozzle', '');
       });
 
       // The rifle. A `firearm` with a tighter cone and a heavier kick,
@@ -4601,6 +4683,7 @@
           this.stashTime = 0;
           this.fingerOnTrigger = false; // capacitive touch, not a pull — see triggertouchstart/end below
           this.gripHeld = false; // true for the whole time the grip is squeezed, not just the initial press
+          this.triggerHeld = false; // and the same for the trigger, which a bowstring and a hose nozzle both need
 
           this.velocity = new THREE.Vector3();
           this._prevPos = new THREE.Vector3();
@@ -4624,6 +4707,7 @@
           this.onGripDown = this.onGripDown.bind(this);
           this.onGripUp = this.onGripUp.bind(this);
           this.onTriggerDown = this.onTriggerDown.bind(this);
+          this.onTriggerUp = this.onTriggerUp.bind(this);
           this.onTriggerTouchStart = this.onTriggerTouchStart.bind(this);
           this.onTriggerTouchEnd = this.onTriggerTouchEnd.bind(this);
           this.onFaceButton = this.onFaceButton.bind(this);
@@ -4631,6 +4715,7 @@
           this.el.addEventListener('gripdown', this.onGripDown);
           this.el.addEventListener('gripup', this.onGripUp);
           this.el.addEventListener('triggerdown', this.onTriggerDown);
+          this.el.addEventListener('triggerup', this.onTriggerUp);
           this.el.addEventListener('triggertouchstart', this.onTriggerTouchStart);
           this.el.addEventListener('triggertouchend', this.onTriggerTouchEnd);
           // Both face buttons on both controllers do the same thing,
@@ -4644,6 +4729,7 @@
           this.el.removeEventListener('gripdown', this.onGripDown);
           this.el.removeEventListener('gripup', this.onGripUp);
           this.el.removeEventListener('triggerdown', this.onTriggerDown);
+          this.el.removeEventListener('triggerup', this.onTriggerUp);
           this.el.removeEventListener('triggertouchstart', this.onTriggerTouchStart);
           this.el.removeEventListener('triggertouchend', this.onTriggerTouchEnd);
           FACE_BUTTON_EVENTS.forEach(function (name) {
@@ -4850,11 +4936,26 @@
 
           // Nothing to pick up, but maybe something in your OTHER hand
           // offers a second place to hold it — a shotgun forend.
-          var support = this.findSupportGrip();
-          if (support) {
-            support.components.holsterable.grabSupport(this.el);
-            this.supportObjects.push(support);
-          }
+          this.takeSupport('grip');
+        },
+
+        // Shared by both buttons; which one an object answers to is the
+        // object's business (see holsterable's supportGrab).
+        takeSupport: function (mode) {
+          var support = this.findSupportGrip(mode);
+          if (!support) return false;
+          support.components.holsterable.grabSupport(this.el);
+          this.supportObjects.push(support);
+          return true;
+        },
+
+        dropSupport: function (mode) {
+          this.supportObjects = this.supportObjects.filter(function (objEl) {
+            var holsterable = objEl.components.holsterable;
+            if (!holsterable || holsterable.data.supportGrab !== mode) return true;
+            holsterable.releaseSupport();
+            return false;
+          });
         },
 
         // Lets go of everything at once. Each item runs its own
@@ -4865,12 +4966,7 @@
         onGripUp: function () {
           this.gripHeld = false;
 
-          if (this.supportObjects.length) {
-            this.supportObjects.forEach(function (obj) {
-              obj.components.holsterable.releaseSupport();
-            });
-            this.supportObjects = [];
-          }
+          this.dropSupport('grip');
 
           if (!this.heldObjects.length) return;
 
@@ -4930,6 +5026,16 @@
         // heldObjects, never supportObjects — the hand on a shotgun's
         // forend is on a forend, not a trigger.
         onTriggerDown: function () {
+          this.triggerHeld = true;
+
+          // A bowstring is drawn with the finger that would shoot,
+          // which is both how a bow works and what keeps GRIP free to
+          // mean "take the arrow off it". Checked before the press is
+          // dispatched, and only when this hand is empty, so a trigger
+          // pull on something you're holding still means what it always
+          // meant.
+          if (!this.heldObjects.length && this.takeSupport('trigger')) return;
+
           this.heldObjects.forEach(function (objEl) {
             useHeldObject(objEl, 'onTriggerUse');
           });
@@ -4965,7 +5071,12 @@
         // a second grip within reach of this one. Deliberately checked
         // only after a normal grab fails, so a forend never steals a
         // pickup from something lying right there.
-        findSupportGrip: function () {
+        onTriggerUp: function () {
+          this.triggerHeld = false;
+          this.dropSupport('trigger');
+        },
+
+        findSupportGrip: function (mode) {
           var handPos = new THREE.Vector3();
           var gripPos = new THREE.Vector3();
           this.el.object3D.getWorldPosition(handPos);
@@ -4977,6 +5088,7 @@
           for (var i = 0; i < objects.length; i++) {
             var holsterable = objects[i].components.holsterable;
             if (!holsterable || !holsterable.canSupport(this.el)) continue;
+            if (holsterable.data.supportGrab !== mode) continue;
 
             holsterable.supportGripWorldPosition(gripPos);
             var d = gripPos.distanceTo(handPos);
@@ -5726,6 +5838,13 @@
             this.pourAccumulator = 0;
             this._hasPrev = false;
           }
+        },
+
+        // The trigger is the lid button. A Zippo already worked this
+        // way, so a bottle cap and (see hatch) a tank hatch now do too:
+        // whatever you're holding, the trigger opens it.
+        onTriggerUse: function () {
+          if (this.capped) this.popCap();
         },
 
         updateCap: function (holsterable, dtSeconds) {
@@ -6968,6 +7087,426 @@
           playThunk();
         },
       });
+
+      // ==============================================================
+      // COMPONENT: boxy-tank / boxy-nozzle
+      // A pack with a hinged lid, a little window showing what's in it,
+      // and a clip on the chest strap for the nozzle. The clip is an
+      // ordinary anchor-slot, and where it SITS is the whole reason
+      // this rig is usable — see THE TANK AND THE HOSE.
+      // ==============================================================
+      var _tankSerial = 0;
+
+      registerComponent('boxy-tank', {
+        init: function () {
+          var el = this.el;
+          var steel = '#5a6068';
+          var strap = '#3a2f24';
+
+          function box(w, h, d, pos, color, rot, cls) {
+            var b = document.createElement('a-box');
+            b.setAttribute('width', w);
+            b.setAttribute('height', h);
+            b.setAttribute('depth', d);
+            b.setAttribute('position', pos);
+            b.setAttribute('color', color);
+            if (rot) b.setAttribute('rotation', rot);
+            if (cls) b.classList.add(cls);
+            el.appendChild(b);
+            return b;
+          }
+
+          box(TANK_WIDTH, TANK_HEIGHT, TANK_DEPTH, { x: 0, y: 0, z: 0 }, steel);
+          box(TANK_WIDTH + 0.02, 0.03, TANK_DEPTH + 0.02, { x: 0, y: TANK_HEIGHT * 0.3, z: 0 }, '#3f454b');
+          box(TANK_WIDTH + 0.02, 0.03, TANK_DEPTH + 0.02, { x: 0, y: -TANK_HEIGHT * 0.3, z: 0 }, '#3f454b');
+
+          // The gauge window, which is the only thing that tells you
+          // what you loaded.
+          var gauge = document.createElement('a-box');
+          gauge.setAttribute('width', 0.05);
+          gauge.setAttribute('height', TANK_HEIGHT * 0.5);
+          gauge.setAttribute('depth', 0.02);
+          gauge.setAttribute('position', { x: 0, y: 0, z: -TANK_DEPTH / 2 - 0.005 });
+          gauge.setAttribute('material', 'color: #2b2b2f; shader: flat');
+          gauge.classList.add('tank-gauge');
+          el.appendChild(gauge);
+
+          // Straps, and the clip on the front one.
+          box(0.05, 0.02, 0.5, { x: -0.11, y: TANK_HEIGHT * 0.34, z: -0.25 }, strap, '14 0 0');
+          box(0.05, 0.02, 0.5, { x: 0.11, y: TANK_HEIGHT * 0.34, z: -0.25 }, strap, '14 0 0');
+
+          // The filler neck and its lid. The lid hinges at the back of
+          // the neck, so it falls shut under the hatch component's own
+          // easing rather than snapping.
+          var neck = document.createElement('a-cylinder');
+          neck.setAttribute('radius', 0.055);
+          neck.setAttribute('height', 0.05);
+          neck.setAttribute('color', '#3f454b');
+          neck.setAttribute('position', { x: 0, y: TANK_HEIGHT / 2 + 0.025, z: 0 });
+          el.appendChild(neck);
+
+          var hinge = document.createElement('a-entity');
+          hinge.setAttribute('position', { x: 0, y: TANK_HEIGHT / 2 + 0.05, z: 0.055 });
+          hinge.classList.add('hatch-lid');
+          el.appendChild(hinge);
+
+          var lid = document.createElement('a-cylinder');
+          lid.setAttribute('radius', 0.062);
+          lid.setAttribute('height', 0.018);
+          lid.setAttribute('color', '#6b7078');
+          lid.setAttribute('position', { x: 0, y: 0, z: -0.055 });
+          hinge.appendChild(lid);
+
+          var mouth = document.createElement('a-entity');
+          mouth.setAttribute('position', { x: 0, y: TANK_HEIGHT / 2 + 0.05, z: 0 });
+          mouth.classList.add('tank-mouth');
+          el.appendChild(mouth);
+
+          var outlet = document.createElement('a-entity');
+          outlet.setAttribute('position', { x: 0.1, y: -TANK_HEIGHT / 2 - 0.01, z: -0.04 });
+          outlet.classList.add('hose-outlet');
+          el.appendChild(outlet);
+
+          // The nozzle's home: down the front strap, at chest height
+          // once the pack is on. Reaching here is a different gesture
+          // from reaching over your shoulder for the pack itself, which
+          // is the entire trick.
+          var clip = document.createElement('a-entity');
+          clip.setAttribute('id', 'tank-clip-' + _tankSerial++);
+          clip.classList.add('anchor-slot');
+          clip.setAttribute('anchor-slot', { size: 'small', indicatorScale: 0.8 });
+          clip.setAttribute('position', { x: 0.13, y: -0.02, z: -0.42 });
+          el.appendChild(clip);
+          // The clip brings its own nozzle, and brings another if you
+          // manage to lose one. That's a refill rather than a one-off
+          // stock because a hose without a nozzle is scrap, not a
+          // consequence.
+          clip.setAttribute('stocked', { item: 'nozzle', refillMs: NOZZLE_REFILL_MS });
+        },
+      });
+
+      registerComponent('boxy-nozzle', {
+        init: function () {
+          var el = this.el;
+
+          var body = document.createElement('a-box');
+          body.setAttribute('width', 0.04);
+          body.setAttribute('height', 0.1);
+          body.setAttribute('depth', 0.05);
+          body.setAttribute('position', { x: 0, y: -0.04, z: 0.02 });
+          body.setAttribute('color', '#3f454b');
+          el.appendChild(body);
+
+          var barrel = document.createElement('a-cylinder');
+          barrel.setAttribute('radius', 0.017);
+          barrel.setAttribute('height', 0.26);
+          barrel.setAttribute('color', '#5a6068');
+          barrel.setAttribute('rotation', '90 0 0');
+          barrel.setAttribute('position', { x: 0, y: 0.01, z: -0.11 });
+          el.appendChild(barrel);
+
+          var cone = document.createElement('a-cone');
+          cone.setAttribute('radius-bottom', 0.026);
+          cone.setAttribute('radius-top', 0.012);
+          cone.setAttribute('height', 0.05);
+          cone.setAttribute('color', '#8a7a45');
+          cone.setAttribute('rotation', '-90 0 0');
+          cone.setAttribute('position', { x: 0, y: 0.01, z: -0.25 });
+          el.appendChild(cone);
+
+          var tip = document.createElement('a-entity');
+          tip.setAttribute('position', { x: 0, y: 0.01, z: -0.275 });
+          tip.classList.add('spray-tip');
+          el.appendChild(tip);
+        },
+      });
+
+      // ==============================================================
+      // COMPONENT: hatch
+      // A lid on a hinge that the trigger opens and that shuts itself
+      // again if you wander off. Same idea as the Zippo's lid, made
+      // general because a second thing wanted one — and the shared
+      // idiom that came out of it is worth stating: THE TRIGGER OPENS
+      // WHATEVER YOU ARE HOLDING. A Zippo, a bottle cap, this.
+      //
+      // It publishes `open` and nothing else. What being open MEANS is
+      // entirely the owner's business: for a tank it means liquid can
+      // get in.
+      // ==============================================================
+      registerComponent('hatch', {
+        schema: {
+          openDeg: { type: 'number', default: HATCH_OPEN_DEG },
+          speedDeg: { type: 'number', default: HATCH_SPEED_DEG },
+          autoCloseMs: { type: 'number', default: HATCH_AUTOCLOSE_MS },
+          lidSelector: { type: 'string', default: '.hatch-lid' },
+        },
+
+        init: function () {
+          this.open = false;
+          this.angle = 0; // degrees, 0 = shut
+          this.remaining = 0;
+          this.lidEl = this.el.querySelector(this.data.lidSelector);
+        },
+
+        onTriggerUse: function () {
+          this.toggle();
+        },
+
+        toggle: function () {
+          this.open = !this.open;
+          this.remaining = this.open ? this.data.autoCloseMs : 0;
+          playTone({ type: 'square', freq: this.open ? 520 : 300, duration: 0.06, volume: 0.06 });
+        },
+
+        tick: function (time, dt) {
+          if (this.open && this.data.autoCloseMs > 0) {
+            this.remaining -= dt || 16;
+            if (this.remaining <= 0) this.toggle();
+          }
+
+          var wanted = this.open ? this.data.openDeg : 0;
+          if (this.angle === wanted) return;
+
+          var step = (this.data.speedDeg * Math.min((dt || 16) / 1000, 0.05)) * (wanted > this.angle ? 1 : -1);
+          this.angle = Math.abs(wanted - this.angle) <= Math.abs(step) ? wanted : this.angle + step;
+          if (this.lidEl) this.lidEl.object3D.rotation.x = (this.angle * Math.PI) / 180;
+        },
+      });
+
+      // ==============================================================
+      // COMPONENT: liquid-tank
+      // Holds one liquid type, and holds an unlimited amount of it —
+      // how much you poured in is not tracked, because the funny part
+      // is which liquid, never how much.
+      //
+      // It fills by having liquid land in it, which means the pour that
+      // fills it is the same pour that fills your mouth, and the same
+      // droplets. It catches light the same way a puddle does: a
+      // flammable liquid with an open lid and something hot nearby
+      // becomes fire. Neither of those is tank code so much as a tank
+      // standing where the liquid system can see it.
+      // ==============================================================
+      var OPEN_CONTAINERS = []; // refreshed each frame by world-systems, read by the droplet loop
+
+      registerComponent('liquid-tank', {
+        schema: {
+          liquid: { type: 'string', default: '' }, // starts empty
+          mouthSelector: { type: 'string', default: '.tank-mouth' },
+        },
+
+        init: function () {
+          this.liquid = this.data.liquid || null;
+          this.mouthEl = this.el.querySelector(this.data.mouthSelector);
+          this.gaugeEl = this.el.querySelector('.tank-gauge');
+          this._mouth = new THREE.Vector3();
+          this.applyGauge();
+        },
+
+        isOpen: function () {
+          var hatch = this.el.components.hatch;
+          return !!(hatch && hatch.open);
+        },
+
+        mouthWorldPosition: function (out) {
+          (this.mouthEl ? this.mouthEl.object3D : this.el.object3D).getWorldPosition(out);
+          return out;
+        },
+
+        fill: function (type) {
+          if (!LIQUIDS[type] || this.liquid === type) return;
+          this.liquid = type;
+          this.applyGauge();
+          playGlug();
+        },
+
+        // The window in the side, coloured by what's in it. The only
+        // reason the tank tells you anything at all.
+        applyGauge: function () {
+          if (!this.gaugeEl) return;
+          var liquid = this.liquid && LIQUIDS[this.liquid];
+          this.gaugeEl.setAttribute(
+            'material',
+            'color: ' + (liquid ? liquid.poolColor || liquid.dropColor : '#2b2b2f') + '; shader: flat'
+          );
+        },
+
+        // An open tank of something flammable is a puddle in a box, and
+        // it catches from the same hot points a puddle does.
+        tick: function () {
+          if (!this.isOpen() || !this.liquid) return;
+          var liquid = LIQUIDS[this.liquid];
+          if (!liquid || !liquid.flammable) return;
+
+          this.mouthWorldPosition(this._mouth);
+          for (var i = 0; i < HOT_POINTS.length; i++) {
+            if (this._mouth.distanceTo(HOT_POINTS[i].pos) > TANK_MOUTH_RADIUS + IGNITE_RADIUS) continue;
+            this.fill('fire');
+            spawnSparks(this._mouth, 6);
+            return;
+          }
+        },
+      });
+
+      // ==============================================================
+      // COMPONENT: nozzle
+      // Squeeze the trigger and it sprays whatever the tank has. It
+      // does not know what that is and never asks — it hands the type
+      // straight to spawnDroplet, and every consequence downstream
+      // (pooling, burning, dousing, going down somebody's throat)
+      // belongs to the liquid, not to the gun.
+      //
+      // It also draws the hose, because the hose is a line between two
+      // objects and neither of them is a better owner than this one.
+      // ==============================================================
+      registerComponent('nozzle', {
+        init: function () {
+          this.tankEl = null;
+          this._tip = new THREE.Vector3();
+          this._dir = new THREE.Vector3();
+          this._quat = new THREE.Quaternion();
+          this._vel = new THREE.Vector3();
+          this._outlet = new THREE.Vector3();
+          this._a = new THREE.Vector3();
+          this._b = new THREE.Vector3();
+          this.accumulator = 0;
+
+          this.tipEl = this.el.querySelector('.spray-tip');
+          this.buildHose();
+        },
+
+        remove: function () {
+          if (this.hoseEl && this.hoseEl.parentNode) this.hoseEl.parentNode.removeChild(this.hoseEl);
+        },
+
+        // The hose lives in the scene rather than on either end, since
+        // it belongs to neither once they're apart.
+        buildHose: function () {
+          this.hoseEl = document.createElement('a-entity');
+          this.segments = [];
+          for (var i = 0; i < HOSE_SEGMENTS; i++) {
+            var seg = document.createElement('a-cylinder');
+            seg.setAttribute('radius', 0.014);
+            seg.setAttribute('height', 1);
+            seg.setAttribute('color', '#2f2a26');
+            this.hoseEl.appendChild(seg);
+            this.segments.push(seg);
+          }
+          this.el.sceneEl.appendChild(this.hoseEl);
+        },
+
+        // Found once, by walking up from the socket this thing calls
+        // home — which is mounted on the tank, so the pack a nozzle
+        // belongs to is simply the pack its clip is bolted to.
+        tank: function () {
+          if (this.tankEl) return this.tankEl.components['liquid-tank'];
+          var holsterable = this.el.components.holsterable;
+          var home = holsterable && holsterable.data.holsterSelector;
+          this.tankEl = home && home.closest && home.closest('[liquid-tank]');
+          return this.tankEl ? this.tankEl.components['liquid-tank'] : null;
+        },
+
+        tick: function (time, dt) {
+          var tank = this.tank();
+          if (!tank) return;
+
+          this.drawHose(tank);
+          this.reelIn(tank);
+
+          var holsterable = this.el.components.holsterable;
+          if (!holsterable || holsterable.state !== 'held' || !holsterable.hand) return;
+          var handRig = holsterable.hand.components['hand-rig'];
+          if (!handRig || !handRig.triggerHeld) {
+            this.accumulator = 0;
+            return;
+          }
+          if (!tank.liquid) return;
+
+          this.spray(tank.liquid, Math.min((dt || 16) / 1000, 0.05));
+        },
+
+        spray: function (type, dtSeconds) {
+          var tip = this.tipEl ? this.tipEl.object3D : this.el.object3D;
+          tip.getWorldPosition(this._tip);
+          tip.getWorldQuaternion(this._quat);
+          this._dir.set(0, 0, -1).applyQuaternion(this._quat).normalize();
+
+          this.accumulator += SPRAY_RATE * dtSeconds;
+          var count = Math.floor(this.accumulator);
+          this.accumulator -= count;
+
+          for (var i = 0; i < count; i++) {
+            this._vel
+              .copy(this._dir)
+              .multiplyScalar(SPRAY_SPEED)
+              .add(
+                _sprayJitter.set(
+                  (Math.random() - 0.5) * SPRAY_SPREAD,
+                  (Math.random() - 0.5) * SPRAY_SPREAD,
+                  (Math.random() - 0.5) * SPRAY_SPREAD
+                )
+              );
+            spawnDroplet(this._tip, this._vel, type);
+          }
+        },
+
+        // A quadratic bezier sagging under the midpoint, drawn as a
+        // handful of stretched cylinders. Not simulated: a hose that
+        // fought your hand would be a worse toy than one that follows
+        // it.
+        drawHose: function (tank) {
+          var outletEl = tank.el.querySelector('.hose-outlet');
+          (outletEl ? outletEl.object3D : tank.el.object3D).getWorldPosition(this._outlet);
+          this.el.object3D.getWorldPosition(this._tip);
+
+          var sag = this._outlet.distanceTo(this._tip) / HOSE_LENGTH;
+          _hoseControl
+            .copy(this._outlet)
+            .add(this._tip)
+            .multiplyScalar(0.5).y -= HOSE_SAG * Math.max(1 - sag, 0.15);
+
+          for (var i = 0; i < HOSE_SEGMENTS; i++) {
+            bezierPoint(this._outlet, _hoseControl, this._tip, i / HOSE_SEGMENTS, this._a);
+            bezierPoint(this._outlet, _hoseControl, this._tip, (i + 1) / HOSE_SEGMENTS, this._b);
+
+            var seg = this.segments[i].object3D;
+            var length = this._a.distanceTo(this._b);
+            seg.position.copy(this._a).add(this._b).multiplyScalar(0.5);
+            seg.scale.y = Math.max(length, 0.0001);
+            _hoseDir.copy(this._b).sub(this._a).normalize();
+            seg.quaternion.setFromUnitVectors(_hoseUp, _hoseDir);
+          }
+        },
+
+        // You can put the nozzle down, but you can't leave it across
+        // the room: past the length of the hose it goes home, which
+        // reads as the hose pulling it back.
+        reelIn: function (tank) {
+          var holsterable = this.el.components.holsterable;
+          if (!holsterable) return;
+          if (holsterable.state !== 'resting' && holsterable.state !== 'falling') return;
+          if (this._outlet.distanceTo(this._tip) < HOSE_LENGTH) return;
+
+          var home = holsterable.data.holsterSelector;
+          if (!home) return;
+          holsterable.state = 'holstered';
+          holsterable.attachTo(home.object3D, holsterable.data.holsterPosition, holsterable.data.holsterRotation);
+          holsterable.occupySlot(home);
+        },
+      });
+
+      var _sprayJitter = new THREE.Vector3();
+      var _hoseControl = new THREE.Vector3();
+      var _hoseDir = new THREE.Vector3();
+      var _hoseUp = new THREE.Vector3(0, 1, 0);
+
+      function bezierPoint(a, control, b, t, out) {
+        var u = 1 - t;
+        return out
+          .set(0, 0, 0)
+          .addScaledVector(a, u * u)
+          .addScaledVector(control, 2 * u * t)
+          .addScaledVector(b, t * t);
+      }
 
       // ==============================================================
       // COMPONENT: scope
@@ -8484,15 +9023,19 @@
             self.stock(slotId, crate.item);
           });
 
-          var spacing = (BAR_WIDTH - 1.1) / (ARMORY_SHELF_SOCKETS - 1);
-          for (var i = 0; i < ARMORY_SHELF_SOCKETS; i++) {
-            this.addSlot(
-              { x: -(BAR_WIDTH - 1.1) / 2 + i * spacing, y: ARMORY_SHELF_Y + 0.03, z: ARMORY_SHELF_Z },
-              'medium',
-              {},
-              face
-            );
-          }
+          // The pack sits in the middle of the shelf, which is where a
+          // pack sits. The free sockets move aside for it.
+          var tankSlot = this.addSlot(
+            { x: 0, y: ARMORY_SHELF_Y + 0.2, z: ARMORY_SHELF_Z },
+            'large',
+            {},
+            face
+          );
+          this.stock(tankSlot, 'tank');
+
+          ARMORY_SHELF_SOCKET_X.forEach(function (x) {
+            this.addSlot({ x: x, y: ARMORY_SHELF_Y + 0.03, z: ARMORY_SHELF_Z }, 'medium', {}, face);
+          }, this);
         },
       });
 
@@ -8692,6 +9235,7 @@
           this._delta = new THREE.Vector3();
           this._heldPool = []; // reused entries behind HELD_ITEMS
           this._hotPool = []; // reused entries behind HOT_POINTS
+          this._containerPool = []; // and behind OPEN_CONTAINERS
           this._scratch = new THREE.Vector3();
           this._blowing = {}; // per-hand latch, so one raise of the barrel is one gust
         },
@@ -8709,6 +9253,7 @@
           // puddles and lightables all ask the same question this
           // frame, so it gets answered once.
           this.updateHotPoints();
+          this.updateContainers();
           this.updatePools(time, dtSeconds);
           this.updateParticles(dtSeconds);
           this.updateIgnition();
@@ -9019,6 +9564,15 @@
                 continue;
               }
 
+              // Poured into something that's open. Filling a tank is
+              // just liquid landing somewhere that happens to be a
+              // container, which is why the pour that fills it is the
+              // same pour that fills your mouth.
+              if (this.fillContainer(p, obj)) {
+                killParticle(p);
+                continue;
+              }
+
               if (this.landLiquid(p, obj)) {
                 killParticle(p);
                 continue;
@@ -9095,6 +9649,33 @@
             p.life = FIRE_DROPLET_LIFETIME_MS;
             p.age = 0;
             return false; // it keeps falling, as fire
+          }
+          return false;
+        },
+
+        // Every open container, refreshed once a frame the same way
+        // hot points are, since every droplet in the air asks.
+        updateContainers: function () {
+          OPEN_CONTAINERS.length = 0;
+          var tanks = document.querySelectorAll('[liquid-tank]');
+          for (var i = 0; i < tanks.length; i++) {
+            var tank = tanks[i].components['liquid-tank'];
+            if (!tank || !tank.isOpen()) continue;
+            if (!this._containerPool[OPEN_CONTAINERS.length]) {
+              this._containerPool[OPEN_CONTAINERS.length] = { pos: new THREE.Vector3(), tank: null };
+            }
+            var entry = this._containerPool[OPEN_CONTAINERS.length];
+            tank.mouthWorldPosition(entry.pos);
+            entry.tank = tank;
+            OPEN_CONTAINERS.push(entry);
+          }
+        },
+
+        fillContainer: function (p, obj) {
+          for (var i = 0; i < OPEN_CONTAINERS.length; i++) {
+            if (obj.position.distanceTo(OPEN_CONTAINERS[i].pos) > TANK_MOUTH_RADIUS) continue;
+            OPEN_CONTAINERS[i].tank.fill(p.liquid || 'beer');
+            return true;
           }
           return false;
         },

@@ -49,6 +49,11 @@ Things that were never implemented, and work:
 - Shooting a flaming arrow into a puddle of spilled beer on the far
   side of the room and setting the floor alight. An arrow is
   lightable, a lit one publishes heat, and pools catch from heat.
+- Drinking from the flamethrower. It sprays droplets, droplets that
+  reach your mouth get swallowed, so pointing the nozzle at your own
+  face works exactly as well as pointing it at somebody else's.
+- Filling the tank with fire by lighting the beer as you pour it. The
+  stream catches in mid-air and what lands in the tank is fire.
 
 When something *doesn't* combine and obviously should, that's the bug —
 not a missing feature. "Twirling a cigar should shake the ash off" was
@@ -212,6 +217,54 @@ reading:
 - **Lerping two equal-length vectors gives a shorter one.** Blending
   the bow's aim toward the solved arc quietly robbed a full draw of a
   third of its power. Blend the directions, then put the speed back.
+
+## The tank: a weapon whose ammunition is a liquid type
+
+The pack sprays whatever is in it, and what's in it is whatever you
+last poured through the open hatch. Water makes it a fire hose, beer
+makes it a way to drench a room (or your own face — droplets that
+reach your mouth get swallowed, so it drinks), fire makes it the
+obvious thing.
+
+None of those are modes, and there is no list of what it can hold. The
+tank stores a liquid *type*, filling is a droplet landing in an open
+container, and the nozzle hands that type straight to `spawnDroplet`.
+Everything after that — pooling, burning, spreading, dousing, getting
+you drunk — is the liquid system doing what it already did. Adding
+whiskey would be a data blob, and the flamethrower would learn to
+spray it without being edited.
+
+Two things fell out for free. Light the beer as you pour it in and the
+stream catches in mid-air, so what lands in the tank is fire. And an
+open tank of something flammable catches from any hot point, exactly
+the way a puddle does, because it *is* a puddle in a box.
+
+**The nozzle problem.** A hose and a tank are two things a hand could
+mean, and the fix is spatial rather than a rule: the nozzle's home
+socket is on the pack's chest strap. Worn, the tank is behind you and
+the nozzle is at your chest — reaching over your shoulder takes the
+pack off, reaching to your chest draws the hose. Two gestures that
+can't be confused, and no code had to arbitrate. The hose is drawn as
+a sagging bezier and not simulated, because a hose that fought your
+hand would be a worse toy than one that follows it; if the nozzle ends
+up loose beyond its length it reels home.
+
+## The trigger opens the lid
+
+An idiom worth naming because it arrived three times. The Zippo's lid
+flipped on the trigger from the start; a bottle cap could only be
+struck off against something solid; the tank needed a hatch. Rather
+than three mechanisms, the rule is now: **the trigger operates the lid
+of whatever you're holding.** The bottle keeps its strike-it-on-the-bar
+opening as well — that one is better, and it's how you open a beer
+one-handed — but you can also just thumb the cap off.
+
+Making the bow draw on the trigger instead of the grip came from the
+same tidying, and from a better reason: grip should mean "take hold of
+the thing", so gripping near a nocked arrow ought to take the arrow,
+not draw the string. One schema field (`supportGrab`) picks which
+button a second grip answers to; a shotgun forend is held, a bowstring
+is drawn.
 
 ## Loading, as a shared idea
 
