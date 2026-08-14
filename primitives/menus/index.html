@@ -75,10 +75,17 @@
             raycaster="objects: .menu-target; far: 10"
           ></a-entity>
         </a-camera>
-      </a-entity>
 
-      <!-- ============================================================
-           STYLE 1: fixed in-world panel.
+        <a-entity id="left-hand" position="-0.2 1.35 -0.4"
+          hand-with-watch="hand: left"
+        ></a-entity>
+        <a-entity hand-controls="hand: left; handModelStyle: lowPoly"></a-entity>
+
+        <a-entity id="right-hand" position="0.2 1.35 -0.4"
+          hand-with-watch="hand: right"
+        ></a-entity>
+        <a-entity hand-controls="hand: right; handModelStyle: lowPoly"></a-entity>
+      </a-entity>
            Every clickable row is just an entity with its own
            geometry/material plus the "menu-item" component below —
            that component is the reusable part; the background plane
@@ -406,16 +413,6 @@
            job is just real controller button events (see
            CONTROL_COMPONENTS) and, via hand-with-watch, building both
            the watch and the fingertip. -->
-      <a-entity id="left-hand" position="-0.2 1.35 -0.4"
-        hand-with-watch="hand: left"
-      ></a-entity>
-      <a-entity hand-controls="hand: left; handModelStyle: lowPoly"></a-entity>
-
-      <a-entity id="right-hand" position="0.2 1.35 -0.4"
-        hand-with-watch="hand: right"
-      ></a-entity>
-      <a-entity hand-controls="hand: right; handModelStyle: lowPoly"></a-entity>
-
       <!-- ============================================================
            STYLE 3: wall screen. A world-fixed trigger — no wrist, no
            orientation to read — so it uses projected-menu's "poke"
