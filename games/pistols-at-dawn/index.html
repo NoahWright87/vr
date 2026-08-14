@@ -118,6 +118,21 @@
           anchor-slot="size: small; capacity: 5; fanSpread: 0.032; fanYaw: 21; idleHidden: true; indicatorScale: 0.35; revealDistance: 0.16"
           position="0 -0.07 -0.08"
         ></a-entity>
+
+        <!-- The player's own head, snowman-simple: a plain sphere,
+             nested here so it inherits full head rotation like the hat
+             does. A-Frame's material defaults to side:front (only
+             outward faces render), and the camera sits inside this
+             sphere's radius, so the inside is never drawn — you never
+             see your own head, only something looking back at you
+             (eventually the mirror) will. Paired with #chest-anchor's
+             torso for the rest of the "body." -->
+        <a-sphere
+          id="player-head"
+          radius="0.11"
+          color="#d9a066"
+          position="0 -0.05 0.03"
+        ></a-sphere>
       </a-camera>
 
       <!-- ============================================================
@@ -157,16 +172,17 @@
 
       <!-- ============================================================
            BODY ANCHORS
-           Three invisible anchor points that track the player's body:
-           two hips (small slots — pistol-sized) and a back-center
-           bandolier point (large — shotgun-sized). There's no real
-           body tracking on a Quest, so body-anchor approximates all
-           three from the headset: position and yaw (turning left/
-           right) only, deliberately ignoring pitch/roll so looking up
-           or tilting your head doesn't drag them around. Each one also
-           builds its own bit of "shitty" flavor geometry (a holster
-           pouch, a diagonal strap) so it's obvious where things go —
-           see body-anchor's own comment.
+           Four invisible anchor points that track the player's body:
+           two hips (small slots — pistol-sized), a back-center
+           bandolier point (large — shotgun-sized), and the chest.
+           There's no real body tracking on a Quest, so body-anchor
+           approximates all four from the headset: position and yaw
+           (turning left/right) only, deliberately ignoring pitch/roll
+           so looking up or tilting your head doesn't drag them around.
+           Each one also builds its own bit of "shitty" flavor geometry
+           (a holster pouch, a diagonal strap, the torso cylinder) so
+           it's obvious where things go — see body-anchor's own
+           comment.
 
            anchor-slot is the generic snap-target component (see its
            own comment): any ".grabbable" item whose itemSize fits a
@@ -174,18 +190,22 @@
            it — this is NOT restricted to "guns go in holsters." A
            slot's translucent sphere brightens as a compatible carried
            item approaches, with a quick "click" bounce right as it
-           enters snap range.
+           enters snap range. The chest anchor doesn't have anchor-slot
+           on it yet — it's just the torso's position for now, ahead of
+           a real wardrobe/equipment pass.
 
-           All three are stocked at scene load and never again (see
-           STOCK AND PERISHING): a pistol on each hip and a shotgun on
-           your back when you start, and after that they're pockets.
-           What's in them is whatever you put there. The armoury's pegs
-           carry the same attribute with a refill on it, because an
-           armoury is where guns come from and a hip holster isn't.
+           The three slotted ones are stocked at scene load and never
+           again (see STOCK AND PERISHING): a pistol on each hip and a
+           shotgun on your back when you start, and after that they're
+           pockets. What's in them is whatever you put there. The
+           armoury's pegs carry the same attribute with a refill on it,
+           because an armoury is where guns come from and a hip holster
+           isn't.
       ============================================================ -->
       <a-entity id="hip-left" class="anchor-slot" body-anchor="side: left" anchor-slot="size: small" stocked="item: pistol"></a-entity>
       <a-entity id="hip-right" class="anchor-slot" body-anchor="side: right" anchor-slot="size: small" stocked="item: pistol"></a-entity>
       <a-entity id="back-anchor" class="anchor-slot" body-anchor="side: back" anchor-slot="size: large" stocked="item: shotgun"></a-entity>
+      <a-entity id="chest-anchor" body-anchor="side: chest"></a-entity>
 
       <!-- ============================================================
            THE HAT
@@ -357,6 +377,10 @@
       var HIP_SIDE_OFFSET = 0.18; // meters, left/right from body centerline
       var BACK_HEIGHT = 1.3; // meters off the ground — the bandolier's anchor sits higher up the torso than the hips
       var BACK_DEPTH_OFFSET = 0.3; // meters behind the body centerline — the headset sits at the FRONT of your head, so a small offset puts the bandolier inside your chest and makes the shotgun nearly impossible to reach
+      var CHEST_HEIGHT = 1.15; // meters off the ground — roughly torso-center, between the hips and the shoulders
+      var TORSO_RADIUS = 0.22; // meters — the "snowman" body's torso cylinder
+      var TORSO_HEIGHT = 0.55; // meters — spans from about hip height up to about shoulder height
+      var SHIRT_COLOR = '#3c5a73'; // placeholder flat color until real shirt textures exist — see the SHIRT TEXTURES comment near player-body markup
       var GRAVITY = 9.8; // real-world value, used for the drop/tumble simulation
       var DANGLE_GRAVITY_TORQUE = 2.5; // how insistently a dangling gun swings back to hanging straight down
       var DANGLE_INERTIA_SCALE = 6; // how strongly flicking your hand imparts spin — crank this up further if it still feels weak
@@ -2966,18 +2990,18 @@
       // the player's body, following the headset's horizontal position
       // and yaw only (see the comment above the markup for why
       // pitch/roll are excluded) — there's no real body tracking on a
-      // Quest, so this is an approximation for all three spots it's
-      // used for: the two hips and the back-center bandolier point.
-      // Also builds each spot's own bit of simple "boxy" flavor
+      // Quest, so this is an approximation for all four spots it's used
+      // for: the two hips, the back-center bandolier point, and the
+      // chest. Also builds each spot's own bit of simple "boxy" flavor
       // geometry (a holster pouch for the hips, a diagonal strap for
-      // the back) so it's visually obvious where things are meant to
-      // go — purely cosmetic, no bearing on the actual anchor-slot
-      // component (added separately in markup) that does the real
-      // snapping work.
+      // the back, the torso cylinder for the chest) so it's visually
+      // obvious where things are meant to go — purely cosmetic, no
+      // bearing on the actual anchor-slot component (added separately
+      // in markup) that does the real snapping work.
       // ==============================================================
       registerComponent('body-anchor', {
         schema: {
-          side: { type: 'string', default: 'right' }, // 'left' | 'right' | 'back'
+          side: { type: 'string', default: 'right' }, // 'left' | 'right' | 'back' | 'chest'
         },
 
         init: function () {
@@ -2993,6 +3017,9 @@
           } else if (this.data.side === 'right') {
             this.localOffset = new THREE.Vector3(HIP_SIDE_OFFSET, 0, 0);
             this.height = HIP_HEIGHT;
+          } else if (this.data.side === 'chest') {
+            this.localOffset = new THREE.Vector3(0, 0, 0);
+            this.height = CHEST_HEIGHT;
           } else {
             this.localOffset = new THREE.Vector3(0, 0, BACK_DEPTH_OFFSET); // local +Z is behind the player
             this.height = BACK_HEIGHT;
@@ -3021,8 +3048,9 @@
 
         // Cheap, "shitty" flavor geometry — a leather-ish holster
         // pouch under each hip anchor, a diagonal bandolier strap
-        // across the back one. Estimated proportions, not measured
-        // against a real body; expect these to want eyes-on tuning.
+        // across the back one, a snowman-simple torso cylinder for the
+        // chest. Estimated proportions, not measured against a real
+        // body; expect these to want eyes-on tuning.
         buildProps: function () {
           if (this.data.side === 'back') {
             var strap = document.createElement('a-box');
@@ -3032,6 +3060,18 @@
             strap.setAttribute('color', '#5b3a29');
             strap.setAttribute('rotation', '0 0 35');
             this.el.appendChild(strap);
+          } else if (this.data.side === 'chest') {
+            // The whole player body, snowman-fidelity: this cylinder
+            // plus the head sphere nested under the camera (see
+            // markup). Flat SHIRT_COLOR for now — see the SHIRT
+            // TEXTURES note below for where a real texture would hook
+            // in once there's an image to load.
+            var torso = document.createElement('a-cylinder');
+            torso.setAttribute('id', 'player-torso');
+            torso.setAttribute('radius', TORSO_RADIUS);
+            torso.setAttribute('height', TORSO_HEIGHT);
+            torso.setAttribute('color', SHIRT_COLOR);
+            this.el.appendChild(torso);
           } else {
             var pouch = document.createElement('a-box');
             pouch.setAttribute('width', 0.09);
@@ -3043,6 +3083,19 @@
           }
         },
       });
+
+      // ==============================================================
+      // SHIRT TEXTURES (not wired up yet)
+      // The torso above is a flat color placeholder. To texture it with
+      // a real image later: drop the file in
+      // games/pistols-at-dawn/assets/shirts/, then load it with
+      // THREE.TextureLoader and set it as the `map` on
+      // document.querySelector('#player-torso').getObject3D('mesh')
+      // .material — same pattern as the scope's render-target texture
+      // above, just loaded from a file instead of rendered live. Kept
+      // as a comment rather than code because there's no image to
+      // point it at yet.
+      // ==============================================================
 
       // ==============================================================
       // COMPONENT: anchor-slot
