@@ -683,6 +683,30 @@
           this.rigEl = this.el;
           this.cameraEl = this.el.querySelector('a-camera') || document.querySelector('a-camera');
           this.turnCooldown = 0;
+
+          // Track the latest thumbstick axes from A-Frame controller events
+          // rather than polling navigator.getGamepads() — the hand entities
+          // already have CONTROL_COMPONENTS (oculus-touch-controls etc.) so
+          // axismove fires reliably on them.
+          this.leftAxes = [0, 0, 0, 0];
+          this.rightAxes = [0, 0, 0, 0];
+          var self = this;
+          var sceneEl = this.el.sceneEl;
+          sceneEl.addEventListener('loaded', function () {
+            var leftEl = document.querySelector('#left-hand');
+            var rightEl = document.querySelector('#right-hand');
+            if (leftEl) {
+              leftEl.addEventListener('axismove', function (evt) {
+                self.leftAxes = evt.detail.axis || self.leftAxes;
+              });
+            }
+            if (rightEl) {
+              rightEl.addEventListener('axismove', function (evt) {
+                self.rightAxes = evt.detail.axis || self.rightAxes;
+              });
+            }
+          });
+
           this.teleportPreview = document.createElement('a-ring');
           this.teleportPreview.setAttribute('radius-inner', '0.45');
           this.teleportPreview.setAttribute('radius-outer', '0.6');
@@ -723,18 +747,6 @@
           if (this.cameraEl) this.cameraEl.appendChild(this.vignette);
         },
 
-        getPad: function (hand) {
-          var pads = navigator.getGamepads ? navigator.getGamepads() : [];
-          if (!pads) return { axes: [0, 0], buttons: [] };
-          for (var i = 0; i < pads.length; i++) {
-            if (!pads[i]) continue;
-            var id = String(pads[i].id || '');
-            if (hand === 'left' && (id.indexOf('Left') >= 0 || id.indexOf('left') >= 0)) return pads[i];
-            if (hand === 'right' && (id.indexOf('Right') >= 0 || id.indexOf('right') >= 0)) return pads[i];
-          }
-          return pads[0] || { axes: [0, 0], buttons: [] };
-        },
-
         setMoveMode: function (mode) {
           this.data.moveMode = mode;
         },
@@ -767,13 +779,13 @@
           }
         },
 
-        updateTeleportPreview: function (pad) {
-          if (!this.cameraEl || !pad) {
+        updateTeleportPreview: function () {
+          if (!this.cameraEl) {
             this.teleportPreview.setAttribute('visible', false);
             return;
           }
-          var axisX = pad.axes && pad.axes[2] !== undefined ? pad.axes[2] : pad.axes && pad.axes[0] !== undefined ? pad.axes[0] : 0;
-          var axisY = pad.axes && pad.axes[3] !== undefined ? pad.axes[3] : pad.axes && pad.axes[1] !== undefined ? pad.axes[1] : 0;
+          var axisX = this.leftAxes[2] !== undefined ? this.leftAxes[2] : this.leftAxes[0] || 0;
+          var axisY = this.leftAxes[3] !== undefined ? this.leftAxes[3] : this.leftAxes[1] || 0;
           var active = this.data.moveMode === 'teleport' && (Math.abs(axisX) > 0.15 || Math.abs(axisY) > 0.15);
           if (!active) {
             this.teleportPreview.setAttribute('visible', false);
@@ -791,10 +803,10 @@
           this.teleportPreview.setAttribute('visible', true);
         },
 
-        applySmoothMove: function (pad, deltaMs) {
-          if (!pad || this.data.moveMode !== 'smooth') return;
-          var moveX = pad.axes && pad.axes[2] !== undefined ? pad.axes[2] : pad.axes && pad.axes[0] !== undefined ? pad.axes[0] : 0;
-          var moveY = pad.axes && pad.axes[3] !== undefined ? pad.axes[3] : pad.axes && pad.axes[1] !== undefined ? pad.axes[1] : 0;
+        applySmoothMove: function (deltaMs) {
+          if (this.data.moveMode !== 'smooth') return;
+          var moveX = this.leftAxes[2] !== undefined ? this.leftAxes[2] : this.leftAxes[0] || 0;
+          var moveY = this.leftAxes[3] !== undefined ? this.leftAxes[3] : this.leftAxes[1] || 0;
           var moveAmount = Math.hypot(moveX, moveY);
           if (moveAmount < 0.08) return;
           var direction = new AFRAME.THREE.Vector3(moveX, 0, moveY);
@@ -805,16 +817,14 @@
           this.rigEl.object3D.position.add(worldMove);
         },
 
-        applySmoothTurn: function (pad, deltaMs) {
-          if (!pad) return;
-          var turnX = pad.axes && pad.axes[2] !== undefined ? pad.axes[2] : pad.axes && pad.axes[0] !== undefined ? pad.axes[0] : 0;
+        applySmoothTurn: function (deltaMs) {
+          var turnX = this.rightAxes[2] !== undefined ? this.rightAxes[2] : this.rightAxes[0] || 0;
           if (Math.abs(turnX) < 0.08) return;
           this.rigEl.object3D.rotation.y -= turnX * 1.25 * (deltaMs / 1000);
         },
 
-        applySnapTurn: function (pad) {
-          if (!pad) return;
-          var turnX = pad.axes && pad.axes[2] !== undefined ? pad.axes[2] : pad.axes && pad.axes[0] !== undefined ? pad.axes[0] : 0;
+        applySnapTurn: function () {
+          var turnX = this.rightAxes[2] !== undefined ? this.rightAxes[2] : this.rightAxes[0] || 0;
           if (Math.abs(turnX) < 0.8) {
             this.turnCooldown = 0;
             return;
@@ -826,43 +836,49 @@
         },
 
         tick: function (time, delta) {
-          var leftPad = this.getPad('left');
-          var rightPad = this.getPad('right');
-
           this.applyElevatorTransition();
 
           this.stationMarkers.forEach(function (marker) {
             marker.el.setAttribute('visible', this.data.moveMode === 'teleport' || this.data.moveMode === 'stations');
           }, this);
 
-          if (this.data.moveMode === 'smooth') this.applySmoothMove(leftPad, delta);
-          else if (this.data.moveMode === 'teleport') {
-            this.updateTeleportPreview(leftPad);
-            if (leftPad && Math.abs(leftPad.axes[0]) < 0.05 && Math.abs(leftPad.axes[1]) < 0.05) {
+          if (this.data.moveMode === 'smooth') {
+            this.applySmoothMove(delta);
+          } else if (this.data.moveMode === 'teleport') {
+            this.updateTeleportPreview();
+            var moveX = this.leftAxes[2] !== undefined ? this.leftAxes[2] : this.leftAxes[0] || 0;
+            var moveY = this.leftAxes[3] !== undefined ? this.leftAxes[3] : this.leftAxes[1] || 0;
+            if (Math.abs(moveX) < 0.05 && Math.abs(moveY) < 0.05) {
+              if (this._teleportReady) {
+                // Stick released after being held — commit teleport
+                var cameraPos = new AFRAME.THREE.Vector3();
+                this.cameraEl.object3D.getWorldPosition(cameraPos);
+                var forward = new AFRAME.THREE.Vector3(0, 0, -1).applyQuaternion(this.cameraEl.object3D.getWorldQuaternion(new AFRAME.THREE.Quaternion()));
+                forward.y = 0;
+                if (forward.lengthSq() === 0) forward.set(0, 0, -1);
+                forward.normalize();
+                var targetPos = cameraPos.clone().add(forward.multiplyScalar(this.data.teleportDistance));
+                targetPos.y = this.rigEl.object3D.position.y;
+                this.rigEl.object3D.position.copy(targetPos);
+                this._teleportReady = false;
+              }
               this.teleportPreview.setAttribute('visible', false);
-            }
-            if (leftPad && leftPad.buttons && leftPad.buttons[0] && leftPad.buttons[0].pressed) {
-              var cameraPos = new AFRAME.THREE.Vector3();
-              this.cameraEl.object3D.getWorldPosition(cameraPos);
-              var forward = new AFRAME.THREE.Vector3(0, 0, -1).applyQuaternion(this.cameraEl.object3D.getWorldQuaternion(new AFRAME.THREE.Quaternion()));
-              forward.y = 0;
-              if (forward.lengthSq() === 0) forward.set(0, 0, -1);
-              forward.normalize();
-              var targetPos = cameraPos.clone().add(forward.multiplyScalar(this.data.teleportDistance));
-              targetPos.y = 0;
-              this.rigEl.object3D.position.copy(targetPos);
-              this.teleportPreview.setAttribute('visible', false);
+            } else {
+              this._teleportReady = true;
             }
           } else {
             this.teleportPreview.setAttribute('visible', false);
+            this._teleportReady = false;
           }
 
-          if (this.data.turnMode === 'smooth') this.applySmoothTurn(rightPad, delta);
-          else if (this.data.turnMode === 'snap') this.applySnapTurn(rightPad);
+          if (this.data.turnMode === 'smooth') this.applySmoothTurn(delta);
+          else if (this.data.turnMode === 'snap') this.applySnapTurn();
           else this.turnCooldown = 0;
 
           if (this.vignette) {
-            this.vignette.setAttribute('visible', !!this.data.comfortVignette && this.data.moveMode === 'smooth' && (leftPad && Math.hypot(leftPad.axes[0] || 0, leftPad.axes[1] || 0) > 0.12));
+            var lx = this.leftAxes[2] !== undefined ? this.leftAxes[2] : this.leftAxes[0] || 0;
+            var ly = this.leftAxes[3] !== undefined ? this.leftAxes[3] : this.leftAxes[1] || 0;
+            this.vignette.setAttribute('visible', !!this.data.comfortVignette && this.data.moveMode === 'smooth' && Math.hypot(lx, ly) > 0.12);
           }
         },
       });
