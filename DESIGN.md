@@ -176,6 +176,36 @@ live droplets against a budget of 420, because merging and pooling do
 the work that culling used to. The budget is there for the pathological
 case, not the normal one.
 
+## Puddles that behave like puddles
+
+Playtest note: "the pooling behavior is a little strange and fire is
+pretty unpredictable." Both came from the same place — puddles had a
+maximum size, so past a point a spill stopped being a bigger spill and
+just stopped, and fire inherited that.
+
+There is no maximum now, and nothing keeps the count down by refusing
+to make puddles. What keeps it down is that puddles behave like liquid:
+
+- **Overlapping puddles of the same stuff pour into each other.** Area
+  moves from the smaller into the larger, at a rate proportional to how
+  much they overlap, so touching at the edges does almost nothing and
+  sitting on top of each other resolves in a second. Big puddles eat
+  small ones and the count falls out of that.
+- **And they slide.** Each liquid has a `cohesion`: water's is highest
+  and two water puddles that touch become one puddle. Fire's is
+  NEGATIVE, so patches of fire shove each other apart — which turned
+  out to be the fix for unpredictable fire. Fire that coalesces sits
+  still and goes out; fire that pushes outward crawls.
+- **Drying is a size, not a timer.** Each liquid loses radius at its
+  own rate, so a big spill outlasts a splash for the obvious reason
+  rather than because something is counting down.
+
+The bug this shook out: growth was linear in RADIUS. A puddle twice as
+wide holds four times the beer, so a drop has to add a drop's worth of
+AREA — with no cap to hide it, two seconds of pouring made a
+metre-and-a-half lake. Everything that adds or removes liquid now goes
+through `poolArea`/`poolRadiusFor`.
+
 ## Projectiles: a thrown thing is a slow bullet
 
 A bullet was an instant raycast; a thrown bottle was a falling object
@@ -289,6 +319,27 @@ a sagging bezier and not simulated, because a hose that fought your
 hand would be a worse toy than one that follows it; if the nozzle ends
 up loose beyond its length it reels home.
 
+## Reach, and things that are not pockets
+
+Two playtest complaints with the same root: the game was guessing at
+intent and guessing wrong.
+
+**"You can only grab arrows by their rear."** The grab test was a
+sphere around the object's origin, and an arrow's origin is its nock.
+Long thin things now declare a `grabSpan` — a second point in local
+space — and the test becomes distance to the SEGMENT between the two.
+A capsule instead of a ball, for a couple of dot products, and it
+applies to every long gun as well.
+
+**"My hand shouldn't be treated like a pocket, especially while I'm
+holding something."** Releasing an object stashed it for the
+quick-re-grip window, whether or not it had landed anywhere. So
+nocking an arrow and then squeezing the grip to steady yourself pulled
+the arrow straight back out of the bow. Putting a thing in a socket is
+a decision: holstered objects aren't stashed and a re-grip won't take
+them back. Deliberately gripping AT the nock still takes the arrow,
+because that's what grip means.
+
 ## The trigger opens the lid
 
 An idiom worth naming because it arrived three times. The Zippo's lid
@@ -353,6 +404,20 @@ looking through a tube has nothing to do with firing one. It's "a disc
 on this object showing what a narrow camera down its -Z can see",
 which would work just as well as a spyglass or a mirror behind the
 bar.
+
+It shipped broken and the headless test happily passed it, which is
+worth remembering: the test asserted that the render happened and the
+renderer state was restored, and all of that was true. What it could
+not assert was that the picture was pointed at a human. The lens was
+turned to face down the barrel instead of back at the eye, so the only
+thing ever visible through the scope was the back of the glass — and
+the tube it sat in was a solid cylinder, so there was nothing else to
+see either. The tube is open-ended now, which also means that with the
+scope asleep you're looking through a tube at the world rather than at
+a wall, and waking it reads as zooming rather than as a wall becoming
+a window. The scope camera also moved to the far end of the tube: one
+parked at the eyepiece films the inside of its own tube, and at eleven
+degrees the tube walls are most of the picture.
 
 ## The revolving bar
 

@@ -677,6 +677,7 @@
       var ARROW_AIM_ASSIST = 0.85; // 0 = raw bow direction, 1 = solved straight at what you're looking at
       var ARROW_LENGTH = 0.62;
       var ARROW_STACK = 3; // how many the nock will hold at once
+      var ARROW_FAN_DEG = 7; // degrees between arrows in a volley, loaded and loosed alike
       var ARMORY_ARROWS = 5; // how many lie in the trough on the bench
 
       // ==============================================================
@@ -768,7 +769,6 @@
       var SPRAY_RATE = 60; // droplets/second out of the nozzle
       var SPRAY_SPEED = 7.5; // m/s, which is what makes it a jet rather than a pour
       var SPRAY_SPREAD = 0.9; // m/s of sideways scatter at the nozzle, so it cones out
-      var NOZZLE_REFILL_MS = 5000;
       var LOOSE_ITEM_LIFETIME_MS = 30000;
       var LOOSE_ITEM_FADE_MS = 1200; // it shrinks away over the last of that rather than blinking out
 
@@ -1009,18 +1009,27 @@
 
       // ==============================================================
       // POOLS
-      // Spilled liquid stays put for a while instead of vanishing, so
-      // you can pour first and light it afterwards. Nearby drops merge
-      // into one growing disc — both because that's what liquid does
-      // and because otherwise a five-second pour would be four hundred
-      // separate objects.
+      // Spilled liquid stays put instead of vanishing, so you can pour
+      // first and light it afterwards. A drop landing in a puddle joins
+      // it; a drop landing anywhere else starts one of its own.
+      //
+      // Puddles have NO MAXIMUM SIZE. What keeps the count down isn't a
+      // cap, it's that overlapping puddles of the same stuff pour into
+      // each other and slide together until they're one puddle (see
+      // minglePools) — which is both what liquid does and cheaper than
+      // it sounds, since a circle overlap test is two multiplies. And
+      // what makes them go away isn't a timer, it's drying: each liquid
+      // loses radius at its own rate, so a big spill outlasts a splash
+      // for the obvious reason.
       // ==============================================================
       var MAX_POOLS = 60; // and when even this runs out, liquid joins the nearest puddle rather than vanishing — see addToPool
-      var POOL_MERGE_RADIUS = 0.3; // meters — a drop landing this close to a pool joins it
+      var POOL_ABSORB_SKIN = 0.05; // a drop landing this far outside a puddle still counts as landing in it
       var POOL_START_RADIUS = 0.045;
       var POOL_GROWTH_PER_DROPLET = 0.011; // meters of radius each droplet adds
-      var POOL_MAX_RADIUS = 0.45;
-            var POOL_FADE_MS = 4000; // the tail end of that, spent shrinking
+      var POOL_REFERENCE_RADIUS = 0.45; // what "a big puddle" means for flame size and firelight. NOT a cap — puddles have no maximum size
+      var POOL_MIN_RADIUS = 0.012; // below this a puddle is finished
+      var POOL_FLOW_RATE = 2.2; // fraction of the smaller puddle's area that pours into the larger, per second, at full overlap
+      var POOL_DRIFT_RATE = 0.5; // metres/second two touching puddles slide together (or apart, at negative cohesion)
       var POOL_BURN_RATE = 0.035; // meters of radius consumed per second while alight — how long a spill burns for
       var POOL_SPILL_RADIUS = 0.16; // how much a smashed bottle puts on the floor
       var POOL_RELIGHT_DELAY_MS = 2500; // a doused puddle stays too wet to catch again for this long
@@ -1411,7 +1420,9 @@
         var liquid = LIQUIDS[type] || LIQUIDS.beer;
         var full = liquid.isFire ? FIRE_LANDING_SPILL : POOL_GROWTH_PER_DROPLET;
         var share = liquid.dropRadius > 0 ? Math.pow(radius / liquid.dropRadius, 3) : 1;
-        addToPool(pos, surfaceUnder(pos), type, full * share);
+        // `full` is a radius and `share` is a volume, so it goes in
+        // under a square root: see poolArea.
+        addToPool(pos, surfaceUnder(pos), type, full * Math.sqrt(share));
       }
 
       // Retiring a particle is always "mark it and move on"; the sweep
@@ -1556,7 +1567,9 @@
           dispersion: 0.55, // m/s of sideways spread given at birth — this is what makes a pour a spray
           startRadius: 0.045,
           poolOpacity: 0.55,
-          evaporateMs: 25000,
+          dryRate: 0.006, // metres of radius per second: a hand-sized spill is around for half a minute, a lake for a lot longer
+          cohesion: 0.6, // touching puddles pull together, the way beer does
+          flow: 1,
           flammable: true,
           fuelMultiplier: 1.6, // a spill of this makes rather more fire than its own size
           drink: 'alcohol',
@@ -1569,7 +1582,9 @@
           dispersion: 0.5,
           startRadius: 0.045,
           poolOpacity: 0.45,
-          evaporateMs: 16000,
+          dryRate: 0.013, // water goes twice as fast as beer, being mostly water
+          cohesion: 0.9, // and pulls together harder: drops touch and become one drop
+          flow: 1.4,
           douses: true,
           drink: 'sober',
         },
@@ -1586,14 +1601,21 @@
           // next one.
           startRadius: 0.012,
           poolOpacity: 0.75,
-          evaporateMs: 0, // fire doesn't evaporate, it burns out
+          dryRate: 0, // fire doesn't dry out, it burns down — see POOL_BURN_RATE
+          // Negative, so patches of fire shove each other apart instead
+          // of balling up. A fire that coalesced the way water does
+          // would sit still and go out; one that pushes outward crawls.
+          cohesion: -0.45,
+          flow: 0.55,
           isFire: true,
           drink: 'burn',
         },
         scorch: {
           poolColor: '#241610',
           poolOpacity: 0.6,
-          evaporateMs: 30000, // what's left behind once a fire has gone out
+          dryRate: 0.005, // a scorch mark weathers away slowly
+          cohesion: 0.2,
+          flow: 0.6,
           inert: true,
         },
       };
@@ -1697,6 +1719,34 @@
         POOLS.splice(index, 1);
       }
 
+      // ==============================================================
+      // HOW MUCH LIQUID IS IN A PUDDLE
+      // Area, not radius. A puddle twice as wide holds four times the
+      // beer, so everything that adds or removes liquid has to do it in
+      // those terms: a drop adds a drop's worth of AREA. Getting this
+      // wrong stops being subtle once puddles have no maximum size —
+      // adding radius per drop turned two seconds of pouring into a
+      // metre-and-a-half lake.
+      //
+      // Amounts are still quoted as radii, because "a drop is 11mm" is
+      // easier to reason about than "a drop is 0.00038 square metres".
+      // ==============================================================
+      function poolArea(radius) {
+        return Math.PI * radius * radius;
+      }
+
+      function poolRadiusFor(area) {
+        return Math.sqrt(Math.max(area, 0) / Math.PI);
+      }
+
+      function growPool(pool, amount, times) {
+        pool.radius = poolRadiusFor(poolArea(pool.radius) + poolArea(amount) * (times === undefined ? 1 : times));
+      }
+
+      function shrinkPool(pool, amount) {
+        pool.radius = poolRadiusFor(poolArea(pool.radius) - poolArea(amount));
+      }
+
       // Liquid arriving on a surface. Joins whatever compatible pool is
       // already there, or starts a new one. Merging is what keeps the
       // count in the dozens however much you spill — and it's also why
@@ -1708,7 +1758,7 @@
           if (Math.abs(pool.y - surfaceY) > 0.06) continue; // the bar and the floor are different places
           var dx = pool.x - worldPos.x;
           var dz = pool.z - worldPos.z;
-          var reach = POOL_MERGE_RADIUS + pool.radius;
+          var reach = pool.radius + POOL_ABSORB_SKIN;
           if (dx * dx + dz * dz > reach * reach) continue;
 
           // Fire landing in beer converts the whole spill to fuel; beer
@@ -1719,7 +1769,7 @@
             return pool;
           }
 
-          pool.radius = Math.min(pool.radius + amount, POOL_MAX_RADIUS);
+          growPool(pool, amount);
           pool.age = 0;
           // Creeps toward whatever is feeding it, so a moving pour
           // draws a trail instead of growing one blob.
@@ -1746,7 +1796,7 @@
             nearestDist = nd;
           }
           if (!nearest) return null;
-          nearest.radius = Math.min(nearest.radius + amount, POOL_MAX_RADIUS);
+          growPool(nearest, amount);
           nearest.age = 0;
           return nearest;
         }
@@ -1759,7 +1809,7 @@
           x: worldPos.x,
           y: surfaceY,
           z: worldPos.z,
-          radius: (LIQUIDS[type].startRadius || POOL_START_RADIUS) + amount,
+          radius: poolRadiusFor(poolArea(LIQUIDS[type].startRadius || POOL_START_RADIUS) + poolArea(amount)),
           type: type,
           age: 0,
           dousedUntil: 0,
@@ -1787,7 +1837,7 @@
 
         // Something flammable poured onto fire: more fuel.
         if (existing.isFire && incoming.flammable) {
-          pool.radius = Math.min(pool.radius + amount * incoming.fuelMultiplier, POOL_MAX_RADIUS);
+          growPool(pool, amount, incoming.fuelMultiplier);
           return true;
         }
 
@@ -1814,7 +1864,7 @@
         if (LIQUIDS[pool.type].isFire || pool.dousedUntil > 0) return;
         if (!LIQUIDS[pool.type].flammable) return;
 
-        pool.radius = Math.min(pool.radius * LIQUIDS[pool.type].fuelMultiplier, POOL_MAX_RADIUS);
+        pool.radius = poolRadiusFor(poolArea(pool.radius) * LIQUIDS[pool.type].fuelMultiplier);
         pool.type = 'fire';
         pool.needsColor = true;
         pool.age = 0;
@@ -1915,7 +1965,7 @@
       // droplets land somewhere slightly else, this IS how fire
       // spreads.
       function jumpFlame(pool) {
-        var strength = Math.min(pool.radius / POOL_MAX_RADIUS, 1);
+        var strength = Math.min(pool.radius / POOL_REFERENCE_RADIUS, 1);
         var spread = pool.radius * 0.8;
 
         _poolScratch.set(
@@ -1935,7 +1985,7 @@
         // so a fire always runs down. Spread comes from a flame landing
         // on something ELSE that will burn, never from fire creating
         // its own fuel.
-        pool.radius -= FIRE_JUMP_COST;
+        shrinkPool(pool, FIRE_JUMP_COST);
 
         var droplet = spawnDroplet(_poolScratch, velocity, 'fire');
         if (droplet) droplet.baseScale *= 0.7 + strength * 0.8;
@@ -3019,6 +3069,7 @@
           size: { type: 'string', default: 'small' }, // 'small' | 'medium' | 'large'
           capacity: { type: 'number', default: 1 },
           fanSpread: { type: 'number', default: 0.045 }, // meters between stacked occupants
+          fanAxis: { type: 'string', default: 'x' }, // which of the slot's own axes they spread along. A row of cigars in your teeth goes across (x); arrows on a bowstring go up it (y)
           fanYaw: { type: 'number', default: 0 }, // degrees of splay per step — only meaningful for things with a long axis, like cigars or barrels
           idleHidden: { type: 'boolean', default: false }, // hide the indicator entirely until a compatible item is on the way in
           indicatorScale: { type: 'number', default: 1 }, // shrink the indicator sphere — a slot right in front of your eyes wants to be a dot, not a ball
@@ -3236,12 +3287,20 @@
           heldPosition: { type: 'vec3', default: { x: 0, y: 0, z: 0 } },
           heldRotation: { type: 'vec3', default: { x: 0, y: 0, z: 0 } },
           grabRadius: { type: 'number', default: GRAB_RADIUS },
+          // Most props are grabbed by their one natural handle, so the
+          // grab test is a sphere around the origin. Long thin ones are
+          // not: an arrow's origin is at its nock, and being unable to
+          // pick one up by the middle of the shaft is maddening.
+          // grabSpan is a second point in local space, and the test
+          // becomes the distance to the SEGMENT between the two — a
+          // capsule rather than a ball, for a couple of dot products.
+          grabSpan: { type: 'vec3', default: { x: 0, y: 0, z: 0 } },
           comOffset: { type: 'vec3', default: { x: 0, y: 0, z: 0 } }, // center of mass, relative to the entity origin
           maxThrowSpeed: { type: 'number', default: OVERHAND_MAX_DEFAULT_SPEED }, // how hard this particular object can be thrown, whatever your arm does
           gravityScale: { type: 'number', default: 1 }, // multiplies gravity while falling — under 1 keeps a thrown object up longer, which is what makes shooting bottles out of the air possible
           supportGrip: { type: 'vec3', default: { x: 0, y: 0, z: 0 } }, // local position of a second place to hold this, if any
           supportRadius: { type: 'number', default: 0 }, // 0 disables the second grip entirely
-          supportBehind: { type: 'boolean', default: false }, // the second hand is BEHIND this rather than out along it — a bowstring rather than a forend, so the aim runs the other way down the same line
+          supportAims: { type: 'boolean', default: true }, // does the second hand steer this? A shotgun forend does — the barrel follows the line between your hands. A bowstring does NOT: the bow hand alone aims it, and the string hand only says how far it's drawn
           supportGrab: { type: 'string', default: 'grip' }, // 'grip' or 'trigger' — which button the second hand uses. A forend is held; a bowstring is drawn, and drawing wants the finger that shoots so that gripping can still mean "take the arrow off it"
         },
 
@@ -3299,6 +3358,10 @@
           this._aimMatrix = new THREE.Matrix4();
           this._aimQuat = new THREE.Quaternion();
           this._parentQuat = new THREE.Quaternion();
+          this._grabA = new THREE.Vector3();
+          this._grabB = new THREE.Vector3();
+          this._grabAxis = new THREE.Vector3();
+          this._grabScratch = new THREE.Vector3();
 
           // Smooth pose blend (see snapTo/updatePoseBlend). Starts
           // "already finished" so nothing plays on scene load.
@@ -3369,7 +3432,7 @@
         applyHeldPose: function (time, dtSeconds) {
           this._heldElapsed += dtSeconds * 1000;
           if (this._poseBlendElapsed < SNAP_BLEND_DUR_MS) return;
-          if (this.supportHand) return this.applyTwoHandedPose();
+          if (this.supportHand && this.data.supportAims) return this.applyTwoHandedPose();
 
           var d = this.data;
           this.el.object3D.position.set(
@@ -3430,14 +3493,7 @@
           // to target, and the object's own -Z is its barrel, so this
           // aims the gun straight down the line between your hands.
           this._aimUp.set(0, 1, 0).applyQuaternion(parent.getWorldQuaternion(this._parentQuat));
-          if (this.data.supportBehind) {
-            // A drawn bow points AWAY from the hand on the string,
-            // where a braced shotgun points toward the hand on the
-            // forend. Same line between your hands, read backwards.
-            this._aimMatrix.lookAt(this._supportWorld, this._gripWorld, this._aimUp);
-          } else {
-            this._aimMatrix.lookAt(this._gripWorld, this._supportWorld, this._aimUp);
-          }
+          this._aimMatrix.lookAt(this._gripWorld, this._supportWorld, this._aimUp);
           this._aimQuat.setFromRotationMatrix(this._aimMatrix);
 
           // Into the parent's frame, since that's where local
@@ -3446,6 +3502,26 @@
           this.el.object3D.quaternion.copy(this._parentQuat.invert()).multiply(this._aimQuat);
 
           if (this.extraPitchDeg) this.el.object3D.rotateX((this.extraPitchDeg * Math.PI) / 180);
+        },
+
+        // Distance from a point to the part of this object you could
+        // actually take hold of: its origin, or anywhere along its
+        // grabSpan if it has one.
+        grabDistanceTo: function (worldPos) {
+          this.el.object3D.getWorldPosition(this._grabA);
+          var span = this.data.grabSpan;
+          if (!span.x && !span.y && !span.z) return this._grabA.distanceTo(worldPos);
+
+          this._grabB.set(span.x, span.y, span.z);
+          this.el.object3D.localToWorld(this._grabB);
+
+          this._grabAxis.copy(this._grabB).sub(this._grabA);
+          var lengthSq = this._grabAxis.lengthSq();
+          if (lengthSq < 0.000001) return this._grabA.distanceTo(worldPos);
+
+          var t = this._grabScratch.copy(worldPos).sub(this._grabA).dot(this._grabAxis) / lengthSq;
+          t = Math.min(Math.max(t, 0), 1);
+          return this._grabScratch.copy(this._grabA).addScaledVector(this._grabAxis, t).distanceTo(worldPos);
         },
 
         // World position of this object's second grip, if it declares
@@ -3509,14 +3585,16 @@
           var slotComp = slotEl.components['anchor-slot'];
           var spread = slotComp ? slotComp.data.fanSpread : 0;
           var yaw = slotComp ? slotComp.data.fanYaw : 0;
+          var axis = slotComp ? slotComp.data.fanAxis : 'x';
+          var step = fanOffset(this.slotIndex, this.slotCount, spread);
           var d = this.data;
 
           this.snapTo(
             slotEl.object3D,
             {
-              x: d.holsterPosition.x + fanOffset(this.slotIndex, this.slotCount, spread),
-              y: d.holsterPosition.y,
-              z: d.holsterPosition.z,
+              x: d.holsterPosition.x + (axis === 'x' ? step : 0),
+              y: d.holsterPosition.y + (axis === 'y' ? step : 0),
+              z: d.holsterPosition.z + (axis === 'z' ? step : 0),
             },
             {
               x: d.holsterRotation.x,
@@ -4046,18 +4124,22 @@
       // ==============================================================
       var ITEM_MAKERS = {};
 
-      function defineItem(name, build) {
-        ITEM_MAKERS[name] = build;
+      // `keep` marks something that is PART OF A RIG rather than loot —
+      // a hose nozzle belongs to its tank the way a trigger belongs to
+      // a gun. Those don't perish, because a nozzle rotting off the end
+      // of your hose isn't a consequence, it's breakage.
+      function defineItem(name, build, options) {
+        ITEM_MAKERS[name] = { build: build, keep: !!(options && options.keep) };
       }
 
       function makeItem(name, slotEl) {
-        var build = ITEM_MAKERS[name];
-        if (!build || !slotEl || !slotEl.id) return null;
+        var maker = ITEM_MAKERS[name];
+        if (!maker || !slotEl || !slotEl.id) return null;
 
         var el = document.createElement('a-entity');
         el.classList.add('grabbable');
-        build(el, slotEl.id);
-        el.setAttribute('perishable', '');
+        maker.build(el, slotEl.id);
+        if (!maker.keep) el.setAttribute('perishable', '');
         document.querySelector('a-scene').appendChild(el);
         return el;
       }
@@ -4102,6 +4184,7 @@
           heldRotation: { x: -90, y: 0, z: 0 },
           heldPosition: { x: 0, y: 0, z: 0 },
           grabRadius: 0.28,
+          grabSpan: { x: 0, y: 0, z: -0.5 },
           comOffset: { x: 0, y: 0.02, z: -0.2 },
           supportGrip: { x: 0, y: 0.01, z: -0.22 },
           supportRadius: 0.22,
@@ -4128,10 +4211,16 @@
           holsterRotation: { x: 0, y: 0, z: 0 },
           heldRotation: { x: -90, y: 0, z: 0 },
           grabRadius: 0.2,
+          grabSpan: { x: 0, y: BOW_LIMB_LENGTH * 0.8, z: 0 }, // the upper limb counts as the bow
           comOffset: { x: 0, y: 0.02, z: 0 },
           supportGrip: { x: 0, y: 0, z: BOW_STRING_REST_Z },
           supportRadius: 0.24,
-          supportBehind: true,
+          // The bow does NOT swing to face the string hand. It's held
+          // in one hand and aimed with that hand; the other hand just
+          // pulls. Letting the string hand steer it meant the whole bow
+          // snapped back into place the instant you loosed, which read
+          // as the weapon flinching.
+          supportAims: false,
           supportGrab: 'trigger', // draw with the finger that shoots; grip stays free to take the arrow back off the string
           maxThrowSpeed: 8,
         });
@@ -4149,9 +4238,10 @@
         el.setAttribute('holsterable', {
           holsterSelector: '#' + slotId,
           itemSize: 'small',
-          holsterRotation: { x: 90, y: 0, z: 0 }, // standing point-up in a quiver
+          holsterRotation: { x: 0, y: 0, z: 0 }, // point-first, which is right on a bowstring and on your back; a rack that wants them any other way rolls its own socket
           heldRotation: { x: -90, y: 0, z: 0 },
           grabRadius: 0.13,
+          grabSpan: { x: 0, y: 0, z: -ARROW_LENGTH }, // grab it anywhere along the shaft, not just by the nock
           comOffset: { x: 0, y: 0, z: -0.2 },
           gravityScale: 0.85,
           maxThrowSpeed: 9, // by hand it's a poor javelin; off a string it's something else
@@ -4182,6 +4272,9 @@
         el.setAttribute('liquid-tank', '');
       });
 
+      // Marked `keep`, and its clip is stocked once rather than
+      // refilling: between them that's the fix for a hose that grew a
+      // second hose every five seconds you spent holding the first one.
       defineItem('nozzle', function (el, slotId) {
         el.setAttribute('holsterable', {
           holsterSelector: '#' + slotId,
@@ -4193,7 +4286,7 @@
         });
         el.setAttribute('boxy-nozzle', '');
         el.setAttribute('nozzle', '');
-      });
+      }, { keep: true });
 
       // The rifle. A `firearm` with a tighter cone and a heavier kick,
       // and a `scope` — which is a separate component precisely
@@ -4207,6 +4300,7 @@
           holsterRotation: { x: -90, y: 0, z: 0 },
           heldRotation: { x: -90, y: 0, z: 0 },
           grabRadius: 0.24,
+          grabSpan: { x: 0, y: 0, z: -0.7 },
           comOffset: { x: 0, y: 0.02, z: -0.28 },
           supportGrip: { x: 0, y: 0.005, z: -0.28 },
           supportRadius: 0.22,
@@ -4229,6 +4323,7 @@
           holsterRotation: { x: -90, y: 0, z: 0 },
           heldRotation: { x: -90, y: 0, z: 0 },
           grabRadius: 0.26,
+          grabSpan: { x: 0, y: 0.06, z: -0.4 },
           comOffset: { x: 0, y: 0.03, z: -0.18 },
           supportGrip: { x: 0, y: 0.02, z: -0.24 },
           supportRadius: 0.22,
@@ -4268,6 +4363,7 @@
           holsterRotation: { x: 0, y: 0, z: 0 },
           heldRotation: { x: -90, y: 0, z: 0 },
           grabRadius: 0.14,
+          grabSpan: { x: 0, y: 0, z: DYNAMITE_STICK_LENGTH * 0.8 },
           comOffset: { x: 0, y: 0, z: -0.08 },
           maxThrowSpeed: 11,
         });
@@ -5122,11 +5218,15 @@
               self.danglingObjects.push(obj);
               return;
             }
-            // A real throw is a deliberate act with its own arc, so
-            // it's excluded — otherwise flinging a bottle up and
-            // immediately gripping to draw a pistol would snatch the
-            // bottle back out of the air.
-            if (!holsterable.wasThrown) self.stash.push(obj);
+            // Two things are excluded from the stash. A real throw,
+            // because flinging a bottle up and immediately gripping to
+            // draw a pistol shouldn't snatch it back out of the air.
+            // And anything that landed in a SOCKET, because putting a
+            // thing somewhere is a decision — nocking an arrow and then
+            // squeezing the grip to steady yourself was pulling the
+            // arrow straight back out of the bow.
+            if (holsterable.wasThrown || holsterable.state === 'holstered') return;
+            self.stash.push(obj);
           });
           this.reflowStack(this.danglingObjects);
         },
@@ -5150,6 +5250,8 @@
             // meantime — it isn't yours to take back any more.
             if (holsterable.hand && holsterable.hand !== self.el) return;
             if (holsterable.state === 'broken') return;
+            // It found a home in the meantime. Leave it there.
+            if (holsterable.state === 'holstered') return;
 
             holsterable.grab(self.el);
             self.take(obj);
@@ -5268,8 +5370,7 @@
               (holsterable.state === 'dangling' && holsterable.hand === self.el);
             if (!eligible) return;
 
-            objEl.object3D.getWorldPosition(objPos);
-            var d = objPos.distanceTo(handPos);
+            var d = holsterable.grabDistanceTo(handPos);
             if (d < holsterable.data.grabRadius && d < nearestDist) {
               nearest = objEl;
               nearestDist = d;
@@ -6921,11 +7022,16 @@
 
           this.nockEl = document.createElement('a-entity');
           this.nockEl.classList.add('anchor-slot');
+          // Three arrows stack UP THE STRING (the slot's own y) rather
+          // than across, because that's the only place a bowstring has
+          // room for them, and they splay in yaw so a volley leaves as
+          // a fan instead of as one arrow drawn three times.
           this.nockEl.setAttribute('anchor-slot', {
             size: 'small',
             capacity: ARROW_STACK,
-            fanSpread: 0.028,
-            fanYaw: 5,
+            fanAxis: 'y',
+            fanSpread: 0.075,
+            fanYaw: ARROW_FAN_DEG,
           });
           this.nockEl.setAttribute('position', { x: 0, y: 0, z: BOW_STRING_REST_Z });
           el.appendChild(this.nockEl);
@@ -7082,13 +7188,13 @@
             }
           }
 
-          // A volley fans, so three arrows read as three arrows rather
-          // than one arrow with a rendering bug.
+          // A volley leaves fanned by the same angle it was sitting at
+          // on the string, so what you saw loaded is what flies. Yawing
+          // the velocity rather than nudging it sideways keeps every
+          // arrow at the same speed — a sideways nudge made the outer
+          // ones fractionally faster and longer-ranged.
           if (count > 1) {
-            this._aim.set(-this._velocity.z, 0, this._velocity.x);
-            if (this._aim.lengthSq() > 0.0001) {
-              this._velocity.addScaledVector(this._aim.normalize(), fanOffset(index, count, 1.1));
-            }
+            this._velocity.applyAxisAngle(_worldUp, (fanOffset(index, count, ARROW_FAN_DEG) * Math.PI) / 180);
           }
 
           // Flagged as a hurl, which is the existing "this is
@@ -7254,20 +7360,34 @@
             return b;
           }
 
-          box(TANK_WIDTH, TANK_HEIGHT, TANK_DEPTH, { x: 0, y: 0, z: 0 }, steel);
-          box(TANK_WIDTH + 0.02, 0.03, TANK_DEPTH + 0.02, { x: 0, y: TANK_HEIGHT * 0.3, z: 0 }, '#3f454b');
-          box(TANK_WIDTH + 0.02, 0.03, TANK_DEPTH + 0.02, { x: 0, y: -TANK_HEIGHT * 0.3, z: 0 }, '#3f454b');
+          // The tank is GLASS, and what's in it is a solid block of
+          // colour inside it. An indicator stripe on one face was
+          // useless in practice: worn, the whole pack is behind you, so
+          // whatever tells you what you loaded has to be visible from
+          // every angle and from across the room. A see-through tank
+          // full of orange is legible at a glance; a gauge is not.
+          var glass = document.createElement('a-box');
+          glass.setAttribute('width', TANK_WIDTH);
+          glass.setAttribute('height', TANK_HEIGHT);
+          glass.setAttribute('depth', TANK_DEPTH);
+          glass.setAttribute('material', 'color: #b9c6cc; opacity: 0.35; transparent: true; side: double');
+          el.appendChild(glass);
 
-          // The gauge window, which is the only thing that tells you
-          // what you loaded.
-          var gauge = document.createElement('a-box');
-          gauge.setAttribute('width', 0.05);
-          gauge.setAttribute('height', TANK_HEIGHT * 0.5);
-          gauge.setAttribute('depth', 0.02);
-          gauge.setAttribute('position', { x: 0, y: 0, z: -TANK_DEPTH / 2 - 0.005 });
-          gauge.setAttribute('material', 'color: #2b2b2f; shader: flat');
-          gauge.classList.add('tank-gauge');
-          el.appendChild(gauge);
+          // The contents. Hidden while empty, and coloured by whatever
+          // was last poured in.
+          var fill = document.createElement('a-box');
+          fill.setAttribute('width', TANK_WIDTH - 0.03);
+          fill.setAttribute('height', TANK_HEIGHT - 0.05);
+          fill.setAttribute('depth', TANK_DEPTH - 0.03);
+          fill.setAttribute('material', 'color: #2b2b2f; shader: flat; opacity: 0.85; transparent: true');
+          fill.setAttribute('visible', false);
+          fill.classList.add('tank-gauge');
+          el.appendChild(fill);
+
+          // Bands top and bottom, so it reads as a vessel rather than
+          // a floating cube.
+          box(TANK_WIDTH + 0.02, 0.03, TANK_DEPTH + 0.02, { x: 0, y: TANK_HEIGHT * 0.42, z: 0 }, '#3f454b');
+          box(TANK_WIDTH + 0.02, 0.03, TANK_DEPTH + 0.02, { x: 0, y: -TANK_HEIGHT * 0.42, z: 0 }, '#3f454b');
 
           // Straps, and the clip on the front one.
           box(0.05, 0.02, 0.5, { x: -0.11, y: TANK_HEIGHT * 0.34, z: -0.25 }, strap, '14 0 0');
@@ -7319,7 +7439,7 @@
           // manage to lose one. That's a refill rather than a one-off
           // stock because a hose without a nozzle is scrap, not a
           // consequence.
-          clip.setAttribute('stocked', { item: 'nozzle', refillMs: NOZZLE_REFILL_MS });
+          clip.setAttribute('stocked', { item: 'nozzle' });
         },
       });
 
@@ -7351,6 +7471,17 @@
           cone.setAttribute('rotation', '-90 0 0');
           cone.setAttribute('position', { x: 0, y: 0.01, z: -0.25 });
           el.appendChild(cone);
+
+          // The band that says what's loaded, on the thing you're
+          // holding when it matters.
+          var band = document.createElement('a-cylinder');
+          band.setAttribute('radius', 0.024);
+          band.setAttribute('height', 0.03);
+          band.setAttribute('rotation', '90 0 0');
+          band.setAttribute('position', { x: 0, y: 0.01, z: -0.05 });
+          band.setAttribute('material', 'color: #2b2b2f; shader: flat');
+          band.classList.add('liquid-band');
+          el.appendChild(band);
 
           var tip = document.createElement('a-entity');
           tip.setAttribute('position', { x: 0, y: 0.01, z: -0.275 });
@@ -7457,15 +7588,27 @@
           playGlug();
         },
 
-        // The window in the side, coloured by what's in it. The only
-        // reason the tank tells you anything at all.
+        // What's in the tank, shown as what's in the tank. Also
+        // repeated on the nozzle you're actually holding, because when
+        // the pack is on your back you can't see it and the thing you
+        // need to know before pulling the trigger is what's about to
+        // come out.
         applyGauge: function () {
-          if (!this.gaugeEl) return;
           var liquid = this.liquid && LIQUIDS[this.liquid];
-          this.gaugeEl.setAttribute(
-            'material',
-            'color: ' + (liquid ? liquid.poolColor || liquid.dropColor : '#2b2b2f') + '; shader: flat'
-          );
+          var color = liquid ? liquid.dropColor || liquid.poolColor : '#2b2b2f';
+
+          if (this.gaugeEl) {
+            this.gaugeEl.setAttribute('visible', !!liquid);
+            this.gaugeEl.setAttribute(
+              'material',
+              'color: ' + color + '; shader: flat; opacity: 0.85; transparent: true'
+            );
+          }
+
+          var bands = this.el.querySelectorAll('.liquid-band');
+          for (var i = 0; i < bands.length; i++) {
+            bands[i].setAttribute('material', 'color: ' + color + '; shader: flat');
+          }
         },
 
         // An open tank of something flammable is a puddle in a box, and
@@ -7546,6 +7689,18 @@
         tick: function (time, dt) {
           var tank = this.tank();
           if (!tank) return;
+
+          if (this.shownLiquid !== tank.liquid) {
+            this.shownLiquid = tank.liquid;
+            var liquid = tank.liquid && LIQUIDS[tank.liquid];
+            var band = this.el.querySelector('.liquid-band');
+            if (band) {
+              band.setAttribute(
+                'material',
+                'color: ' + (liquid ? liquid.dropColor || liquid.poolColor : '#2b2b2f') + '; shader: flat'
+              );
+            }
+          }
 
           this.drawHose(tank);
           this.reelIn(tank);
@@ -7632,6 +7787,7 @@
         },
       });
 
+      var _worldUp = new THREE.Vector3(0, 1, 0);
       var _sprayJitter = new THREE.Vector3();
       var _hoseControl = new THREE.Vector3();
       var _hoseDir = new THREE.Vector3();
@@ -7666,6 +7822,7 @@
         schema: {
           fov: { type: 'number', default: SCOPE_FOV },
           offset: { type: 'vec3', default: { x: 0, y: 0, z: 0 } }, // where the eyepiece sits on the object
+          objective: { type: 'number', default: 0.32 }, // how far ahead of the eyepiece the far end of the tube is
           radius: { type: 'number', default: SCOPE_LENS_RADIUS },
           wake: { type: 'number', default: SCOPE_WAKE_DISTANCE },
         },
@@ -7676,23 +7833,38 @@
           this._lens = new THREE.Vector3();
 
           this.target = new THREE.WebGLRenderTarget(SCOPE_TEXTURE, SCOPE_TEXTURE);
-          this.camera = new THREE.PerspectiveCamera(this.data.fov, 1, 0.05, 300);
 
-          // Parented to this object, looking straight down its -Z,
-          // which is the same axis every barrel in this file uses.
+          // The near plane sits past the end of the tube on purpose. A
+          // scope camera parked at the eyepiece films the inside of its
+          // own tube, and at eleven degrees the tube walls are most of
+          // the picture; clipping everything closer than the objective
+          // throws away the tube, the barrel and your own hands, which
+          // is exactly what a scope does.
+          this.camera = new THREE.PerspectiveCamera(this.data.fov, 1, 0.25, 400);
           this.el.object3D.add(this.camera);
-          this.camera.position.set(this.data.offset.x, this.data.offset.y, this.data.offset.z);
+          this.camera.position.set(
+            this.data.offset.x,
+            this.data.offset.y,
+            this.data.offset.z - this.data.objective
+          );
 
+          // Facing +Z, i.e. straight back at your eye, which is the
+          // default for a CircleGeometry and was the bug: it had been
+          // turned to face down the barrel, so the only thing ever
+          // visible through the scope was the back of the lens.
+          //
+          // No mirroring is needed. The scope camera and the eye behind
+          // it both look along -Z, so their idea of "right" is the same
+          // one.
           this.lensMesh = new THREE.Mesh(
             new THREE.CircleGeometry(this.data.radius, 20),
-            new THREE.MeshBasicMaterial({ color: '#0b0b0d' })
+            new THREE.MeshBasicMaterial({ map: this.target.texture })
           );
           this.lensMesh.position.set(this.data.offset.x, this.data.offset.y, this.data.offset.z + 0.005);
-          this.lensMesh.rotation.y = Math.PI; // face back toward your eye
+          this.lensMesh.visible = false; // asleep, you see straight through the hollow tube at life size
           this.el.object3D.add(this.lensMesh);
 
-          this.liveMaterial = new THREE.MeshBasicMaterial({ map: this.target.texture });
-          this.darkMaterial = this.lensMesh.material;
+          this.liveMaterial = this.lensMesh.material;
 
           // The crosshair rides on the glass, so it magnifies with it.
           var reticle = new THREE.Mesh(
@@ -7713,7 +7885,6 @@
           this.target.dispose();
           this.lensMesh.geometry.dispose();
           this.liveMaterial.dispose();
-          this.darkMaterial.dispose();
         },
 
         tick: function () {
@@ -7725,7 +7896,7 @@
 
           if (awake !== this.awake) {
             this.awake = awake;
-            this.lensMesh.material = awake ? this.liveMaterial : this.darkMaterial;
+            this.lensMesh.visible = awake;
             this.reticle.visible = awake;
           }
           if (!awake) return;
@@ -7789,10 +7960,16 @@
           // glass, so the two sets of numbers have to agree — the same
           // hand-kept arrangement boxy-gun and the pistol's comOffset
           // already live with.
+          // Open-ended and double-sided, so with the scope asleep you
+          // are looking through a tube at the world rather than at a
+          // solid cylinder. That also makes the moment it wakes read as
+          // the view zooming rather than a wall turning into a window.
           var tube = document.createElement('a-cylinder');
           tube.setAttribute('radius', 0.028);
           tube.setAttribute('height', 0.34);
           tube.setAttribute('color', metal);
+          tube.setAttribute('open-ended', true);
+          tube.setAttribute('material', 'color: ' + metal + '; side: double');
           tube.setAttribute('rotation', '90 0 0');
           tube.setAttribute('position', { x: 0, y: 0.115, z: -0.14 });
           el.appendChild(tube);
@@ -7876,7 +8053,11 @@
           // The breech: an ordinary socket at the back of the tube.
           this.breechEl = document.createElement('a-entity');
           this.breechEl.classList.add('anchor-slot');
-          this.breechEl.setAttribute('anchor-slot', { size: 'small', indicatorScale: 1.3 });
+          // A big obvious indicator, because a socket you can't find is
+          // a weapon that doesn't work — the first version had a
+          // discreet one down the tube and the honest playtest note was
+          // "I couldn't tell if anything loaded".
+          this.breechEl.setAttribute('anchor-slot', { size: 'small', indicatorScale: 2.1 });
           this.breechEl.setAttribute('position', { x: 0, y: 0.06, z: LAUNCHER_LENGTH - LAUNCHER_MUZZLE_Z - 0.16 });
           el.appendChild(this.breechEl);
         },
@@ -7913,7 +8094,10 @@
           }
 
           if (!slot || !slot.occupants.length) {
-            playTone({ type: 'square', freq: 240, duration: 0.05, volume: 0.06 });
+            // Unmistakably nothing happening, rather than quietly
+            // nothing happening.
+            playTone({ type: 'square', freq: 150, duration: 0.09, volume: 0.16 });
+            playNoise({ duration: 0.05, freq: 1800, q: 2, volume: 0.08 });
             return;
           }
 
@@ -9099,9 +9283,11 @@
         buildLongGunCradles: function (face, iron) {
           var span = BAR_WIDTH - 0.7;
           var spacing = span / (ARMORY_CRADLES - 1);
+          this.cradleX = {};
 
           for (var i = 0; i < ARMORY_CRADLES; i++) {
             var x = -span / 2 + i * spacing;
+            if (ARMORY_CRADLE_STOCK[i]) this.cradleX[ARMORY_CRADLE_STOCK[i]] = x;
             this.addBox(0.05, 0.09, 0.13, { x: x - 0.34, y: ARMORY_CRADLE_Y - 0.02, z: ARMORY_CRADLE_Z + 0.02 }, iron, face);
             this.addBox(0.05, 0.09, 0.13, { x: x + 0.42, y: ARMORY_CRADLE_Y - 0.02, z: ARMORY_CRADLE_Z + 0.02 }, iron, face);
 
@@ -9123,7 +9309,9 @@
         // (see THE REVOLVING BAR). One socket with room for five and
         // the usual fan, which is all a quiver has ever been.
         buildQuiver: function (face, iron) {
-          var x = ARMORY_QUIVER_X;
+          // Under the bow, not at the far end of the bench. Ammunition
+          // you have to go and find is ammunition you don't load.
+          var x = (this.cradleX && this.cradleX.bow !== undefined ? this.cradleX.bow : ARMORY_QUIVER_X) - 0.3;
           this.addBox(0.72, 0.03, 0.09, { x: x + 0.31, y: BAR_TOP_Y + 0.015, z: ARMORY_QUIVER_Z }, '#5b3a29', face);
           this.addBox(0.05, 0.06, 0.11, { x: x, y: BAR_TOP_Y + 0.03, z: ARMORY_QUIVER_Z }, iron, face);
           this.addBox(0.05, 0.06, 0.11, { x: x + 0.6, y: BAR_TOP_Y + 0.03, z: ARMORY_QUIVER_Z }, iron, face);
@@ -9133,7 +9321,7 @@
             'small',
             { capacity: ARMORY_ARROWS, fanSpread: 0.03, fanYaw: 0 },
             face,
-            { x: 0, y: 0, z: -90 } // rolled, so the arrows lie down the bench instead of standing up off it
+            { x: 0, y: 90, z: 0 } // turned, so they lie along the bench instead of pointing off the end of it
           );
           this.stock(slotId, 'arrow');
         },
@@ -9147,9 +9335,10 @@
           this.addBox(BAR_WIDTH - 0.3, 0.05, 0.16, { x: 0, y: ARMORY_SHELF_Y, z: ARMORY_SHELF_Z }, iron, face);
 
           var self = this;
+          var launcherX = this.cradleX && this.cradleX.launcher !== undefined ? this.cradleX.launcher : 1.28;
           [
             { x: -1.28, item: 'dynamite', capacity: ARMORY_DYNAMITE_PER_CRATE },
-            { x: 1.28, item: 'rocket', capacity: ARMORY_ROCKETS },
+            { x: launcherX, item: 'rocket', capacity: ARMORY_ROCKETS },
           ].forEach(function (crate) {
             self.addBox(0.24, 0.14, 0.13, { x: crate.x, y: ARMORY_SHELF_Y + 0.095, z: ARMORY_SHELF_Z }, '#5b3a29', face);
             var slotId = self.addSlot(
@@ -9471,7 +9660,7 @@
             // passes straight over the top of it without catching.
             poolPosition(POOLS[j], this._scratch);
             this._scratch.y += FIRE_MIN_RADIUS + (FIRE_MAX_RADIUS - FIRE_MIN_RADIUS) *
-              Math.sqrt(Math.min(POOLS[j].radius / POOL_MAX_RADIUS, 1));
+              Math.sqrt(Math.min(POOLS[j].radius / POOL_REFERENCE_RADIUS, 1));
             add(this._scratch);
           }
 
@@ -9487,6 +9676,8 @@
         updatePools: function (time, dtSeconds) {
           var brightest = null;
 
+          this.minglePools(dtSeconds);
+
           for (var i = POOLS.length - 1; i >= 0; i--) {
             var pool = POOLS[i];
             var liquid = LIQUIDS[pool.type];
@@ -9498,31 +9689,94 @@
               if (!brightest || pool.radius > brightest.radius) brightest = pool;
             } else {
               if (pool.flame) pool.flame.setAttribute('visible', false);
+              // Drying out is a size, not a timer: a puddle shrinks at
+              // its liquid's own rate, so a big spill lasts longer than
+              // a splash for the obvious reason rather than because
+              // something is counting. (Different rates per SURFACE —
+              // a bar top versus dirt — are in todo.md.)
+              if (liquid.dryRate) pool.radius -= liquid.dryRate * dtSeconds;
               if (liquid.flammable && pool.dousedUntil <= 0) this.checkPoolIgnition(pool);
             }
 
-            var fade = 1;
-            if (liquid.evaporateMs > 0) {
-              var remaining = liquid.evaporateMs - pool.age;
-              if (remaining < POOL_FADE_MS) fade = Math.max(remaining / POOL_FADE_MS, 0);
-            }
-
-            if (pool.radius <= 0.008 || fade <= 0) {
+            if (pool.radius <= POOL_MIN_RADIUS) {
               releasePool(i);
               continue;
             }
 
-            this.drawPool(pool, liquid, fade);
+            // The last of it thins out rather than blinking away.
+            this.drawPool(pool, liquid, Math.min(pool.radius / (POOL_MIN_RADIUS * 5), 1));
           }
 
           var light = ensureFireLight(this.el.sceneEl);
           if (brightest) {
             light.position.set(brightest.x, brightest.y + 0.25, brightest.z);
             light.intensity =
-              Math.min((brightest.radius / POOL_MAX_RADIUS) * FIRE_LIGHT_MAX, FIRE_LIGHT_MAX) *
+              Math.min((brightest.radius / POOL_REFERENCE_RADIUS) * FIRE_LIGHT_MAX, FIRE_LIGHT_MAX) *
               (0.82 + 0.18 * Math.sin((time / 1000) * FIRE_WIGGLE_HZ * 1.7));
           } else {
             light.intensity = 0;
+          }
+        },
+
+        // ==========================================================
+        // POOLS RUNNING TOGETHER
+        // Every pair of same-liquid puddles that overlap, once a frame.
+        // Two things pass between them and both are proportional to how
+        // much they overlap, so touching at the edges barely does
+        // anything and sitting on top of each other resolves fast:
+        //
+        //   - AREA flows from the smaller into the larger. Area, not
+        //     radius, because area is how much liquid there is — a
+        //     puddle that doubles in radius holds four times the beer,
+        //     and fire's fuel is measured the same way. Big puddles
+        //     therefore eat small ones, which is what keeps the count
+        //     down now that nothing is capped or culled.
+        //   - The two SLIDE, toward each other or apart depending on
+        //     the liquid's cohesion. Water pulls together hardest and
+        //     drops become one drop. Fire's is negative, so patches
+        //     shove each other outward and a fire crawls instead of
+        //     balling up and going out.
+        //
+        // The smaller one does most of the moving, since the bigger one
+        // is more liquid to shift. O(n²) over sixty discs is nothing —
+        // a circle overlap test is two multiplies.
+        // ==========================================================
+        minglePools: function (dtSeconds) {
+          for (var i = 0; i < POOLS.length; i++) {
+            var a = POOLS[i];
+            var liquid = LIQUIDS[a.type];
+
+            for (var j = i + 1; j < POOLS.length; j++) {
+              var b = POOLS[j];
+              if (b.type !== a.type) continue;
+              if (Math.abs(a.y - b.y) > 0.06) continue; // the bar and the floor are different places
+
+              var dx = b.x - a.x;
+              var dz = b.z - a.z;
+              var d = Math.sqrt(dx * dx + dz * dz);
+              var reach = a.radius + b.radius;
+              if (d >= reach) continue;
+
+              var small = a.radius <= b.radius ? a : b;
+              var large = small === a ? b : a;
+              var overlap = Math.min((reach - d) / Math.max(small.radius * 2, 0.001), 1);
+
+              var moved =
+                Math.PI * small.radius * small.radius * POOL_FLOW_RATE * (liquid.flow || 1) * overlap * dtSeconds;
+              small.radius = Math.sqrt(Math.max(Math.PI * small.radius * small.radius - moved, 0) / Math.PI);
+              large.radius = Math.sqrt((Math.PI * large.radius * large.radius + moved) / Math.PI);
+
+              var cohesion = liquid.cohesion || 0;
+              if (!cohesion || d < 0.0001) continue;
+
+              var pull = POOL_DRIFT_RATE * cohesion * overlap * dtSeconds;
+              var total = a.radius + b.radius;
+              var aShare = total > 0.0001 ? b.radius / total : 0.5;
+              a.x += (dx / d) * pull * aShare;
+              a.z += (dz / d) * pull * aShare;
+              b.x -= (dx / d) * pull * (1 - aShare);
+              b.z -= (dz / d) * pull * (1 - aShare);
+            }
           }
         },
 
@@ -9541,7 +9795,7 @@
             return;
           }
 
-          var strength = Math.min(pool.radius / POOL_MAX_RADIUS, 1);
+          var strength = Math.min(pool.radius / POOL_REFERENCE_RADIUS, 1);
 
           if (pool.flame) {
             pool.flame.setAttribute('visible', true);
