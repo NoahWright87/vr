@@ -90,8 +90,11 @@
              "brim just clips the top of view"; real headset FOV isn't
              something testable from here, so this (and/or boxy-hat's own
              geometry) will likely need eyes-on tuning. A medium anchor-slot
-             — yes, you can wear a gun on your head like a hat. -->
-        <a-entity id="head-anchor" class="anchor-slot" anchor-slot="size: medium" position="0 0.1 0"></a-entity>
+             — yes, you can wear a gun on your head like a hat. `swap` (see
+             anchor-slot's own comment) means trying on a wardrobe hat while
+             already wearing one just replaces it instead of bouncing off a
+             full slot — the old hat falls, exactly like an evicted belt. -->
+        <a-entity id="head-anchor" class="anchor-slot" anchor-slot="size: medium; swap: true" position="0 0.1 0"></a-entity>
 
         <!-- Drunk vision. Parented to the camera on purpose: rigidly
              head-locked means there is no relative motion for your
@@ -167,16 +170,13 @@
 
       <!-- ============================================================
            BODY ANCHORS
-           Three invisible anchor points that track the player's body:
-           two hips (small slots — pistol-sized) and a back-center
-           bandolier point (large — shotgun-sized). There's no real
-           body tracking on a Quest, so body-anchor approximates all
-           three from the headset: position and yaw (turning left/
-           right) only, deliberately ignoring pitch/roll so looking up
-           or tilting your head doesn't drag them around. Each one also
-           builds its own bit of "shitty" flavor geometry (a holster
-           pouch, a diagonal strap) so it's obvious where things go —
-           see body-anchor's own comment.
+           Two invisible anchor points that track the player's body: the
+           waist (medium — belt-sized) and a back-center bandolier point
+           (large — shotgun-sized). There's no real body tracking on a
+           Quest, so body-anchor approximates both from the headset:
+           position and yaw (turning left/right) only, deliberately
+           ignoring pitch/roll so looking up or tilting your head
+           doesn't drag them around.
 
            anchor-slot is the generic snap-target component (see its
            own comment): any ".grabbable" item whose itemSize fits a
@@ -186,15 +186,18 @@
            item approaches, with a quick "click" bounce right as it
            enters snap range.
 
-           All three are stocked at scene load and never again (see
-           STOCK AND PERISHING): a pistol on each hip and a shotgun on
-           your back when you start, and after that they're pockets.
-           What's in them is whatever you put there. The armoury's pegs
-           carry the same attribute with a refill on it, because an
-           armoury is where guns come from and a hip holster isn't.
+           The waist anchor has anchor-slot's `swap` flag set: bringing
+           a new belt to it replaces whatever belt is already worn
+           (see `belt`) rather than just refusing the newcomer the way
+           a full slot normally would. It's stocked with belt-classic,
+           which is what actually carries the two hip holsters pistols
+           start in now — see STOCK AND PERISHING and `belt`'s own
+           comment for where the old standalone hip-left/hip-right
+           anchors went. The back anchor works exactly as it always
+           has: stocked once at scene load, never refilled, a shotgun
+           on your back when you start and a pocket after that.
       ============================================================ -->
-      <a-entity id="hip-left" class="anchor-slot" body-anchor="side: left" anchor-slot="size: small" stocked="item: pistol"></a-entity>
-      <a-entity id="hip-right" class="anchor-slot" body-anchor="side: right" anchor-slot="size: small" stocked="item: pistol"></a-entity>
+      <a-entity id="waist-anchor" body-anchor="side: waist" anchor-slot="size: medium; swap: true" stocked="item: belt-classic"></a-entity>
       <a-entity id="back-anchor" class="anchor-slot" body-anchor="side: back" anchor-slot="size: large" stocked="item: shotgun"></a-entity>
 
       <!-- ============================================================
@@ -277,6 +280,18 @@
            glass. See boxy-mirror and the MIRROR constants.
       ============================================================ -->
       <a-entity id="mirror" boxy-mirror></a-entity>
+
+      <!-- ============================================================
+           THE WARDROBE
+           Under/beside the bar, mirroring the real mirror's placement
+           on the room's other side. A small closed cabinet at rest;
+           its own bell flips it upside-down (see boxy-wardrobe and
+           turntable's `axis`) to reveal pegs and hooks with a belt and
+           a hat to try on. Keeping it silly is the whole idea — the
+           bar spins around to become an armoury, so the wardrobe gets
+           to be even more absurd about it and flip over entirely.
+      ============================================================ -->
+      <a-entity id="wardrobe" boxy-wardrobe></a-entity>
 
       <!-- ============================================================
            TARGET GALLERY
@@ -404,19 +419,19 @@
       var EYE_SPACING = 0.045; // meters, left/right from center
       var EYE_DROP = 0.05; // meters below GHOST_TOP_Y
 
-      // BODY LENGTH + BELT — CYLINDER_HEIGHT is the one number doing
-      // double duty: it's how far the straight pill body runs before
-      // the skirt starts, AND (since the belt sits right at that seam)
-      // how far below GHOST_TOP_Y the belt lands. 0.8m puts it at
-      // roughly world 0.9m for an average ~1.6-1.7m standing eye
-      // height — meant to land close to HIP_HEIGHT above, so the belt
-      // reads as roughly where the existing hip holsters already are,
-      // not floating at some unrelated height. Just for judging fit
-      // right now (built inline in boxy-ghost below), ahead of belts
-      // becoming real swappable equipment later.
+      // BODY LENGTH — CYLINDER_HEIGHT is how far the straight pill body
+      // runs before the skirt starts. 0.8m is picked so a worn belt
+      // (see BELT/WARDROBE below), riding the waist anchor at
+      // HIP_HEIGHT, lands at roughly that same seam for an average
+      // ~1.6-1.7m standing eye height — the belt reading as part of
+      // the body rather than floating at some unrelated height.
       var CYLINDER_HEIGHT = 0.8;
       var SKIRT_HEIGHT = 0.2; // meters the wavy points hang below the cylinder's bottom rim
       var SKIRT_TEETH = 6;
+
+      // BELT — the first real piece of swappable equipment (see
+      // `belt`), worn on the waist anchor. Visual numbers only here;
+      // the swap/transfer behavior lives on the component.
       var BELT_TUBE_RADIUS = 0.012;
       var BELT_COLOR = '#4a3220'; // matches the hip holster leather
       var BELT_BUCKLE_COLOR = '#c9962c'; // matches other brass trim (e.g. boxy-sniper's trigger)
@@ -432,6 +447,19 @@
       var MIRROR_FOV = 70; // degrees — a normal view, not a scope's zoom
       var MIRROR_WAKE = 0.8; // meters — still gated (per request — "even if it only appears when I'm close"), just close enough that leaning in from near spawn reaches it
       var MIRROR_POSITION = { x: 0.85, y: 1.3, z: 0.3 };
+
+      // WARDROBE — a small cabinet that flips upside-down (see
+      // turntable's `axis`) to reveal pegs/hooks instead of spinning
+      // around like the bar does, on its own dedicated bell. Mirrors
+      // the mirror's placement on the room's other side — low, since
+      // "under the bar" was the ask, and just as close, since anything
+      // meant to be walked up to has to already be within a lean.
+      var WARDROBE_POSITION = { x: -0.85, y: 0.5, z: 0.3 };
+      var WARDROBE_WIDTH = 0.65; // a real belt is a true-to-scale ~0.3m loop (see GHOST_RADIUS) — this needs to be roomy enough that one doesn't dominate the whole panel hanging on its hook
+      var WARDROBE_HEIGHT = 0.55;
+      var WARDROBE_PANEL_THICKNESS = 0.04;
+      var WARDROBE_SPIN_MS = 900; // a bit slower than the bar's own spin — it's a bigger, clumsier flip, not a quick counter-turn
+      var WARDROBE_BELL_POSITION = { x: 0, y: 0.45, z: -0.1 }; // LOCAL to the wardrobe entity — just above and in front of the cabinet, its own dedicated ring separate from the bar's
       var GRAVITY = 9.8; // real-world value, used for the drop/tumble simulation
       var DANGLE_GRAVITY_TORQUE = 2.5; // how insistently a dangling gun swings back to hanging straight down
       var DANGLE_INERTIA_SCALE = 6; // how strongly flicking your hand imparts spin — crank this up further if it still feels weak
@@ -2987,10 +3015,15 @@
       // are already just kept consistent by hand.
       // ==============================================================
       registerComponent('boxy-hat', {
+        schema: {
+          felt: { type: 'string', default: '#2b2320' },
+          band: { type: 'string', default: '#5b3a29' },
+        },
+
         init: function () {
           var el = this.el;
-          var felt = '#2b2320';
-          var band = '#5b3a29';
+          var felt = this.data.felt;
+          var band = this.data.band;
 
           var innerRadius = 0.11; // crown radius / head-hole size
           var crownHeight = 0.13;
@@ -3040,20 +3073,25 @@
       // The player's own body: Pac-Man-ghost simple, on purpose (see
       // the GHOST BODY / BODY LENGTH + BELT constants above for the
       // reasoning behind the exact numbers). A dome, a constant-radius
-      // "pill" body (not tapering — see those comments for why),
-      // two eyes, a belt riding the pill/skirt seam, and a wavy skirt
-      // of pointed teeth around the bottom rim.
+      // "pill" body (not tapering — see those comments for why), two
+      // eyes, and a wavy skirt of pointed teeth around the bottom rim.
+      //
+      // No belt here any more — the real, swappable one (see `belt`)
+      // rides the waist anchor at roughly this same seam height,
+      // yaw-tracked rather than camera-child like the rest of this
+      // shape (the same everywhere-else-in-the-file tension the hat
+      // and the yaw-tracked back/waist anchors already have).
       //
       // Nested directly under the camera in markup (like the hat, not
-      // like the yaw-only-tracked hip/back anchors) so it inherits full
-      // head rotation for free — there's no separate torso to keep
-      // upright independently of your head any more.
+      // like the yaw-only-tracked waist/back anchors) so it inherits
+      // full head rotation for free — there's no separate torso to
+      // keep upright independently of your head any more.
       // ==============================================================
       registerComponent('boxy-ghost', {
         init: function () {
           var el = this.el;
           var axisZ = GHOST_FRONT_Z + GHOST_RADIUS; // the shape's central vertical axis — every piece below is positioned relative to this, not to GHOST_FRONT_Z directly, so they stay concentric
-          var beltY = GHOST_TOP_Y - CYLINDER_HEIGHT; // the pill/skirt seam
+          var seamY = GHOST_TOP_Y - CYLINDER_HEIGHT; // the pill/skirt seam
 
           function primitive(tag, attrs) {
             var e = document.createElement(tag);
@@ -3093,25 +3131,6 @@
             });
           });
 
-          // The belt: a ring at the pill/skirt seam, same radius as the
-          // pill itself (it's constant now, no taper to chase).
-          primitive('a-torus', {
-            radius: GHOST_RADIUS,
-            'radius-tubular': BELT_TUBE_RADIUS,
-            color: BELT_COLOR,
-            rotation: '90 0 0',
-            position: { x: 0, y: beltY, z: axisZ },
-          });
-
-          // A big stupid buckle, per request.
-          primitive('a-box', {
-            width: 0.05,
-            height: 0.04,
-            depth: 0.015,
-            color: BELT_BUCKLE_COLOR,
-            position: { x: 0, y: beltY, z: axisZ - GHOST_RADIUS },
-          });
-
           // The wavy skirt: SKIRT_TEETH small cones fanned around the
           // bottom rim, each tapering to a point SKIRT_HEIGHT below the
           // seam. a-cone's radiusTop sits at its own local +Y and
@@ -3132,7 +3151,7 @@
               transparent: true,
               position: {
                 x: Math.sin(angle) * GHOST_RADIUS,
-                y: beltY - SKIRT_HEIGHT / 2,
+                y: seamY - SKIRT_HEIGHT / 2,
                 z: axisZ + Math.cos(angle) * GHOST_RADIUS,
               },
             });
@@ -3180,23 +3199,201 @@
       });
 
       // ==============================================================
+      // COMPONENT: boxy-wardrobe
+      // A small cabinet, closed by default, that flips upside-down
+      // (turntable's `axis: 'x'` — see its own comment) on its own
+      // dedicated bell to reveal a second face of pegs and hooks. Not
+      // nested inside saloon-bar: it doesn't share the bar's drum or
+      // axis, it's simpler as its own independent flipping thing next
+      // to it, the same way the mirror is its own thing rather than
+      // being folded into the bar just because it's nearby.
+      //
+      // Every peg/hook here is an ordinary anchor-slot, same as the
+      // armoury's — nothing in this component knows what a belt or a
+      // hat is, it just builds sockets and stocks a couple of them
+      // (see STOCK AND PERISHING), leaving the rest bare on purpose for
+      // whatever gets added next.
+      // ==============================================================
+      registerComponent('boxy-wardrobe', {
+        init: function () {
+          var el = this.el;
+          this.slotSerial = 0;
+          el.setAttribute('position', WARDROBE_POSITION);
+
+          this.drumEl = document.createElement('a-entity');
+          this.drumEl.setAttribute('id', 'wardrobe-turntable');
+          this.drumEl.setAttribute('turntable', { spinMs: WARDROBE_SPIN_MS, faces: 2, axis: 'x' });
+          el.appendChild(this.drumEl);
+
+          this.closedFaceEl = document.createElement('a-entity');
+          this.drumEl.appendChild(this.closedFaceEl);
+
+          this.openFaceEl = document.createElement('a-entity');
+          this.openFaceEl.setAttribute('rotation', { x: 180, y: 0, z: 0 });
+          this.drumEl.appendChild(this.openFaceEl);
+
+          this.buildClosedFace();
+          this.buildOpenFace();
+          this.buildBell();
+        },
+
+        addBox: function (faceEl, w, h, d, pos, color, rot) {
+          var box = document.createElement('a-box');
+          box.setAttribute('width', w);
+          box.setAttribute('height', h);
+          box.setAttribute('depth', d);
+          box.setAttribute('position', pos);
+          box.setAttribute('color', color);
+          if (rot) box.setAttribute('rotation', rot);
+          faceEl.appendChild(box);
+          return box;
+        },
+
+        // `rot` rolls the socket itself rather than the item — same
+        // trick the armoury's cradles use to lay a long gun flat while
+        // it keeps the one holstered pose it has everywhere else (see
+        // saloon-bar.addSlot's own comment). Here it's what turns a
+        // hat's "sitting flat on a head" pose into "hanging off a peg",
+        // and a belt's "wrapped flat around a waist" into "looped on a
+        // hook", without either item needing a peg-specific pose of
+        // its own.
+        addSlot: function (faceEl, pos, size, extra, rot) {
+          var id = 'wardrobe-slot-' + this.slotSerial++;
+          var slot = document.createElement('a-entity');
+          slot.setAttribute('id', id);
+          slot.classList.add('anchor-slot');
+
+          var config = { size: size };
+          Object.keys(extra || {}).forEach(function (k) {
+            config[k] = extra[k];
+          });
+          slot.setAttribute('anchor-slot', config);
+          slot.setAttribute('position', pos);
+          if (rot) slot.setAttribute('rotation', rot);
+          faceEl.appendChild(slot);
+          return id;
+        },
+
+        stock: function (slotId, item) {
+          var slot = document.getElementById(slotId);
+          if (slot) slot.setAttribute('stocked', { item: item, refillMs: ARMORY_REFILL_MS });
+        },
+
+        // A plain panel — closed, there's nothing to see here, which is
+        // the point.
+        buildClosedFace: function () {
+          this.addBox(
+            this.closedFaceEl,
+            WARDROBE_WIDTH,
+            WARDROBE_HEIGHT,
+            WARDROBE_PANEL_THICKNESS,
+            { x: 0, y: 0, z: 0 },
+            '#4a2f1c'
+          );
+        },
+
+        // Two hat pegs, two belt hooks. One of each starts stocked, the
+        // other left bare — same "empty sockets to arrange your own
+        // loadout in" the armoury already does.
+        buildOpenFace: function () {
+          var self = this;
+          var face = this.openFaceEl;
+          var iron = '#3a3f43';
+
+          this.addBox(face, WARDROBE_WIDTH, WARDROBE_HEIGHT, WARDROBE_PANEL_THICKNESS, { x: 0, y: 0, z: 0 }, '#3c2a1c');
+
+          var pegHeight = 0.12;
+          [-0.22, 0.22].forEach(function (x, i) {
+            self.addBox(face, 0.02, pegHeight, 0.02, { x: x, y: 0.16, z: -0.06 }, iron, { x: -25, y: 0, z: 0 });
+            // Tipped steeply forward so the hat's own "sitting flat"
+            // holsterRotation hangs down off the peg's end instead of
+            // floating flat in space beside it.
+            var slotId = self.addSlot(face, { x: x, y: 0.22, z: -0.09 }, 'medium', {}, { x: -80, y: 0, z: 0 });
+            if (i === 0) self.stock(slotId, 'hat-tan');
+          });
+
+          var hookDepth = 0.08;
+          [-0.22, 0.22].forEach(function (x, i) {
+            self.addBox(face, 0.02, 0.02, hookDepth, { x: x, y: -0.15, z: -hookDepth / 2 }, iron);
+            // Rolled 90° so the belt's own flat "wrapped around a
+            // waist" ring hangs as a vertical loop off the hook.
+            var slotId = self.addSlot(face, { x: x, y: -0.15, z: -hookDepth }, 'medium', {}, { x: 0, y: 0, z: 90 });
+            if (i === 0) self.stock(slotId, 'belt-silver');
+          });
+        },
+
+        // Same bell as the bar's own (see saloon-bar.buildBell), just a
+        // second instance pointed at this cabinet's own turntable
+        // instead — kept as a straightforward copy rather than a
+        // shared helper, since the two live on entirely different
+        // components with no natural place to share one from.
+        buildBell: function () {
+          var brass = '#b98c2a';
+          var el = this.el;
+
+          var hanger = document.createElement('a-entity');
+          hanger.setAttribute('position', WARDROBE_BELL_POSITION);
+          hanger.classList.add('shootable');
+          hanger.setAttribute('shot-switch', { target: '#wardrobe-turntable' });
+          el.appendChild(hanger); // a child of the wardrobe entity itself, not the drum — stays put whichever face is showing, same as the bar's own bell being part of `roomEl` rather than `drumEl`
+
+          var stem = document.createElement('a-box');
+          stem.setAttribute('width', 0.014);
+          stem.setAttribute('height', 0.08);
+          stem.setAttribute('depth', 0.014);
+          stem.setAttribute('position', { x: 0, y: -0.04, z: 0 });
+          stem.setAttribute('color', '#2b2b2f');
+          hanger.appendChild(stem);
+
+          var dome = document.createElement('a-cylinder');
+          dome.setAttribute('radius', 0.08);
+          dome.setAttribute('height', 0.11);
+          dome.setAttribute('color', brass);
+          dome.setAttribute('position', { x: 0, y: -0.135, z: 0 });
+          hanger.appendChild(dome);
+
+          var lip = document.createElement('a-cylinder');
+          lip.setAttribute('radius', 0.095);
+          lip.setAttribute('height', 0.02);
+          lip.setAttribute('color', '#8a6a1c');
+          lip.setAttribute('position', { x: 0, y: -0.195, z: 0 });
+          hanger.appendChild(lip);
+
+          var clapper = document.createElement('a-box');
+          clapper.setAttribute('width', 0.022);
+          clapper.setAttribute('height', 0.035);
+          clapper.setAttribute('depth', 0.022);
+          clapper.setAttribute('position', { x: 0, y: -0.215, z: 0 });
+          clapper.setAttribute('color', '#2b2b2f');
+          hanger.appendChild(clapper);
+        },
+      });
+
+      // ==============================================================
       // COMPONENT: body-anchor
       // Drives an invisible entity to sit at roughly a fixed spot on
       // the player's body, following the headset's horizontal position
-      // and yaw only (see the comment above the markup for why
-      // pitch/roll are excluded) — there's no real body tracking on a
-      // Quest, so this is an approximation for all three spots it's
-      // used for: the two hips and the back-center bandolier point.
-      // Also builds each spot's own bit of simple "boxy" flavor
-      // geometry (a holster pouch for the hips, a diagonal strap for
-      // the back) so it's visually obvious where things are meant to
-      // go — purely cosmetic, no bearing on the actual anchor-slot
-      // component (added separately in markup) that does the real
-      // snapping work.
+      // and yaw only (deliberately ignoring pitch/roll, so looking up
+      // or tilting your head doesn't drag it around) — there's no real
+      // body tracking on a Quest, so this is an approximation for both
+      // spots it's used for: the waist and the back-center bandolier
+      // point. Also builds each spot's own bit of simple "boxy" flavor
+      // geometry (a diagonal strap for the back; the waist gets none —
+      // see `belt`, which is what's actually visible there) so it's
+      // visually obvious where things are meant to go — purely
+      // cosmetic, no bearing on the actual anchor-slot component
+      // (added separately in markup) that does the real snapping work.
+      //
+      // The two hips used to be a third/fourth case here (side: left/
+      // right), each with its own holster-pouch flavor geometry. Both
+      // moved onto `belt` instead — a belt is what actually carries hip
+      // slots now, built at ±HIP_SIDE_OFFSET in ITS OWN local frame, so
+      // a body-anchor for "the left hip" specifically stopped meaning
+      // anything once the belt could be swapped out from under it.
       // ==============================================================
       registerComponent('body-anchor', {
         schema: {
-          side: { type: 'string', default: 'right' }, // 'left' | 'right' | 'back'
+          side: { type: 'string', default: 'waist' }, // 'waist' | 'back'
         },
 
         init: function () {
@@ -3206,15 +3403,12 @@
           this.camEuler = new THREE.Euler();
           this.offsetVec = new THREE.Vector3();
 
-          if (this.data.side === 'left') {
-            this.localOffset = new THREE.Vector3(-HIP_SIDE_OFFSET, 0, 0);
-            this.height = HIP_HEIGHT;
-          } else if (this.data.side === 'right') {
-            this.localOffset = new THREE.Vector3(HIP_SIDE_OFFSET, 0, 0);
-            this.height = HIP_HEIGHT;
-          } else {
+          if (this.data.side === 'back') {
             this.localOffset = new THREE.Vector3(0, 0, BACK_DEPTH_OFFSET); // local +Z is behind the player
             this.height = BACK_HEIGHT;
+          } else {
+            this.localOffset = new THREE.Vector3(0, 0, 0);
+            this.height = HIP_HEIGHT;
           }
 
           this.buildProps();
@@ -3238,28 +3432,126 @@
           this.el.object3D.rotation.set(0, yaw, 0);
         },
 
-        // Cheap, "shitty" flavor geometry — a leather-ish holster
-        // pouch under each hip anchor, a diagonal bandolier strap
-        // across the back one. Estimated proportions, not measured
-        // against a real body; expect these to want eyes-on tuning.
+        // Cheap, "shitty" flavor geometry — just the back's diagonal
+        // bandolier strap now (see the class comment for where the
+        // hips' holster pouches went). Estimated proportions, not
+        // measured against a real body; expect this to want eyes-on
+        // tuning.
         buildProps: function () {
-          if (this.data.side === 'back') {
-            var strap = document.createElement('a-box');
-            strap.setAttribute('width', 0.09);
-            strap.setAttribute('height', 0.9);
-            strap.setAttribute('depth', 0.03);
-            strap.setAttribute('color', '#5b3a29');
-            strap.setAttribute('rotation', '0 0 35');
-            this.el.appendChild(strap);
-          } else {
-            var pouch = document.createElement('a-box');
-            pouch.setAttribute('width', 0.09);
-            pouch.setAttribute('height', 0.16);
-            pouch.setAttribute('depth', 0.07);
-            pouch.setAttribute('color', '#4a3220');
-            pouch.setAttribute('position', { x: 0, y: -0.04, z: -0.02 });
-            this.el.appendChild(pouch);
-          }
+          if (this.data.side !== 'back') return;
+
+          var strap = document.createElement('a-box');
+          strap.setAttribute('width', 0.09);
+          strap.setAttribute('height', 0.9);
+          strap.setAttribute('depth', 0.03);
+          strap.setAttribute('color', '#5b3a29');
+          strap.setAttribute('rotation', '0 0 35');
+          this.el.appendChild(strap);
+        },
+      });
+
+      // ==============================================================
+      // COMPONENT: boxy-belt
+      // What a belt looks like: a ring at the ghost's own pill radius
+      // (so it wraps the body snugly regardless of which belt is worn)
+      // plus a buckle on the front. Schema'd by color so belt-classic
+      // and belt-silver (see the item makers) are one component with
+      // two paint jobs, not two components.
+      // ==============================================================
+      registerComponent('boxy-belt', {
+        schema: {
+          color: { type: 'string', default: BELT_COLOR },
+          buckleColor: { type: 'string', default: BELT_BUCKLE_COLOR },
+        },
+
+        init: function () {
+          var el = this.el;
+
+          var ring = document.createElement('a-torus');
+          ring.setAttribute('radius', GHOST_RADIUS);
+          ring.setAttribute('radius-tubular', BELT_TUBE_RADIUS);
+          ring.setAttribute('color', this.data.color);
+          ring.setAttribute('rotation', '90 0 0');
+          el.appendChild(ring);
+
+          var buckle = document.createElement('a-box');
+          buckle.setAttribute('width', 0.05);
+          buckle.setAttribute('height', 0.04);
+          buckle.setAttribute('depth', 0.015);
+          buckle.setAttribute('color', this.data.buckleColor);
+          buckle.setAttribute('position', { x: 0, y: 0, z: -GHOST_RADIUS }); // -Z is the front, same convention as everything else
+          el.appendChild(buckle);
+        },
+      });
+
+      var beltHipSerial = 0; // unique ids for each belt's own hip slots — see the id comment inside belt's init
+
+      // ==============================================================
+      // COMPONENT: belt
+      // What a belt DOES: carries its own two hip anchor-slots (small,
+      // pistol-sized, at ±HIP_SIDE_OFFSET — the exact spot the old
+      // standalone hip-left/hip-right body-anchors used to sit) so that
+      // holstering is still "release near your hip" no matter which
+      // belt is currently worn.
+      //
+      // The waist anchor it's worn on (see markup) has anchor-slot's
+      // `swap` flag set, so putting a new belt on doesn't require
+      // taking the old one off by hand first — holsterable.occupySlot
+      // evicts it automatically. That alone would just drop your guns
+      // on the floor along with the belt, though, which is why this
+      // listens for the 'displaced' event occupySlot fires right
+      // before evicting: the OLD belt gets first refusal to hand its
+      // hip contents on to the NEW one, matched left-to-left and
+      // right-to-right by build order.
+      // ==============================================================
+      registerComponent('belt', {
+        schema: {
+          stockHips: { type: 'boolean', default: false }, // only the belt that starts already worn needs its hips pre-stocked with pistols — see markup
+        },
+
+        init: function () {
+          var el = this.el;
+          this.hipSlots = [];
+
+          [-1, 1].forEach(function (side) {
+            var slot = document.createElement('a-entity');
+            slot.setAttribute('id', 'belt-hip-' + beltHipSerial++); // stocked/makeItem require a real id to build into — an easy silent no-op to miss, see makeItem's own early-out
+            slot.classList.add('anchor-slot');
+            slot.setAttribute('anchor-slot', 'size: small');
+            slot.setAttribute('position', { x: side * HIP_SIDE_OFFSET, y: 0, z: 0 });
+            if (this.data.stockHips) slot.setAttribute('stocked', 'item: pistol');
+            el.appendChild(slot);
+            this.hipSlots.push(slot);
+          }, this);
+
+          this.onDisplaced = this.onDisplaced.bind(this);
+          el.addEventListener('displaced', this.onDisplaced);
+        },
+
+        remove: function () {
+          this.el.removeEventListener('displaced', this.onDisplaced);
+        },
+
+        onDisplaced: function (evt) {
+          var newBelt = evt.detail.by.components.belt;
+          if (!newBelt) return; // whatever replaced this wasn't a belt (shouldn't happen — only belts fit the waist anchor's medium size the way a belt does — but nothing here should assume it)
+
+          this.hipSlots.forEach(function (oldSlotEl, i) {
+            var newSlotEl = newBelt.hipSlots[i];
+            var oldSlotComp = oldSlotEl.components['anchor-slot'];
+            if (!oldSlotComp || !newSlotEl) return;
+
+            // Slice a copy first — vacateSlot (called via occupySlot's
+            // own swap handling, since the new hip slot isn't a swap
+            // slot itself but IS currently empty) mutates the array
+            // we'd otherwise be iterating.
+            oldSlotComp.occupants.slice().forEach(function (occupant) {
+              occupant.vacateSlot();
+              occupant.state = 'holstered';
+              occupant.snapTo(newSlotEl.object3D, occupant.data.holsterPosition, occupant.data.holsterRotation);
+              occupant.occupySlot(newSlotEl);
+            });
+          });
         },
       });
 
@@ -3293,6 +3585,7 @@
           idleHidden: { type: 'boolean', default: false }, // hide the indicator entirely until a compatible item is on the way in
           indicatorScale: { type: 'number', default: 1 }, // shrink the indicator sphere — a slot right in front of your eyes wants to be a dot, not a ball
           revealDistance: { type: 'number', default: 0 }, // with idleHidden, how close a compatible item must be before the indicator appears at all (0 = the slot's usual approach radius)
+          swap: { type: 'boolean', default: false }, // a full slot normally just isn't a candidate (see holsterable.findNearestSlot) — a swap slot stays one, and holsterable.occupySlot evicts whatever was there instead of refusing the newcomer. Built for the waist anchor (see `belt`), so bringing a new belt to an already-worn one replaces it rather than needing it taken off by hand first.
         },
 
         init: function () {
@@ -3331,7 +3624,10 @@
         },
 
         tick: function (time, dt) {
-          if (this.isFull()) {
+          // A swap slot stays "live" even while full — the indicator
+          // should still glow as a replacement approaches, the same
+          // invitation an empty slot gives.
+          if (this.isFull() && !this.data.swap) {
             this.sphere.setAttribute('visible', false);
             this.wasInRange = false;
             this.clickElapsed = null;
@@ -4087,8 +4383,32 @@
           this.currentSlotEl = slotEl;
           var slotComp = slotEl.components['anchor-slot'];
           if (!slotComp) return;
+
+          // A swap slot only ever holds one thing. Whatever's already
+          // here gets a chance to react first (see `belt`'s own
+          // 'displaced' listener, which is how a belt hands its hip
+          // contents on to whatever's replacing it) and then falls —
+          // same as letting go of anything else, not a special vanish.
+          if (slotComp.data.swap) {
+            slotComp.occupants.slice().forEach(function (other) {
+              if (other === this) return;
+              other.el.emit('displaced', { by: this.el });
+              other.evict();
+            }, this);
+          }
+
           if (slotComp.occupants.indexOf(this) === -1) slotComp.occupants.push(this);
           slotComp.reflow();
+        },
+
+        // Forced out of a slot by something else claiming it (see
+        // occupySlot's swap handling) — not a throw, not a drop you
+        // chose, just no longer holstered. Same end state either way:
+        // it falls, and is generously catchable on the way down like
+        // anything else in this state.
+        evict: function () {
+          this.vacateSlot();
+          this.startFalling();
         },
 
         vacateSlot: function () {
@@ -4156,7 +4476,7 @@
             var slotEl = slots[i];
             var slotComp = slotEl.components['anchor-slot'];
             if (!slotComp) continue;
-            if (slotComp.isFull() && slotComp.occupants.indexOf(this) === -1) continue;
+            if (slotComp.isFull() && slotComp.occupants.indexOf(this) === -1 && !slotComp.data.swap) continue;
 
             var slotRank = SLOT_SIZE_RANK[slotComp.data.size];
             if (slotRank < itemRank) continue;
@@ -4383,6 +4703,69 @@
         el.setAttribute('ignition-source', { tipSelector: '.muzzle' });
         el.setAttribute('boxy-gun', '');
       });
+
+      // Belts. `keep: true` because a belt is equipment, not loot — the
+      // same reasoning the nozzle gets (see defineItem's own comment):
+      // it doesn't perish lying on the floor after being swapped out,
+      // it just sits there until picked back up.
+      //
+      // stockHips is true only for belt-classic, and only because it's
+      // the one named directly in the waist anchor's own `stocked` —
+      // see markup. Wardrobe spares start empty; swapping one in is
+      // what fills its hips, via `belt`'s own 'displaced' handling.
+      function buildBelt(el, slotId, color, buckleColor, stockHips) {
+        el.setAttribute('holsterable', {
+          holsterSelector: '#' + slotId,
+          itemSize: 'medium',
+          grabRadius: 0.22,
+        });
+        el.setAttribute('boxy-belt', { color: color, buckleColor: buckleColor });
+        el.setAttribute('belt', { stockHips: !!stockHips });
+      }
+
+      defineItem(
+        'belt-classic',
+        function (el, slotId) {
+          buildBelt(el, slotId, BELT_COLOR, BELT_BUCKLE_COLOR, true);
+        },
+        { keep: true }
+      );
+
+      defineItem(
+        'belt-silver',
+        function (el, slotId) {
+          buildBelt(el, slotId, '#2b2b2f', '#c9d3d8');
+        },
+        { keep: true }
+      );
+
+      // A wardrobe hat variant. Same holsterable numbers as the
+      // original hat declared directly in markup (head-anchor's own
+      // holsterPosition/heldPosition/comOffset have to agree with
+      // boxy-hat's innerRadius offset — see that component's own
+      // comment) — just built through the item-maker path instead so a
+      // wardrobe peg can produce copies, with a different felt/band.
+      function buildHat(el, slotId, felt, band) {
+        el.setAttribute('holsterable', {
+          holsterSelector: '#' + slotId,
+          itemSize: 'medium',
+          holsterRotation: { x: 0, y: 0, z: 0 },
+          heldRotation: { x: 90, y: 0, z: 0 },
+          holsterPosition: { x: 0.11, y: 0, z: 0 },
+          heldPosition: { x: -0.1, y: 0, z: 0 },
+          grabRadius: 0.35,
+          comOffset: { x: 0.11, y: -0.065, z: 0 },
+        });
+        el.setAttribute('boxy-hat', { felt: felt, band: band });
+      }
+
+      defineItem(
+        'hat-tan',
+        function (el, slotId) {
+          buildHat(el, slotId, '#c9a86a', '#6b4a2f');
+        },
+        { keep: true }
+      );
 
       // The same declaration with different numbers, which is the
       // point of firearm having a schema at all: a pistol is
@@ -8833,6 +9216,7 @@
         schema: {
           spinMs: { type: 'number', default: BAR_SPIN_MS },
           faces: { type: 'number', default: 2 },
+          axis: { type: 'string', default: 'y' }, // 'y' | 'x' | 'z' — which local axis it turns on. The bar spins on y (a horizontal turn); the wardrobe flips on x (properly upside-down) — see boxy-wardrobe.
         },
 
         init: function () {
@@ -8861,7 +9245,7 @@
           if (this.spinning()) return;
 
           this.face = (this.face + 1) % this.data.faces;
-          this.fromAngle = this.el.object3D.rotation.y;
+          this.fromAngle = this.el.object3D.rotation[this.data.axis];
           this.toAngle = this.fromAngle + (Math.PI * 2) / this.data.faces;
           this.elapsed = 0;
           playRumble(this.data.spinMs);
@@ -8878,8 +9262,11 @@
           // Pools are moved by the same delta and BEFORE the drum
           // turns, so the "is this puddle on my counter" test below
           // runs against the frame the puddle is still standing in.
-          this.ridePools(angle - this.el.object3D.rotation.y);
-          this.el.object3D.rotation.y = angle;
+          // ridePools only ever actually moves anything for a y-axis
+          // turntable (see its own comment) — a harmless no-op for the
+          // wardrobe's x-axis flip, which owns no HARD_SURFACES.
+          this.ridePools(angle - this.el.object3D.rotation[this.data.axis]);
+          this.el.object3D.rotation[this.data.axis] = angle;
 
           if (!this.spinning()) playClunk();
         },
