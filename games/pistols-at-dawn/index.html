@@ -381,19 +381,20 @@
       var HIP_SIDE_OFFSET = 0.18; // meters, left/right from body centerline
       var BACK_HEIGHT = 1.3; // meters off the ground — the bandolier's anchor sits higher up the torso than the hips
       var BACK_DEPTH_OFFSET = 0.3; // meters behind the body centerline — the headset sits at the FRONT of your head, so a small offset puts the bandolier inside your chest and makes the shotgun nearly impossible to reach
-      // GHOST BODY — replaces the idea of a "snowman" head+torso. A
-      // player is a simple ghost: a rounded dome tapering to a point,
-      // nested directly under the camera so it tracks full head
-      // rotation like the hat does (not yaw-only like the hips/back —
-      // there's no separate torso to stay upright independently of
-      // your head any more, it's all one shape). GHOST_FRONT_Z is the
-      // key number: the shape's own front surface sits that far BEHIND
-      // the camera (+Z, since -Z is forward), just enough to clear the
-      // near clip plane, so "the eyes are where the headset is" without
-      // actually poking geometry into your own forward view.
-      var GHOST_HEIGHT = 0.5; // meters, top of the dome to the tapered tail tip — half an average person's height
-      var GHOST_RADIUS = 0.16; // meters — width at the shoulders/top, and the dome's own radius
-      var GHOST_TAIL_RADIUS = 0.015; // meters — width at the bottom tip, near zero so the tail reads as fading to a point
+      // GHOST BODY — a proper Pac-Man-style ghost: a dome cap on a
+      // constant-radius "pill" body (not tapering — the first version
+      // was a cone and came out looking like a dunce cap, and too
+      // short besides), finished with a wavy skirt of points around
+      // the bottom rim. Nested directly under the camera so it tracks
+      // full head rotation like the hat does (not yaw-only like the
+      // hips/back — there's no separate torso to stay upright
+      // independently of your head any more, it's all one shape).
+      // GHOST_FRONT_Z is the key number: the shape's own front surface
+      // sits that far BEHIND the camera (+Z, since -Z is forward), just
+      // enough to clear the near clip plane, so "the eyes are where the
+      // headset is" without actually poking geometry into your own
+      // forward view.
+      var GHOST_RADIUS = 0.16; // meters — the pill's constant radius, and the dome's own radius
       var GHOST_TOP_Y = 0.1; // meters above the camera — matches head-anchor, so the dome just intersects the hat
       var GHOST_FRONT_Z = 0.03; // meters behind the camera that the front surface sits — see comment above
       var GHOST_COLOR = '#f5f3ee';
@@ -403,10 +404,19 @@
       var EYE_SPACING = 0.045; // meters, left/right from center
       var EYE_DROP = 0.05; // meters below GHOST_TOP_Y
 
-      // BELT — just for judging fit right now (built inline in
-      // boxy-ghost below), ahead of belts becoming real swappable
-      // equipment later.
-      var BELT_DROP = 0.25; // meters below GHOST_TOP_Y — how far down the taper it sits
+      // BODY LENGTH + BELT — CYLINDER_HEIGHT is the one number doing
+      // double duty: it's how far the straight pill body runs before
+      // the skirt starts, AND (since the belt sits right at that seam)
+      // how far below GHOST_TOP_Y the belt lands. 0.8m puts it at
+      // roughly world 0.9m for an average ~1.6-1.7m standing eye
+      // height — meant to land close to HIP_HEIGHT above, so the belt
+      // reads as roughly where the existing hip holsters already are,
+      // not floating at some unrelated height. Just for judging fit
+      // right now (built inline in boxy-ghost below), ahead of belts
+      // becoming real swappable equipment later.
+      var CYLINDER_HEIGHT = 0.8;
+      var SKIRT_HEIGHT = 0.2; // meters the wavy points hang below the cylinder's bottom rim
+      var SKIRT_TEETH = 6;
       var BELT_TUBE_RADIUS = 0.012;
       var BELT_COLOR = '#4a3220'; // matches the hip holster leather
       var BELT_BUCKLE_COLOR = '#c9962c'; // matches other brass trim (e.g. boxy-sniper's trigger)
@@ -414,11 +424,14 @@
       // MIRROR — a plain scope pointed at the player, per THE SCOPE's
       // own comment that it's generic enough to work as one. No
       // locomotion in this prototype, so it has to sit within a lean
-      // of the origin like everything else reachable (see BAR_NEAR_EDGE_Z).
+      // of the origin like everything else reachable (see BAR_NEAR_EDGE_Z)
+      // — closer even than the bar itself, since the first placement
+      // (off past the bar's far edge) turned out too far to comfortably
+      // reach without being able to walk to it.
       var MIRROR_RADIUS = 0.35;
       var MIRROR_FOV = 70; // degrees — a normal view, not a scope's zoom
-      var MIRROR_WAKE = 1.1; // meters — generous compared to a rifle scope's eyepiece distance, since you're meant to see your whole reflection, not press your eye to the glass
-      var MIRROR_POSITION = { x: 2.0, y: 1.3, z: 0.6 };
+      var MIRROR_WAKE = 0.8; // meters — still gated (per request — "even if it only appears when I'm close"), just close enough that leaning in from near spawn reaches it
+      var MIRROR_POSITION = { x: 0.85, y: 1.3, z: 0.3 };
       var GRAVITY = 9.8; // real-world value, used for the drop/tumble simulation
       var DANGLE_GRAVITY_TORQUE = 2.5; // how insistently a dangling gun swings back to hanging straight down
       var DANGLE_INERTIA_SCALE = 6; // how strongly flicking your hand imparts spin — crank this up further if it still feels weak
@@ -3025,13 +3038,11 @@
       // ==============================================================
       // COMPONENT: boxy-ghost
       // The player's own body: Pac-Man-ghost simple, on purpose (see
-      // the GHOST BODY constants above for the reasoning behind the
-      // exact numbers). A dome, a cone tapering to a point for the
-      // "sheet," two eyes, and a belt riding the taper at BELT_DROP —
-      // all built on one central vertical axis so the belt's ring
-      // radius can be derived from the cone's own taper instead of
-      // being a second hand-tuned number that could drift out of sync
-      // with it.
+      // the GHOST BODY / BODY LENGTH + BELT constants above for the
+      // reasoning behind the exact numbers). A dome, a constant-radius
+      // "pill" body (not tapering — see those comments for why),
+      // two eyes, a belt riding the pill/skirt seam, and a wavy skirt
+      // of pointed teeth around the bottom rim.
       //
       // Nested directly under the camera in markup (like the hat, not
       // like the yaw-only-tracked hip/back anchors) so it inherits full
@@ -3042,6 +3053,7 @@
         init: function () {
           var el = this.el;
           var axisZ = GHOST_FRONT_Z + GHOST_RADIUS; // the shape's central vertical axis — every piece below is positioned relative to this, not to GHOST_FRONT_Z directly, so they stay concentric
+          var beltY = GHOST_TOP_Y - CYLINDER_HEIGHT; // the pill/skirt seam
 
           function primitive(tag, attrs) {
             var e = document.createElement(tag);
@@ -3050,8 +3062,8 @@
             return e;
           }
 
-          // The dome — same radius as the cone's top rim so it caps it
-          // without a visible step.
+          // The dome — same radius as the pill so it caps it without a
+          // visible step.
           primitive('a-sphere', {
             radius: GHOST_RADIUS,
             color: GHOST_COLOR,
@@ -3060,17 +3072,15 @@
             position: { x: 0, y: GHOST_TOP_Y, z: axisZ },
           });
 
-          // The tapering "sheet." radiusBottom is near-zero rather than
-          // exactly zero — a true zero radius has produced degenerate/
-          // flickering tips on cone geometry before now.
-          primitive('a-cone', {
-            'radius-top': GHOST_RADIUS,
-            'radius-bottom': GHOST_TAIL_RADIUS,
-            height: GHOST_HEIGHT,
+          // The straight "pill" body, constant radius all the way down
+          // to the skirt seam.
+          primitive('a-cylinder', {
+            radius: GHOST_RADIUS,
+            height: CYLINDER_HEIGHT,
             color: GHOST_COLOR,
             opacity: GHOST_OPACITY,
             transparent: true,
-            position: { x: 0, y: GHOST_TOP_Y - GHOST_HEIGHT / 2, z: axisZ },
+            position: { x: 0, y: GHOST_TOP_Y - CYLINDER_HEIGHT / 2, z: axisZ },
           });
 
           // Eyes sit right at the front clearance plane, a hair ahead
@@ -3083,19 +3093,14 @@
             });
           });
 
-          // The belt: a ring on the SAME axis as the dome/cone, sized
-          // to the cone's actual radius at BELT_DROP down from the top
-          // — so if GHOST_RADIUS/GHOST_TAIL_RADIUS/GHOST_HEIGHT get
-          // retuned, the belt keeps fitting instead of floating loose
-          // or cutting into the taper.
-          var beltFraction = BELT_DROP / GHOST_HEIGHT;
-          var beltRadius = GHOST_RADIUS + (GHOST_TAIL_RADIUS - GHOST_RADIUS) * beltFraction;
+          // The belt: a ring at the pill/skirt seam, same radius as the
+          // pill itself (it's constant now, no taper to chase).
           primitive('a-torus', {
-            radius: beltRadius,
+            radius: GHOST_RADIUS,
             'radius-tubular': BELT_TUBE_RADIUS,
             color: BELT_COLOR,
             rotation: '90 0 0',
-            position: { x: 0, y: GHOST_TOP_Y - BELT_DROP, z: axisZ },
+            position: { x: 0, y: beltY, z: axisZ },
           });
 
           // A big stupid buckle, per request.
@@ -3104,8 +3109,34 @@
             height: 0.04,
             depth: 0.015,
             color: BELT_BUCKLE_COLOR,
-            position: { x: 0, y: GHOST_TOP_Y - BELT_DROP, z: axisZ - beltRadius },
+            position: { x: 0, y: beltY, z: axisZ - GHOST_RADIUS },
           });
+
+          // The wavy skirt: SKIRT_TEETH small cones fanned around the
+          // bottom rim, each tapering to a point SKIRT_HEIGHT below the
+          // seam. a-cone's radiusTop sits at its own local +Y and
+          // radiusBottom at -Y, so radiusBottom: 0 alone gives a
+          // downward-pointing tooth with no extra rotation needed.
+          // toothRadius is sized a bit past exact edge-to-edge spacing
+          // so adjacent teeth overlap slightly rather than leaving gaps.
+          var toothChord = GHOST_RADIUS * Math.sin(Math.PI / SKIRT_TEETH);
+          var toothRadius = toothChord * 1.3;
+          for (var i = 0; i < SKIRT_TEETH; i++) {
+            var angle = (i / SKIRT_TEETH) * Math.PI * 2;
+            primitive('a-cone', {
+              'radius-top': toothRadius,
+              'radius-bottom': 0,
+              height: SKIRT_HEIGHT,
+              color: GHOST_COLOR,
+              opacity: GHOST_OPACITY,
+              transparent: true,
+              position: {
+                x: Math.sin(angle) * GHOST_RADIUS,
+                y: beltY - SKIRT_HEIGHT / 2,
+                z: axisZ + Math.cos(angle) * GHOST_RADIUS,
+              },
+            });
+          }
         },
       });
 
