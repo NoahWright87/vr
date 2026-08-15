@@ -119,20 +119,15 @@
           position="0 -0.07 -0.08"
         ></a-entity>
 
-        <!-- The player's own head, snowman-simple: a plain sphere,
-             nested here so it inherits full head rotation like the hat
-             does. A-Frame's material defaults to side:front (only
-             outward faces render), and the camera sits inside this
-             sphere's radius, so the inside is never drawn — you never
-             see your own head, only something looking back at you
-             (eventually the mirror) will. Paired with #chest-anchor's
-             torso for the rest of the "body." -->
-        <a-sphere
-          id="player-head"
-          radius="0.11"
-          color="#d9a066"
-          position="0 -0.05 0.03"
-        ></a-sphere>
+        <!-- The player's own body: a simple ghost (see boxy-ghost and
+             the GHOST BODY constants). Nested here, like the hat, so it
+             inherits full head rotation. Unlike the hat, this one is
+             built so its front surface sits just behind the camera
+             rather than fully enclosing it (GHOST_FRONT_Z) — nothing
+             of it is ever in front of you looking forward, so there's
+             nothing to see yourself, which is the entire reason
+             #mirror exists. -->
+        <a-entity id="player-ghost" boxy-ghost></a-entity>
       </a-camera>
 
       <!-- ============================================================
@@ -172,17 +167,16 @@
 
       <!-- ============================================================
            BODY ANCHORS
-           Four invisible anchor points that track the player's body:
-           two hips (small slots — pistol-sized), a back-center
-           bandolier point (large — shotgun-sized), and the chest.
-           There's no real body tracking on a Quest, so body-anchor
-           approximates all four from the headset: position and yaw
-           (turning left/right) only, deliberately ignoring pitch/roll
-           so looking up or tilting your head doesn't drag them around.
-           Each one also builds its own bit of "shitty" flavor geometry
-           (a holster pouch, a diagonal strap, the torso cylinder) so
-           it's obvious where things go — see body-anchor's own
-           comment.
+           Three invisible anchor points that track the player's body:
+           two hips (small slots — pistol-sized) and a back-center
+           bandolier point (large — shotgun-sized). There's no real
+           body tracking on a Quest, so body-anchor approximates all
+           three from the headset: position and yaw (turning left/
+           right) only, deliberately ignoring pitch/roll so looking up
+           or tilting your head doesn't drag them around. Each one also
+           builds its own bit of "shitty" flavor geometry (a holster
+           pouch, a diagonal strap) so it's obvious where things go —
+           see body-anchor's own comment.
 
            anchor-slot is the generic snap-target component (see its
            own comment): any ".grabbable" item whose itemSize fits a
@@ -190,22 +184,18 @@
            it — this is NOT restricted to "guns go in holsters." A
            slot's translucent sphere brightens as a compatible carried
            item approaches, with a quick "click" bounce right as it
-           enters snap range. The chest anchor doesn't have anchor-slot
-           on it yet — it's just the torso's position for now, ahead of
-           a real wardrobe/equipment pass.
+           enters snap range.
 
-           The three slotted ones are stocked at scene load and never
-           again (see STOCK AND PERISHING): a pistol on each hip and a
-           shotgun on your back when you start, and after that they're
-           pockets. What's in them is whatever you put there. The
-           armoury's pegs carry the same attribute with a refill on it,
-           because an armoury is where guns come from and a hip holster
-           isn't.
+           All three are stocked at scene load and never again (see
+           STOCK AND PERISHING): a pistol on each hip and a shotgun on
+           your back when you start, and after that they're pockets.
+           What's in them is whatever you put there. The armoury's pegs
+           carry the same attribute with a refill on it, because an
+           armoury is where guns come from and a hip holster isn't.
       ============================================================ -->
       <a-entity id="hip-left" class="anchor-slot" body-anchor="side: left" anchor-slot="size: small" stocked="item: pistol"></a-entity>
       <a-entity id="hip-right" class="anchor-slot" body-anchor="side: right" anchor-slot="size: small" stocked="item: pistol"></a-entity>
       <a-entity id="back-anchor" class="anchor-slot" body-anchor="side: back" anchor-slot="size: large" stocked="item: shotgun"></a-entity>
-      <a-entity id="chest-anchor" body-anchor="side: chest"></a-entity>
 
       <!-- ============================================================
            THE HAT
@@ -273,6 +263,20 @@
       <a-entity saloon-bar></a-entity>
       <a-entity id="vices" vice-meter></a-entity>
       <a-entity world-systems></a-entity>
+
+      <!-- ============================================================
+           THE MIRROR
+           Just beside the bar, within the same "lean away from the
+           origin" reach everything else here uses — there's no
+           locomotion, so anything you're meant to walk up to has to
+           already be close. It's a plain `scope` (see its own comment
+           about being generic enough to work as one) pointed at the
+           player instead of down a barrel: a normal FOV instead of a
+           zoom, and a wake distance generous enough to see your whole
+           reflection rather than needing your eye pressed to the
+           glass. See boxy-mirror and the MIRROR constants.
+      ============================================================ -->
+      <a-entity id="mirror" boxy-mirror></a-entity>
 
       <!-- ============================================================
            TARGET GALLERY
@@ -377,10 +381,44 @@
       var HIP_SIDE_OFFSET = 0.18; // meters, left/right from body centerline
       var BACK_HEIGHT = 1.3; // meters off the ground — the bandolier's anchor sits higher up the torso than the hips
       var BACK_DEPTH_OFFSET = 0.3; // meters behind the body centerline — the headset sits at the FRONT of your head, so a small offset puts the bandolier inside your chest and makes the shotgun nearly impossible to reach
-      var CHEST_HEIGHT = 1.15; // meters off the ground — roughly torso-center, between the hips and the shoulders
-      var TORSO_RADIUS = 0.22; // meters — the "snowman" body's torso cylinder
-      var TORSO_HEIGHT = 0.55; // meters — spans from about hip height up to about shoulder height
-      var SHIRT_COLOR = '#3c5a73'; // placeholder flat color until real shirt textures exist — see the SHIRT TEXTURES comment near player-body markup
+      // GHOST BODY — replaces the idea of a "snowman" head+torso. A
+      // player is a simple ghost: a rounded dome tapering to a point,
+      // nested directly under the camera so it tracks full head
+      // rotation like the hat does (not yaw-only like the hips/back —
+      // there's no separate torso to stay upright independently of
+      // your head any more, it's all one shape). GHOST_FRONT_Z is the
+      // key number: the shape's own front surface sits that far BEHIND
+      // the camera (+Z, since -Z is forward), just enough to clear the
+      // near clip plane, so "the eyes are where the headset is" without
+      // actually poking geometry into your own forward view.
+      var GHOST_HEIGHT = 0.5; // meters, top of the dome to the tapered tail tip — half an average person's height
+      var GHOST_RADIUS = 0.16; // meters — width at the shoulders/top, and the dome's own radius
+      var GHOST_TAIL_RADIUS = 0.015; // meters — width at the bottom tip, near zero so the tail reads as fading to a point
+      var GHOST_TOP_Y = 0.1; // meters above the camera — matches head-anchor, so the dome just intersects the hat
+      var GHOST_FRONT_Z = 0.03; // meters behind the camera that the front surface sits — see comment above
+      var GHOST_COLOR = '#f5f3ee';
+      var GHOST_OPACITY = 0.88;
+      var EYE_COLOR = '#1a1a1a';
+      var EYE_RADIUS = 0.02;
+      var EYE_SPACING = 0.045; // meters, left/right from center
+      var EYE_DROP = 0.05; // meters below GHOST_TOP_Y
+
+      // BELT — just for judging fit right now (built inline in
+      // boxy-ghost below), ahead of belts becoming real swappable
+      // equipment later.
+      var BELT_DROP = 0.25; // meters below GHOST_TOP_Y — how far down the taper it sits
+      var BELT_TUBE_RADIUS = 0.012;
+      var BELT_COLOR = '#4a3220'; // matches the hip holster leather
+      var BELT_BUCKLE_COLOR = '#c9962c'; // matches other brass trim (e.g. boxy-sniper's trigger)
+
+      // MIRROR — a plain scope pointed at the player, per THE SCOPE's
+      // own comment that it's generic enough to work as one. No
+      // locomotion in this prototype, so it has to sit within a lean
+      // of the origin like everything else reachable (see BAR_NEAR_EDGE_Z).
+      var MIRROR_RADIUS = 0.35;
+      var MIRROR_FOV = 70; // degrees — a normal view, not a scope's zoom
+      var MIRROR_WAKE = 1.1; // meters — generous compared to a rifle scope's eyepiece distance, since you're meant to see your whole reflection, not press your eye to the glass
+      var MIRROR_POSITION = { x: 2.0, y: 1.3, z: 0.6 };
       var GRAVITY = 9.8; // real-world value, used for the drop/tumble simulation
       var DANGLE_GRAVITY_TORQUE = 2.5; // how insistently a dangling gun swings back to hanging straight down
       var DANGLE_INERTIA_SCALE = 6; // how strongly flicking your hand imparts spin — crank this up further if it still feels weak
@@ -2985,23 +3023,149 @@
       });
 
       // ==============================================================
+      // COMPONENT: boxy-ghost
+      // The player's own body: Pac-Man-ghost simple, on purpose (see
+      // the GHOST BODY constants above for the reasoning behind the
+      // exact numbers). A dome, a cone tapering to a point for the
+      // "sheet," two eyes, and a belt riding the taper at BELT_DROP —
+      // all built on one central vertical axis so the belt's ring
+      // radius can be derived from the cone's own taper instead of
+      // being a second hand-tuned number that could drift out of sync
+      // with it.
+      //
+      // Nested directly under the camera in markup (like the hat, not
+      // like the yaw-only-tracked hip/back anchors) so it inherits full
+      // head rotation for free — there's no separate torso to keep
+      // upright independently of your head any more.
+      // ==============================================================
+      registerComponent('boxy-ghost', {
+        init: function () {
+          var el = this.el;
+          var axisZ = GHOST_FRONT_Z + GHOST_RADIUS; // the shape's central vertical axis — every piece below is positioned relative to this, not to GHOST_FRONT_Z directly, so they stay concentric
+
+          function primitive(tag, attrs) {
+            var e = document.createElement(tag);
+            for (var key in attrs) e.setAttribute(key, attrs[key]);
+            el.appendChild(e);
+            return e;
+          }
+
+          // The dome — same radius as the cone's top rim so it caps it
+          // without a visible step.
+          primitive('a-sphere', {
+            radius: GHOST_RADIUS,
+            color: GHOST_COLOR,
+            opacity: GHOST_OPACITY,
+            transparent: true,
+            position: { x: 0, y: GHOST_TOP_Y, z: axisZ },
+          });
+
+          // The tapering "sheet." radiusBottom is near-zero rather than
+          // exactly zero — a true zero radius has produced degenerate/
+          // flickering tips on cone geometry before now.
+          primitive('a-cone', {
+            'radius-top': GHOST_RADIUS,
+            'radius-bottom': GHOST_TAIL_RADIUS,
+            height: GHOST_HEIGHT,
+            color: GHOST_COLOR,
+            opacity: GHOST_OPACITY,
+            transparent: true,
+            position: { x: 0, y: GHOST_TOP_Y - GHOST_HEIGHT / 2, z: axisZ },
+          });
+
+          // Eyes sit right at the front clearance plane, a hair ahead
+          // of the dome's own surface so they don't z-fight with it.
+          [-1, 1].forEach(function (side) {
+            primitive('a-sphere', {
+              radius: EYE_RADIUS,
+              color: EYE_COLOR,
+              position: { x: side * EYE_SPACING, y: GHOST_TOP_Y - EYE_DROP, z: GHOST_FRONT_Z - 0.01 },
+            });
+          });
+
+          // The belt: a ring on the SAME axis as the dome/cone, sized
+          // to the cone's actual radius at BELT_DROP down from the top
+          // — so if GHOST_RADIUS/GHOST_TAIL_RADIUS/GHOST_HEIGHT get
+          // retuned, the belt keeps fitting instead of floating loose
+          // or cutting into the taper.
+          var beltFraction = BELT_DROP / GHOST_HEIGHT;
+          var beltRadius = GHOST_RADIUS + (GHOST_TAIL_RADIUS - GHOST_RADIUS) * beltFraction;
+          primitive('a-torus', {
+            radius: beltRadius,
+            'radius-tubular': BELT_TUBE_RADIUS,
+            color: BELT_COLOR,
+            rotation: '90 0 0',
+            position: { x: 0, y: GHOST_TOP_Y - BELT_DROP, z: axisZ },
+          });
+
+          // A big stupid buckle, per request.
+          primitive('a-box', {
+            width: 0.05,
+            height: 0.04,
+            depth: 0.015,
+            color: BELT_BUCKLE_COLOR,
+            position: { x: 0, y: GHOST_TOP_Y - BELT_DROP, z: axisZ - beltRadius },
+          });
+        },
+      });
+
+      // ==============================================================
+      // COMPONENT: boxy-mirror
+      // Static room furniture, not a holsterable item — a frame built
+      // here, plus the `scope` component doing the actual reflecting
+      // (see its own comment: "it would work just as well on... a
+      // mirror behind the bar"). Reused completely as-is, just with a
+      // normal FOV and a much larger wake distance instead of a rifle
+      // scope's zoom/eyepiece numbers — see the MIRROR constants.
+      // ==============================================================
+      registerComponent('boxy-mirror', {
+        init: function () {
+          var el = this.el;
+          el.setAttribute('position', MIRROR_POSITION);
+          el.setAttribute('scope', {
+            fov: MIRROR_FOV,
+            radius: MIRROR_RADIUS,
+            wake: MIRROR_WAKE,
+            offset: { x: 0, y: 0, z: 0 },
+            objective: 0, // a mirror's glass has no barrel/tube in front of it to clear, unlike a rifle scope's default
+          });
+
+          // A ring, not a disc — the glass sits almost exactly at
+          // z:0 (see `scope`'s own offset.z + 0.005), so anything
+          // solid there would just cover it. A ring's hollow center
+          // leaves the glass fully visible while still reading as a
+          // frame around it. Set as object-form `geometry`/`material`
+          // rather than the <a-ring> primitive's own top-level
+          // attributes — unlike a-cone's radius-top/radius-bottom,
+          // a-ring's primitive mapping doesn't expose radiusInner/
+          // radiusOuter, so setting them directly as HTML-style
+          // attributes silently no-ops.
+          var frame = document.createElement('a-entity');
+          frame.setAttribute('geometry', { primitive: 'ring', radiusInner: MIRROR_RADIUS, radiusOuter: MIRROR_RADIUS + 0.04 });
+          frame.setAttribute('material', { color: BELT_BUCKLE_COLOR, shader: 'flat', side: 'double' });
+          frame.setAttribute('position', { x: 0, y: 0, z: 0.01 });
+          el.appendChild(frame);
+        },
+      });
+
+      // ==============================================================
       // COMPONENT: body-anchor
       // Drives an invisible entity to sit at roughly a fixed spot on
       // the player's body, following the headset's horizontal position
       // and yaw only (see the comment above the markup for why
       // pitch/roll are excluded) — there's no real body tracking on a
-      // Quest, so this is an approximation for all four spots it's used
-      // for: the two hips, the back-center bandolier point, and the
-      // chest. Also builds each spot's own bit of simple "boxy" flavor
+      // Quest, so this is an approximation for all three spots it's
+      // used for: the two hips and the back-center bandolier point.
+      // Also builds each spot's own bit of simple "boxy" flavor
       // geometry (a holster pouch for the hips, a diagonal strap for
-      // the back, the torso cylinder for the chest) so it's visually
-      // obvious where things are meant to go — purely cosmetic, no
-      // bearing on the actual anchor-slot component (added separately
-      // in markup) that does the real snapping work.
+      // the back) so it's visually obvious where things are meant to
+      // go — purely cosmetic, no bearing on the actual anchor-slot
+      // component (added separately in markup) that does the real
+      // snapping work.
       // ==============================================================
       registerComponent('body-anchor', {
         schema: {
-          side: { type: 'string', default: 'right' }, // 'left' | 'right' | 'back' | 'chest'
+          side: { type: 'string', default: 'right' }, // 'left' | 'right' | 'back'
         },
 
         init: function () {
@@ -3017,9 +3181,6 @@
           } else if (this.data.side === 'right') {
             this.localOffset = new THREE.Vector3(HIP_SIDE_OFFSET, 0, 0);
             this.height = HIP_HEIGHT;
-          } else if (this.data.side === 'chest') {
-            this.localOffset = new THREE.Vector3(0, 0, 0);
-            this.height = CHEST_HEIGHT;
           } else {
             this.localOffset = new THREE.Vector3(0, 0, BACK_DEPTH_OFFSET); // local +Z is behind the player
             this.height = BACK_HEIGHT;
@@ -3048,9 +3209,8 @@
 
         // Cheap, "shitty" flavor geometry — a leather-ish holster
         // pouch under each hip anchor, a diagonal bandolier strap
-        // across the back one, a snowman-simple torso cylinder for the
-        // chest. Estimated proportions, not measured against a real
-        // body; expect these to want eyes-on tuning.
+        // across the back one. Estimated proportions, not measured
+        // against a real body; expect these to want eyes-on tuning.
         buildProps: function () {
           if (this.data.side === 'back') {
             var strap = document.createElement('a-box');
@@ -3060,18 +3220,6 @@
             strap.setAttribute('color', '#5b3a29');
             strap.setAttribute('rotation', '0 0 35');
             this.el.appendChild(strap);
-          } else if (this.data.side === 'chest') {
-            // The whole player body, snowman-fidelity: this cylinder
-            // plus the head sphere nested under the camera (see
-            // markup). Flat SHIRT_COLOR for now — see the SHIRT
-            // TEXTURES note below for where a real texture would hook
-            // in once there's an image to load.
-            var torso = document.createElement('a-cylinder');
-            torso.setAttribute('id', 'player-torso');
-            torso.setAttribute('radius', TORSO_RADIUS);
-            torso.setAttribute('height', TORSO_HEIGHT);
-            torso.setAttribute('color', SHIRT_COLOR);
-            this.el.appendChild(torso);
           } else {
             var pouch = document.createElement('a-box');
             pouch.setAttribute('width', 0.09);
@@ -3083,19 +3231,6 @@
           }
         },
       });
-
-      // ==============================================================
-      // SHIRT TEXTURES (not wired up yet)
-      // The torso above is a flat color placeholder. To texture it with
-      // a real image later: drop the file in
-      // games/pistols-at-dawn/assets/shirts/, then load it with
-      // THREE.TextureLoader and set it as the `map` on
-      // document.querySelector('#player-torso').getObject3D('mesh')
-      // .material — same pattern as the scope's render-target texture
-      // above, just loaded from a file instead of rendered live. Kept
-      // as a comment rather than code because there's no image to
-      // point it at yet.
-      // ==============================================================
 
       // ==============================================================
       // COMPONENT: anchor-slot
@@ -7909,9 +8044,19 @@
           // No mirroring is needed. The scope camera and the eye behind
           // it both look along -Z, so their idea of "right" is the same
           // one.
+          //
+          // side: double, not the material default of front-only —
+          // a held scope is always approached from the +Z side (the
+          // shooter's eye behind the eyepiece), but a mirror sitting in
+          // the world is approached from whichever side the player
+          // happens to be standing on. Without this the glass renders
+          // correctly to the render target (proven by reading its
+          // pixels back) while being completely invisible on screen —
+          // simple back-face culling, not a rendering failure, but easy
+          // to chase as one.
           this.lensMesh = new THREE.Mesh(
             new THREE.CircleGeometry(this.data.radius, 20),
-            new THREE.MeshBasicMaterial({ map: this.target.texture })
+            new THREE.MeshBasicMaterial({ map: this.target.texture, side: THREE.DoubleSide })
           );
           this.lensMesh.position.set(this.data.offset.x, this.data.offset.y, this.data.offset.z + 0.005);
           this.lensMesh.visible = false; // asleep, you see straight through the hollow tube at life size
