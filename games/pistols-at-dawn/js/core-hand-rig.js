@@ -37,10 +37,21 @@
       // A hand holds up to HAND_CAPACITY things at once rather than
       // one, which is where a lot of the ridiculousness comes from:
       // grip again with a full-ish hand and you pick up another
-      // thing. Two pistols in one fist both fire on one trigger pull.
-      // An armful of bottles all launch together on one throw. None of
-      // that is special-cased anywhere — items just get fanned out
-      // (see holsterable.applyHandPose) and every operation loops.
+      // thing. An armful of bottles all launch together on one throw.
+      // None of that is special-cased anywhere — items just get
+      // fanned out (see holsterable.applyHandPose) and every operation
+      // loops.
+      //
+      // One exception: a hand never holds more than one firearm (see
+      // hasWeapon, and findCatchingHand's own use of it). Stacking
+      // guns the same way as everything else meant firing one trigger
+      // pull out of a fistful of pistols, and once a hand had several
+      // it was hard to get any one of them back out — no way to drop
+      // just one, no way for the other hand to pull one away. Simplest
+      // fix that doesn't touch the general stacking model: gate the
+      // few places something joins heldObjects, same as HAND_CAPACITY
+      // already does. See TODO.md for the fuller rework this is
+      // standing in for.
       //
       // It also owns where your hand actually IS, which is not the
       // same thing as where the controller is once you've been
@@ -240,6 +251,18 @@
           return this.heldObjects.length >= HAND_CAPACITY;
         },
 
+        // Whether this hand already has a firearm among heldObjects —
+        // the one-weapon-per-hand exception to the general stacking
+        // rule. Checked wherever something is about to join
+        // heldObjects (onGripDown, reclaimStash) or wherever
+        // findCatchingHand is deciding whether this hand is a legal
+        // catch for an incoming firearm.
+        hasWeapon: function () {
+          return this.heldObjects.some(function (objEl) {
+            return !!objEl.components.firearm;
+          });
+        },
+
         // Public "this hand now holds that" used both by this
         // component's own grip handler and by holsterable.catchThrown,
         // which catches things this hand never deliberately grabbed.
@@ -320,14 +343,16 @@
           if (this.isFull()) return;
 
           var obj = this.findGrabbableObject();
-          if (obj) {
+          if (obj && !(obj.components.firearm && this.hasWeapon())) {
             obj.components.holsterable.grab(this.el);
             this.take(obj);
             return;
           }
 
-          // Nothing to pick up, but maybe something in your OTHER hand
-          // offers a second place to hold it — a shotgun forend.
+          // Nothing to pick up (or it was a second firearm this hand
+          // won't take — see hasWeapon), but maybe something in your
+          // OTHER hand offers a second place to hold it — a shotgun
+          // forend.
           this.takeSupport('grip');
         },
 
@@ -402,6 +427,7 @@
           var self = this;
           this.stash.forEach(function (obj) {
             if (self.isFull()) return;
+            if (obj.components.firearm && self.hasWeapon()) return;
             var holsterable = obj.components.holsterable;
             if (!holsterable) return;
             // Somebody else picked it up, or it broke, in the

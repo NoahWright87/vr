@@ -51,12 +51,12 @@
       // just a fresh press) within THROW_CATCH_RADIUS, or by resting a
       // finger on the trigger within that same radius — the two modes
       // the caller uses to decide "snap into hand" vs. "land on the
-      // finger and dangle." Skips any hand with no room left, which
-      // since hands hold several things now means catching a second
-      // pistol into the fist already holding one is a legal (and
-      // strongly encouraged) move.
+      // finger and dangle." Skips any hand with no room left. isWeapon
+      // additionally skips any hand that already holds a firearm — see
+      // hand-rig.hasWeapon — so a thrown/dropped second pistol sails
+      // past a fist already holding one instead of joining it.
       // ==============================================================
-      function findCatchingHand(worldPos, radius) {
+      function findCatchingHand(worldPos, radius, isWeapon) {
         var hands = document.querySelectorAll('.hand');
         var handPos = new THREE.Vector3();
         var best = null;
@@ -67,6 +67,7 @@
           var handRig = handEl.components['hand-rig'];
           if (!handRig) continue;
           if (handRig.isFull()) continue;
+          if (isWeapon && handRig.hasWeapon()) continue;
 
           var mode = handRig.gripHeld ? 'grip' : handRig.fingerOnTrigger ? 'trigger' : null;
           if (!mode) continue;
@@ -1226,7 +1227,7 @@
         checkCatch: function () {
           this.el.object3D.getWorldPosition(this._worldPos);
           var radius = this.data.grabRadius + (THROW_CATCH_RADIUS - GRAB_RADIUS);
-          var handMatch = findCatchingHand(this._worldPos, radius);
+          var handMatch = findCatchingHand(this._worldPos, radius, !!this.el.components.firearm);
           if (handMatch) {
             if (handMatch.mode === 'grip') this.catchThrown(handMatch.handEl);
             else this.catchIntoDangle(handMatch.handEl);
