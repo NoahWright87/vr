@@ -1,0 +1,640 @@
+      // ==============================================================
+      // ITEMS: guns
+      // Pistol, shotgun, and the scoped rifle — their visuals
+      // (boxy-gun/boxy-shotgun/boxy-sniper), the firing mechanism
+      // shared by all three (firearm), the scope (also reused as-is
+      // for the wardrobe mirror — see boxy-mirror in
+      // world-saloon-bar.js), and the pistol/sniper item-maker
+      // recipes. Split out of game.js — see DESIGN.md's
+      // "File structure" section. castShot/gatherShootableRoots/
+      // resolveShootable and MAX_SHOT_RANGE stay in game.js: they're
+      // also what the throw-aim system's findLookTarget uses to figure
+      // out what you're looking at, not firearm-exclusive.
+      // ==============================================================
+
+      // A gun's local -Z (barrel forward) is defined relative to the
+      // hand's raw tracked ("grip") orientation, which on Quest Touch
+      // controllers does NOT point where your index finger does — this
+      // is a well-known WebXR quirk (laser-controls gets away with the
+      // same raw orientation because you visually self-correct your
+      // aim by watching the laser line; a rigid gun model has no such
+      // feedback, so the mismatch just looks wrong). Each pistol's
+      // holsterable="...heldRotation: -90 0 0..." markup attribute
+      // rotates the held gun to compensate — -90° on X is a reasoned
+      // starting estimate (pitching the barrel down out of "grip up"
+      // into "pointing forward"), not a verified value; if the barrel
+      // still doesn't track your finger, nudge that x value in ~15°
+      // steps (or adjust y/z if the mismatch looks like a left/right
+      // twist rather than up/down) and reload. The hat has no such
+      // problem — it isn't aimed at anything, so its heldRotation is
+      // just identity.
+      // Defaults for the "firearm" component — a pistol's numbers.
+      // Anything bigger (the shotgun) overrides them in its own markup
+      // rather than getting its own set of constants here.
+      var RECOIL_KICK_DEG = -8; // extra pitch added on top of heldRotation when firing
+      var RECOIL_RECOVER_MS = 120; // how long the kick takes to settle back
+      var TRACER_COLOR = '#ffe066';
+      var TRACER_RADIUS = 0.004; // meters
+      var TRACER_LIFETIME_MS = 80;
+      var IMPACT_RADIUS = 0.04; // meters
+      var IMPACT_LIFETIME_MS = 150;
+      // ==============================================================
+      // THE SCOPE
+      // A real one: a second camera with a narrow field of view,
+      // rendering the scene to a texture that is then the glass in the
+      // eyepiece. Which is to say it costs an extra pass over the whole
+      // scene, and this one is about 160 draw calls.
+      //
+      // So it only runs when the eyepiece is actually at your eye. That
+      // started as the optimisation and turned out to be the mechanic:
+      // the glass is dark until you bring the rifle up and put your eye
+      // behind it, which is both what a scope does and what stops a
+      // magnified view hanging in the middle of the room costing frames
+      // while it dangles off your belt. The render target is small on
+      // purpose too — a scope image is allowed to look like a scope
+      // image.
+      // ==============================================================
+      var SCOPE_FOV = 11; // degrees — roughly 4x
+      var SCOPE_TEXTURE = 256; // square render target; deliberately modest
+      var SCOPE_WAKE_DISTANCE = 0.22; // metres from eyepiece to your eye before the glass lights up
+      var SCOPE_LENS_RADIUS = 0.026;
+
+      var SNIPER_LENGTH = 1.15;
+      // ==============================================================
+      // spawnTracer
+      // A quick yellow line from the muzzle to wherever the shot ended
+      // up (a hit point, or MAX_SHOT_RANGE out into the distance on a
+      // miss), plus a small burst at that endpoint. Both are one-shot,
+      // throwaway entities — created, shown briefly, removed — so it's
+      // a plain function rather than a component.
+      // ==============================================================
+      function spawnTracer(origin, endPoint) {
+        var sceneEl = document.querySelector('a-scene');
+
+        var direction = new THREE.Vector3().subVectors(endPoint, origin);
+        var length = direction.length();
+        if (length > 0.001) {
+          var midpoint = new THREE.Vector3().addVectors(origin, endPoint).multiplyScalar(0.5);
+          var quaternion = new THREE.Quaternion().setFromUnitVectors(
+            new THREE.Vector3(0, 1, 0),
+            direction.clone().normalize()
+          );
+
+          var tracer = document.createElement('a-entity');
+          tracer.setAttribute('geometry', { primitive: 'cylinder', radius: TRACER_RADIUS, height: length });
+          tracer.setAttribute('material', 'color: ' + TRACER_COLOR + '; shader: flat; opacity: 0.9; transparent: true');
+          tracer.object3D.position.copy(midpoint);
+          tracer.object3D.quaternion.copy(quaternion);
+          sceneEl.appendChild(tracer);
+          setTimeout(function () {
+            if (tracer.parentNode) tracer.parentNode.removeChild(tracer);
+          }, TRACER_LIFETIME_MS);
+        }
+
+        var impact = document.createElement('a-sphere');
+        impact.setAttribute('radius', IMPACT_RADIUS);
+        impact.setAttribute('material', 'color: ' + TRACER_COLOR + '; shader: flat; opacity: 0.9; transparent: true');
+        impact.object3D.position.copy(endPoint);
+        impact.setAttribute('animation__shrink', {
+          property: 'scale',
+          to: '0.001 0.001 0.001',
+          dur: IMPACT_LIFETIME_MS,
+          easing: 'easeInQuad',
+        });
+        sceneEl.appendChild(impact);
+        setTimeout(function () {
+          if (impact.parentNode) impact.parentNode.removeChild(impact);
+        }, IMPACT_LIFETIME_MS + 20);
+      }
+      // ==============================================================
+      // COMPONENT: boxy-gun
+      // Builds a very simple, low-poly pistol out of boxes, sized for a
+      // hand-held scale (roughly 20cm long). Local space is defined so
+      // the entity's own origin sits at the grip/trigger-guard area —
+      // that's what lets holsterable's dangle physics (a separate
+      // component, attached alongside this one) treat "pivot around
+      // the entity origin" as "pivot around the trigger guard" without
+      // needing a separate offset. See boxy-hat, below, for the same
+      // trick applied to a very differently-shaped object.
+      // ==============================================================
+      registerComponent('boxy-gun', {
+        init: function () {
+          var el = this.el;
+          var metal = '#2b2b2f';
+          var wood = '#4a2f1c';
+          var brass = '#c9962c';
+
+          function addBox(w, h, d, pos, color, rot) {
+            var box = document.createElement('a-box');
+            box.setAttribute('width', w);
+            box.setAttribute('height', h);
+            box.setAttribute('depth', d);
+            box.setAttribute('position', pos);
+            box.setAttribute('color', color);
+            if (rot) box.setAttribute('rotation', rot);
+            el.appendChild(box);
+            return box;
+          }
+
+          addBox(0.045, 0.13, 0.05, '0 -0.05 0.02', wood, '12 0 0'); // grip
+          addBox(0.045, 0.05, 0.14, '0 0.02 -0.04', metal); // frame
+          addBox(0.042, 0.045, 0.22, '0 0.058 -0.12', metal); // slide
+          addBox(0.045, 0.006, 0.06, '0 -0.028 -0.02', metal); // trigger guard (bottom)
+          addBox(0.045, 0.05, 0.006, '0 -0.005 -0.05', metal); // trigger guard (front)
+          addBox(0.008, 0.03, 0.008, '0 -0.01 -0.035', brass); // trigger
+          addBox(0.03, 0.025, 0.012, '0 0.075 0.025', metal, '20 0 0'); // hammer
+          addBox(0.008, 0.012, 0.008, '0 0.085 -0.22', metal); // front sight
+          addBox(0.03, 0.01, 0.012, '0 0.083 -0.03', metal); // rear sight
+
+          var flash = document.createElement('a-circle');
+          flash.setAttribute('radius', 0.03);
+          flash.setAttribute('material', 'color: #ffe066; shader: flat; opacity: 0.9');
+          flash.setAttribute('position', '0 0.058 -0.24');
+          flash.setAttribute('visible', false);
+          flash.classList.add('muzzle-flash');
+          el.appendChild(flash);
+
+          var muzzle = document.createElement('a-entity');
+          muzzle.setAttribute('position', '0 0.058 -0.235');
+          muzzle.classList.add('muzzle');
+          el.appendChild(muzzle);
+        },
+      });
+
+      // ==============================================================
+      // COMPONENT: boxy-shotgun
+      // Same boxy-box-of-boxes approach and the same "origin sits at
+      // the trigger guard" convention as boxy-gun (so it dangles/
+      // twirls with zero extra physics code), just a lot longer: a
+      // long barrel, a pump forend under it, and a stock out the back
+      // for shouldering flavor. This is also why it needs a large
+      // anchor-slot (see the bandolier in markup) rather than a small
+      // one like the pistols — it's sized to obviously not fit in a
+      // hip holster.
+      // ==============================================================
+      registerComponent('boxy-shotgun', {
+        init: function () {
+          var el = this.el;
+          var metal = '#2b2b2f';
+          var wood = '#4a2f1c';
+          var brass = '#c9962c';
+
+          function addBox(w, h, d, pos, color, rot) {
+            var box = document.createElement('a-box');
+            box.setAttribute('width', w);
+            box.setAttribute('height', h);
+            box.setAttribute('depth', d);
+            box.setAttribute('position', pos);
+            box.setAttribute('color', color);
+            if (rot) box.setAttribute('rotation', rot);
+            el.appendChild(box);
+            return box;
+          }
+
+          addBox(0.05, 0.14, 0.055, '0 -0.05 0.02', wood, '10 0 0'); // grip
+          addBox(0.05, 0.06, 0.18, '0 0.02 -0.06', metal); // receiver
+          addBox(0.035, 0.035, 0.45, '0 0.05 -0.36', metal); // barrel
+          addBox(0.055, 0.045, 0.16, '0 0.01 -0.22', wood); // pump forend
+          addBox(0.06, 0.09, 0.28, '0 -0.02 0.24', wood, '-6 0 0'); // stock
+          addBox(0.045, 0.006, 0.06, '0 -0.028 -0.02', metal); // trigger guard (bottom)
+          addBox(0.045, 0.05, 0.006, '0 -0.005 -0.05', metal); // trigger guard (front)
+          addBox(0.008, 0.03, 0.008, '0 -0.01 -0.035', brass); // trigger
+          addBox(0.01, 0.014, 0.01, '0 0.085 -0.58', metal); // front sight bead
+
+          var flash = document.createElement('a-circle');
+          flash.setAttribute('radius', 0.045);
+          flash.setAttribute('material', 'color: #ffe066; shader: flat; opacity: 0.9');
+          flash.setAttribute('position', '0 0.05 -0.6');
+          flash.setAttribute('visible', false);
+          flash.classList.add('muzzle-flash');
+          el.appendChild(flash);
+
+          var muzzle = document.createElement('a-entity');
+          muzzle.setAttribute('position', '0 0.05 -0.585');
+          muzzle.classList.add('muzzle');
+          el.appendChild(muzzle);
+        },
+      });
+      // itemSize is the only thing deciding which sockets a gun can go
+      // in (see holsterable.findNearestSlot) — there's no per-object
+      // list of "which anchors" anywhere. A pistol is small and fits
+      // everything, up to and including your mouth and the crown of
+      // your hat; a shotgun is large and only the bandolier and the
+      // armoury's cradles will take it.
+      defineItem('pistol', function (el, slotId) {
+        el.setAttribute('holsterable', {
+          holsterSelector: '#' + slotId,
+          itemSize: 'small',
+          holsterRotation: { x: -90, y: 0, z: 0 },
+          heldRotation: { x: -90, y: 0, z: 0 },
+          heldPosition: { x: 0, y: 0, z: 0 },
+          grabRadius: 0.15,
+          comOffset: { x: 0, y: 0.03, z: -0.08 },
+        });
+        el.setAttribute('firearm', '');
+        el.setAttribute('ignition-source', { tipSelector: '.muzzle' });
+        el.setAttribute('boxy-gun', '');
+      });
+      // The rifle. A `firearm` with a tighter cone and a heavier kick,
+      // and a `scope` — which is a separate component precisely
+      // because seeing through a tube has nothing to do with firing
+      // one. The support grip at the forestock matters more here than
+      // anywhere else: one wrist cannot hold a magnified view still.
+      defineItem('sniper', function (el, slotId) {
+        el.setAttribute('holsterable', {
+          holsterSelector: '#' + slotId,
+          itemSize: 'large',
+          holsterRotation: { x: -90, y: 0, z: 0 },
+          heldRotation: { x: -90, y: 0, z: 0 },
+          grabRadius: 0.24,
+          grabSpan: { x: 0, y: 0, z: -0.7 },
+          comOffset: { x: 0, y: 0.02, z: -0.28 },
+          supportGrip: { x: 0, y: 0.005, z: -0.28 },
+          supportRadius: 0.22,
+          maxThrowSpeed: 6,
+        });
+        el.setAttribute('firearm', { pellets: 1, coneDeg: 0, kickDeg: -13, recoverMs: 320, heatPerShot: 0.5 });
+        el.setAttribute('ignition-source', { tipSelector: '.muzzle' });
+        el.setAttribute('boxy-sniper', '');
+        el.setAttribute('scope', { offset: { x: 0, y: 0.115, z: 0.03 } });
+      });
+      // ==============================================================
+      // COMPONENT: firearm
+      // Everything that can be fired, in one component. This used to
+      // be two nearly identical components ("pistol" and "shotgun")
+      // that differed only in a handful of numbers, so it's now one
+      // with those numbers in its schema — a single-ball pistol is
+      // just pellets:1, coneDeg:0. Any new gun is a markup line.
+      //
+      // A thin companion to holsterable, attached alongside it only on
+      // the guns — the hat, bottles, and cigars have no such
+      // component, so hand-rig's trigger-pull handler (which looks for
+      // this component before calling fire()) is naturally a no-op
+      // while holding them. It reads holsterable's state and writes
+      // its recoil kick into holsterable.extraPitchDeg rather than
+      // touching the object's rotation itself, so recoil, the hand's
+      // fan offset, and drunken sway all compose in one place instead
+      // of three components fighting over one object3D.
+      //
+      // `heat` is the other bit of state, and it's what makes rapid
+      // fire visibly different from careful shooting: every shot adds
+      // some, it bleeds off at GUN_HEAT_DECAY_PER_S, and it drives
+      // both how much smoke a shot produces and whether the barrel is
+      // hot enough to light a cigar off (see world-systems).
+      // ==============================================================
+      registerComponent('firearm', {
+        schema: {
+          pellets: { type: 'number', default: 1 }, // rays per shot
+          coneDeg: { type: 'number', default: 0 }, // half-angle of the spread cone
+          kickDeg: { type: 'number', default: RECOIL_KICK_DEG },
+          recoverMs: { type: 'number', default: RECOIL_RECOVER_MS },
+          heatPerShot: { type: 'number', default: 0.22 },
+        },
+
+        init: function () {
+          this.recoilTimer = 0; // ms remaining on the current fire-recoil kick
+          this.heat = 0; // 0..1 barrel temperature — how hard this barrel has been worked lately
+          this.sinceLastShot = Infinity;
+          this.curlRemaining = 0; // puffs still to come in the post-shooting curl
+          this.curlTimer = 0;
+
+          this._origin = new THREE.Vector3();
+          this._quat = new THREE.Quaternion();
+          this._forward = new THREE.Vector3();
+          this._right = new THREE.Vector3();
+          this._up = new THREE.Vector3();
+        },
+
+        tick: function (time, dt) {
+          var dtSeconds = Math.min((dt || 16) / 1000, 0.05);
+          this.sinceLastShot += dtSeconds * 1000;
+          this.heat = Math.max(this.heat - GUN_HEAT_DECAY_PER_S * dtSeconds, 0);
+          this.updateRecoil(dtSeconds);
+          this.updateBarrelSmoke(dtSeconds);
+
+          // A barrel that's just been fired is hot enough to light a
+          // cigar off. firearm doesn't know what a cigar is — it only
+          // publishes "this tip is hot right now" (see
+          // ignition-source) and lets world-systems do the matching.
+          var source = this.el.components['ignition-source'];
+          if (source) source.hot = this.heat > MUZZLE_HOT_THRESHOLD;
+        },
+
+        // Eases the kick back down to zero. The kick itself is handed
+        // to holsterable, which composes it into the held pose — a
+        // gun that's been dropped or holstered mid-recovery just stops
+        // having its pose written at all, which is exactly right.
+        updateRecoil: function (dtSeconds) {
+          if (this.recoilTimer <= 0) return;
+
+          this.recoilTimer = Math.max(this.recoilTimer - dtSeconds * 1000, 0);
+          var holsterable = this.el.components.holsterable;
+          if (holsterable) {
+            holsterable.extraPitchDeg = this.data.kickDeg * (this.recoilTimer / this.data.recoverMs);
+          }
+        },
+
+        // Smoke happens after the shooting, not during it. Once the
+        // barrel has been quiet for BARREL_SMOKE_DELAY_MS, however hot
+        // it got is converted into a curl of puffs released one at a
+        // time so they rise out of the muzzle in a column. Fire again
+        // mid-curl and it's cancelled and re-armed — you only get the
+        // smoke when you're actually done.
+        updateBarrelSmoke: function (dtSeconds) {
+          if (this.curlRemaining > 0) {
+            this.curlTimer -= dtSeconds * 1000;
+            if (this.curlTimer <= 0) {
+              this.curlTimer = BARREL_SMOKE_INTERVAL_MS;
+              this.curlRemaining--;
+              this.emitBarrelPuff();
+            }
+            return;
+          }
+
+          if (this.sinceLastShot < BARREL_SMOKE_DELAY_MS) return;
+          if (this.heat < BARREL_SMOKE_MIN_HEAT) return;
+
+          this.curlRemaining = Math.max(Math.round(this.heat * BARREL_SMOKE_MAX_PUFFS), 1);
+          this.curlTimer = 0;
+          this.heat = 0; // spent — the curl IS the heat leaving the barrel
+        },
+
+        emitBarrelPuff: function () {
+          var muzzleEl = this.el.querySelector('.muzzle');
+          if (!muzzleEl || !muzzleEl.object3D) return;
+
+          muzzleEl.object3D.getWorldPosition(this._origin);
+          this._forward.set(0, 0.55, 0); // up and out of the barrel, not down the firing line
+          spawnSmoke(this._origin, this._forward, 0.75);
+        },
+
+        // hand-rig's generic press dispatch (see useHeldObject) — a
+        // trigger pull on a held gun means fire.
+        onTriggerUse: function () {
+          this.fire();
+        },
+
+        // Raycasts from the muzzle at everything wearing the
+        // "shootable" class (see castShot) — targets, bottles, cigars,
+        // whatever gets added next. Only fires while properly held —
+        // not while dangling or mid-air, so a twirl in progress can't
+        // accidentally go off.
+        fire: function () {
+          var holsterable = this.el.components.holsterable;
+          if (!holsterable || holsterable.state !== 'held') return;
+
+          var muzzleEl = this.el.querySelector('.muzzle');
+          if (!muzzleEl || !muzzleEl.object3D) return;
+
+          muzzleEl.object3D.getWorldPosition(this._origin);
+          muzzleEl.object3D.getWorldQuaternion(this._quat);
+          this._forward.set(0, 0, -1).applyQuaternion(this._quat).normalize();
+          this._right.set(1, 0, 0).applyQuaternion(this._quat).normalize();
+          this._up.set(0, 1, 0).applyQuaternion(this._quat).normalize();
+
+          this.playMuzzleEffects();
+
+          var coneRad = (this.data.coneDeg * Math.PI) / 180;
+          var hitCount = 0;
+          var roots = gatherShootableRoots();
+
+          for (var i = 0; i < this.data.pellets; i++) {
+            var direction = this._forward.clone();
+            if (coneRad > 0) {
+              direction
+                .applyAxisAngle(this._right, (Math.random() - 0.5) * 2 * coneRad)
+                .applyAxisAngle(this._up, (Math.random() - 0.5) * 2 * coneRad)
+                .normalize();
+            }
+
+            var hit = castShot(this._origin, direction, roots);
+            var endPoint;
+            if (hit) {
+              endPoint = hit.point;
+              // Non-bubbling and aimed straight at the thing that was
+              // hit: what a hit MEANS is entirely up to the target
+              // (score and tip over, shatter, catch light).
+              hit.el.emit('shot', { point: hit.point.clone(), direction: direction.clone() }, false);
+              hitCount++;
+            } else {
+              endPoint = this._origin.clone().addScaledVector(direction, MAX_SHOT_RANGE);
+            }
+
+            spawnTracer(this._origin, endPoint);
+          }
+
+          if (hitCount === 0) {
+            var manager = document.querySelector('#range-manager');
+            if (manager) manager.emit('gun-miss', null, false);
+          }
+        },
+
+        playMuzzleEffects: function () {
+          this.recoilTimer = this.data.recoverMs;
+          this.heat = Math.min(this.heat + this.data.heatPerShot, 1);
+          this.sinceLastShot = 0;
+          this.curlRemaining = 0; // still shooting — the curl waits
+
+          flashMuzzle(this.el);
+          spawnSparks(this._origin, 3);
+        },
+      });
+      // ==============================================================
+      // COMPONENT: scope
+      // See THE SCOPE. Generic on purpose — it is "a disc on this
+      // object that shows what a narrow-angle camera pointed down this
+      // object's -Z can see", so it would work just as well on a
+      // spyglass, a periscope, or a mirror behind the bar.
+      //
+      // Three things it has to be careful about, all of them the same
+      // hazard: it renders in the middle of somebody else's frame.
+      // The renderer's current target has to be put back, WebXR has to
+      // be switched off for the duration (or three.js renders the
+      // off-screen pass in stereo into the headset's own framebuffer),
+      // and the lens itself has to be hidden or it films its own last
+      // frame — an infinite corridor, which is a lovely bug and quite
+      // useless as a sight.
+      // ==============================================================
+      registerComponent('scope', {
+        schema: {
+          fov: { type: 'number', default: SCOPE_FOV },
+          offset: { type: 'vec3', default: { x: 0, y: 0, z: 0 } }, // where the eyepiece sits on the object
+          objective: { type: 'number', default: 0.32 }, // how far ahead of the eyepiece the far end of the tube is
+          radius: { type: 'number', default: SCOPE_LENS_RADIUS },
+          wake: { type: 'number', default: SCOPE_WAKE_DISTANCE },
+        },
+
+        init: function () {
+          this.awake = false;
+          this._eye = new THREE.Vector3();
+          this._lens = new THREE.Vector3();
+
+          this.target = new THREE.WebGLRenderTarget(SCOPE_TEXTURE, SCOPE_TEXTURE);
+
+          // The near plane sits past the end of the tube on purpose. A
+          // scope camera parked at the eyepiece films the inside of its
+          // own tube, and at eleven degrees the tube walls are most of
+          // the picture; clipping everything closer than the objective
+          // throws away the tube, the barrel and your own hands, which
+          // is exactly what a scope does.
+          this.camera = new THREE.PerspectiveCamera(this.data.fov, 1, 0.25, 400);
+          this.el.object3D.add(this.camera);
+          this.camera.position.set(
+            this.data.offset.x,
+            this.data.offset.y,
+            this.data.offset.z - this.data.objective
+          );
+
+          // Facing +Z, i.e. straight back at your eye, which is the
+          // default for a CircleGeometry and was the bug: it had been
+          // turned to face down the barrel, so the only thing ever
+          // visible through the scope was the back of the lens.
+          //
+          // No mirroring is needed. The scope camera and the eye behind
+          // it both look along -Z, so their idea of "right" is the same
+          // one.
+          //
+          // side: double, not the material default of front-only —
+          // a held scope is always approached from the +Z side (the
+          // shooter's eye behind the eyepiece), but a mirror sitting in
+          // the world is approached from whichever side the player
+          // happens to be standing on. Without this the glass renders
+          // correctly to the render target (proven by reading its
+          // pixels back) while being completely invisible on screen —
+          // simple back-face culling, not a rendering failure, but easy
+          // to chase as one.
+          this.lensMesh = new THREE.Mesh(
+            new THREE.CircleGeometry(this.data.radius, 20),
+            new THREE.MeshBasicMaterial({ map: this.target.texture, side: THREE.DoubleSide })
+          );
+          this.lensMesh.position.set(this.data.offset.x, this.data.offset.y, this.data.offset.z + 0.005);
+          this.lensMesh.visible = false; // asleep, you see straight through the hollow tube at life size
+          this.el.object3D.add(this.lensMesh);
+
+          this.liveMaterial = this.lensMesh.material;
+
+          // The crosshair rides on the glass, so it magnifies with it.
+          var reticle = new THREE.Mesh(
+            new THREE.RingGeometry(this.data.radius * 0.06, this.data.radius * 0.08, 16),
+            new THREE.MeshBasicMaterial({ color: '#1a1a1a' })
+          );
+          reticle.position.z = 0.001;
+          this.lensMesh.add(reticle);
+          this.reticle = reticle;
+          reticle.visible = false;
+
+          this.cameraEl = document.querySelector('#head-camera');
+        },
+
+        remove: function () {
+          this.el.object3D.remove(this.camera);
+          this.el.object3D.remove(this.lensMesh);
+          this.target.dispose();
+          this.lensMesh.geometry.dispose();
+          this.liveMaterial.dispose();
+        },
+
+        tick: function () {
+          if (!this.cameraEl) return;
+
+          this.lensMesh.getWorldPosition(this._lens);
+          this.cameraEl.object3D.getWorldPosition(this._eye);
+          var awake = this._lens.distanceTo(this._eye) < this.data.wake;
+
+          if (awake !== this.awake) {
+            this.awake = awake;
+            this.lensMesh.visible = awake;
+            this.reticle.visible = awake;
+          }
+          if (!awake) return;
+
+          this.renderThrough();
+        },
+
+        renderThrough: function () {
+          var sceneEl = this.el.sceneEl;
+          var renderer = sceneEl && sceneEl.renderer;
+          if (!renderer) return;
+
+          var wasXR = renderer.xr.enabled;
+          var wasTarget = renderer.getRenderTarget();
+
+          this.lensMesh.visible = false;
+          renderer.xr.enabled = false;
+          renderer.setRenderTarget(this.target);
+          renderer.render(sceneEl.object3D, this.camera);
+          renderer.setRenderTarget(wasTarget);
+          renderer.xr.enabled = wasXR;
+          this.lensMesh.visible = true;
+        },
+      });
+
+      // ==============================================================
+      // COMPONENT: boxy-sniper
+      // A long rifle with a tube on top. Same conventions as every
+      // other gun here — origin at the trigger guard, -Z down the
+      // barrel — so `firearm`, `holsterable` and `scope` all point the
+      // same way without being told to.
+      // ==============================================================
+      registerComponent('boxy-sniper', {
+        init: function () {
+          var el = this.el;
+          var metal = '#2b2b2f';
+          var wood = '#5b3a1c';
+
+          function box(w, h, d, pos, color, rot) {
+            var b = document.createElement('a-box');
+            b.setAttribute('width', w);
+            b.setAttribute('height', h);
+            b.setAttribute('depth', d);
+            b.setAttribute('position', pos);
+            b.setAttribute('color', color);
+            if (rot) b.setAttribute('rotation', rot);
+            el.appendChild(b);
+            return b;
+          }
+
+          box(0.045, 0.13, 0.05, '0 -0.05 0.02', wood, '12 0 0'); // grip
+          box(0.048, 0.055, 0.2, '0 0.02 -0.07', metal); // receiver
+          box(0.026, 0.026, SNIPER_LENGTH * 0.62, '0 0.045 -0.52', metal); // long barrel
+          box(0.05, 0.04, 0.3, '0 0.005 -0.28', wood); // forestock
+          box(0.055, 0.1, 0.3, '0 -0.025 0.26', wood, '-7 0 0'); // stock
+          box(0.045, 0.006, 0.06, '0 -0.028 -0.02', metal); // trigger guard
+          box(0.008, 0.03, 0.008, '0 -0.01 -0.035', '#c9962c'); // trigger
+          box(0.02, 0.05, 0.02, '0 0.05 0.03', metal, '30 0 0'); // bolt handle
+
+          // The scope tube. The eyepiece end is where `scope` puts its
+          // glass, so the two sets of numbers have to agree — the same
+          // hand-kept arrangement boxy-gun and the pistol's comOffset
+          // already live with.
+          // Open-ended and double-sided, so with the scope asleep you
+          // are looking through a tube at the world rather than at a
+          // solid cylinder. That also makes the moment it wakes read as
+          // the view zooming rather than a wall turning into a window.
+          var tube = document.createElement('a-cylinder');
+          tube.setAttribute('radius', 0.028);
+          tube.setAttribute('height', 0.34);
+          tube.setAttribute('color', metal);
+          tube.setAttribute('open-ended', true);
+          tube.setAttribute('material', 'color: ' + metal + '; side: double');
+          tube.setAttribute('rotation', '90 0 0');
+          tube.setAttribute('position', { x: 0, y: 0.115, z: -0.14 });
+          el.appendChild(tube);
+
+          box(0.02, 0.05, 0.03, '0 0.085 -0.26', metal); // front mount
+          box(0.02, 0.05, 0.03, '0 0.085 -0.02', metal); // rear mount
+
+          var flash = document.createElement('a-circle');
+          flash.setAttribute('radius', 0.03);
+          flash.setAttribute('material', 'color: #ffe066; shader: flat; opacity: 0.9');
+          flash.setAttribute('position', { x: 0, y: 0.045, z: -SNIPER_LENGTH + 0.06 });
+          flash.setAttribute('visible', false);
+          flash.classList.add('muzzle-flash');
+          el.appendChild(flash);
+
+          var muzzle = document.createElement('a-entity');
+          muzzle.setAttribute('position', { x: 0, y: 0.045, z: -SNIPER_LENGTH + 0.05 });
+          muzzle.classList.add('muzzle');
+          el.appendChild(muzzle);
+        },
+      });
