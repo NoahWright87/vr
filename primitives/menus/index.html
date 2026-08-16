@@ -14,10 +14,17 @@
       body {
         margin: 0;
         font-family: system-ui, sans-serif;
+        min-height: 100vh;
       }
       body.editor-mode {
         background: #08111f;
         color: #e8eefc;
+        overflow-y: auto;
+      }
+      html.editor-mode,
+      html.editor-mode body {
+        height: auto;
+        overflow-y: auto;
       }
       #overlay {
         position: absolute;
@@ -39,12 +46,17 @@
         box-sizing: border-box;
         padding: 1.5rem;
         background: linear-gradient(180deg, #0d1526 0%, #101a30 100%);
+        overflow-y: auto;
       }
       body.editor-mode #editor-screen {
         display: block;
       }
       body.editor-mode #vr-screen {
-        display: none;
+        position: absolute;
+        width: 0;
+        height: 0;
+        overflow: hidden;
+        pointer-events: none;
       }
       .editor-shell {
         max-width: 72rem;
@@ -154,6 +166,13 @@
         margin: 0 0 1rem;
         color: #9fb0d4;
       }
+      .editor-preview-frame {
+        width: 100%;
+        height: 22rem;
+        border: 1px solid #35507c;
+        border-radius: 0.8rem;
+        background: #08111f;
+      }
       .json-toolbar {
         display: flex;
         justify-content: space-between;
@@ -225,9 +244,15 @@
 
           <div class="editor-card">
             <h2>Using this split</h2>
-            <p class="editor-help">Keep this screen open on laptop/phone, and the VR view open separately. Change values here, reload if needed, then judge the actual result in-headset.</p>
+            <p class="editor-help">The preview below renders the real menu scene in a flat window and updates as you edit. Use the full VR scene separately when you want in-headset judgment.</p>
             <a class="editor-link-button" href="./" target="_blank" rel="noreferrer">Open the VR menu scene in another tab</a>
           </div>
+        </div>
+
+        <div class="editor-card" style="margin-top: 1rem;">
+          <h2>Live preview</h2>
+          <p class="editor-help">This is the real scene embedded in the editor and fed the same JSON state.</p>
+          <iframe id="menu-editor-preview" class="editor-preview-frame" title="Menu preview" src="about:blank"></iframe>
         </div>
 
         <div class="editor-card" style="margin-top: 1rem;">
@@ -715,7 +740,10 @@
 
       var menuEditorState = parseMenuEditorState();
       var isEditorMode = new URLSearchParams(window.location.search).get('edit') === '1';
-      if (isEditorMode) document.body.classList.add('editor-mode');
+      if (isEditorMode) {
+        document.documentElement.classList.add('editor-mode');
+        document.body.classList.add('editor-mode');
+      }
 
       // A plain color floor gave no sense of scale or footing — a small
       // checkerboard, tiled across the 20x20 floor plane, is the
@@ -1879,6 +1907,8 @@
 
         var slot = panelEl.querySelector('.menu-chrome-slot');
         if (slot) slot.setAttribute('data-title', menuEditorState.panel.title);
+        var titleEl = panelEl.querySelector('.menu-chrome-title');
+        if (titleEl) titleEl.setAttribute('text', 'value', menuEditorState.panel.title);
 
         var items = panelEl.querySelectorAll('.menu-target');
         menuEditorState.items.forEach(function (item, index) {
@@ -1893,6 +1923,11 @@
           var textEl = itemEl.querySelector('a-text');
           if (textEl) textEl.setAttribute('value', item.label);
         });
+
+        var feedbackText = panelEl.querySelector('.menu-feedback-text');
+        if (feedbackText) {
+          feedbackText.setAttribute('text', 'value', menuEditorState.panel.feedbackPrefix + ' (none)');
+        }
       }
 
       function wireMenuEditorUi () {
@@ -1911,9 +1946,29 @@
         var copyButton = document.getElementById('copy-menu-json');
         var copyStatus = document.getElementById('copy-status');
         var itemList = document.getElementById('editor-item-list');
+        var previewFrame = document.getElementById('menu-editor-preview');
+
+        function previewUrl() {
+          var url = new URL(window.location.href);
+          url.searchParams.delete('edit');
+          url.searchParams.set('embedded', '1');
+          url.searchParams.set('menu', JSON.stringify(menuEditorState));
+          return url.toString();
+        }
 
         function syncJson() {
           jsonEl.value = JSON.stringify(menuEditorState, null, 2);
+        }
+
+        function applyEditorChanges() {
+          applyMenuEditorStateToScene();
+          if (previewFrame && previewFrame.contentWindow) {
+            previewFrame.contentWindow.postMessage({
+              type: 'menu-editor-state',
+              state: cloneJson(menuEditorState),
+            }, window.location.origin);
+          }
+          copyStatus.textContent = '';
         }
 
         function updateUrl() {
@@ -1928,6 +1983,7 @@
             var value = Number(target.value);
             if (Number.isNaN(value)) return;
             path(value);
+            applyEditorChanges();
             syncJson();
             updateUrl();
           });
@@ -1943,11 +1999,13 @@
 
         inputs.title.addEventListener('input', function () {
           menuEditorState.panel.title = inputs.title.value;
+          applyEditorChanges();
           syncJson();
           updateUrl();
         });
         inputs.feedbackPrefix.addEventListener('input', function () {
           menuEditorState.panel.feedbackPrefix = inputs.feedbackPrefix.value;
+          applyEditorChanges();
           syncJson();
           updateUrl();
         });
@@ -1987,11 +2045,13 @@
 
           valueInput.addEventListener('input', function () {
             item.value = valueInput.value;
+            applyEditorChanges();
             syncJson();
             updateUrl();
           });
           labelInput.addEventListener('input', function () {
             item.label = labelInput.value;
+            applyEditorChanges();
             syncJson();
             updateUrl();
           });
@@ -2001,6 +2061,7 @@
               var value = Number(input.value);
               if (Number.isNaN(value)) return;
               item.position[axis] = value;
+              applyEditorChanges();
               syncJson();
               updateUrl();
             });
@@ -2010,6 +2071,7 @@
         jsonEl.addEventListener('input', function () {
           try {
             menuEditorState = parseMenuEditorStateFromText(jsonEl.value);
+            applyEditorChanges();
             updateUrl();
             copyStatus.textContent = 'JSON updated.';
           } catch (err) {
@@ -2025,12 +2087,20 @@
           });
         });
 
+        if (previewFrame) previewFrame.src = previewUrl();
         syncJson();
       }
 
       function parseMenuEditorStateFromText (text) {
         return parseMenuEditorStateFromValue(JSON.parse(text));
       }
+
+      window.addEventListener('message', function (event) {
+        if (event.origin !== window.location.origin) return;
+        if (!event.data || event.data.type !== 'menu-editor-state') return;
+        menuEditorState = parseMenuEditorStateFromValue(event.data.state);
+        applyMenuEditorStateToScene();
+      });
 
       var sceneEl = document.querySelector('a-scene');
       applyMenuEditorStateToScene();
