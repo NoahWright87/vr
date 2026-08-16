@@ -1,4 +1,18 @@
       // ==============================================================
+      // CORE
+      // The foundation every other file here loads on top of: the
+      // registerComponent wrapper, shared physics/ballistics/audio
+      // helpers, the particle/liquid/fire system's data and per-frame
+      // simulation (world-systems, at the bottom of this file), the
+      // ITEM_MAKERS mechanism, and the two generic contracts (stocked,
+      // perishable) everything else builds on. Renamed from game.js
+      // once every clear subsystem had its own file and what was left
+      // stopped meaning "the game" and started meaning "the part
+      // everything else depends on" — see DESIGN.md's "File structure"
+      // section.
+      // ==============================================================
+
+      // ==============================================================
       // SAFE TICKS
       // A-Frame runs every component's tick from one loop, so a single
       // exception anywhere kills the render loop and the whole scene
