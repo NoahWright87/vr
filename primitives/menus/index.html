@@ -4,6 +4,14 @@
     <meta charset="utf-8" />
     <title>Menus — WebXR Primitives</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <script>
+      (function () {
+        var params = new URLSearchParams(window.location.search);
+        if (params.get('edit') === '1') {
+         document.documentElement.classList.add('editor-mode');
+        }
+      })();
+    </script>
 
     <!-- Same vendored setup as the prototypes: no build step, just a
          checked-in copy. See /vendor/README.md for why. -->
@@ -47,6 +55,16 @@
         padding: 1.5rem;
         background: linear-gradient(180deg, #0d1526 0%, #101a30 100%);
         overflow-y: auto;
+      }
+      html.editor-mode #editor-screen {
+        display: block;
+      }
+      html.editor-mode #vr-screen {
+        position: absolute;
+        width: 0;
+        height: 0;
+        overflow: hidden;
+        pointer-events: none;
       }
       body.editor-mode #editor-screen {
         display: block;
