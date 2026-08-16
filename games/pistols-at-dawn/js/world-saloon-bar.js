@@ -92,6 +92,21 @@
       // ==============================================================
       var BAR_PIVOT_Z = BAR_NEAR_EDGE_Z + BAR_DEPTH / 2; // the counter's centre line, and the axis it turns on
       var BAR_SPIN_MS = 850; // whole half-turn, eased at both ends
+      // Every wall/panel built below reaches down to its own local
+      // y=0 — a wall standing on the floor, same as buildRoom's back
+      // wall, each face's front panel, and the drum's own legs. The
+      // island flip is a 180° rotation about X, which leaves y=0
+      // fixed — so whichever side is currently hidden underground
+      // still has all of that geometry landing right back at world
+      // y=0, right-side up, exactly coplanar with the visible ground
+      // plane, and it z-fights with it. Rather than chase down and
+      // raise every individual box that touches its own floor, both
+      // barSideEl and wardrobeSideEl (see saloon-bar.init) are offset
+      // by this amount in opposite directions — small enough to read
+      // as "resting on the floor," large enough that neither side's
+      // local floor is ever actually AT world y=0, whichever one is
+      // currently showing.
+      var DRUM_GROUND_CLEARANCE = 0.02;
       var BELL_X = -0.98; // off to one side, threaded between the sightlines to the shelf bottles rather than across them
       var BELL_Y = 1.86;
       var BELL_ARM_Y = 2.5; // the bracket clears the top shelf's bottles
@@ -518,8 +533,20 @@
           this.flipEl.setAttribute('id', 'island-flip');
           this.flipEl.setAttribute('turntable', { spinMs: FLIP_SPIN_MS, axis: 'x' });
 
-          this.barSideEl = this.addChild(this.flipEl, { x: 0, y: 0, z: 0 });
-          this.wardrobeSideEl = this.addChild(this.flipEl, { x: 0, y: 0, z: 0 });
+          // The ±DRUM_GROUND_CLEARANCE offsets are the fix for a
+          // ground-plane z-fight: every wall/panel in this file is
+          // built reaching down to ITS OWN local y=0 (a wall standing
+          // on the floor), and 180°-about-x — the flip both sides
+          // share — leaves y=0 fixed. So whichever side is hidden
+          // underground still has geometry landing exactly back on
+          // world y=0, right-side up, coplanar with the visible ground
+          // plane. Opposite small offsets here mean neither side's
+          // local floor is ever actually AT world y=0, whichever one
+          // is currently showing — see DRUM_GROUND_CLEARANCE's own
+          // comment for the derivation. HARD_SURFACES' BAR_TOP_Y entry
+          // is bumped by the same amount in buildDrum to stay in sync.
+          this.barSideEl = this.addChild(this.flipEl, { x: 0, y: DRUM_GROUND_CLEARANCE, z: 0 });
+          this.wardrobeSideEl = this.addChild(this.flipEl, { x: 0, y: -DRUM_GROUND_CLEARANCE, z: 0 });
           this.wardrobeSideEl.setAttribute('rotation', { x: 180, y: 0, z: 0 });
 
           // The bar/armoury side. Same structure as ever — `room` is
@@ -665,10 +692,13 @@
           // be cracked open. This is the only "collision" in the scene
           // and it exists purely for that one move. It's registered in
           // the drum's own frame, so it goes on turning being a counter
-          // while the counter turns.
+          // while the counter turns. `y` is a world-space height (see
+          // findHardSurfaceStrike, which compares it against worldPos.y
+          // directly), so it has to track barSideEl's own
+          // DRUM_GROUND_CLEARANCE offset rather than just BAR_TOP_Y.
           HARD_SURFACES.push({
             obj: this.drumEl.object3D,
-            y: BAR_TOP_Y,
+            y: BAR_TOP_Y + DRUM_GROUND_CLEARANCE,
             minX: -BAR_WIDTH / 2,
             maxX: BAR_WIDTH / 2,
             minZ: BAR_NEAR_EDGE_Z - 0.04 - BAR_PIVOT_Z,
