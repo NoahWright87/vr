@@ -579,12 +579,32 @@ change to the shared systems.
 
 Pistols at Dawn's own `<script>` block crossed 10,000 lines and made
 "go change the bar" mean scrolling past gun, target, and vice code to
-get there. It's being split into topic files under
-`games/pistols-at-dawn/js/` (`core-equip.js`, `world-saloon-bar.js`,
-`items-guns.js`, and so on), loaded as plain `<script src>` tags in
-file order — same implicit-global style the single file already used,
-just filed by subject instead of dumped in one place. No bundler, no
-import/export, no behavior change; it's a move, not a rewrite.
+get there. It's been split into 13 topic files under
+`games/pistols-at-dawn/js/` — `core.js` (the foundation: shared
+physics/ballistics/audio helpers, the particle/liquid/fire system,
+ITEM_MAKERS, and the world-systems bootstrap) plus `core-equip.js`,
+`core-hand-rig.js`, `core-substances.js`, five `items-*.js` files (one
+per weapon/prop family — guns, bow, explosives, tank, bar, vices) and
+three `world-*.js` files (player body, the saloon-bar/wardrobe island,
+the shooting range) — loaded as plain `<script src>` tags, same
+implicit-global style the single file already used, just filed by
+subject instead of dumped in one place. No bundler, no import/export,
+no behavior change; every stage was a move, verified against the
+original with Playwright before being committed. `index.html` itself
+is down to ~310 lines of markup.
+
+One real lesson from doing this for real: almost every cross-file
+reference is safe regardless of which file defines it or the order
+scripts load in, because component `init()`/`tick()` callbacks only
+run once every script on the page has already executed. The one
+exception is a component's `schema` object, which A-Frame evaluates
+the moment `registerComponent()` itself runs — eagerly, not deferred.
+A `default: SOME_CONSTANT` in a schema needs that constant defined by
+files-that-load-earlier, and violating this shipped a real "X is not
+defined" bug mid-split before being caught and fixed. Worth an
+automated check (grep every schema for `default: CONSTANT`, confirm
+the declaring file loads no later than the file using it) rather than
+trusting it by eye, on any repo using this same plain-script pattern.
 
 This makes pistols-at-dawn the one prototype in the repo that isn't a
 single self-contained file (see the README's stated convention). Two
