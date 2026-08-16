@@ -34,8 +34,13 @@
         height: auto;
         overflow-y: auto;
       }
-      html.editor-mode *:not(#editor-screen):not(#editor-screen *):not(script):not(style) {
+      html.editor-mode #vr-screen,
+      body.editor-mode #vr-screen {
         display: none !important;
+      }
+      html.editor-mode #editor-screen,
+      body.editor-mode #editor-screen {
+        display: block !important;
       }
       #overlay {
         position: absolute;
