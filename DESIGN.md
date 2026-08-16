@@ -574,3 +574,31 @@ A randomized soak test — thousands of frames of pouring, igniting,
 shooting, smashing and dousing at random — is what found the crash that
 weeks of ordinary play only hit occasionally. Worth re-running after any
 change to the shared systems.
+
+## File structure: outgrowing "single file"
+
+Pistols at Dawn's own `<script>` block crossed 10,000 lines and made
+"go change the bar" mean scrolling past gun, target, and vice code to
+get there. It's being split into topic files under
+`games/pistols-at-dawn/js/` (`core-equip.js`, `world-saloon-bar.js`,
+`items-guns.js`, and so on), loaded as plain `<script src>` tags in
+file order — same implicit-global style the single file already used,
+just filed by subject instead of dumped in one place. No bundler, no
+import/export, no behavior change; it's a move, not a rewrite.
+
+This makes pistols-at-dawn the one prototype in the repo that isn't a
+single self-contained file (see the README's stated convention). Two
+things worth revisiting later, once the split has paid for itself and
+some of these systems (anchor-slot/holsterable in particular) have
+proven themselves general enough to be worth lifting into a real
+shared library used by other prototypes, not just this one:
+
+- **Whether "no build step" still holds.** It's the right call for a
+  handful of self-contained files with no need to share code between
+  prototypes; a real shared library across games is a different
+  question, and might be the moment a small bundler earns its keep.
+- **How the split should be named/shaped** once code is meant to move
+  *out* of pistols-at-dawn's own folder — worth keeping the
+  genuinely-generic files (the equip contract, the target-range
+  system) free of pistols-specific naming or coupling now, so hoisting
+  them later is a `git mv`, not a rewrite.
