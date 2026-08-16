@@ -2,6 +2,8 @@
 
 A collection of small WebXR prototypes for the Meta Quest 2 browser, built with [A-Frame](https://aframe.io) via CDN — no build step, no npm install. Each prototype is a single, self-contained HTML file.
 
+> **Note:** both of those are under reconsideration for `pistols-at-dawn`, which outgrew a single file (see its own `js/` folder and [DESIGN.md](DESIGN.md#file-structure-outgrowing-single-file)) and is where a future shared library across prototypes — and the build step that would come with one — is most likely to start.
+
 Deployed as a static site (planned: `vr.noahwright.dev` via Netlify).
 
 ## Structure

@@ -574,3 +574,51 @@ A randomized soak test — thousands of frames of pouring, igniting,
 shooting, smashing and dousing at random — is what found the crash that
 weeks of ordinary play only hit occasionally. Worth re-running after any
 change to the shared systems.
+
+## File structure: outgrowing "single file"
+
+Pistols at Dawn's own `<script>` block crossed 10,000 lines and made
+"go change the bar" mean scrolling past gun, target, and vice code to
+get there. It's been split into 13 topic files under
+`games/pistols-at-dawn/js/` — `core.js` (the foundation: shared
+physics/ballistics/audio helpers, the particle/liquid/fire system,
+ITEM_MAKERS, and the world-systems bootstrap) plus `core-equip.js`,
+`core-hand-rig.js`, `core-substances.js`, five `items-*.js` files (one
+per weapon/prop family — guns, bow, explosives, tank, bar, vices) and
+three `world-*.js` files (player body, the saloon-bar/wardrobe island,
+the shooting range) — loaded as plain `<script src>` tags, same
+implicit-global style the single file already used, just filed by
+subject instead of dumped in one place. No bundler, no import/export,
+no behavior change; every stage was a move, verified against the
+original with Playwright before being committed. `index.html` itself
+is down to ~310 lines of markup.
+
+One real lesson from doing this for real: almost every cross-file
+reference is safe regardless of which file defines it or the order
+scripts load in, because component `init()`/`tick()` callbacks only
+run once every script on the page has already executed. The one
+exception is a component's `schema` object, which A-Frame evaluates
+the moment `registerComponent()` itself runs — eagerly, not deferred.
+A `default: SOME_CONSTANT` in a schema needs that constant defined by
+files-that-load-earlier, and violating this shipped a real "X is not
+defined" bug mid-split before being caught and fixed. Worth an
+automated check (grep every schema for `default: CONSTANT`, confirm
+the declaring file loads no later than the file using it) rather than
+trusting it by eye, on any repo using this same plain-script pattern.
+
+This makes pistols-at-dawn the one prototype in the repo that isn't a
+single self-contained file (see the README's stated convention). Two
+things worth revisiting later, once the split has paid for itself and
+some of these systems (anchor-slot/holsterable in particular) have
+proven themselves general enough to be worth lifting into a real
+shared library used by other prototypes, not just this one:
+
+- **Whether "no build step" still holds.** It's the right call for a
+  handful of self-contained files with no need to share code between
+  prototypes; a real shared library across games is a different
+  question, and might be the moment a small bundler earns its keep.
+- **How the split should be named/shaped** once code is meant to move
+  *out* of pistols-at-dawn's own folder — worth keeping the
+  genuinely-generic files (the equip contract, the target-range
+  system) free of pistols-specific naming or coupling now, so hoisting
+  them later is a `git mv`, not a rewrite.
