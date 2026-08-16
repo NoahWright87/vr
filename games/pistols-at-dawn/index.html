@@ -241,22 +241,34 @@
       ></a-entity>
 
       <!-- ============================================================
-           THE SALOON
-           Everything the bar adds is built at runtime by saloon-bar
-           (counter, back shelf, wall) — including a row of ordinary
-           anchor-slots along the counter top that the bottles and
-           cigars start "holstered" in. That's the whole trick: the bar
-           is just furniture with sockets, so a bottle can go back on
-           the bar, into your hip holster, into your hat, or into your
+           THE ISLAND
+           Everything saloon-bar builds — bar, armoury, and now a
+           wardrobe the same size — lives on one shared floor that
+           flips upside-down, normally sitting directly underground.
+           See saloon-bar's own comment for the full mechanism (it's a
+           generalization of THE REVOLVING BAR one level up, not a new
+           trick) and the THE ISLAND / BELL POLE constants comment for
+           why: no locomotion yet, so this ridiculous flipping rig is
+           how a single test zone gets to hold more than one thing
+           worth trying, everything reachable from the same spot.
+
+           Both bells that drive it live on boxy-bell-pole instead,
+           deliberately unparented from any of this — see its own
+           comment for why a bell can't be part of what it controls.
+
+           The counter is also a drum with a second face: ring the
+           horizontal-spin bell and it turns over to show an armoury,
+           beers and all (or the wardrobe's other side, whichever's
+           currently up) — see THE REVOLVING BAR. The mirror lives on
+           the wardrobe's own front face, same idea: a plain `scope`
+           pointed at the player instead of down a barrel.
+
+           anchor-slots along the counter top are where the bottles and
+           cigars start "holstered." That's the whole trick: the bar is
+           just furniture with sockets, so a bottle can go back on the
+           bar, into your hip holster, into your hat, or into your
            mouth, and a pistol can be set down on the bar, with no code
            anywhere that knows bottles belong on bars.
-
-           The counter is also a drum with a second face: ring the bell
-           hanging over it and the whole thing turns over to show an
-           armoury, beers and all. See THE REVOLVING BAR — the short
-           version is that everything on the bar is parented to a socket
-           and every socket is parented to the counter, so turning the
-           counter was most of the work already done.
 
            vice-meter and world-systems are the two scene-level
            bookkeepers: how drunk/shaky you currently are, and the
@@ -264,27 +276,9 @@
            smoke, cigar smoke, and shattering glass.
       ============================================================ -->
       <a-entity saloon-bar></a-entity>
+      <a-entity id="bell-pole" boxy-bell-pole></a-entity>
       <a-entity id="vices" vice-meter></a-entity>
       <a-entity world-systems></a-entity>
-
-      <!-- ============================================================
-           THE WARDROBE
-           A second counter-sized drum beside the bar, within the same
-           "lean away from the origin" reach everything here uses (no
-           locomotion). Turned by the bar's OWN bell (see shot-switch's
-           target list and saloon-bar.buildBell's own comment) the same
-           way the bar turns to become the armoury — one connected
-           assembly, not a separate gimmick beside it.
-           The mirror lives here too, built into the middle of the
-           wardrobe's own front face (see boxy-wardrobe.buildFrontFace
-           and boxy-mirror) rather than standing on its own — it's a
-           plain `scope` (see its own comment about being generic
-           enough to work as one) pointed at the player instead of
-           down a barrel, and it turns away with this face exactly like
-           everything else mounted on it, so it's only actually useful
-           while you're looking at the face it's on.
-      ============================================================ -->
-      <a-entity id="wardrobe" boxy-wardrobe></a-entity>
 
       <!-- ============================================================
            TARGET GALLERY
@@ -431,30 +425,35 @@
 
       // MIRROR — a plain scope pointed at the player, per THE SCOPE's
       // own comment that it's generic enough to work as one. Mounted
-      // in the middle of the wardrobe's front face (see boxy-wardrobe)
-      // rather than positioned as standalone furniture — no position
-      // of its own here, just its optical numbers.
+      // in the middle of the wardrobe's front face (see saloon-bar.
+      // buildWardrobeFaceA) rather than positioned as standalone
+      // furniture — no position of its own here, just its optical
+      // numbers.
       var MIRROR_RADIUS = 0.35;
       var MIRROR_FOV = 70; // degrees — a normal view, not a scope's zoom
       var MIRROR_WAKE = 0.8; // meters — still gated (per request — "even if it only appears when I'm close"), just close enough that leaning in reaches it
 
-      // WARDROBE — a second counter-sized drum, turned by the bar's
-      // own bell (see shot-switch's target list) the same way the bar
-      // turns to become the armoury, per the explicit ask: "flip that
-      // whole bar just like it does for the armoury." Sized to
-      // actually hold a real belt (a true-to-scale ~0.3m loop, see
-      // GHOST_RADIUS) and a hat without either dominating the panel,
-      // with room either side of the mirror for pegs and hooks.
-      //
-      // Positioned close to spawn like everything else reachable (see
-      // BAR_NEAR_EDGE_Z) — there's no locomotion — but at a shallower Z
-      // than the bar's own near edge, not beside it at the bar's own
-      // depth, so a wide panel here can't collide with the bar's
-      // structure regardless of X overlap.
-      var WARDROBE_POSITION = { x: -0.9, y: 1.2, z: 0.3 };
-      var WARDROBE_WIDTH = 1.6;
-      var WARDROBE_HEIGHT = 0.9;
-      var WARDROBE_PANEL_THICKNESS = 0.04;
+      // THE ISLAND — everything but the shooting range (see saloon-bar)
+      // lives on one shared floor that flips upside-down: the bar and
+      // armoury are one side, a wardrobe the same size is the other,
+      // normally sitting directly underground exactly where the
+      // player's standing. It's nonsense as a real place — there's no
+      // pretending a bar has a whole second building bolted to its
+      // underside — but there's no locomotion yet either, and this is
+      // a test zone for trying out what's fun before any of it goes
+      // into a real town. FLIP_SPIN_MS is slower than the bar's own
+      // horizontal spin (BAR_SPIN_MS) because it's a much bigger,
+      // heavier-reading motion — the whole structure tips over, not
+      // just a counter turning.
+      var FLIP_SPIN_MS = 1400;
+      var WARDROBE_FRONT_HEIGHT = 2.0; // taller than the bar's own front panel (bodyH, ~1m) — built for a mirror and rows of pegs/hooks, not a gun counter
+
+      // THE BELL POLE — both bells that drive the island, deliberately
+      // NOT parented to any part of it (see boxy-bell-pole): if they
+      // flipped or spun along with the structure they toggle, ringing
+      // one to bring the bar back could take the bell itself out of
+      // reach with it.
+      var POLE_POSITION = { x: 1.3, y: 0, z: -0.2 }; // beside the player, clear of the bar/wardrobe's own footprint and the range dead ahead
       var GRAVITY = 9.8; // real-world value, used for the drop/tumble simulation
       var DANGLE_GRAVITY_TORQUE = 2.5; // how insistently a dangling gun swings back to hanging straight down
       var DANGLE_INERTIA_SCALE = 6; // how strongly flicking your hand imparts spin — crank this up further if it still feels weak
@@ -3164,9 +3163,10 @@
       // numbers — see the MIRROR constants.
       //
       // Doesn't position itself — whoever builds this entity places
-      // and parents it (see boxy-wardrobe, which mounts one in the
-      // middle of its own front face, so it turns with the wardrobe
-      // and is only actually facing you when that face is).
+      // and parents it (see saloon-bar.buildWardrobeFaceA, which
+      // mounts one in the middle of the wardrobe's own front face, so
+      // it turns with that face and is only actually facing you when
+      // that face is).
       // ==============================================================
       registerComponent('boxy-mirror', {
         init: function () {
@@ -3198,154 +3198,106 @@
       });
 
       // ==============================================================
-      // COMPONENT: boxy-wardrobe
-      // A second counter-sized drum next to the bar, turned by the SAME
-      // bell (see shot-switch's `target: selectorAll` and the bar
-      // bell's own comment) and the same way — a turntable spin on y,
-      // not the upside-down flip an earlier version of this used —
-      // because the ask was specifically for it to turn "just like it
-      // does for the armoury," reading as one connected assembly
-      // rather than a separate gimmick next to it.
+      // COMPONENT: boxy-bell-pole
+      // Both bells that drive the island (see saloon-bar and the
+      // THE ISLAND constants comment), on a post beside the player —
+      // deliberately NOT parented to any part of what they control.
+      // Ringing a bell to bring the bar back has to still work after
+      // the bar's gone underground with everything mounted on it; if
+      // the bell went with it, there'd be no way back.
       //
-      // Two real faces (no "closed" decoy face this time, matching how
-      // the bar itself never hides behind a blank one either): the
-      // front carries a mirror dead center — see boxy-mirror, mounted
-      // here rather than built standalone, so it turns away with this
-      // face and is only actually useful while you're looking at it —
-      // flanked by a hat peg and belt hook on each side. The back is
-      // mostly bare sockets, same "empty sockets to arrange your own
-      // loadout in" the armoury already does, ahead of more item types
-      // to actually fill them.
-      //
-      // Every peg/hook/socket here is an ordinary anchor-slot — nothing
-      // in this component knows what a belt or a hat is, it just
-      // builds sockets and stocks a couple of them (see STOCK AND
-      // PERISHING).
+      // The two arms point along the axis their bell turns, so which
+      // is which reads at a glance: the horizontal-spin bell's arm
+      // runs straight up off the post (y), the vertical-flip bell's
+      // arm runs straight out to the side (x) — matching turntable's
+      // own `axis` on whatever each one targets.
       // ==============================================================
-      registerComponent('boxy-wardrobe', {
+      registerComponent('boxy-bell-pole', {
         init: function () {
           var el = this.el;
-          this.slotSerial = 0;
-          el.setAttribute('position', WARDROBE_POSITION);
+          el.setAttribute('position', POLE_POSITION);
 
-          this.drumEl = document.createElement('a-entity');
-          this.drumEl.setAttribute('id', 'wardrobe-turntable');
-          this.drumEl.setAttribute('turntable', { spinMs: BAR_SPIN_MS, faces: 2, axis: 'y' }); // same duration as the bar's own — one bell, two drums finishing their turn together
-          el.appendChild(this.drumEl);
+          var post = document.createElement('a-cylinder');
+          post.setAttribute('radius', 0.03);
+          post.setAttribute('height', 1.8);
+          post.setAttribute('color', '#3c2a1c');
+          post.setAttribute('position', { x: 0, y: 0.9, z: 0 });
+          el.appendChild(post);
 
-          this.frontFaceEl = document.createElement('a-entity');
-          this.drumEl.appendChild(this.frontFaceEl);
+          // Horizontal spin: bar<->armoury on one drum, wardrobe A<->B
+          // on the other, whichever's currently up — see shot-switch's
+          // target list, the same multi-target trick the bar's own
+          // bell used before it moved here.
+          this.buildBell({ x: 0, y: 1.55, z: 0 }, 'y', 0.25, '#bar-turntable, #wardrobe-turntable');
 
-          this.backFaceEl = document.createElement('a-entity');
-          this.backFaceEl.setAttribute('rotation', { x: 0, y: 180, z: 0 });
-          this.drumEl.appendChild(this.backFaceEl);
-
-          this.buildFrontFace();
-          this.buildBackFace();
+          // Vertical flip: swaps which side (bar/armoury, or wardrobe)
+          // is up at all.
+          this.buildBell({ x: 0, y: 1.1, z: 0 }, 'x', 0.35, '#island-flip');
         },
 
-        addBox: function (faceEl, w, h, d, pos, color, rot) {
-          var box = document.createElement('a-box');
-          box.setAttribute('width', w);
-          box.setAttribute('height', h);
-          box.setAttribute('depth', d);
-          box.setAttribute('position', pos);
-          box.setAttribute('color', color);
-          if (rot) box.setAttribute('rotation', rot);
-          faceEl.appendChild(box);
-          return box;
-        },
+        // armAxis/armLength describe a straight bracket from mountPos
+        // out to where the bell hangs — same brass dome/lip/clapper
+        // proportions the original bar bell used, just parameterized
+        // now that there are two of them on one component instead of
+        // one each on two unrelated ones.
+        buildBell: function (mountPos, armAxis, armLength, target) {
+          var brass = '#b98c2a';
+          var el = this.el;
 
-        // `rot` rolls the socket itself rather than the item — same
-        // trick the armoury's cradles use to lay a long gun flat while
-        // it keeps the one holstered pose it has everywhere else (see
-        // saloon-bar.addSlot's own comment). Here it's what turns a
-        // hat's "sitting flat on a head" pose into "hanging off a peg",
-        // and a belt's "wrapped flat around a waist" into "looped on a
-        // hook", without either item needing a peg-specific pose of
-        // its own.
-        addSlot: function (faceEl, pos, size, extra, rot) {
-          var id = 'wardrobe-slot-' + this.slotSerial++;
-          var slot = document.createElement('a-entity');
-          slot.setAttribute('id', id);
-          slot.classList.add('anchor-slot');
+          var armDims, armPos, bellPos;
+          if (armAxis === 'y') {
+            armDims = { w: 0.03, h: armLength, d: 0.03 };
+            armPos = { x: mountPos.x, y: mountPos.y + armLength / 2, z: mountPos.z };
+            bellPos = { x: mountPos.x, y: mountPos.y + armLength, z: mountPos.z };
+          } else {
+            armDims = { w: armLength, h: 0.03, d: 0.03 };
+            armPos = { x: mountPos.x + armLength / 2, y: mountPos.y, z: mountPos.z };
+            bellPos = { x: mountPos.x + armLength, y: mountPos.y, z: mountPos.z };
+          }
 
-          var config = { size: size };
-          Object.keys(extra || {}).forEach(function (k) {
-            config[k] = extra[k];
-          });
-          slot.setAttribute('anchor-slot', config);
-          slot.setAttribute('position', pos);
-          if (rot) slot.setAttribute('rotation', rot);
-          faceEl.appendChild(slot);
-          return id;
-        },
+          var arm = document.createElement('a-box');
+          arm.setAttribute('width', armDims.w);
+          arm.setAttribute('height', armDims.h);
+          arm.setAttribute('depth', armDims.d);
+          arm.setAttribute('position', armPos);
+          arm.setAttribute('color', '#3c2a1c');
+          el.appendChild(arm);
 
-        stock: function (slotId, item) {
-          var slot = document.getElementById(slotId);
-          if (slot) slot.setAttribute('stocked', { item: item, refillMs: ARMORY_REFILL_MS });
-        },
+          var hanger = document.createElement('a-entity');
+          hanger.setAttribute('position', bellPos);
+          hanger.classList.add('shootable');
+          hanger.setAttribute('shot-switch', { target: target });
+          el.appendChild(hanger);
 
-        // The mirror in the middle, a hat peg and belt hook on each
-        // side of it.
-        buildFrontFace: function () {
-          var self = this;
-          var face = this.frontFaceEl;
-          var iron = '#3a3f43';
+          var stem = document.createElement('a-box');
+          stem.setAttribute('width', 0.014);
+          stem.setAttribute('height', 0.1);
+          stem.setAttribute('depth', 0.014);
+          stem.setAttribute('position', { x: 0, y: -0.05, z: 0 });
+          stem.setAttribute('color', '#2b2b2f');
+          hanger.appendChild(stem);
 
-          this.addBox(face, WARDROBE_WIDTH, WARDROBE_HEIGHT, WARDROBE_PANEL_THICKNESS, { x: 0, y: 0, z: 0 }, '#3c2a1c');
+          var dome = document.createElement('a-cylinder');
+          dome.setAttribute('radius', 0.11);
+          dome.setAttribute('height', 0.15);
+          dome.setAttribute('color', brass);
+          dome.setAttribute('position', { x: 0, y: -0.175, z: 0 });
+          hanger.appendChild(dome);
 
-          var mirror = document.createElement('a-entity');
-          mirror.setAttribute('boxy-mirror', '');
-          // Clear of the panel's own front surface by a real margin —
-          // boxy-mirror's ring frame sits 0.01 BEHIND this entity's own
-          // origin (see its own comment, "sits behind the glass"), so
-          // a small clearance here undershoots and the ring ends up
-          // flush with the panel after all: exactly what happened the
-          // first time, and it z-fought into a flickering crescent
-          // instead of a clean ring. 0.05 puts the ring itself a solid
-          // ~0.03 clear of the panel, not just this entity's origin.
-          mirror.setAttribute('position', { x: 0, y: 0, z: -(WARDROBE_PANEL_THICKNESS / 2 + 0.05) });
-          face.appendChild(mirror);
+          var lip = document.createElement('a-cylinder');
+          lip.setAttribute('radius', 0.13);
+          lip.setAttribute('height', 0.03);
+          lip.setAttribute('color', '#8a6a1c');
+          lip.setAttribute('position', { x: 0, y: -0.26, z: 0 });
+          hanger.appendChild(lip);
 
-          var pegHeight = 0.12;
-          var hookDepth = 0.08;
-          var sideX = WARDROBE_WIDTH / 2 - 0.35; // clear of the mirror's own radius either side
-          [-sideX, sideX].forEach(function (x, i) {
-            self.addBox(face, 0.02, pegHeight, 0.02, { x: x, y: 0.3, z: -0.06 }, iron, { x: -25, y: 0, z: 0 });
-            // Tipped steeply forward so the hat's own "sitting flat"
-            // holsterRotation hangs down off the peg's end instead of
-            // floating flat in space beside it.
-            var hatSlotId = self.addSlot(face, { x: x, y: 0.36, z: -0.09 }, 'medium', {}, { x: -80, y: 0, z: 0 });
-            if (i === 0) self.stock(hatSlotId, 'hat-tan');
-
-            self.addBox(face, 0.02, 0.02, hookDepth, { x: x, y: -0.32, z: -hookDepth / 2 }, iron);
-            // Rolled 90° so the belt's own flat "wrapped around a
-            // waist" ring hangs as a vertical loop off the hook.
-            var beltSlotId = self.addSlot(face, { x: x, y: -0.32, z: -hookDepth }, 'medium', {}, { x: 0, y: 0, z: 90 });
-            if (i === 0) self.stock(beltSlotId, 'belt-silver');
-          });
-        },
-
-        // Mostly bare — a 3x2 grid of sockets with just a small peg
-        // nub each, so the board doesn't read as broken/empty rather
-        // than "not filled in yet." None stocked: there's nothing else
-        // to put on them until more item types exist.
-        buildBackFace: function () {
-          var self = this;
-          var face = this.backFaceEl;
-          var iron = '#3a3f43';
-
-          this.addBox(face, WARDROBE_WIDTH, WARDROBE_HEIGHT, WARDROBE_PANEL_THICKNESS, { x: 0, y: 0, z: 0 }, '#3c2a1c');
-
-          var cols = [-WARDROBE_WIDTH / 2 + 0.35, 0, WARDROBE_WIDTH / 2 - 0.35];
-          var rows = [0.25, -0.25];
-          rows.forEach(function (y) {
-            cols.forEach(function (x) {
-              self.addBox(face, 0.02, 0.02, 0.07, { x: x, y: y, z: -0.035 }, iron);
-              self.addSlot(face, { x: x, y: y, z: -0.07 }, 'medium');
-            });
-          });
+          var clapper = document.createElement('a-box');
+          clapper.setAttribute('width', 0.03);
+          clapper.setAttribute('height', 0.05);
+          clapper.setAttribute('depth', 0.03);
+          clapper.setAttribute('position', { x: 0, y: -0.29, z: 0 });
+          clapper.setAttribute('color', '#2b2b2f');
+          hanger.appendChild(clapper);
         },
       });
 
@@ -9196,7 +9148,7 @@
         schema: {
           spinMs: { type: 'number', default: BAR_SPIN_MS },
           faces: { type: 'number', default: 2 },
-          axis: { type: 'string', default: 'y' }, // 'y' | 'x' | 'z' — which local axis it turns on. The bar spins on y (a horizontal turn); the wardrobe flips on x (properly upside-down) — see boxy-wardrobe.
+          axis: { type: 'string', default: 'y' }, // 'y' | 'x' | 'z' — which local axis it turns on. The bar/armoury and wardrobe drums both spin on y (a horizontal turn); the island's own outer flip (see saloon-bar) turns on x (properly upside-down) to swap which of them is up at all.
         },
 
         init: function () {
@@ -9242,9 +9194,14 @@
           // Pools are moved by the same delta and BEFORE the drum
           // turns, so the "is this puddle on my counter" test below
           // runs against the frame the puddle is still standing in.
-          // ridePools only ever actually moves anything for a y-axis
-          // turntable (see its own comment) — a harmless no-op for the
-          // wardrobe's x-axis flip, which owns no HARD_SURFACES.
+          // ridePools bails out immediately for anything but a y-axis
+          // turntable (see its own comment) — the island's own outer
+          // flip (axis: x) technically "owns" the bar's counter surface
+          // too, by nesting, so without that guard it would try to
+          // apply this same x/z-plane rotation to any puddle sitting on
+          // the bar while the whole thing tips over, which is the wrong
+          // math for that axis and would fling it sideways instead of
+          // just carrying it along for the ride.
           this.ridePools(angle - this.el.object3D.rotation[this.data.axis]);
           this.el.object3D.rotation[this.data.axis] = angle;
 
@@ -9257,8 +9214,10 @@
         // and nothing else — and because a burning pool is just a pool,
         // setting the bar alight and then spinning it delivers a
         // burning armoury without anything here knowing what fire is.
+        //
+        // Y-axis only — see the comment where this is called.
         ridePools: function (deltaRad) {
-          if (!deltaRad) return;
+          if (!deltaRad || this.data.axis !== 'y') return;
 
           this.el.object3D.getWorldPosition(this._pivot);
           var cos = Math.cos(deltaRad);
@@ -9371,24 +9330,47 @@
       // shelf is deliberately out of reach — those bottles are there
       // to be shot, not picked up.
       //
-      // The counter itself is a drum with a face on each side (see the
-      // THE REVOLVING BAR note): saloon on one, armoury on the other,
-      // both authored in the same coordinates because the armoury's
-      // frame is this one turned around.
+      // This is also THE ISLAND now (see its own constants comment):
+      // the whole thing — bar, armoury, and a wardrobe the same size —
+      // lives on one flipping assembly, everything but the shooting
+      // range. There are three nested turns here, not one:
+      //   - flipEl turns the whole island on x — bar/armoury side up,
+      //     or wardrobe side up, normally sitting directly underground.
+      //   - drumEl (bar side) turns the counter on y — saloon or
+      //     armoury, exactly as it always has.
+      //   - wardrobeDrumEl (wardrobe side) turns its own counter on y —
+      //     wardrobe face A or B — the same mechanism, one more time.
+      // Both faces of both drums are authored in the SAME numbers
+      // (BAR_WIDTH, BAR_TOP_Y, BAR_PIVOT_Z, ...) on purpose: the
+      // wardrobe side's own local 180°-about-x rotation plus flipEl's
+      // matching 180° flip cancel out exactly the way the armoury
+      // face's local 180°-about-y rotation plus the counter's own spin
+      // already do (see THE REVOLVING BAR) — so reusing those numbers
+      // for the wardrobe lands it in exactly the bar's own footprint,
+      // right-side up, with no new pivot math anywhere.
       // ==============================================================
       registerComponent('saloon-bar', {
         init: function () {
           this.slotSerial = 0;
 
-          // Three frames, and this component is the only thing that
-          // knows the difference between them. `room` is the building:
-          // the back wall, the out-of-reach shelves and the bell, none
-          // of which move. `drum` is the counter block, which turns.
-          // Its two faces hang off it and are authored identically,
-          // because the armoury's frame IS the saloon's, turned around.
-          this.roomEl = this.addChild(this.el, { x: 0, y: 0, z: 0 });
+          this.flipEl = this.addChild(this.el, { x: 0, y: 0, z: 0 });
+          this.flipEl.setAttribute('id', 'island-flip');
+          this.flipEl.setAttribute('turntable', { spinMs: FLIP_SPIN_MS, axis: 'x' });
 
-          this.drumEl = this.addChild(this.el, { x: 0, y: 0, z: BAR_PIVOT_Z });
+          this.barSideEl = this.addChild(this.flipEl, { x: 0, y: 0, z: 0 });
+          this.wardrobeSideEl = this.addChild(this.flipEl, { x: 0, y: 0, z: 0 });
+          this.wardrobeSideEl.setAttribute('rotation', { x: 180, y: 0, z: 0 });
+
+          // The bar/armoury side. Same structure as ever — `room` is
+          // the building (back wall, out-of-reach shelves, none of
+          // which move) and `drum` is the counter block, which turns.
+          // Its two faces hang off it and are authored identically,
+          // because the armoury's frame IS the saloon's, turned
+          // around. Just one level deeper in the hierarchy than before
+          // (barSideEl, under flipEl, instead of directly under `el`).
+          this.roomEl = this.addChild(this.barSideEl, { x: 0, y: 0, z: 0 });
+
+          this.drumEl = this.addChild(this.barSideEl, { x: 0, y: 0, z: BAR_PIVOT_Z });
           this.drumEl.setAttribute('id', 'bar-turntable');
           this.drumEl.setAttribute('turntable', { spinMs: BAR_SPIN_MS });
 
@@ -9400,6 +9382,24 @@
           this.buildDrum();
           this.buildSaloonFace();
           this.buildArmoryFace();
+
+          // The wardrobe side — a mirror of the above (see the class
+          // comment): same shape, same numbers, clothes instead of
+          // guns.
+          this.wardrobeRoomEl = this.addChild(this.wardrobeSideEl, { x: 0, y: 0, z: 0 });
+
+          this.wardrobeDrumEl = this.addChild(this.wardrobeSideEl, { x: 0, y: 0, z: BAR_PIVOT_Z });
+          this.wardrobeDrumEl.setAttribute('id', 'wardrobe-turntable');
+          this.wardrobeDrumEl.setAttribute('turntable', { spinMs: BAR_SPIN_MS });
+
+          this.wardrobeFaceAEl = this.addChild(this.wardrobeDrumEl, { x: 0, y: 0, z: 0 });
+          this.wardrobeFaceBEl = this.addChild(this.wardrobeDrumEl, { x: 0, y: 0, z: 0 });
+          this.wardrobeFaceBEl.setAttribute('rotation', { x: 0, y: 180, z: 0 });
+
+          this.buildWardrobeRoom();
+          this.buildWardrobeDrum();
+          this.buildWardrobeFaceA();
+          this.buildWardrobeFaceB();
         },
 
         addChild: function (parentEl, pos) {
@@ -9412,10 +9412,11 @@
         // Both faces and the drum are authored in the same "as you see
         // it" coordinates — x across the bar, z out toward the player —
         // and this is the only place that knows which of them are
-        // mounted on the drum and therefore need the axis subtracted
-        // out. The room is already in those coordinates.
+        // mounted on a drum and therefore need the axis subtracted
+        // out. Either room (bar or wardrobe) is already in those
+        // coordinates.
         localTo: function (faceEl, pos) {
-          if (faceEl === this.roomEl) return pos;
+          if (faceEl === this.roomEl || faceEl === this.wardrobeRoomEl) return pos;
           return { x: pos.x, y: pos.y, z: pos.z - BAR_PIVOT_Z };
         },
 
@@ -9466,9 +9467,12 @@
           if (slot) slot.setAttribute('stocked', { item: item, refillMs: ARMORY_REFILL_MS });
         },
 
-        // The parts of the saloon that stay where they are: the wall,
-        // the high shelves that were always meant to be shot at rather
-        // than reached, and the bell.
+        // The parts of the saloon that stay where they are: the wall
+        // and the high shelves that were always meant to be shot at
+        // rather than reached. The bell(s) that used to be built here
+        // moved out entirely — see boxy-bell-pole — because they can't
+        // be part of anything that turns without taking themselves out
+        // of reach along with it.
         buildRoom: function () {
           var self = this;
 
@@ -9479,7 +9483,6 @@
           });
 
           this.buildShelfBottles();
-          this.buildBell();
         },
 
         // The drum: the counter block, which belongs to neither face
@@ -9743,79 +9746,6 @@
           this.el.sceneEl.appendChild(el);
         },
 
-        // The bell that turns the bar over, on a bracket out from the
-        // wall. It's part of the room rather than of the drum, so it
-        // stays put whichever face is showing.
-        //
-        // Its position is picked to stay out of the way twice over: the
-        // arm runs above the top shelf's bottles, and the bell itself
-        // hangs off-centre, threaded between the sightlines from where
-        // you stand to those bottles rather than sitting across one.
-        //
-        // It's an ordinary .shootable, so everything that can already
-        // hit a bottle can already ring it: a pistol, a pellet from the
-        // shotgun, or the desktop reticle.
-        //
-        // One ring turns BOTH this counter's drum and the wardrobe's
-        // (shot-switch's target is selectorAll — see its own comment)
-        // — the whole connected assembly turns together, bar/armoury
-        // and wardrobe alike, rather than needing a second bell.
-        buildBell: function () {
-          var brass = '#b98c2a';
-          var hangerY = BELL_Y + 0.17;
-
-          this.addBox(
-            0.06,
-            0.06,
-            SHELF_Z + 0.29 - BAR_PIVOT_Z,
-            { x: BELL_X, y: BELL_ARM_Y, z: (BAR_PIVOT_Z + SHELF_Z + 0.29) / 2 },
-            '#3c2a1c',
-            this.roomEl
-          ); // bracket arm, out from the wall
-          this.addBox(
-            0.03,
-            BELL_ARM_Y - hangerY,
-            0.03,
-            { x: BELL_X, y: (BELL_ARM_Y + hangerY) / 2, z: BAR_PIVOT_Z },
-            '#3c2a1c',
-            this.roomEl
-          ); // and the rod it hangs on
-
-          var hanger = this.addChild(this.roomEl, { x: BELL_X, y: hangerY, z: BAR_PIVOT_Z });
-          hanger.classList.add('shootable');
-          hanger.setAttribute('shot-switch', { target: '#bar-turntable, #wardrobe-turntable' }); // one bell, whole connected assembly — see the wardrobe's own comment
-
-          var stem = document.createElement('a-box');
-          stem.setAttribute('width', 0.014);
-          stem.setAttribute('height', 0.1);
-          stem.setAttribute('depth', 0.014);
-          stem.setAttribute('position', { x: 0, y: -0.05, z: 0 });
-          stem.setAttribute('color', '#2b2b2f');
-          hanger.appendChild(stem);
-
-          var dome = document.createElement('a-cylinder');
-          dome.setAttribute('radius', 0.11);
-          dome.setAttribute('height', 0.15);
-          dome.setAttribute('color', brass);
-          dome.setAttribute('position', { x: 0, y: -0.175, z: 0 });
-          hanger.appendChild(dome);
-
-          var lip = document.createElement('a-cylinder');
-          lip.setAttribute('radius', 0.13);
-          lip.setAttribute('height', 0.03);
-          lip.setAttribute('color', '#8a6a1c');
-          lip.setAttribute('position', { x: 0, y: -0.26, z: 0 });
-          hanger.appendChild(lip);
-
-          var clapper = document.createElement('a-box');
-          clapper.setAttribute('width', 0.03);
-          clapper.setAttribute('height', 0.05);
-          clapper.setAttribute('depth', 0.03);
-          clapper.setAttribute('position', { x: 0, y: -0.29, z: 0 });
-          clapper.setAttribute('color', '#2b2b2f');
-          hanger.appendChild(clapper);
-        },
-
         // ============================================================
         // THE ARMOURY
         // The far face. Authored in exactly the coordinates the saloon
@@ -9972,6 +9902,178 @@
           ARMORY_SHELF_SOCKET_X.forEach(function (x) {
             this.addSlot({ x: x, y: ARMORY_SHELF_Y + 0.03, z: ARMORY_SHELF_Z }, 'medium', {}, face);
           }, this);
+        },
+
+        // ============================================================
+        // THE WARDROBE SIDE
+        // A mirror of the bar/armoury above in every sense: same wall,
+        // same shelves, same counter-block, same two-faces-on-a-drum
+        // trick — just underneath instead of beside, and built for
+        // clothes instead of guns. See the class comment for why
+        // reusing the bar's own numbers (BAR_WIDTH, BAR_TOP_Y, etc.)
+        // is what makes this land in the right spot with no new math.
+        // ============================================================
+        buildWardrobeRoom: function () {
+          var self = this;
+          this.addBox(BAR_WIDTH + 1.6, 3, 0.12, { x: 0, y: 1.5, z: SHELF_Z + 0.35 }, '#3f3348', this.wardrobeRoomEl);
+          SHELF_HEIGHTS.forEach(function (y) {
+            self.addBox(BAR_WIDTH - 0.4, 0.06, 0.28, { x: 0, y: y, z: SHELF_Z }, '#6b5a7a', self.wardrobeRoomEl);
+          });
+          this.buildWardrobeShelfSlots();
+        },
+
+        // Empty display sockets on the high shelves, same layout the
+        // bar's own bottles use (see buildShelfBottles) but bare —
+        // nothing to put on display up here yet.
+        buildWardrobeShelfSlots: function () {
+          var self = this;
+          var spacing = (BAR_WIDTH - 0.8) / (SHELF_BOTTLES_PER_ROW - 1);
+          SHELF_HEIGHTS.forEach(function (y) {
+            for (var i = 0; i < SHELF_BOTTLES_PER_ROW; i++) {
+              self.addSlot(
+                { x: -(BAR_WIDTH - 0.8) / 2 + i * spacing, y: y + 0.03, z: SHELF_Z },
+                'small',
+                {},
+                self.wardrobeRoomEl
+              );
+            }
+          });
+        },
+
+        // The counter block itself — same spine-and-two-end-caps shape
+        // as buildDrum, just recoloured. No HARD_SURFACES entry: that
+        // exists purely for the bottle-cap-crack move (see buildDrum's
+        // own comment), and nothing here needs it.
+        buildWardrobeDrum: function () {
+          var bodyH = BAR_TOP_Y - 0.07;
+          var bodyY = bodyH / 2;
+
+          this.addBox(BAR_WIDTH, 0.07, BAR_DEPTH + 0.08, { x: 0, y: BAR_TOP_Y - 0.035, z: BAR_PIVOT_Z }, '#5a4a6b', this.wardrobeDrumEl);
+          this.addBox(BAR_WIDTH, bodyH, 0.14, { x: 0, y: bodyY, z: BAR_PIVOT_Z }, '#453a52', this.wardrobeDrumEl);
+          this.addBox(0.05, bodyH, BAR_DEPTH, { x: -(BAR_WIDTH / 2 - 0.025), y: bodyY, z: BAR_PIVOT_Z }, '#453a52', this.wardrobeDrumEl);
+          this.addBox(0.05, bodyH, BAR_DEPTH, { x: BAR_WIDTH / 2 - 0.025, y: bodyY, z: BAR_PIVOT_Z }, '#453a52', this.wardrobeDrumEl);
+        },
+
+        // The near face: the mirror dead center (see boxy-mirror and
+        // MIRROR constants), a column of hat peg + belt hook either
+        // side of it (one of each already stocked, the rest bare —
+        // see STOCK AND PERISHING), and a scatter of small/large
+        // sockets filling out the rest of the panel. Built taller than
+        // the bar's own front panel (WARDROBE_FRONT_HEIGHT vs bodyH) —
+        // this was sized for a mirror and rows of pegs, not a gun
+        // counter.
+        buildWardrobeFaceA: function () {
+          var self = this;
+          var face = this.wardrobeFaceAEl;
+          var iron = '#5a4a6b';
+
+          this.addBox(
+            BAR_WIDTH - 0.1,
+            WARDROBE_FRONT_HEIGHT,
+            0.05,
+            { x: 0, y: WARDROBE_FRONT_HEIGHT / 2, z: BAR_NEAR_EDGE_Z + 0.025 },
+            '#4a3b52',
+            face
+          );
+
+          // Set back from the panel's own front face by a real margin
+          // — see the z-fighting note on the earlier draft of this
+          // mirror mount, which undershot this and got a flickering
+          // crescent instead of a clean ring.
+          var mirror = document.createElement('a-entity');
+          mirror.setAttribute('boxy-mirror', '');
+          mirror.setAttribute('position', this.localTo(face, { x: 0, y: 1.2, z: BAR_NEAR_EDGE_Z - 0.03 }));
+          face.appendChild(mirror);
+
+          var pegHeight = 0.12;
+          var hookDepth = 0.08;
+          var hatY = 1.75;
+          var beltY = 0.65;
+          var columnXs = [-1.3, -0.65, 0.65, 1.3]; // clear of the mirror's own 0.35 radius either side
+
+          columnXs.forEach(function (x, i) {
+            self.addBox(
+              0.02,
+              pegHeight,
+              0.02,
+              { x: x, y: hatY - 0.06, z: BAR_NEAR_EDGE_Z - 0.02 },
+              iron,
+              face,
+              { x: -25, y: 0, z: 0 }
+            );
+            // Tipped steeply forward, same trick as the original
+            // wardrobe draft: a hat's own "sitting flat" holsterRotation
+            // hangs down off the peg's end this way instead of floating
+            // flat in space beside it.
+            var hatSlotId = self.addSlot(
+              { x: x, y: hatY, z: BAR_NEAR_EDGE_Z - 0.05 },
+              'medium',
+              {},
+              face,
+              { x: -80, y: 0, z: 0 }
+            );
+            if (i === 0) self.stock(hatSlotId, 'hat-tan');
+
+            self.addBox(0.02, 0.02, hookDepth, { x: x, y: beltY, z: BAR_NEAR_EDGE_Z - hookDepth / 2 }, iron, face);
+            // Rolled 90°, same reason: a belt's flat "wrapped around a
+            // waist" ring hangs as a vertical loop off the hook this way.
+            var beltSlotId = self.addSlot(
+              { x: x, y: beltY, z: BAR_NEAR_EDGE_Z - hookDepth },
+              'medium',
+              {},
+              face,
+              { x: 0, y: 0, z: 90 }
+            );
+            if (i === 0) self.stock(beltSlotId, 'belt-silver');
+          });
+
+          // Bare for now (see STOCK AND PERISHING) — future small
+          // things (pins, glasses) low across the panel, future large
+          // things (coats, ponchos) either side of the mirror.
+          [-1.5, -0.9, -0.3, 0.3, 0.9, 1.5].forEach(function (x) {
+            self.addSlot({ x: x, y: 0.3, z: BAR_NEAR_EDGE_Z - 0.02 }, 'small', {}, face);
+          });
+          [-1.0, 1.0].forEach(function (x) {
+            self.addSlot({ x: x, y: 1.2, z: BAR_NEAR_EDGE_Z - 0.02 }, 'large', {}, face);
+          });
+        },
+
+        // The far face: no mirror here, just a dense, mixed-size grid
+        // of bare sockets — structure only for now, exactly the ask.
+        // Same panel height as the front face, same reasoning.
+        buildWardrobeFaceB: function () {
+          var self = this;
+          var face = this.wardrobeFaceBEl;
+          var iron = '#5a4a6b';
+
+          this.addBox(
+            BAR_WIDTH - 0.1,
+            WARDROBE_FRONT_HEIGHT,
+            0.05,
+            { x: 0, y: WARDROBE_FRONT_HEIGHT / 2, z: BAR_NEAR_EDGE_Z + 0.025 },
+            '#3f3348',
+            face
+          );
+
+          var cols = [-1.4, -0.8, -0.2, 0.4, 1.0, 1.6];
+          var rows = [
+            { y: 1.7, size: 'small' },
+            { y: 1.2, size: 'medium' },
+            { y: 0.7, size: 'medium' },
+            { y: 0.25, size: 'small' },
+          ];
+          rows.forEach(function (row) {
+            cols.forEach(function (x) {
+              self.addBox(0.02, 0.02, 0.05, { x: x, y: row.y, z: BAR_NEAR_EDGE_Z - 0.03 }, iron, face);
+              self.addSlot({ x: x, y: row.y, z: BAR_NEAR_EDGE_Z - 0.05 }, row.size, {}, face);
+            });
+          });
+
+          // A couple of large sockets for bigger future things —
+          // coats, costume pieces — off in the corners.
+          [-1.7, 1.7].forEach(function (x) {
+            self.addSlot({ x: x, y: 1.0, z: BAR_NEAR_EDGE_Z - 0.02 }, 'large', {}, face);
+          });
         },
       });
 
