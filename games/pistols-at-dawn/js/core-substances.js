@@ -573,6 +573,9 @@
           this._hasPrev = false;
         },
       });
+
+      var BOTTLE_RESPAWN_MS = 5000; // a shattered bottle reappears on its home slot after this
+
       // ==============================================================
       // COMPONENT: breakable
       // Generic "this comes apart when something hits it hard enough."
