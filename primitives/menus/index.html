@@ -4,6 +4,14 @@
     <meta charset="utf-8" />
     <title>Menus — WebXR Primitives</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <script>
+      (function () {
+        var params = new URLSearchParams(window.location.search);
+        if (params.get('edit') === '1') {
+         document.documentElement.classList.add('editor-mode');
+        }
+      })();
+    </script>
 
     <!-- Same vendored setup as the prototypes: no build step, just a
          checked-in copy. See /vendor/README.md for why. -->
@@ -14,6 +22,27 @@
       body {
         margin: 0;
         font-family: system-ui, sans-serif;
+        min-height: 100vh;
+      }
+      body.editor-mode {
+        background: #08111f;
+        color: #e8eefc;
+        overflow-y: auto;
+      }
+      html.editor-mode,
+      html.editor-mode body {
+        min-height: 100vh;
+        overflow-y: auto;
+      }
+      html.editor-mode #vr-screen,
+      body.editor-mode #vr-screen {
+        display: none !important;
+      }
+      html.editor-mode #editor-screen,
+      body.editor-mode #editor-screen {
+        display: block !important;
+        min-height: 100vh;
+        overflow-y: auto;
       }
       #overlay {
         position: absolute;
@@ -29,9 +58,236 @@
       #overlay a {
         color: #9ad;
       }
+      #editor-screen {
+        display: none;
+        min-height: 100vh;
+        box-sizing: border-box;
+        padding: 1.5rem;
+        background: linear-gradient(180deg, #0d1526 0%, #101a30 100%);
+        overflow-y: auto;
+      }
+      html.editor-mode #editor-screen {
+        display: block;
+      }
+      html.editor-mode #vr-screen {
+        position: absolute;
+        width: 0;
+        height: 0;
+        overflow: hidden;
+        pointer-events: none;
+      }
+      body.editor-mode #editor-screen {
+        display: block;
+      }
+      body.editor-mode #vr-screen {
+        position: absolute;
+        width: 0;
+        height: 0;
+        overflow: hidden;
+        pointer-events: none;
+      }
+      .editor-shell {
+        max-width: 72rem;
+        margin: 0 auto;
+        padding-bottom: 2rem;
+      }
+      .editor-topbar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 1rem;
+        margin-bottom: 1rem;
+      }
+      .editor-topbar h1 {
+        margin: 0;
+        font-size: 1.5rem;
+      }
+      .editor-subtitle {
+        margin: 0.35rem 0 0;
+        color: #aeb8d8;
+        max-width: 48rem;
+      }
+      .editor-back-link,
+      .editor-link-button,
+      .copy-json-button,
+      .menu-edit-link {
+        appearance: none;
+        border: 1px solid #35507c;
+        background: #15233b;
+        color: #dce8ff;
+        border-radius: 0.6rem;
+        padding: 0.55rem 0.85rem;
+        text-decoration: none;
+        cursor: pointer;
+        font: inherit;
+      }
+      .editor-back-link:hover,
+      .editor-link-button:hover,
+      .copy-json-button:hover,
+      .menu-edit-link:hover {
+        border-color: #7eb3ff;
+      }
+      .editor-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1.1fr) minmax(20rem, 0.9fr);
+        gap: 1rem;
+      }
+      .editor-card {
+        background: rgba(14, 24, 44, 0.92);
+        border: 1px solid #223454;
+        border-radius: 0.9rem;
+        padding: 1rem;
+        box-shadow: 0 16px 40px rgba(0, 0, 0, 0.25);
+      }
+      .editor-card h2,
+      .editor-card h3 {
+        margin-top: 0;
+      }
+      .editor-field-grid,
+      .editor-triplet-grid,
+      .editor-item-grid {
+        display: grid;
+        gap: 0.75rem;
+      }
+      .editor-field-grid {
+        grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+      }
+      .editor-triplet-grid,
+      .editor-item-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+      .editor-card label {
+        display: block;
+        font-size: 0.9rem;
+        color: #b9c7e8;
+      }
+      .editor-card input,
+      .editor-card textarea {
+        width: 100%;
+        box-sizing: border-box;
+        margin-top: 0.35rem;
+        padding: 0.55rem 0.65rem;
+        border-radius: 0.5rem;
+        border: 1px solid #35507c;
+        background: #0a1426;
+        color: #eef4ff;
+        font: inherit;
+      }
+      .editor-card textarea {
+        min-height: 6rem;
+        resize: vertical;
+      }
+      .editor-item-list {
+        display: grid;
+        gap: 0.85rem;
+      }
+      .editor-item-card {
+        border: 1px solid #263a5c;
+        border-radius: 0.8rem;
+        padding: 0.85rem;
+        background: #0d172a;
+      }
+      .editor-item-card h3 {
+        margin-bottom: 0.75rem;
+        font-size: 1rem;
+      }
+      .editor-help {
+        margin: 0 0 1rem;
+        color: #9fb0d4;
+      }
+      .json-toolbar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 1rem;
+        margin-bottom: 0.75rem;
+      }
+      .copy-status {
+        color: #93f0bf;
+        font-size: 0.9rem;
+        min-height: 1.2rem;
+      }
+      #menu-editor-json {
+        width: 100%;
+        min-height: 16rem;
+        box-sizing: border-box;
+        border-radius: 0.8rem;
+        border: 1px solid #35507c;
+        background: #08111f;
+        color: #dce8ff;
+        padding: 0.9rem;
+        font: 0.9rem/1.45 ui-monospace, SFMono-Regular, Consolas, monospace;
+      }
+      .menu-edit-link {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        margin-left: 0.5rem;
+        padding: 0.55rem 0.7rem;
+        font-size: 1rem;
+        line-height: 1;
+        vertical-align: middle;
+      }
+      @media (max-width: 900px) {
+        .editor-grid {
+          grid-template-columns: 1fr;
+        }
+      }
     </style>
   </head>
   <body>
+    <div id="editor-screen">
+      <div class="editor-shell">
+        <div class="editor-topbar">
+          <div>
+            <h1>Menu Editor</h1>
+            <p class="editor-subtitle">Changes apply live while you type — there is no Save button. Use the VR scene link below to open the real menu in a separate tab when you want to judge fonts, spacing, and feel. The JSON at the bottom is the handoff for permanent code changes.</p>
+          </div>
+          <a id="editor-back-link" class="editor-back-link" href="./">Back to menu showcase</a>
+        </div>
+
+        <div class="editor-grid">
+          <div class="editor-card">
+            <h2>Panel</h2>
+            <p class="editor-help">This editor controls the always-visible panel ahead of you in the menu primitive scene.</p>
+            <div class="editor-field-grid">
+              <label>Title<input id="editor-title" type="text" /></label>
+              <label>Feedback prefix<input id="editor-feedback-prefix" type="text" /></label>
+              <label>Panel width<input id="editor-panel-width" type="number" step="0.01" /></label>
+              <label>Panel height<input id="editor-panel-height" type="number" step="0.01" /></label>
+            </div>
+            <h3>Panel position</h3>
+            <div class="editor-triplet-grid">
+              <label>X<input id="editor-panel-x" type="number" step="0.01" /></label>
+              <label>Y<input id="editor-panel-y" type="number" step="0.01" /></label>
+              <label>Z<input id="editor-panel-z" type="number" step="0.01" /></label>
+            </div>
+          </div>
+
+          <div class="editor-card">
+            <h2>Using this split</h2>
+            <p class="editor-help">The preview below renders the real menu scene in a flat window and updates as you edit. Use the full VR scene separately when you want in-headset judgment.</p>
+            <a id="vr-scene-link" class="editor-link-button" href="./" target="_blank" rel="noreferrer">Open the VR menu scene in another tab</a>
+          </div>
+        </div>
+
+        <div class="editor-card" style="margin-top: 1rem;">
+          <h2>Menu items</h2>
+          <div id="editor-item-list" class="editor-item-list"></div>
+        </div>
+
+        <div class="editor-card" style="margin-top: 1rem;">
+          <div class="json-toolbar">
+            <h2 style="margin: 0;">JSON</h2>
+            <button id="copy-menu-json" class="copy-json-button" type="button">Copy to clipboard</button>
+          </div>
+          <div id="copy-status" class="copy-status"></div>
+          <textarea id="menu-editor-json" spellcheck="false"></textarea>
+        </div>
+      </div>
+    </div>
+
+    <div id="vr-screen">
     <!-- ==============================================================
          Every menu STYLE this project has built lives in this one
          experience, same idea as a Storybook page listing every variant
@@ -40,7 +296,7 @@
          watch style.
     ============================================================== -->
     <div id="overlay">
-      <span>Menus — panel ahead: point and pull the trigger (or any face button). Watches on your wrists: point with one hand (squeeze grip) and poke the other wrist's face to project a menu outward from it. Tilt that wrist toward your own face to poke its options directly; turn the face up instead and it grows bigger and turns to face you. Either way, pointing and pulling the trigger/a face button always works too — poke the ❌ or point-and-activate it (or just lower the wrist) to close it. To your right, a wall screen; to your left, a pedestal button — poke either to project a menu outward, then poke or point-and-activate its options. Each ❔ shows a different help style: the watch's swaps in a paged modal, the wall's opens a sidecar panel beside the screen, the pedestal's draws a tutorial overlay on top (step it with any A/X or B/Y face button). Walking far enough away, or looking away for a few seconds, auto-closes a menu. <a href="../../index.html">All prototypes</a></span>
+      <span>Menus — panel ahead: point and pull the trigger (or any face button). Watches on your wrists: point with one hand (squeeze grip) and poke the other wrist's face to project a menu outward from it. Tilt that wrist toward your own face to poke its options directly; turn the face up instead and it grows bigger and turns to face you. Either way, pointing and pulling the trigger/a face button always works too — poke the ❌ or point-and-activate it (or just lower the wrist) to close it. To your right, a wall screen; to your left, a pedestal button — poke either to project a menu outward, then poke or point-and-activate its options. Each ❔ shows a different help style: the watch's swaps in a paged modal, the wall's opens a sidecar panel beside the screen, the pedestal's draws a tutorial overlay on top (step it with any A/X or B/Y face button). Walking far enough away, or looking away for a few seconds, auto-closes a menu. <a href="../../index.html">All prototypes</a><a class="menu-edit-link" href="?edit=1" aria-label="Open menu editor">⚙️</a></span>
     </div>
 
     <a-scene>
@@ -436,6 +692,75 @@
     </a-scene>
 
     <script>
+      var MENU_EDITOR_DEFAULTS = {
+        panel: {
+          title: 'MAIN MENU',
+          feedbackPrefix: 'Selected:',
+          position: { x: 0, y: 1.8, z: -2.5 },
+          width: 1.9,
+          height: 2,
+        },
+        items: [
+          { value: 'start', label: 'Start', position: { x: 0, y: 0.25, z: 0 } },
+          { value: 'options', label: 'Options', position: { x: 0, y: -0.15, z: 0 } },
+          { value: 'quit', label: 'Quit', position: { x: 0, y: -0.55, z: 0 } },
+        ],
+      };
+
+      function cloneJson (value) {
+        return JSON.parse(JSON.stringify(value));
+      }
+
+      function parseMenuEditorStateFromValue (parsed) {
+        var state = cloneJson(MENU_EDITOR_DEFAULTS);
+        if (parsed.panel) {
+          if (typeof parsed.panel.title === 'string') state.panel.title = parsed.panel.title;
+          if (typeof parsed.panel.feedbackPrefix === 'string') state.panel.feedbackPrefix = parsed.panel.feedbackPrefix;
+          if (typeof parsed.panel.width === 'number') state.panel.width = parsed.panel.width;
+          if (typeof parsed.panel.height === 'number') state.panel.height = parsed.panel.height;
+          if (parsed.panel.position) {
+            ['x', 'y', 'z'].forEach(function (axis) {
+              if (typeof parsed.panel.position[axis] === 'number') state.panel.position[axis] = parsed.panel.position[axis];
+            });
+          }
+        }
+        if (Array.isArray(parsed.items) && parsed.items.length) {
+          state.items = parsed.items.map(function (item, index) {
+            var fallback = MENU_EDITOR_DEFAULTS.items[index] || MENU_EDITOR_DEFAULTS.items[MENU_EDITOR_DEFAULTS.items.length - 1];
+            return {
+              value: typeof item.value === 'string' ? item.value : fallback.value,
+              label: typeof item.label === 'string' ? item.label : fallback.label,
+              position: {
+                x: item.position && typeof item.position.x === 'number' ? item.position.x : fallback.position.x,
+                y: item.position && typeof item.position.y === 'number' ? item.position.y : fallback.position.y,
+                z: item.position && typeof item.position.z === 'number' ? item.position.z : fallback.position.z,
+              },
+            };
+          });
+        }
+        return state;
+      }
+
+      function parseMenuEditorState () {
+        var params = new URLSearchParams(window.location.search);
+        var json = params.get('menu');
+        var state = cloneJson(MENU_EDITOR_DEFAULTS);
+        if (!json) return state;
+        try {
+          state = parseMenuEditorStateFromValue(JSON.parse(json));
+        } catch (err) {
+          console.warn('Ignoring invalid menu editor state in URL.', err);
+        }
+        return state;
+      }
+
+      var menuEditorState = parseMenuEditorState();
+      var isEditorMode = new URLSearchParams(window.location.search).get('edit') === '1';
+      if (isEditorMode) {
+        document.documentElement.classList.add('editor-mode');
+        document.body.classList.add('editor-mode');
+      }
+
       // A plain color floor gave no sense of scale or footing — a small
       // checkerboard, tiled across the 20x20 floor plane, is the
       // quickest fix. Generated at runtime (a couple of fillRects on a
@@ -1571,7 +1896,7 @@
       function setupFixedPanelChrome () {
         var slot = document.querySelector('#menu-panel .menu-chrome-slot');
         buildMenuChrome(slot.parentNode, {
-          title: slot.getAttribute('data-title') || '',
+          title: menuEditorState.panel.title || slot.getAttribute('data-title') || '',
           showHelp: slot.getAttribute('data-help') !== 'false',
           showClose: slot.getAttribute('data-close') !== 'false',
           width: parseFloat(slot.getAttribute('data-width')) || 1,
@@ -1580,7 +1905,210 @@
         slot.parentNode.removeChild(slot);
       }
 
+      function applyMenuEditorStateToScene () {
+        var panelEl = document.getElementById('menu-panel');
+        if (!panelEl) return;
+
+        panelEl.setAttribute(
+          'position',
+          menuEditorState.panel.position.x + ' ' +
+          menuEditorState.panel.position.y + ' ' +
+          menuEditorState.panel.position.z
+        );
+        panelEl.setAttribute('data-feedback-prefix', menuEditorState.panel.feedbackPrefix);
+
+        var panelBg = panelEl.querySelector('a-plane');
+        panelBg.setAttribute('width', menuEditorState.panel.width);
+        panelBg.setAttribute('height', menuEditorState.panel.height);
+
+        var slot = panelEl.querySelector('.menu-chrome-slot');
+        if (slot) slot.setAttribute('data-title', menuEditorState.panel.title);
+        var titleEl = panelEl.querySelector('.menu-chrome-title');
+        if (titleEl) titleEl.setAttribute('text', 'value', menuEditorState.panel.title);
+
+        var items = panelEl.querySelectorAll('.menu-target');
+        menuEditorState.items.forEach(function (item, index) {
+          var itemEl = items[index];
+          if (!itemEl) return;
+          itemEl.setAttribute(
+            'position',
+            item.position.x + ' ' + item.position.y + ' ' + item.position.z
+          );
+          itemEl.setAttribute('menu-item', 'value', item.value);
+          itemEl.setAttribute('menu-item', 'label', item.label);
+          var textEl = itemEl.querySelector('a-text');
+          if (textEl) textEl.setAttribute('value', item.label);
+        });
+
+        var feedbackText = panelEl.querySelector('.menu-feedback-text');
+        if (feedbackText) {
+          feedbackText.setAttribute('text', 'value', menuEditorState.panel.feedbackPrefix + ' (none)');
+        }
+      }
+
+      function wireMenuEditorUi () {
+        if (!isEditorMode) return;
+
+        var inputs = {
+          title: document.getElementById('editor-title'),
+          feedbackPrefix: document.getElementById('editor-feedback-prefix'),
+          panelWidth: document.getElementById('editor-panel-width'),
+          panelHeight: document.getElementById('editor-panel-height'),
+          panelX: document.getElementById('editor-panel-x'),
+          panelY: document.getElementById('editor-panel-y'),
+          panelZ: document.getElementById('editor-panel-z'),
+        };
+        var jsonEl = document.getElementById('menu-editor-json');
+        var copyButton = document.getElementById('copy-menu-json');
+        var copyStatus = document.getElementById('copy-status');
+        var itemList = document.getElementById('editor-item-list');
+
+        function syncJson() {
+          jsonEl.value = JSON.stringify(menuEditorState, null, 2);
+        }
+
+        function applyEditorChanges() {
+          applyMenuEditorStateToScene();
+          copyStatus.textContent = '';
+        }
+
+        function sceneStateUrl() {
+          var url = new URL(window.location.href);
+          url.searchParams.delete('edit');
+          url.searchParams.set('menu', JSON.stringify(menuEditorState));
+          return url.toString();
+        }
+
+        function updateUrl() {
+          var url = new URL(window.location.href);
+          url.searchParams.set('edit', '1');
+          url.searchParams.set('menu', JSON.stringify(menuEditorState));
+          window.history.replaceState({}, '', url.toString());
+          var backLink = document.getElementById('editor-back-link');
+          var sceneLink = document.getElementById('vr-scene-link');
+          if (backLink) backLink.href = sceneStateUrl();
+          if (sceneLink) sceneLink.href = sceneStateUrl();
+        }
+
+        function onNumberInput(target, path) {
+          target.addEventListener('input', function () {
+            var value = Number(target.value);
+            if (Number.isNaN(value)) return;
+            path(value);
+            applyEditorChanges();
+            syncJson();
+            updateUrl();
+          });
+        }
+
+        inputs.title.value = menuEditorState.panel.title;
+        inputs.feedbackPrefix.value = menuEditorState.panel.feedbackPrefix;
+        inputs.panelWidth.value = menuEditorState.panel.width;
+        inputs.panelHeight.value = menuEditorState.panel.height;
+        inputs.panelX.value = menuEditorState.panel.position.x;
+        inputs.panelY.value = menuEditorState.panel.position.y;
+        inputs.panelZ.value = menuEditorState.panel.position.z;
+
+        inputs.title.addEventListener('input', function () {
+          menuEditorState.panel.title = inputs.title.value;
+          applyEditorChanges();
+          syncJson();
+          updateUrl();
+        });
+        inputs.feedbackPrefix.addEventListener('input', function () {
+          menuEditorState.panel.feedbackPrefix = inputs.feedbackPrefix.value;
+          applyEditorChanges();
+          syncJson();
+          updateUrl();
+        });
+        onNumberInput(inputs.panelWidth, function (value) { menuEditorState.panel.width = value; });
+        onNumberInput(inputs.panelHeight, function (value) { menuEditorState.panel.height = value; });
+        onNumberInput(inputs.panelX, function (value) { menuEditorState.panel.position.x = value; });
+        onNumberInput(inputs.panelY, function (value) { menuEditorState.panel.position.y = value; });
+        onNumberInput(inputs.panelZ, function (value) { menuEditorState.panel.position.z = value; });
+
+        menuEditorState.items.forEach(function (item, index) {
+          var card = document.createElement('div');
+          card.className = 'editor-item-card';
+          card.innerHTML =
+            '<h3>Item ' + (index + 1) + '</h3>' +
+            '<div class="editor-field-grid">' +
+              '<label>Value<input data-field="value" type="text" /></label>' +
+              '<label>Label<input data-field="label" type="text" /></label>' +
+            '</div>' +
+            '<div class="editor-item-grid" style="margin-top: 0.75rem;">' +
+              '<label>X<input data-field="x" type="number" step="0.01" /></label>' +
+              '<label>Y<input data-field="y" type="number" step="0.01" /></label>' +
+              '<label>Z<input data-field="z" type="number" step="0.01" /></label>' +
+            '</div>';
+          itemList.appendChild(card);
+
+          var valueInput = card.querySelector('[data-field="value"]');
+          var labelInput = card.querySelector('[data-field="label"]');
+          var xInput = card.querySelector('[data-field="x"]');
+          var yInput = card.querySelector('[data-field="y"]');
+          var zInput = card.querySelector('[data-field="z"]');
+
+          valueInput.value = item.value;
+          labelInput.value = item.label;
+          xInput.value = item.position.x;
+          yInput.value = item.position.y;
+          zInput.value = item.position.z;
+
+          valueInput.addEventListener('input', function () {
+            item.value = valueInput.value;
+            applyEditorChanges();
+            syncJson();
+            updateUrl();
+          });
+          labelInput.addEventListener('input', function () {
+            item.label = labelInput.value;
+            applyEditorChanges();
+            syncJson();
+            updateUrl();
+          });
+          [xInput, yInput, zInput].forEach(function (input, axisIndex) {
+            var axis = ['x', 'y', 'z'][axisIndex];
+            input.addEventListener('input', function () {
+              var value = Number(input.value);
+              if (Number.isNaN(value)) return;
+              item.position[axis] = value;
+              applyEditorChanges();
+              syncJson();
+              updateUrl();
+            });
+          });
+        });
+
+        jsonEl.addEventListener('input', function () {
+          try {
+            menuEditorState = parseMenuEditorStateFromText(jsonEl.value);
+            applyEditorChanges();
+            updateUrl();
+            copyStatus.textContent = 'JSON updated.';
+          } catch (err) {
+            copyStatus.textContent = 'JSON is invalid.';
+          }
+        });
+
+        copyButton.addEventListener('click', function () {
+          navigator.clipboard.writeText(jsonEl.value).then(function () {
+            copyStatus.textContent = 'Copied.';
+          }, function () {
+            copyStatus.textContent = 'Copy failed.';
+          });
+        });
+
+        syncJson();
+        updateUrl();
+      }
+
+      function parseMenuEditorStateFromText (text) {
+        return parseMenuEditorStateFromValue(JSON.parse(text));
+      }
+
       var sceneEl = document.querySelector('a-scene');
+      applyMenuEditorStateToScene();
       if (sceneEl.hasLoaded) {
         setupFixedProjectedMenus();
         setupFixedPanelChrome();
@@ -1597,8 +2125,10 @@
           if (comp) comp.updateDisplay();
         });
       }
+      wireMenuEditorUi();
       updateAllDisplays();
       setInterval(updateAllDisplays, 1000);
     </script>
+    </div>
   </body>
 </html>
