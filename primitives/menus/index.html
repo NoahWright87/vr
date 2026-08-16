@@ -41,6 +41,8 @@
       html.editor-mode #editor-screen,
       body.editor-mode #editor-screen {
         display: block !important;
+        min-height: 100vh;
+        overflow-y: auto;
       }
       #overlay {
         position: absolute;
@@ -87,6 +89,7 @@
       .editor-shell {
         max-width: 72rem;
         margin: 0 auto;
+        padding-bottom: 2rem;
       }
       .editor-topbar {
         display: flex;
@@ -238,9 +241,9 @@
         <div class="editor-topbar">
           <div>
             <h1>Menu Editor</h1>
-            <p class="editor-subtitle">Edit the menu as structured data here, then use the real VR scene to judge fonts, spacing, and feel. Copy the JSON at the bottom into an AI comment when you want to make the changes permanent in code.</p>
+            <p class="editor-subtitle">Changes apply live while you type — there is no Save button. Use the VR scene link below to open the real menu in a separate tab when you want to judge fonts, spacing, and feel. The JSON at the bottom is the handoff for permanent code changes.</p>
           </div>
-          <a class="editor-back-link" href="./">Back to menu showcase</a>
+          <a id="editor-back-link" class="editor-back-link" href="./">Back to menu showcase</a>
         </div>
 
         <div class="editor-grid">
@@ -264,7 +267,7 @@
           <div class="editor-card">
             <h2>Using this split</h2>
             <p class="editor-help">The preview below renders the real menu scene in a flat window and updates as you edit. Use the full VR scene separately when you want in-headset judgment.</p>
-            <a class="editor-link-button" href="./" target="_blank" rel="noreferrer">Open the VR menu scene in another tab</a>
+            <a id="vr-scene-link" class="editor-link-button" href="./" target="_blank" rel="noreferrer">Open the VR menu scene in another tab</a>
           </div>
         </div>
 
@@ -1969,11 +1972,22 @@
           copyStatus.textContent = '';
         }
 
+        function sceneStateUrl() {
+          var url = new URL(window.location.href);
+          url.searchParams.delete('edit');
+          url.searchParams.set('menu', JSON.stringify(menuEditorState));
+          return url.toString();
+        }
+
         function updateUrl() {
           var url = new URL(window.location.href);
           url.searchParams.set('edit', '1');
           url.searchParams.set('menu', JSON.stringify(menuEditorState));
           window.history.replaceState({}, '', url.toString());
+          var backLink = document.getElementById('editor-back-link');
+          var sceneLink = document.getElementById('vr-scene-link');
+          if (backLink) backLink.href = sceneStateUrl();
+          if (sceneLink) sceneLink.href = sceneStateUrl();
         }
 
         function onNumberInput(target, path) {
@@ -2086,6 +2100,7 @@
         });
 
         syncJson();
+        updateUrl();
       }
 
       function parseMenuEditorStateFromText (text) {
