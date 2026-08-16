@@ -1434,3 +1434,41 @@
           ).normalize();
         },
       });
+
+      // buildBelt + the belt item-maker recipes — left behind in
+      // game.js during the original core-equip.js split, moved here
+      // on a later pass.
+      // Belts. `keep: true` because a belt is equipment, not loot — the
+      // same reasoning the nozzle gets (see defineItem's own comment):
+      // it doesn't perish lying on the floor after being swapped out,
+      // it just sits there until picked back up.
+      //
+      // stockHips is true only for belt-classic, and only because it's
+      // the one named directly in the waist anchor's own `stocked` —
+      // see markup. Wardrobe spares start empty; swapping one in is
+      // what fills its hips, via `belt`'s own 'displaced' handling.
+      function buildBelt(el, slotId, color, buckleColor, stockHips) {
+        el.setAttribute('holsterable', {
+          holsterSelector: '#' + slotId,
+          itemSize: 'medium',
+          grabRadius: 0.22,
+        });
+        el.setAttribute('boxy-belt', { color: color, buckleColor: buckleColor });
+        el.setAttribute('belt', { stockHips: !!stockHips });
+      }
+
+      defineItem(
+        'belt-classic',
+        function (el, slotId) {
+          buildBelt(el, slotId, BELT_COLOR, BELT_BUCKLE_COLOR, true);
+        },
+        { keep: true }
+      );
+
+      defineItem(
+        'belt-silver',
+        function (el, slotId) {
+          buildBelt(el, slotId, '#2b2b2f', '#c9d3d8');
+        },
+        { keep: true }
+      );

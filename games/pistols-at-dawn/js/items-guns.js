@@ -638,3 +638,35 @@
           el.appendChild(muzzle);
         },
       });
+
+      // defineItem('shotgun', ...) — left behind in game.js during
+      // the original items-guns.js split, moved here on a later pass.
+      // The same declaration with different numbers, which is the
+      // point of firearm having a schema at all: a pistol is
+      // pellets:1, coneDeg:0, and the spread is the only thing that
+      // makes this a shotgun.
+      //
+      // supportGrip/supportRadius are what put a second place to hold
+      // it at the forend: grip near there with your off hand and the
+      // barrel points along the line between your two hands instead of
+      // wherever one wrist happens to be. Steadier by geometry rather
+      // than by damping, and only the hand on the actual grip can fire
+      // it.
+      defineItem('shotgun', function (el, slotId) {
+        el.setAttribute('holsterable', {
+          holsterSelector: '#' + slotId,
+          itemSize: 'large',
+          holsterRotation: { x: -90, y: 0, z: 0 },
+          heldRotation: { x: -90, y: 0, z: 0 },
+          heldPosition: { x: 0, y: 0, z: 0 },
+          grabRadius: 0.28,
+          grabSpan: { x: 0, y: 0, z: -0.5 },
+          comOffset: { x: 0, y: 0.02, z: -0.2 },
+          supportGrip: { x: 0, y: 0.01, z: -0.22 },
+          supportRadius: 0.22,
+          maxThrowSpeed: 7,
+        });
+        el.setAttribute('firearm', { pellets: 6, coneDeg: 4, kickDeg: -16, recoverMs: 200, heatPerShot: 0.4 });
+        el.setAttribute('ignition-source', { tipSelector: '.muzzle' });
+        el.setAttribute('boxy-shotgun', '');
+      });

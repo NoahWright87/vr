@@ -197,3 +197,34 @@
           }
         },
       });
+
+      // buildHat + the hat-tan item-maker recipe — boxy-hat's own
+      // wardrobe-stocked variant, left behind in game.js during the
+      // original split, moved here on a later pass.
+      // A wardrobe hat variant. Same holsterable numbers as the
+      // original hat declared directly in markup (head-anchor's own
+      // holsterPosition/heldPosition/comOffset have to agree with
+      // boxy-hat's innerRadius offset — see that component's own
+      // comment) — just built through the item-maker path instead so a
+      // wardrobe peg can produce copies, with a different felt/band.
+      function buildHat(el, slotId, felt, band) {
+        el.setAttribute('holsterable', {
+          holsterSelector: '#' + slotId,
+          itemSize: 'medium',
+          holsterRotation: { x: 0, y: 0, z: 0 },
+          heldRotation: { x: 90, y: 0, z: 0 },
+          holsterPosition: { x: 0.11, y: 0, z: 0 },
+          heldPosition: { x: -0.1, y: 0, z: 0 },
+          grabRadius: 0.35,
+          comOffset: { x: 0.11, y: -0.065, z: 0 },
+        });
+        el.setAttribute('boxy-hat', { felt: felt, band: band });
+      }
+
+      defineItem(
+        'hat-tan',
+        function (el, slotId) {
+          buildHat(el, slotId, '#c9a86a', '#6b4a2f');
+        },
+        { keep: true }
+      );
