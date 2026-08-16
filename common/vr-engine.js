@@ -76,6 +76,10 @@
       snapAngle: { default: 30 },
       teleportDistance: { default: 2.8 },
       comfortVignette: { default: true },
+      vignetteStrength: { default: 0.2 },
+      vignetteSoftness: { default: 0.45 },
+      vignetteInset: { default: 0.78 },
+      vignetteRadius: { default: 0.95 },
       moveDeadzone: { default: 0.2 },
       turnDeadzone: { default: 0.25 },
       teleportDeadzone: { default: 0.55 },
@@ -126,6 +130,7 @@
       this.vignette.setAttribute('height', '1.5');
       this.vignette.setAttribute('position', '0 0 -0.3');
       this.vignette.setAttribute('visible', false);
+      this.updateVignetteStyle();
       if (this.cameraEl) this.cameraEl.appendChild(this.vignette);
     },
 
@@ -139,7 +144,27 @@
 
     setVignette: function (enabled) {
       this.data.comfortVignette = !!enabled;
-      if (this.vignette) this.vignette.setAttribute('visible', !!enabled && this.data.moveMode === 'smooth');
+      this.updateVignetteStyle();
+    },
+
+    setVignetteStrength: function (strength) {
+      this.data.vignetteStrength = strength;
+      this.updateVignetteStyle();
+    },
+
+    setVignetteSoftness: function (softness) {
+      this.data.vignetteSoftness = softness;
+      this.updateVignetteStyle();
+    },
+
+    setVignetteInset: function (inset) {
+      this.data.vignetteInset = inset;
+      this.updateVignetteStyle();
+    },
+
+    setVignetteRadius: function (radius) {
+      this.data.vignetteRadius = radius;
+      this.updateVignetteStyle();
     },
 
     setStickDriftCompensation: function (preset) {
@@ -155,6 +180,21 @@
       this.data.turnDeadzone = next.turn;
       this.data.teleportDeadzone = next.teleport;
       this.data.teleportCommitDeadzone = next.teleportCommit;
+    },
+
+    updateVignetteStyle: function () {
+      if (!this.vignette) return;
+      var enabled = !!this.data.comfortVignette && this.data.moveMode === 'smooth';
+      var strength = Math.max(0, Math.min(1, this.data.vignetteStrength));
+      var softness = Math.max(0.05, Math.min(1, this.data.vignetteSoftness));
+      var inset = Math.max(0.25, Math.min(1.2, this.data.vignetteInset));
+      var radius = Math.max(0.4, Math.min(1.4, this.data.vignetteRadius));
+      this.vignette.setAttribute('visible', enabled);
+      this.vignette.setAttribute('width', (1.5 * radius).toFixed(3));
+      this.vignette.setAttribute('height', (1.5 * radius).toFixed(3));
+      this.vignette.setAttribute('position', '0 0 -' + (0.3 * inset).toFixed(3));
+      this.vignette.setAttribute('material', 'color: #000; transparent: true; opacity: ' + (0.08 + 0.32 * strength).toFixed(3) + '; shader: flat; side: double; depthTest: false');
+      this.vignette.object3D.scale.setScalar(softness);
     },
 
     setStationPositions: function (stations) {

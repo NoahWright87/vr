@@ -391,20 +391,42 @@
           </a-entity>
 
           <a-entity class="watch-menu-controls-view" data-menu-page="controls" visible="false">
-            <a-plane width="1.2" height="1.8" color="#101827" position="0 -0.05 -0.01"></a-plane>
-            <a-entity class="menu-chrome-slot" data-title="DRIFT" data-help="false" data-close="true" data-close-value="controls-close" data-width="1.2" data-bar-y="0.65"></a-entity>
+            <a-plane width="1.2" height="2.1" color="#101827" position="0 -0.05 -0.01"></a-plane>
+            <a-entity class="menu-chrome-slot" data-title="TUNING" data-help="false" data-close="true" data-close-value="controls-close" data-width="1.2" data-bar-y="0.8"></a-entity>
 
-            <a-entity class="pm-target" geometry="primitive: plane; width: 0.92; height: 0.18" material="color: #182238" menu-item="value: drift-off; label: Drift off" position="0 0.4 0">
-              <a-text value="Drift off" align="center" color="#eee" width="2.6" position="0 0 0.01"></a-text>
+            <a-entity class="pm-target" geometry="primitive: plane; width: 0.92; height: 0.16" material="color: #182238" menu-item="value: drift-off; label: Drift off" position="0 0.52 0">
+              <a-text value="Drift off" align="center" color="#eee" width="2.5" position="0 0 0.01"></a-text>
             </a-entity>
-            <a-entity class="pm-target" geometry="primitive: plane; width: 0.92; height: 0.18" material="color: #182238" menu-item="value: drift-low; label: Drift low" position="0 0.12 0">
-              <a-text value="Drift low" align="center" color="#eee" width="2.6" position="0 0 0.01"></a-text>
+            <a-entity class="pm-target" geometry="primitive: plane; width: 0.92; height: 0.16" material="color: #182238" menu-item="value: drift-low; label: Drift low" position="0 0.3 0">
+              <a-text value="Drift low" align="center" color="#eee" width="2.5" position="0 0 0.01"></a-text>
             </a-entity>
-            <a-entity class="pm-target" geometry="primitive: plane; width: 0.92; height: 0.18" material="color: #182238" menu-item="value: drift-medium; label: Drift medium" position="0 -0.16 0">
-              <a-text value="Drift medium" align="center" color="#eee" width="2.6" position="0 0 0.01"></a-text>
+            <a-entity class="pm-target" geometry="primitive: plane; width: 0.92; height: 0.16" material="color: #182238" menu-item="value: drift-medium; label: Drift medium" position="0 0.08 0">
+              <a-text value="Drift medium" align="center" color="#eee" width="2.5" position="0 0 0.01"></a-text>
             </a-entity>
-            <a-entity class="pm-target" geometry="primitive: plane; width: 0.92; height: 0.18" material="color: #182238" menu-item="value: drift-high; label: Drift high" position="0 -0.44 0">
-              <a-text value="Drift high" align="center" color="#eee" width="2.6" position="0 0 0.01"></a-text>
+            <a-entity class="pm-target" geometry="primitive: plane; width: 0.92; height: 0.16" material="color: #182238" menu-item="value: drift-high; label: Drift high" position="0 -0.14 0">
+              <a-text value="Drift high" align="center" color="#eee" width="2.5" position="0 0 0.01"></a-text>
+            </a-entity>
+
+            <a-entity class="pm-target" geometry="primitive: plane; width: 0.92; height: 0.16" material="color: #182238" menu-item="value: vignette-toggle; label: Vignette" position="0 -0.42 0">
+              <a-text value="Vignette" align="center" color="#eee" width="2.5" position="0 0 0.01"></a-text>
+            </a-entity>
+            <a-entity class="pm-target" geometry="primitive: plane; width: 0.92; height: 0.16" material="color: #182238" menu-item="value: vignette-stronger; label: More vignette" position="0 -0.64 0">
+              <a-text value="More vignette" align="center" color="#eee" width="2.5" position="0 0 0.01"></a-text>
+            </a-entity>
+            <a-entity class="pm-target" geometry="primitive: plane; width: 0.92; height: 0.16" material="color: #182238" menu-item="value: vignette-softer; label: Less vignette" position="0 -0.86 0">
+              <a-text value="Less vignette" align="center" color="#eee" width="2.5" position="0 0 0.01"></a-text>
+            </a-entity>
+            <a-entity class="pm-target" geometry="primitive: plane; width: 0.92; height: 0.16" material="color: #182238" menu-item="value: vignette-inset-in; label: Vignette in" position="0 -1.08 0">
+              <a-text value="Vignette in" align="center" color="#eee" width="2.5" position="0 0 0.01"></a-text>
+            </a-entity>
+            <a-entity class="pm-target" geometry="primitive: plane; width: 0.92; height: 0.16" material="color: #182238" menu-item="value: vignette-inset-out; label: Vignette out" position="0 -1.3 0">
+              <a-text value="Vignette out" align="center" color="#eee" width="2.5" position="0 0 0.01"></a-text>
+            </a-entity>
+            <a-entity class="pm-target" geometry="primitive: plane; width: 0.92; height: 0.16" material="color: #182238" menu-item="value: vignette-radius-smaller; label: Smaller vignette" position="0 -1.52 0">
+              <a-text value="Smaller vignette" align="center" color="#eee" width="2.5" position="0 0 0.01"></a-text>
+            </a-entity>
+            <a-entity class="pm-target" geometry="primitive: plane; width: 0.92; height: 0.16" material="color: #182238" menu-item="value: vignette-radius-larger; label: Larger vignette" position="0 -1.74 0">
+              <a-text value="Larger vignette" align="center" color="#eee" width="2.5" position="0 0 0.01"></a-text>
             </a-entity>
           </a-entity>
         </a-entity>
@@ -636,6 +658,13 @@
         else if (value === 'drift-low') locomotion.setStickDriftCompensation('low');
         else if (value === 'drift-medium') locomotion.setStickDriftCompensation('medium');
         else if (value === 'drift-high') locomotion.setStickDriftCompensation('high');
+        else if (value === 'vignette-toggle') locomotion.setVignette(!locomotion.data.comfortVignette);
+        else if (value === 'vignette-stronger') locomotion.setVignetteStrength(Math.min(1, locomotion.data.vignetteStrength + 0.1));
+        else if (value === 'vignette-softer') locomotion.setVignetteStrength(Math.max(0, locomotion.data.vignetteStrength - 0.1));
+        else if (value === 'vignette-inset-in') locomotion.setVignetteInset(Math.max(0.25, locomotion.data.vignetteInset - 0.05));
+        else if (value === 'vignette-inset-out') locomotion.setVignetteInset(Math.min(1.2, locomotion.data.vignetteInset + 0.05));
+        else if (value === 'vignette-radius-smaller') locomotion.setVignetteRadius(Math.max(0.4, locomotion.data.vignetteRadius - 0.05));
+        else if (value === 'vignette-radius-larger') locomotion.setVignetteRadius(Math.min(1.4, locomotion.data.vignetteRadius + 0.05));
         else if (value === 'station-center') locomotion.goToStation('center');
         else if (value === 'station-wall') locomotion.goToStation('wall');
         else if (value === 'station-pedestal') locomotion.goToStation('pedestal');
@@ -1455,6 +1484,13 @@
               else if (value === 'about') self.showAbout();
               else if (value === 'page-controls') self.showMenuPage('controls');
               else if (value === 'controls-close') self.showMenuPage('main');
+              else if (value === 'vignette-toggle') locomotion.setVignette(!locomotion.data.comfortVignette);
+              else if (value === 'vignette-stronger') locomotion.setVignetteStrength(Math.min(1, locomotion.data.vignetteStrength + 0.1));
+              else if (value === 'vignette-softer') locomotion.setVignetteStrength(Math.max(0, locomotion.data.vignetteStrength - 0.1));
+              else if (value === 'vignette-inset-in') locomotion.setVignetteInset(Math.max(0.25, locomotion.data.vignetteInset - 0.05));
+              else if (value === 'vignette-inset-out') locomotion.setVignetteInset(Math.min(1.2, locomotion.data.vignetteInset + 0.05));
+              else if (value === 'vignette-radius-smaller') locomotion.setVignetteRadius(Math.max(0.4, locomotion.data.vignetteRadius - 0.05));
+              else if (value === 'vignette-radius-larger') locomotion.setVignetteRadius(Math.min(1.4, locomotion.data.vignetteRadius + 0.05));
               else if (value === 'help-close') self.closeHelp();
               else if (value === 'help-prev') self.turnHelpPage(-1);
               else if (value === 'help-next') self.turnHelpPage(1);
