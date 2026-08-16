@@ -48,12 +48,6 @@
       <a-light type="directional" position="2 3 2" intensity="0.7"></a-light>
       <a-sky color="#0d1526"></a-sky>
       <a-plane id="floor" rotation="-90 0 0" width="20" height="20" color="#445" position="0 0 0"></a-plane>
-      <a-entity id="elevator-shaft" position="0 0 -3.5">
-        <a-cylinder radius="1.3" height="0.12" color="#6fd3ff" opacity="0.35" position="0 0.06 0"></a-cylinder>
-        <a-cylinder radius="1.3" height="0.12" color="#7d8cff" opacity="0.35" position="0 3.26 0"></a-cylinder>
-        <a-box width="2.4" height="3.2" depth="2.4" color="#24314d" opacity="0.28" position="0 1.6 0"></a-box>
-      </a-entity>
-
       <!-- Gaze reticle so the panel menu is testable from desktop/phone
            with no headset, same pattern as Cube Pop. The watch style
            needs two real tracked hands (to point with one and poke the
@@ -195,10 +189,10 @@
           class="menu-target"
           geometry="primitive: plane; width: 1.6; height: 0.26"
           material="color: #182238"
-          menu-item="value: station-elevator; label: Station: Elevator"
+          menu-item="value: drift-medium; label: Drift medium"
           position="0 -2.64 0"
         >
-          <a-text value="Station: Elevator" align="center" color="#eee" width="3" position="0 0 0.01"></a-text>
+          <a-text value="Drift medium" align="center" color="#eee" width="3" position="0 0 0.01"></a-text>
         </a-entity>
 
         <a-text
@@ -266,7 +260,7 @@
            with "help-prev"/"help-next". -->
       <template id="watch-menu-template">
         <a-entity class="watch-menu-panel" visible="false">
-          <a-entity class="watch-menu-main">
+          <a-entity class="watch-menu-main" data-menu-page="main">
             <a-plane width="1.2" height="2.4" color="#101827" position="0 -0.1 -0.01"></a-plane>
 
             <!-- Chrome slot's title starts empty — hand-with-watch
@@ -331,19 +325,19 @@
             <a-entity class="pm-target"
               geometry="primitive: plane; width: 0.92; height: 0.18"
               material="color: #182238"
-              menu-item="value: station-center; label: Station: Center"
+              menu-item="value: page-controls; label: Drift settings"
               position="0 -1.18 0"
             >
-              <a-text value="Station: Center" align="center" color="#eee" width="2.6" position="0 0 0.01"></a-text>
+              <a-text value="Drift settings" align="center" color="#eee" width="2.6" position="0 0 0.01"></a-text>
             </a-entity>
 
             <a-entity class="pm-target"
               geometry="primitive: plane; width: 0.92; height: 0.18"
               material="color: #182238"
-              menu-item="value: station-elevator; label: Station: Elevator"
+              menu-item="value: station-center; label: Station: Center"
               position="0 -1.44 0"
             >
-              <a-text value="Station: Elevator" align="center" color="#eee" width="2.6" position="0 0 0.01"></a-text>
+              <a-text value="Station: Center" align="center" color="#eee" width="2.6" position="0 0 0.01"></a-text>
             </a-entity>
 
             <a-entity class="pm-target"
@@ -365,7 +359,7 @@
             </a-entity>
           </a-entity>
 
-          <a-entity class="watch-menu-help-view" visible="false">
+          <a-entity class="watch-menu-help-view" data-menu-page="help" visible="false">
             <a-plane width="1" height="1.3" color="#101827" position="0 -0.05 -0.01"></a-plane>
 
             <!-- No ? here (you're already in help) — just a close, using
@@ -393,6 +387,24 @@
               position="0.27 -0.48 0"
             >
               <a-text value="Next &gt;" align="center" color="#eee" width="4" position="0 0 0.01"></a-text>
+            </a-entity>
+          </a-entity>
+
+          <a-entity class="watch-menu-controls-view" data-menu-page="controls" visible="false">
+            <a-plane width="1.2" height="1.8" color="#101827" position="0 -0.05 -0.01"></a-plane>
+            <a-entity class="menu-chrome-slot" data-title="DRIFT" data-help="false" data-close="true" data-close-value="controls-close" data-width="1.2" data-bar-y="0.65"></a-entity>
+
+            <a-entity class="pm-target" geometry="primitive: plane; width: 0.92; height: 0.18" material="color: #182238" menu-item="value: drift-off; label: Drift off" position="0 0.4 0">
+              <a-text value="Drift off" align="center" color="#eee" width="2.6" position="0 0 0.01"></a-text>
+            </a-entity>
+            <a-entity class="pm-target" geometry="primitive: plane; width: 0.92; height: 0.18" material="color: #182238" menu-item="value: drift-low; label: Drift low" position="0 0.12 0">
+              <a-text value="Drift low" align="center" color="#eee" width="2.6" position="0 0 0.01"></a-text>
+            </a-entity>
+            <a-entity class="pm-target" geometry="primitive: plane; width: 0.92; height: 0.18" material="color: #182238" menu-item="value: drift-medium; label: Drift medium" position="0 -0.16 0">
+              <a-text value="Drift medium" align="center" color="#eee" width="2.6" position="0 0 0.01"></a-text>
+            </a-entity>
+            <a-entity class="pm-target" geometry="primitive: plane; width: 0.92; height: 0.18" material="color: #182238" menu-item="value: drift-high; label: Drift high" position="0 -0.44 0">
+              <a-text value="Drift high" align="center" color="#eee" width="2.6" position="0 0 0.01"></a-text>
             </a-entity>
           </a-entity>
         </a-entity>
@@ -567,6 +579,7 @@
       </a-entity>
     </a-scene>
 
+    <script src="../../common/vr-engine.js"></script>
     <script>
       // A plain color floor gave no sense of scale or footing — a small
       // checkerboard, tiled across the 20x20 floor plane, is the
@@ -591,298 +604,20 @@
         floorEl.setAttribute('material', 'repeat', '20 20');
       })();
 
-      // ==============================================================
-      // COMPONENT: menu-item
-      // The reusable primitive. Drop this on any entity that already has
-      // its own geometry + material, and it becomes a clickable menu row:
-      // highlights on hover (mouseenter/mouseleave, fired by the cursor/
-      // raycaster on whatever's aiming at it), and on click emits
-      // "menu-item-select" with {value, label} bubbling up to whatever
-      // manager is listening.
-      // ==============================================================
-      AFRAME.registerComponent('menu-item', {
-        schema: {
-          value: { type: 'string' },
-          label: { type: 'string' },
-          hoverColor: { type: 'color', default: '#2a3a5c' },
-        },
-
-        init: function () {
-          // Remember the color set on the entity's own material so
-          // mouseleave can restore it, without this component having to
-          // know or care what that base color is.
-          this.baseColor = this.el.getAttribute('material').color;
-
-          this.onMouseEnter = this.onMouseEnter.bind(this);
-          this.onMouseLeave = this.onMouseLeave.bind(this);
-          this.onClick = this.onClick.bind(this);
-
-          this.el.addEventListener('mouseenter', this.onMouseEnter);
-          this.el.addEventListener('mouseleave', this.onMouseLeave);
-          this.el.addEventListener('click', this.onClick);
-        },
-
-        onMouseEnter: function () {
-          this.el.setAttribute('material', 'color', this.data.hoverColor);
-          this.el.setAttribute('scale', '1.05 1.05 1.05');
-        },
-
-        onMouseLeave: function () {
-          this.el.setAttribute('material', 'color', this.baseColor);
-          this.el.setAttribute('scale', '1 1 1');
-        },
-
-        onClick: function () {
-          this.el.emit(
-            'menu-item-select',
-            { value: this.data.value, label: this.data.label },
-            true
-          );
-        },
-
-        remove: function () {
-          this.el.removeEventListener('mouseenter', this.onMouseEnter);
-          this.el.removeEventListener('mouseleave', this.onMouseLeave);
-          this.el.removeEventListener('click', this.onClick);
-        },
-      });
-
-      // ==============================================================
-      // COMPONENT: menu-feedback
-      // Demo-only: listens for the bubbled selection event from any
-      // menu-item under this panel and reflects it back in text, so you
-      // can see the primitive actually fired without checking devtools.
-      // ==============================================================
-      AFRAME.registerComponent('menu-feedback', {
-        init: function () {
-          this.feedbackText = this.el.querySelector('.menu-feedback-text');
-          this.el.addEventListener('menu-item-select', (evt) => {
-            this.feedbackText.setAttribute(
-              'text',
-              'value',
-              'Selected: ' + evt.detail.label
-            );
-          });
-        },
-      });
-
-      AFRAME.registerComponent('locomotion-demo', {
-        schema: {
-          moveMode: { default: 'smooth' },
-          turnMode: { default: 'snap' },
-          speed: { default: 1.5 },
-          snapAngle: { default: 30 },
-          teleportDistance: { default: 2.8 },
-          comfortVignette: { default: true },
-        },
-
-        init: function () {
-          this.rigEl = this.el;
-          this.cameraEl = this.el.querySelector('a-camera') || document.querySelector('a-camera');
-          this.turnCooldown = 0;
-
-          // Track the latest thumbstick axes from A-Frame controller events
-          // rather than polling navigator.getGamepads() — the hand entities
-          // already have CONTROL_COMPONENTS (oculus-touch-controls etc.) so
-          // axismove fires reliably on them.
-          this.leftAxes = [0, 0, 0, 0];
-          this.rightAxes = [0, 0, 0, 0];
-          var self = this;
-          var sceneEl = this.el.sceneEl;
-          sceneEl.addEventListener('loaded', function () {
-            var leftEl = document.querySelector('#left-hand');
-            var rightEl = document.querySelector('#right-hand');
-            if (leftEl) {
-              leftEl.addEventListener('axismove', function (evt) {
-                self.leftAxes = evt.detail.axis || self.leftAxes;
-              });
-            }
-            if (rightEl) {
-              rightEl.addEventListener('axismove', function (evt) {
-                self.rightAxes = evt.detail.axis || self.rightAxes;
-              });
-            }
-          });
-
-          this.teleportPreview = document.createElement('a-ring');
-          this.teleportPreview.setAttribute('radius-inner', '0.45');
-          this.teleportPreview.setAttribute('radius-outer', '0.6');
-          this.teleportPreview.setAttribute('rotation', '-90 0 0');
-          this.teleportPreview.setAttribute('material', 'color: #7dd3fc; transparent: true; opacity: 0.75; shader: flat');
-          this.teleportPreview.setAttribute('visible', false);
-          this.el.parentNode.appendChild(this.teleportPreview);
-
-          this.stationPositions = {
-            center: { x: 0, y: 0, z: -2.5 },
-            wall: { x: 1.1, y: 0, z: -0.7 },
-            pedestal: { x: -1.1, y: 0, z: -0.7 },
-            elevator: { x: 0, y: 3.2, z: -3.5 },
-          };
-
-          this.stationMarkers = [];
-          Object.keys(this.stationPositions).forEach(function (key) {
-            var pos = this.stationPositions[key];
-            var marker = document.createElement('a-ring');
-            marker.setAttribute('radius-inner', '0.35');
-            marker.setAttribute('radius-outer', '0.52');
-            marker.setAttribute('rotation', '-90 0 0');
-            marker.setAttribute('position', (pos.x || 0) + ' ' + (pos.y || 0) + ' ' + (pos.z || 0));
-            marker.setAttribute('material', 'color: #9ad; transparent: true; opacity: 0.7; shader: flat');
-            marker.setAttribute('visible', false);
-            this.el.parentNode.appendChild(marker);
-            this.stationMarkers.push({ key: key, pos: pos, el: marker });
-          }, this);
-
-          this.elevatorLevel = 0;
-
-          this.vignette = document.createElement('a-plane');
-          this.vignette.setAttribute('material', 'color: #000; transparent: true; opacity: 0.2; shader: flat');
-          this.vignette.setAttribute('width', '1.5');
-          this.vignette.setAttribute('height', '1.5');
-          this.vignette.setAttribute('position', '0 0 -0.3');
-          this.vignette.setAttribute('visible', false);
-          if (this.cameraEl) this.cameraEl.appendChild(this.vignette);
-        },
-
-        setMoveMode: function (mode) {
-          this.data.moveMode = mode;
-        },
-
-        setTurnMode: function (mode) {
-          this.data.turnMode = mode;
-        },
-
-        setVignette: function (enabled) {
-          this.data.comfortVignette = !!enabled;
-          if (this.vignette) this.vignette.setAttribute('visible', !!enabled && this.data.moveMode === 'smooth');
-        },
-
-        goToStation: function (key) {
-          var station = this.stationPositions[key];
-          if (!station) return;
-          this.rigEl.object3D.position.set(station.x || 0, station.y || 0, station.z || 0);
-        },
-
-        applyElevatorTransition: function () {
-          if (!this.rigEl) return;
-          var pos = this.rigEl.object3D.position;
-          var elevatorDist = Math.hypot(pos.x, pos.z + 3.5);
-          if (elevatorDist < 1.25 && pos.y < 1.5) {
-            pos.y = 3.2;
-            this.elevatorLevel = 1;
-          } else if (pos.y > 2.0 && elevatorDist > 2.2) {
-            pos.y = 0;
-            this.elevatorLevel = 0;
-          }
-        },
-
-        updateTeleportPreview: function () {
-          if (!this.cameraEl) {
-            this.teleportPreview.setAttribute('visible', false);
-            return;
-          }
-          var axisX = this.leftAxes[2] !== undefined ? this.leftAxes[2] : this.leftAxes[0] || 0;
-          var axisY = this.leftAxes[3] !== undefined ? this.leftAxes[3] : this.leftAxes[1] || 0;
-          var active = this.data.moveMode === 'teleport' && (Math.abs(axisX) > 0.15 || Math.abs(axisY) > 0.15);
-          if (!active) {
-            this.teleportPreview.setAttribute('visible', false);
-            return;
-          }
-          var cameraPos = new AFRAME.THREE.Vector3();
-          this.cameraEl.object3D.getWorldPosition(cameraPos);
-          var forward = new AFRAME.THREE.Vector3(0, 0, -1).applyQuaternion(this.cameraEl.object3D.getWorldQuaternion(new AFRAME.THREE.Quaternion()));
-          forward.y = 0;
-          if (forward.lengthSq() === 0) forward.set(0, 0, -1);
-          forward.normalize();
-          var targetPos = cameraPos.clone().add(forward.multiplyScalar(this.data.teleportDistance));
-          targetPos.y = 0.02;
-          this.teleportPreview.object3D.position.copy(targetPos);
-          this.teleportPreview.setAttribute('visible', true);
-        },
-
-        applySmoothMove: function (deltaMs) {
-          if (this.data.moveMode !== 'smooth') return;
-          var moveX = this.leftAxes[2] !== undefined ? this.leftAxes[2] : this.leftAxes[0] || 0;
-          var moveY = this.leftAxes[3] !== undefined ? this.leftAxes[3] : this.leftAxes[1] || 0;
-          var moveAmount = Math.hypot(moveX, moveY);
-          if (moveAmount < 0.08) return;
-          var direction = new AFRAME.THREE.Vector3(moveX, 0, moveY);
-          var cameraQuat = new AFRAME.THREE.Quaternion();
-          this.cameraEl.object3D.getWorldQuaternion(cameraQuat);
-          var worldMove = direction.applyQuaternion(cameraQuat).setY(0);
-          worldMove.normalize().multiplyScalar(this.data.speed * (deltaMs / 1000));
-          this.rigEl.object3D.position.add(worldMove);
-        },
-
-        applySmoothTurn: function (deltaMs) {
-          var turnX = this.rightAxes[2] !== undefined ? this.rightAxes[2] : this.rightAxes[0] || 0;
-          if (Math.abs(turnX) < 0.08) return;
-          this.rigEl.object3D.rotation.y -= turnX * 1.25 * (deltaMs / 1000);
-        },
-
-        applySnapTurn: function () {
-          var turnX = this.rightAxes[2] !== undefined ? this.rightAxes[2] : this.rightAxes[0] || 0;
-          if (Math.abs(turnX) < 0.8) {
-            this.turnCooldown = 0;
-            return;
-          }
-          if (!this.turnCooldown) {
-            this.turnCooldown = 1;
-            this.rigEl.object3D.rotation.y -= Math.sign(turnX) * AFRAME.THREE.MathUtils.degToRad(this.data.snapAngle);
-          }
-        },
-
-        tick: function (time, delta) {
-          this.applyElevatorTransition();
-
-          this.stationMarkers.forEach(function (marker) {
-            marker.el.setAttribute('visible', this.data.moveMode === 'teleport' || this.data.moveMode === 'stations');
-          }, this);
-
-          if (this.data.moveMode === 'smooth') {
-            this.applySmoothMove(delta);
-          } else if (this.data.moveMode === 'teleport') {
-            this.updateTeleportPreview();
-            var moveX = this.leftAxes[2] !== undefined ? this.leftAxes[2] : this.leftAxes[0] || 0;
-            var moveY = this.leftAxes[3] !== undefined ? this.leftAxes[3] : this.leftAxes[1] || 0;
-            if (Math.abs(moveX) < 0.05 && Math.abs(moveY) < 0.05) {
-              if (this._teleportReady) {
-                // Stick released after being held — commit teleport
-                var cameraPos = new AFRAME.THREE.Vector3();
-                this.cameraEl.object3D.getWorldPosition(cameraPos);
-                var forward = new AFRAME.THREE.Vector3(0, 0, -1).applyQuaternion(this.cameraEl.object3D.getWorldQuaternion(new AFRAME.THREE.Quaternion()));
-                forward.y = 0;
-                if (forward.lengthSq() === 0) forward.set(0, 0, -1);
-                forward.normalize();
-                var targetPos = cameraPos.clone().add(forward.multiplyScalar(this.data.teleportDistance));
-                targetPos.y = this.rigEl.object3D.position.y;
-                this.rigEl.object3D.position.copy(targetPos);
-                this._teleportReady = false;
-              }
-              this.teleportPreview.setAttribute('visible', false);
-            } else {
-              this._teleportReady = true;
-            }
-          } else {
-            this.teleportPreview.setAttribute('visible', false);
-            this._teleportReady = false;
-          }
-
-          if (this.data.turnMode === 'smooth') this.applySmoothTurn(delta);
-          else if (this.data.turnMode === 'snap') this.applySnapTurn();
-          else this.turnCooldown = 0;
-
-          if (this.vignette) {
-            var lx = this.leftAxes[2] !== undefined ? this.leftAxes[2] : this.leftAxes[0] || 0;
-            var ly = this.leftAxes[3] !== undefined ? this.leftAxes[3] : this.leftAxes[1] || 0;
-            this.vignette.setAttribute('visible', !!this.data.comfortVignette && this.data.moveMode === 'smooth' && Math.hypot(lx, ly) > 0.12);
-          }
-        },
-      });
+      // Shared menu + locomotion engine code is loaded from
+      // ../../common/vr-engine.js.
 
       var rigEl = document.querySelector('#rig');
       if (rigEl && !rigEl.components['locomotion-demo']) {
         rigEl.setAttribute('locomotion-demo', '');
+      }
+      if (rigEl && rigEl.components['locomotion-demo']) {
+        rigEl.components['locomotion-demo'].setStationPositions({
+          center: { x: 0, y: 0, z: -2.5 },
+          wall: { x: 1.1, y: 0, z: -0.7 },
+          pedestal: { x: -1.1, y: 0, z: -0.7 },
+          right: { x: 3.2, y: 0, z: -2.0 }
+        });
       }
 
       function handleLocomotionSelection (value) {
@@ -897,10 +632,15 @@
         else if (value === 'turn-smooth') locomotion.setTurnMode('smooth');
         else if (value === 'turn-disabled') locomotion.setTurnMode('disabled');
         else if (value === 'comfort-toggle') locomotion.setVignette(!locomotion.data.comfortVignette);
+        else if (value === 'drift-off') locomotion.setStickDriftCompensation('off');
+        else if (value === 'drift-low') locomotion.setStickDriftCompensation('low');
+        else if (value === 'drift-medium') locomotion.setStickDriftCompensation('medium');
+        else if (value === 'drift-high') locomotion.setStickDriftCompensation('high');
         else if (value === 'station-center') locomotion.goToStation('center');
         else if (value === 'station-wall') locomotion.goToStation('wall');
         else if (value === 'station-pedestal') locomotion.goToStation('pedestal');
-        else if (value === 'station-elevator') locomotion.goToStation('elevator');
+        else if (value === 'station-right') locomotion.goToStation('right');
+        else if (value === 'page-controls') return;
       }
 
       var menuPanel = document.querySelector('#menu-panel');
@@ -1705,11 +1445,16 @@
               self.closeHelp(); // don't leave it stuck open for next time
             });
 
+            pm.panelEl.setAttribute('menu-pages', { defaultPage: 'main' });
+            self.menuPageManager = pm.panelEl.components['menu-pages'];
+
             pm.panelEl.addEventListener('menu-item-select', function (evt) {
               var value = evt.detail.value;
               if (value === 'stopwatch') self.toggleStopwatch();
               else if (value === 'haptics') self.triggerHaptics();
               else if (value === 'about') self.showAbout();
+              else if (value === 'page-controls') self.showMenuPage('controls');
+              else if (value === 'controls-close') self.showMenuPage('main');
               else if (value === 'help-close') self.closeHelp();
               else if (value === 'help-prev') self.turnHelpPage(-1);
               else if (value === 'help-next') self.turnHelpPage(1);
@@ -1767,10 +1512,19 @@
           }, 1500);
         },
 
+        showMenuPage: function (pageName) {
+          if (this.menuPageManager) this.menuPageManager.showPage(pageName);
+          if (pageName === 'main' && this.helpViewEl) {
+            this.helpViewEl.setAttribute('visible', false);
+            this.mainViewEl.setAttribute('visible', true);
+          }
+        },
+
         closeHelp: function () {
           if (!this.helpViewEl || !this.helpViewEl.getAttribute('visible')) return;
           this.helpViewEl.setAttribute('visible', false);
           this.mainViewEl.setAttribute('visible', true);
+          if (this.menuPageManager) this.menuPageManager.showPage('main');
         },
 
         turnHelpPage: function (dir) {
