@@ -112,41 +112,23 @@
       var BELL_ARM_Y = 2.5; // the bracket clears the top shelf's bottles
       // ==============================================================
       // THE ARMOURY
-      // The far face of the drum: a gun bench with a board of pegs
-      // above it, a shelf underneath, and far more sockets than there
-      // are guns to put in them. Everything is authored in the same
-      // coordinates as the saloon face, so "z = 0.7" means "a hand's
-      // width in front of you" on both sides.
-      //
-      // The racks hold guns the same way the bar holds beer: an
-      // anchor-slot and nothing else. A cradle that lays a shotgun
-      // flat isn't a different kind of holder, it's a slot that has
-      // been rolled 90 degrees — the gun keeps its one holstered pose
-      // and the rack decides which way up that pose sits, which is
-      // also why you can hang a beer bottle on a gun peg.
+      // Two physical display towers occupy the old crowded bench.
+      // Their A/B faces show conventional firearms; a half-turn shows
+      // C/D with archery, explosives and equipment. Each tower has a
+      // fixed bell, while the taller center bell targets both. The
+      // contents remain ordinary stocked anchor slots parented to each
+      // turntable, so they ride around without item-specific code.
       // ==============================================================
       var ARMORY_TOP_Y = 1.46; // top of the back board: under a standing player's chin as it sweeps past, and low enough to leave the back-bar shelves in view
-      var ARMORY_BOARD_Z = 0.905; // the board sits right against the axis; the saloon's own backboard is its other half
-      var ARMORY_PEG_Z = 0.8; // where the pegs hold a gun. Far enough proud of the board that a pistol's grip — which sticks out behind it, once the gun is hanging barrel-down — stays on the armoury's own side of the axis instead of poking through into the saloon
-      var ARMORY_PEG_Y = 1.4; // pistols hang barrel-down from here, muzzle clearing the bench
-      var ARMORY_PISTOL_PEGS = 9;
-      var ARMORY_CRADLE_Y = 1.1; // long guns lie flat on the bench in rolled slots
-      var ARMORY_CRADLE_Z = 0.78; // ditto for a shotgun's stock
-      var ARMORY_CRADLES = 5;
-      var ARMORY_BENCH_ROW_Z = 0.68; // the free-for-all row along the front of the bench
-      var ARMORY_BENCH_SOCKETS = 5; // the free row; the arrow trough takes the left end of the bench
-      var ARMORY_SHELF_Y = 0.58; // the low shelf in the cavity under the bench
-      var ARMORY_SHELF_Z = 0.76;
-      var ARMORY_SHELF_SOCKET_X = [-0.95, -0.55, 0.55, 0.95]; // free sockets, leaving the middle of the shelf for the pack
+      var ARMORY_RACK_X = [-0.8, 0.8];
+      var ARMORY_RACK_Z = 0.82;
+      var ARMORY_RACK_WIDTH = 1.35;
+      var ARMORY_RACK_BOTTOM_Y = 0.18;
+      var ARMORY_RACK_TOP_Y = 1.38;
+      var ARMORY_RACK_DEPTH = 0.34;
+      var ARMORY_RACK_SLOT_Z = -0.23;
+      var ARMORY_RACK_SPIN_MS = 700;
       var ARMORY_DYNAMITE_PER_CRATE = 3;
-
-      // Which of those start with something in them. Every other
-      // socket is bare on purpose — they're for whatever you decide
-      // belongs there.
-      var ARMORY_PISTOL_STOCK = [0, 2, 4, 6, 8];
-      var ARMORY_CRADLE_STOCK = ['shotgun', 'tommy', 'sniper', 'bow', 'launcher']; // per cradle, left to right; null leaves one bare
-      var ARMORY_QUIVER_X = -1.36; // the arrow trough, along the front of the bench
-      var ARMORY_QUIVER_Z = 0.63;
       var ARMORY_REFILL_MS = 10000;
       // ==============================================================
       // COMPONENT: boxy-mirror
@@ -236,261 +218,9 @@
         // now that there are two of them on one component instead of
         // one each on two unrelated ones.
         buildBell: function (mountPos, armAxis, armLength, target) {
-          var brass = '#b98c2a';
-          var el = this.el;
-
-          var armDims, armPos, bellPos;
-          if (armAxis === 'y') {
-            armDims = { w: 0.03, h: armLength, d: 0.03 };
-            armPos = { x: mountPos.x, y: mountPos.y + armLength / 2, z: mountPos.z };
-            bellPos = { x: mountPos.x, y: mountPos.y + armLength, z: mountPos.z };
-          } else {
-            armDims = { w: armLength, h: 0.03, d: 0.03 };
-            armPos = { x: mountPos.x + armLength / 2, y: mountPos.y, z: mountPos.z };
-            bellPos = { x: mountPos.x + armLength, y: mountPos.y, z: mountPos.z };
-          }
-
-          var arm = document.createElement('a-box');
-          arm.setAttribute('width', armDims.w);
-          arm.setAttribute('height', armDims.h);
-          arm.setAttribute('depth', armDims.d);
-          arm.setAttribute('position', armPos);
-          arm.setAttribute('color', '#3c2a1c');
-          el.appendChild(arm);
-
-          var hanger = document.createElement('a-entity');
-          hanger.setAttribute('position', bellPos);
-          hanger.classList.add('shootable');
-          hanger.setAttribute('shot-switch', { target: target });
-          el.appendChild(hanger);
-
-          var stem = document.createElement('a-box');
-          stem.setAttribute('width', 0.014);
-          stem.setAttribute('height', 0.1);
-          stem.setAttribute('depth', 0.014);
-          stem.setAttribute('position', { x: 0, y: -0.05, z: 0 });
-          stem.setAttribute('color', '#2b2b2f');
-          hanger.appendChild(stem);
-
-          var dome = document.createElement('a-cylinder');
-          dome.setAttribute('radius', 0.11);
-          dome.setAttribute('height', 0.15);
-          dome.setAttribute('color', brass);
-          dome.setAttribute('position', { x: 0, y: -0.175, z: 0 });
-          hanger.appendChild(dome);
-
-          var lip = document.createElement('a-cylinder');
-          lip.setAttribute('radius', 0.13);
-          lip.setAttribute('height', 0.03);
-          lip.setAttribute('color', '#8a6a1c');
-          lip.setAttribute('position', { x: 0, y: -0.26, z: 0 });
-          hanger.appendChild(lip);
-
-          var clapper = document.createElement('a-box');
-          clapper.setAttribute('width', 0.03);
-          clapper.setAttribute('height', 0.05);
-          clapper.setAttribute('depth', 0.03);
-          clapper.setAttribute('position', { x: 0, y: -0.29, z: 0 });
-          clapper.setAttribute('color', '#2b2b2f');
-          hanger.appendChild(clapper);
+          appendShotBell(this.el, mountPos, armAxis, armLength, target);
         },
       });
-      // ==============================================================
-      // COMPONENT: turntable
-      // Something with two faces that turns to show one or the other.
-      // It has no idea what's mounted on it: whatever is parented here
-      // comes round, and since every prop in this scene is parented to
-      // an anchor slot rather than floating at a world position, that
-      // means every beer, cigar, match and lit flame on the bar arrives
-      // on the far side still in its socket. There is no "take the
-      // bottles with it" code anywhere, and there was never going to
-      // need to be.
-      //
-      // It listens for a `toggle` event on itself rather than being
-      // driven directly, so anything at all can be the switch — see
-      // shot-switch, and note that nothing here knows a bell exists.
-      //
-      // Two things do need saying explicitly, because they aren't
-      // parented to anything:
-      //
-      //   - Spilt liquid. A puddle is a world-space disc, so without
-      //     ridePools() a spun bar leaves your beer (or your fire)
-      //     hanging in the air where the counter used to be.
-      //   - The counter as a hard surface. That one is handled where
-      //     it's registered, by giving the surface a frame to live in
-      //     — see HARD_SURFACES.
-      // ==============================================================
-      registerComponent('turntable', {
-        schema: {
-          spinMs: { type: 'number', default: BAR_SPIN_MS },
-          faces: { type: 'number', default: 2 },
-          axis: { type: 'string', default: 'y' }, // 'y' | 'x' | 'z' — which local axis it turns on. The bar/armoury and wardrobe drums both spin on y (a horizontal turn); the island's own outer flip (see saloon-bar) turns on x (properly upside-down) to swap which of them is up at all.
-        },
-
-        init: function () {
-          this.face = 0;
-          this.fromAngle = 0;
-          this.toAngle = 0;
-          this.elapsed = this.data.spinMs; // "already arrived"
-          this._pivot = new THREE.Vector3();
-          this._poolPos = new THREE.Vector3();
-
-          this.onToggle = this.onToggle.bind(this);
-          this.el.addEventListener('toggle', this.onToggle);
-        },
-
-        remove: function () {
-          this.el.removeEventListener('toggle', this.onToggle);
-        },
-
-        spinning: function () {
-          return this.elapsed < this.data.spinMs;
-        },
-
-        // Mid-spin toggles are ignored rather than queued: emptying a
-        // revolver into the bell should ring it, not wind it up.
-        onToggle: function () {
-          if (this.spinning()) return;
-
-          this.face = (this.face + 1) % this.data.faces;
-          this.fromAngle = this.el.object3D.rotation[this.data.axis];
-          this.toAngle = this.fromAngle + (Math.PI * 2) / this.data.faces;
-          this.elapsed = 0;
-          playRumble(this.data.spinMs);
-        },
-
-        tick: function (time, dt) {
-          if (!this.spinning()) return;
-
-          this.elapsed = Math.min(this.elapsed + (dt || 16), this.data.spinMs);
-          var t = this.elapsed / this.data.spinMs;
-          var eased = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
-          var angle = this.fromAngle + (this.toAngle - this.fromAngle) * eased;
-
-          // Pools are moved by the same delta and BEFORE the drum
-          // turns, so the "is this puddle on my counter" test below
-          // runs against the frame the puddle is still standing in.
-          // ridePools bails out immediately for anything but a y-axis
-          // turntable (see its own comment) — the island's own outer
-          // flip (axis: x) technically "owns" the bar's counter surface
-          // too, by nesting, so without that guard it would try to
-          // apply this same x/z-plane rotation to any puddle sitting on
-          // the bar while the whole thing tips over, which is the wrong
-          // math for that axis and would fling it sideways instead of
-          // just carrying it along for the ride.
-          this.ridePools(angle - this.el.object3D.rotation[this.data.axis]);
-          this.el.object3D.rotation[this.data.axis] = angle;
-
-          if (!this.spinning()) playClunk();
-        },
-
-        // Every surface belonging to this turntable drags whatever has
-        // been spilt on it round with it. A pool is a flat disc about a
-        // vertical axis, so riding along is a rotation of its centre
-        // and nothing else — and because a burning pool is just a pool,
-        // setting the bar alight and then spinning it delivers a
-        // burning armoury without anything here knowing what fire is.
-        //
-        // Y-axis only — see the comment where this is called.
-        ridePools: function (deltaRad) {
-          if (!deltaRad || this.data.axis !== 'y') return;
-
-          this.el.object3D.getWorldPosition(this._pivot);
-          var cos = Math.cos(deltaRad);
-          var sin = Math.sin(deltaRad);
-
-          for (var i = 0; i < POOLS.length; i++) {
-            var pool = POOLS[i];
-            if (!this.carries(pool)) continue;
-
-            var dx = pool.x - this._pivot.x;
-            var dz = pool.z - this._pivot.z;
-            pool.x = this._pivot.x + dx * cos + dz * sin;
-            pool.z = this._pivot.z - dx * sin + dz * cos;
-          }
-        },
-
-        carries: function (pool) {
-          for (var i = 0; i < HARD_SURFACES.length; i++) {
-            var s = HARD_SURFACES[i];
-            if (!s.obj || Math.abs(s.y - pool.y) > 0.06) continue;
-            if (!this.owns(s.obj)) continue;
-            if (overSurface(s, this._poolPos.set(pool.x, pool.y, pool.z))) return true;
-          }
-          return false;
-        },
-
-        owns: function (obj) {
-          while (obj) {
-            if (obj === this.el.object3D) return true;
-            obj = obj.parent;
-          }
-          return false;
-        },
-      });
-
-      // ==============================================================
-      // COMPONENT: shot-switch
-      // A shootable thing that throws a switch somewhere else. It emits
-      // `toggle` at whatever it's pointed at and takes a visible knock
-      // for it — that's the entire component, and it's deliberately
-      // ignorant of both ends: any shootable can be the switch, and
-      // anything that listens for `toggle` can be the machine. Also
-      // wired to `click` so the desktop reticle can work it without a
-      // headset, the same way breakable is.
-      //
-      // target is selectorAll rather than selector, so one bell can
-      // throw more than one switch — the bar's own bell targets both
-      // its own turntable and the wardrobe's, a plain CSS selector
-      // list ("#bar-turntable, #wardrobe-turntable"), because ringing
-      // it is meant to turn the whole connected assembly over at once.
-      // ==============================================================
-      registerComponent('shot-switch', {
-        schema: {
-          target: { type: 'selectorAll' },
-          knockDeg: { type: 'number', default: 26 },
-        },
-
-        init: function () {
-          this.swing = 0; // radians of knock left in it
-          this.swingVel = 0;
-
-          this.onShot = this.onShot.bind(this);
-          this.el.addEventListener('shot', this.onShot);
-          this.el.addEventListener('click', this.onShot);
-        },
-
-        remove: function () {
-          this.el.removeEventListener('shot', this.onShot);
-          this.el.removeEventListener('click', this.onShot);
-        },
-
-        onShot: function () {
-          this.swingVel = (this.data.knockDeg * Math.PI) / 180 * 9;
-          playClang();
-          for (var i = 0; i < this.data.target.length; i++) {
-            this.data.target[i].emit('toggle', null, false);
-          }
-        },
-
-        // A damped swing about z, so hitting it reads as a hit even
-        // when the machine it's wired to is busy and ignores it.
-        tick: function (time, dt) {
-          if (!this.swing && !this.swingVel) return;
-
-          var dtSeconds = Math.min((dt || 16) / 1000, 0.05);
-          this.swingVel -= this.swing * 240 * dtSeconds;
-          this.swingVel *= Math.max(1 - 3.2 * dtSeconds, 0);
-          this.swing += this.swingVel * dtSeconds;
-
-          if (Math.abs(this.swing) < 0.002 && Math.abs(this.swingVel) < 0.02) {
-            this.swing = 0;
-            this.swingVel = 0;
-          }
-          this.el.object3D.rotation.z = this.swing;
-        },
-      });
-
       // ==============================================================
       // COMPONENT: saloon-bar
       // Furniture, and then a row of ordinary anchor-slots on top of
@@ -610,14 +340,18 @@
 
         addBox: function (w, h, d, pos, color, faceEl, rot) {
           faceEl = faceEl || this.barFaceEl;
+          return this.addLocalBox(w, h, d, this.localTo(faceEl, pos), color, faceEl, rot);
+        },
+
+        addLocalBox: function (w, h, d, pos, color, parentEl, rot) {
           var box = document.createElement('a-box');
           box.setAttribute('width', w);
           box.setAttribute('height', h);
           box.setAttribute('depth', d);
-          box.setAttribute('position', this.localTo(faceEl, pos));
+          box.setAttribute('position', pos);
           box.setAttribute('color', color);
           if (rot) box.setAttribute('rotation', rot);
-          faceEl.appendChild(box);
+          parentEl.appendChild(box);
           return box;
         },
 
@@ -631,6 +365,14 @@
         // that pose sits.
         addSlot: function (pos, size, extra, faceEl, rot) {
           faceEl = faceEl || this.barFaceEl;
+          return this.addLocalSlot(faceEl, this.localTo(faceEl, pos), size, extra, rot);
+        },
+
+        // Rack faces already live in their turntable's local frame,
+        // unlike the bar/wardrobe faces authored around BAR_PIVOT_Z.
+        // Keep slot construction shared without applying that drum
+        // coordinate conversion a second time.
+        addLocalSlot: function (parentEl, pos, size, extra, rot) {
           var id = 'bar-slot-' + this.slotSerial++;
           var slot = document.createElement('a-entity');
           slot.setAttribute('id', id);
@@ -641,9 +383,9 @@
             config[k] = extra[k];
           });
           slot.setAttribute('anchor-slot', config);
-          slot.setAttribute('position', this.localTo(faceEl, pos));
+          slot.setAttribute('position', pos);
           if (rot) slot.setAttribute('rotation', rot);
-          faceEl.appendChild(slot);
+          parentEl.appendChild(slot);
           return id;
         },
 
@@ -969,145 +711,116 @@
         buildArmoryFace: function () {
           var face = this.armoryFaceEl;
           var iron = '#3a3f43';
-          var board = '#4a3b2c';
+          var rackZ = ARMORY_RACK_Z - BAR_PIVOT_Z;
 
-          // Back board, its frame, and the pegs driven into it.
-          var boardH = ARMORY_TOP_Y - BAR_TOP_Y;
-          this.addBox(BAR_WIDTH - 0.2, boardH, 0.03, { x: 0, y: BAR_TOP_Y + boardH / 2, z: ARMORY_BOARD_Z }, board, face);
-          this.addBox(0.08, boardH, 0.05, { x: -(BAR_WIDTH - 0.2) / 2, y: BAR_TOP_Y + boardH / 2, z: BAR_PIVOT_Z - 0.025 }, iron, face);
-          this.addBox(0.08, boardH, 0.05, { x: (BAR_WIDTH - 0.2) / 2, y: BAR_TOP_Y + boardH / 2, z: BAR_PIVOT_Z - 0.025 }, iron, face);
-          this.addBox(BAR_WIDTH - 0.2, 0.035, 0.06, { x: 0, y: ARMORY_TOP_Y, z: BAR_PIVOT_Z - 0.03 }, iron, face);
+          // The old counter wall, horizontal cradles, quiver and low
+          // ammo shelf are intentionally gone. Two narrow footprints
+          // now provide four stocked vertical faces in the same width.
+          this.addBox(BAR_WIDTH - 0.08, 0.05, 0.42, { x: 0, y: 0.12, z: ARMORY_RACK_Z }, iron, face);
+          this.buildArmoryRack('left', ARMORY_RACK_X[0], rackZ, 'A', 'C');
+          this.buildArmoryRack('right', ARMORY_RACK_X[1], rackZ, 'B', 'D');
 
-          this.buildPistolPegs(face, iron);
-          this.buildLongGunCradles(face, iron);
-          this.buildQuiver(face, iron);
-
-          // The free row along the front of the bench: nothing in it,
-          // ever. It's a place to lay out what you're taking.
-          var rowStart = -0.5;
-          var spacing = (BAR_WIDTH / 2 - 0.2 - rowStart) / (ARMORY_BENCH_SOCKETS - 1);
-          for (var i = 0; i < ARMORY_BENCH_SOCKETS; i++) {
-            this.addSlot(
-              { x: rowStart + i * spacing, y: BAR_TOP_Y, z: ARMORY_BENCH_ROW_Z },
-              'medium',
-              {},
-              face
-            );
-          }
-
-          // The armoury's front is a low panel rather than a full one,
-          // leaving the shelf in the cavity behind it visible and in
-          // reach — the saloon's side of the same cavity is boarded
-          // right up, because a bar front is a bar front.
-          this.addBox(BAR_WIDTH - 0.1, 0.34, 0.05, { x: 0, y: 0.17, z: BAR_NEAR_EDGE_Z + 0.025 }, iron, face);
-          this.buildAmmoShelf(face, iron);
-
-          this.addBox(BAR_WIDTH, 0.05, 0.05, { x: 0, y: 0.14, z: BAR_NEAR_EDGE_Z - 0.09 }, iron, face); // kick rail, the armoury's answer to a brass foot rail
+          // Bells are siblings of the spinning towers, not children.
+          // Each remains centered above its own axis; the taller bell
+          // between them toggles both target selectors at once.
+          appendShotBell(face, { x: ARMORY_RACK_X[0], y: ARMORY_RACK_TOP_Y, z: rackZ }, 'y', 0.32, '#armory-rack-left');
+          appendShotBell(face, { x: ARMORY_RACK_X[1], y: ARMORY_RACK_TOP_Y, z: rackZ }, 'y', 0.32, '#armory-rack-right');
+          appendShotBell(face, { x: 0, y: ARMORY_RACK_TOP_Y, z: rackZ }, 'y', 0.48, '#armory-rack-left, #armory-rack-right');
         },
 
-        // Pistols hang barrel-down, which is the pose they hold in a
-        // hip holster and in the crown of a hat — one holsterRotation,
-        // everywhere, forever.
-        buildPistolPegs: function (face, iron) {
-          var spacing = (BAR_WIDTH - 0.6) / (ARMORY_PISTOL_PEGS - 1);
+        buildArmoryRack: function (name, x, z, frontName, backName) {
+          var rack = this.addChild(this.armoryFaceEl, { x: x, y: 0, z: z });
+          rack.setAttribute('id', 'armory-rack-' + name);
+          rack.setAttribute('turntable', { spinMs: ARMORY_RACK_SPIN_MS, axis: 'y' });
 
-          for (var i = 0; i < ARMORY_PISTOL_PEGS; i++) {
-            var x = -(BAR_WIDTH - 0.6) / 2 + i * spacing;
-            this.addBox(0.02, 0.02, ARMORY_BOARD_Z - ARMORY_PEG_Z, { x: x, y: ARMORY_PEG_Y + 0.03, z: (ARMORY_BOARD_Z + ARMORY_PEG_Z) / 2 }, iron, face);
+          var height = ARMORY_RACK_TOP_Y - ARMORY_RACK_BOTTOM_Y;
+          var midY = ARMORY_RACK_BOTTOM_Y + height / 2;
+          var iron = '#3a3f43';
+          this.addLocalBox(ARMORY_RACK_WIDTH, height, 0.055, { x: 0, y: midY, z: 0 }, '#4a3b2c', rack);
+          this.addLocalBox(0.055, height, ARMORY_RACK_DEPTH, { x: -ARMORY_RACK_WIDTH / 2, y: midY, z: 0 }, iron, rack);
+          this.addLocalBox(0.055, height, ARMORY_RACK_DEPTH, { x: ARMORY_RACK_WIDTH / 2, y: midY, z: 0 }, iron, rack);
+          this.addLocalBox(ARMORY_RACK_WIDTH, 0.055, ARMORY_RACK_DEPTH, { x: 0, y: ARMORY_RACK_BOTTOM_Y, z: 0 }, iron, rack);
+          this.addLocalBox(ARMORY_RACK_WIDTH, 0.055, ARMORY_RACK_DEPTH, { x: 0, y: ARMORY_RACK_TOP_Y, z: 0 }, iron, rack);
 
-            var slotId = this.addSlot({ x: x, y: ARMORY_PEG_Y, z: ARMORY_PEG_Z }, 'small', {}, face);
-            if (ARMORY_PISTOL_STOCK.indexOf(i) !== -1) this.stock(slotId, 'pistol');
-          }
+          var front = this.addChild(rack, { x: 0, y: 0, z: 0 });
+          front.setAttribute('id', 'armory-face-' + frontName.toLowerCase());
+          var back = this.addChild(rack, { x: 0, y: 0, z: 0 });
+          back.setAttribute('id', 'armory-face-' + backName.toLowerCase());
+          back.setAttribute('rotation', { x: 0, y: 180, z: 0 });
+
+          this.buildArmoryRackFace(front, frontName);
+          this.buildArmoryRackFace(back, backName);
         },
 
-        // Long guns lie flat, in sockets rolled a quarter turn. The
-        // shotgun's own holstered pose is barrel-down like everything
-        // else; rolling the socket is what turns "hanging in a
-        // bandolier" into "resting in a rack" without the gun being
-        // told anything.
-        buildLongGunCradles: function (face, iron) {
-          var span = BAR_WIDTH - 0.7;
-          var spacing = span / (ARMORY_CRADLES - 1);
-          this.cradleX = {};
+        buildArmoryRackFace: function (face, name) {
+          var titles = {
+            A: 'A  SIDEARMS',
+            B: 'B  LONG GUNS',
+            C: 'C  ARCHERY + DEMO',
+            D: 'D  HEAVY EQUIPMENT',
+          };
+          var label = document.createElement('a-entity');
+          label.setAttribute('position', { x: 0, y: 1.31, z: ARMORY_RACK_SLOT_Z - 0.012 });
+          label.setAttribute('text', { value: titles[name], align: 'center', color: '#e0b84f', width: 1.2, wrapCount: 24 });
+          face.appendChild(label);
 
-          for (var i = 0; i < ARMORY_CRADLES; i++) {
-            var x = -span / 2 + i * spacing;
-            if (ARMORY_CRADLE_STOCK[i]) this.cradleX[ARMORY_CRADLE_STOCK[i]] = x;
-            this.addBox(0.05, 0.09, 0.13, { x: x - 0.34, y: ARMORY_CRADLE_Y - 0.02, z: ARMORY_CRADLE_Z + 0.02 }, iron, face);
-            this.addBox(0.05, 0.09, 0.13, { x: x + 0.42, y: ARMORY_CRADLE_Y - 0.02, z: ARMORY_CRADLE_Z + 0.02 }, iron, face);
-
-            var slotId = this.addSlot(
-              { x: x, y: ARMORY_CRADLE_Y, z: ARMORY_CRADLE_Z },
-              'large',
-              {},
-              face,
-              { x: 0, y: 0, z: 90 }
-            );
-            if (ARMORY_CRADLE_STOCK[i]) this.stock(slotId, ARMORY_CRADLE_STOCK[i]);
-          }
+          if (name === 'A') return this.buildSidearmFace(face);
+          if (name === 'B') return this.buildLongGunFace(face);
+          if (name === 'C') return this.buildArcheryFace(face);
+          this.buildHeavyEquipmentFace(face);
         },
 
-        // A trough of arrows along the front of the bench. They lie
-        // flat rather than standing in a barrel, and that isn't
-        // decoration: an arrow stood on end here is nearly two metres
-        // of drum, and the whole thing has to pass under your chin
-        // (see THE REVOLVING BAR). One socket with room for five and
-        // the usual fan, which is all a quiver has ever been.
-        buildQuiver: function (face, iron) {
-          // Under the bow, not at the far end of the bench. Ammunition
-          // you have to go and find is ammunition you don't load.
-          var x = (this.cradleX && this.cradleX.bow !== undefined ? this.cradleX.bow : ARMORY_QUIVER_X) - 0.3;
-          this.addBox(0.72, 0.03, 0.09, { x: x + 0.31, y: BAR_TOP_Y + 0.015, z: ARMORY_QUIVER_Z }, '#5b3a29', face);
-          this.addBox(0.05, 0.06, 0.11, { x: x, y: BAR_TOP_Y + 0.03, z: ARMORY_QUIVER_Z }, iron, face);
-          this.addBox(0.05, 0.06, 0.11, { x: x + 0.6, y: BAR_TOP_Y + 0.03, z: ARMORY_QUIVER_Z }, iron, face);
+        addRackPeg: function (face, x, y, size, item, extra, rot) {
+          this.addLocalBox(0.025, 0.025, 0.19, { x: x, y: y + 0.025, z: -0.125 }, '#3a3f43', face);
+          var slotId = this.addLocalSlot(face, { x: x, y: y, z: ARMORY_RACK_SLOT_Z }, size, extra || {}, rot);
+          if (item) this.stock(slotId, item);
+          return slotId;
+        },
 
-          var slotId = this.addSlot(
-            { x: x, y: BAR_TOP_Y + 0.05, z: ARMORY_QUIVER_Z },
-            'small',
-            { capacity: ARMORY_ARROWS, fanSpread: 0.03, fanYaw: 0 },
+        addRackCrate: function (face, x, y, size, item, capacity, rot) {
+          this.addLocalBox(0.32, 0.18, 0.11, { x: x, y: y - 0.025, z: -0.12 }, '#5b3a29', face);
+          return this.addRackPeg(
             face,
-            { x: 0, y: 90, z: 0 } // turned, so they lie along the bench instead of pointing off the end of it
+            x,
+            y,
+            size,
+            item,
+            { capacity: capacity, fanSpread: 0.055, fanYaw: 8 },
+            rot
           );
-          this.stock(slotId, 'arrow');
         },
 
-        // A low shelf under the bench, with a crate of dynamite at each
-        // end and empty sockets between them. The crate is nothing but
-        // a box behind a slot with a capacity of three: the fan that
-        // spreads five cigars across your teeth is what makes a bundle
-        // of sticks read as a bundle.
-        buildAmmoShelf: function (face, iron) {
-          this.addBox(BAR_WIDTH - 0.3, 0.05, 0.16, { x: 0, y: ARMORY_SHELF_Y, z: ARMORY_SHELF_Z }, iron, face);
+        buildSidearmFace: function (face) {
+          var xs = [-0.4, 0, 0.4];
+          var ys = [1.15, 0.82, 0.49];
+          var stockAt = [0, 2, 4, 6, 8];
+          var index = 0;
+          for (var row = 0; row < ys.length; row++) {
+            for (var col = 0; col < xs.length; col++) {
+              this.addRackPeg(face, xs[col], ys[row], 'small', stockAt.indexOf(index) !== -1 ? 'pistol' : null);
+              index++;
+            }
+          }
+        },
 
-          var self = this;
-          var launcherX = this.cradleX && this.cradleX.launcher !== undefined ? this.cradleX.launcher : 1.28;
-          [
-            { x: -1.28, item: 'dynamite', capacity: ARMORY_DYNAMITE_PER_CRATE },
-            { x: launcherX, item: 'rocket', capacity: ARMORY_ROCKETS },
-          ].forEach(function (crate) {
-            self.addBox(0.24, 0.14, 0.13, { x: crate.x, y: ARMORY_SHELF_Y + 0.095, z: ARMORY_SHELF_Z }, '#5b3a29', face);
-            var slotId = self.addSlot(
-              { x: crate.x, y: ARMORY_SHELF_Y + 0.12, z: ARMORY_SHELF_Z },
-              'small',
-              { capacity: crate.capacity, fanSpread: 0.07, fanYaw: 9 },
-              face
-            );
-            self.stock(slotId, crate.item);
-          });
+        buildLongGunFace: function (face) {
+          var items = ['shotgun', 'tommy', 'sniper'];
+          var xs = [-0.43, 0, 0.43];
+          for (var i = 0; i < items.length; i++) {
+            this.addRackPeg(face, xs[i], 1.16, 'large', items[i]);
+          }
+        },
 
-          // The pack sits in the middle of the shelf, which is where a
-          // pack sits. The free sockets move aside for it.
-          var tankSlot = this.addSlot(
-            { x: 0, y: ARMORY_SHELF_Y + 0.2, z: ARMORY_SHELF_Z },
-            'large',
-            {},
-            face
-          );
-          this.stock(tankSlot, 'tank');
+        buildArcheryFace: function (face) {
+          this.addRackPeg(face, -0.38, 0.79, 'large', 'bow');
+          this.addRackCrate(face, 0.34, 1.08, 'small', 'arrow', ARMORY_ARROWS, { x: -90, y: 0, z: 0 });
+          this.addRackCrate(face, 0.34, 0.5, 'small', 'dynamite', ARMORY_DYNAMITE_PER_CRATE, { x: -90, y: 0, z: 0 });
+        },
 
-          ARMORY_SHELF_SOCKET_X.forEach(function (x) {
-            this.addSlot({ x: x, y: ARMORY_SHELF_Y + 0.03, z: ARMORY_SHELF_Z }, 'medium', {}, face);
-          }, this);
+        buildHeavyEquipmentFace: function (face) {
+          this.addRackPeg(face, -0.38, 1.16, 'large', 'launcher');
+          this.addRackCrate(face, 0.34, 1.08, 'small', 'rocket', ARMORY_ROCKETS);
+          this.addRackPeg(face, 0.32, 0.48, 'large', 'tank');
         },
 
         // ============================================================
