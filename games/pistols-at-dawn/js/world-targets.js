@@ -188,8 +188,25 @@
           axle.setAttribute('color', '#2b2b2f');
           this.hub.appendChild(axle);
 
-          for (var i = 0; i < this.data.spokeCount; i++) {
-            var angleDeg = (360 / this.data.spokeCount) * i;
+          this.spokeEls = [];
+          this.buildSpokes();
+        },
+
+        update: function (oldData) {
+          if (!this.hub || oldData.spokeCount === undefined || oldData.spokeCount === this.data.spokeCount) return;
+          this.buildSpokes();
+        },
+
+        buildSpokes: function () {
+          this.spokeEls.forEach(function (spokeEl) {
+            if (spokeEl.parentNode) spokeEl.parentNode.removeChild(spokeEl);
+          });
+          this.spokeEls.length = 0;
+          this.targets.length = 0;
+          var spokeCount = Math.max(1, Math.round(this.data.spokeCount));
+
+          for (var i = 0; i < spokeCount; i++) {
+            var angleDeg = (360 / spokeCount) * i;
             var angleRad = (angleDeg * Math.PI) / 180;
             var x = this.data.wheelRadius * Math.cos(angleRad);
             var y = this.data.wheelRadius * Math.sin(angleRad);
@@ -202,6 +219,7 @@
             spoke.setAttribute('rotation', { x: 0, y: 0, z: angleDeg - 90 });
             spoke.setAttribute('color', '#5b4633');
             this.hub.appendChild(spoke);
+            this.spokeEls.push(spoke);
 
             var hinge = document.createElement('a-entity');
             hinge.setAttribute('pop-target', '');
@@ -209,6 +227,7 @@
             this.hub.appendChild(hinge);
             hinge.appendChild(createTargetFace(this.data.targetScale));
 
+            this.spokeEls.push(hinge);
             this.targets.push(hinge);
           }
         },

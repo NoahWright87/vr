@@ -1,4 +1,5 @@
 import { chooseAutomaticMenuIntent, chooseProjectedMenuMode } from './projected-menu-mode.js';
+import { cycleMenuOptionIndex, parseMenuOptions } from './menu-options.js';
 
   AFRAME.registerComponent('menu-item', {
     schema: {
@@ -54,11 +55,184 @@ import { chooseAutomaticMenuIntent, chooseProjectedMenuMode } from './projected-
     },
   });
 
+  // A reusable multi-value row. Its left/right thirds cycle through the
+  // supplied values; the center opens a compact list of every choice.
+  AFRAME.registerComponent('menu-option', {
+    schema: {
+      key: { type: 'string' },
+      label: { type: 'string' },
+      values: { type: 'string' },
+      labels: { type: 'string', default: '' },
+      value: { type: 'string' },
+      width: { default: 0.78 },
+      height: { default: 0.2 },
+    },
+
+    init: function () {
+      this.options = parseMenuOptions(this.data.values, this.data.labels);
+      this.index = Math.max(0, this.options.findIndex(function (option) {
+        return option.value === this.data.value;
+      }, this));
+      this.popupEl = null;
+      this.onInternalSelection = this.onInternalSelection.bind(this);
+      this.onDismissPopovers = this.closePopup.bind(this);
+      this.el.addEventListener('menu-item-select', this.onInternalSelection);
+      this.el.addEventListener('menu-dismiss-popovers', this.onDismissPopovers);
+      this.buildRow();
+    },
+
+    makeTarget: function (width, value, label, x) {
+      var target = document.createElement('a-entity');
+      target.classList.add('pm-target', 'menu-target');
+      target.setAttribute('geometry', 'primitive: plane; width: ' + width + '; height: ' + this.data.height);
+      target.setAttribute('material', 'color: #182238');
+      target.setAttribute('menu-item', 'value: ' + value + '; label: ' + label);
+      target.setAttribute('position', x + ' 0 0');
+      this.el.appendChild(target);
+      return target;
+    },
+
+    addText: function (target, value, width, color) {
+      var text = document.createElement('a-text');
+      text.setAttribute('value', value);
+      text.setAttribute('align', 'center');
+      text.setAttribute('color', color || '#eee');
+      text.setAttribute('width', width);
+      text.setAttribute('position', '0 0 0.01');
+      target.appendChild(text);
+      return text;
+    },
+
+    buildRow: function () {
+      var arrowWidth = this.data.height;
+      var gap = 0.01;
+      var centerWidth = this.data.width - arrowWidth * 2 - gap * 2;
+      this.previousEl = this.makeTarget(arrowWidth, 'menu-option-previous', 'Previous ' + this.data.label, -(centerWidth + arrowWidth) / 2 - gap);
+      this.addText(this.previousEl, '<', 3.5, '#9ad');
+      this.centerEl = this.makeTarget(centerWidth, 'menu-option-open', this.data.label, 0);
+      this.valueTextEl = this.addText(this.centerEl, '', 2.4, '#eee');
+      this.nextEl = this.makeTarget(arrowWidth, 'menu-option-next', 'Next ' + this.data.label, (centerWidth + arrowWidth) / 2 + gap);
+      this.addText(this.nextEl, '>', 3.5, '#9ad');
+      this.renderValue();
+      var self = this;
+      setTimeout(function () {
+        if (self.el.parentNode) self.el.emit('menu-targets-changed', null, true);
+      }, 0);
+    },
+
+    onInternalSelection: function (evt) {
+      if (evt.target === this.el || !this.el.contains(evt.target)) return;
+      var value = evt.detail.value;
+      if (value === 'menu-option-previous') {
+        evt.stopPropagation();
+        this.cycle(-1);
+      } else if (value === 'menu-option-next') {
+        evt.stopPropagation();
+        this.cycle(1);
+      } else if (value === 'menu-option-open') {
+        evt.stopPropagation();
+        if (this.popupEl) this.closePopup();
+        else this.openPopup();
+      } else if (value.indexOf('menu-option-choice-') === 0) {
+        evt.stopPropagation();
+        this.selectIndex(parseInt(value.slice('menu-option-choice-'.length), 10), true);
+        this.closePopup();
+      }
+    },
+
+    cycle: function (delta) {
+      this.selectIndex(cycleMenuOptionIndex(this.options.length, this.index, delta), true);
+    },
+
+    selectIndex: function (index, emitChange) {
+      if (index < 0 || index >= this.options.length) return;
+      this.index = index;
+      this.data.value = this.options[index].value;
+      this.renderValue();
+      if (emitChange) {
+        this.el.emit('menu-option-change', {
+          key: this.data.key,
+          controlLabel: this.data.label,
+          value: this.options[index].value,
+          label: this.options[index].label,
+          index: index,
+        }, true);
+      }
+    },
+
+    setValue: function (value) {
+      var stringValue = String(value);
+      var index = this.options.findIndex(function (option) { return option.value === stringValue; });
+      if (index >= 0) this.selectIndex(index, false);
+    },
+
+    renderValue: function () {
+      var option = this.options[this.index];
+      if (!option || !this.valueTextEl) return;
+      this.valueTextEl.setAttribute('text', 'value', this.data.label + ': ' + option.label);
+    },
+
+    openPopup: function () {
+      if (!this.options.length) return;
+      var scope = this.el.closest('[data-menu-page]') || this.el.parentNode;
+      Array.prototype.forEach.call(scope.querySelectorAll('[menu-option]'), function (item) {
+        if (item === this.el) return;
+        var component = item.components['menu-option'];
+        if (component) component.closePopup();
+      }, this);
+      this.el.emit('menu-dismiss-popovers', { except: this.el }, true);
+      var popup = document.createElement('a-entity');
+      popup.classList.add('menu-option-popup');
+      popup.setAttribute('position', '0 0 0.04');
+      var optionHeight = 0.17;
+      var popupHeight = this.options.length * optionHeight + 0.06;
+      var background = document.createElement('a-plane');
+      background.setAttribute('width', this.data.width * 0.82);
+      background.setAttribute('height', popupHeight);
+      background.setAttribute('material', 'color: #0b1220; shader: flat');
+      background.setAttribute('position', '0 0 -0.01');
+      popup.appendChild(background);
+      var self = this;
+      this.options.forEach(function (option, index) {
+        var target = document.createElement('a-entity');
+        target.classList.add('pm-target', 'menu-target');
+        target.setAttribute('geometry', 'primitive: plane; width: ' + (self.data.width * 0.72) + '; height: 0.14');
+        target.setAttribute('material', 'color: ' + (index === self.index ? '#2a4a5c' : '#182238'));
+        target.setAttribute('menu-item', 'value: menu-option-choice-' + index + '; label: ' + option.label);
+        target.setAttribute('position', '0 ' + (((self.options.length - 1) / 2 - index) * optionHeight) + ' 0');
+        self.addText(target, option.label, 2.3, '#eee');
+        popup.appendChild(target);
+      });
+      this.el.appendChild(popup);
+      this.popupEl = popup;
+      setTimeout(function () {
+        if (self.popupEl) self.el.emit('menu-targets-changed', null, true);
+      }, 0);
+    },
+
+    closePopup: function (evt) {
+      if (evt && evt.detail && evt.detail.except === this.el) return;
+      if (!this.popupEl) return;
+      this.popupEl.parentNode.removeChild(this.popupEl);
+      this.popupEl = null;
+      this.el.emit('menu-targets-changed', null, true);
+    },
+
+    remove: function () {
+      this.closePopup();
+      this.el.removeEventListener('menu-item-select', this.onInternalSelection);
+      this.el.removeEventListener('menu-dismiss-popovers', this.onDismissPopovers);
+    },
+  });
+
   AFRAME.registerComponent('menu-feedback', {
     init: function () {
       this.feedbackText = this.el.querySelector('.menu-feedback-text');
       this.el.addEventListener('menu-item-select', (evt) => {
         this.feedbackText.setAttribute('text', 'value', 'Selected: ' + evt.detail.label);
+      });
+      this.el.addEventListener('menu-option-change', (evt) => {
+        this.feedbackText.setAttribute('text', 'value', 'Selected: ' + evt.detail.controlLabel + ': ' + evt.detail.label);
       });
     },
   });
@@ -220,8 +394,10 @@ import { chooseAutomaticMenuIntent, chooseProjectedMenuMode } from './projected-
         if (poker.handComponent && poker.handComponent.isPointing && !self.active) self.open();
       });
 
-      this.pmTargets = Array.prototype.slice.call(panel.querySelectorAll('.pm-target'));
-      this.pmTargets.forEach(function (item) {
+      this.pmTargets = [];
+      this.registerMenuTarget = function (item) {
+        if (item._projectedMenuOwner === self) return;
+        item._projectedMenuOwner = self;
         item.setAttribute('obb-collider', 'size: 0.035');
         item._lastPokeAt = 0;
         item.addEventListener('obbcollisionstarted', function (evt) {
@@ -237,6 +413,15 @@ import { chooseAutomaticMenuIntent, chooseProjectedMenuMode } from './projected-
             item.emit('click');
           }
         });
+      };
+      this.refreshMenuTargets = function () {
+        self.pmTargets = Array.prototype.slice.call(panel.querySelectorAll('.pm-target'));
+        self.pmTargets.forEach(self.registerMenuTarget);
+        self.setItemsMode(self.lastItemsMode || 'closed', true);
+      };
+      this.refreshMenuTargets();
+      panel.addEventListener('menu-targets-changed', function () {
+        self.refreshMenuTargets();
       });
 
       panel.addEventListener('menu-item-select', function (evt) {
@@ -379,6 +564,10 @@ import { chooseAutomaticMenuIntent, chooseProjectedMenuMode } from './projected-
           this.panelEl.setAttribute('visible', false);
           this.visible = false;
           this.setItemsMode('closed');
+          Array.prototype.forEach.call(this.panelEl.querySelectorAll('[menu-option]'), function (item) {
+            var option = item.components['menu-option'];
+            if (option) option.closePopup();
+          });
           this.el.emit('projected-menu-closed');
         }
       } else {
@@ -391,9 +580,9 @@ import { chooseAutomaticMenuIntent, chooseProjectedMenuMode } from './projected-
       }
     },
 
-    setItemsMode: function (mode) {
+    setItemsMode: function (mode, force) {
       if (this.suppressPointing) mode = 'closed';
-      if (mode === this.lastItemsMode) return;
+      if (mode === this.lastItemsMode && !force) return;
       this.lastItemsMode = mode;
       this.pmTargets.forEach(function (item) {
         if (mode === 'closed') item.classList.remove('menu-target');

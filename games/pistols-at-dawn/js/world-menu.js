@@ -9,8 +9,10 @@
     init: function () {
       this.spinnerPaused = false;
       this.onSelection = this.onSelection.bind(this);
+      this.onOptionChange = this.onOptionChange.bind(this);
       this.el.addEventListener('menu-item-select', this.onSelection);
-      this.el.addEventListener('watch-menu-ready', this.updateSpinnerLabels.bind(this));
+      this.el.addEventListener('menu-option-change', this.onOptionChange);
+      this.el.addEventListener('watch-menu-ready', this.updateSpinnerControls.bind(this));
     },
 
     onSelection: function (evt) {
@@ -21,6 +23,37 @@
       this.spinnerPaused = !this.spinnerPaused;
       spinner.setPaused(this.spinnerPaused);
       this.updateSpinnerLabels();
+    },
+
+    onOptionChange: function (evt) {
+      var spinnerEl = document.querySelector('#spinner-target');
+      var spinner = spinnerEl && spinnerEl.components['wheel-target'];
+      if (!spinner) return;
+      var numberValue = Number(evt.detail.value);
+      if (evt.detail.key === 'spinner-count') {
+        spinnerEl.setAttribute('wheel-target', 'spokeCount', numberValue);
+      } else if (evt.detail.key === 'spinner-speed') {
+        spinnerEl.setAttribute('wheel-target', 'speed', numberValue);
+      } else {
+        return;
+      }
+      this.updateSpinnerControls();
+    },
+
+    updateSpinnerControls: function () {
+      var spinnerEl = document.querySelector('#spinner-target');
+      var spinner = spinnerEl && spinnerEl.components['wheel-target'];
+      if (!spinner) return;
+      this.updateSpinnerLabels();
+      this.syncOption('.spinner-count-option', spinner.data.spokeCount);
+      this.syncOption('.spinner-speed-option', spinner.data.speed);
+    },
+
+    syncOption: function (selector, value) {
+      Array.prototype.forEach.call(document.querySelectorAll(selector), function (optionEl) {
+        var option = optionEl.components['menu-option'];
+        if (option) option.setValue(value);
+      });
     },
 
     updateSpinnerLabels: function () {

@@ -352,14 +352,9 @@
         <a-entity class="menu-chrome-slot" data-title="SHOWCASE" data-help="false" data-close="false" data-width="1.9" data-bar-y="0.9"></a-entity>
 
         <a-entity
-          class="menu-target"
-          geometry="primitive: plane; width: 1.6; height: 0.26"
-          material="color: #182238"
-          menu-item="value: move-smooth; label: Smooth move"
+          menu-option="key: move-speed; label: Move speed; values: 0.5|1|1.5|2; labels: 0.5x|1x|1.5x|2x; value: 1; width: 1.6; height: 0.26"
           position="0 0.58 0"
-        >
-          <a-text value="Smooth move" align="center" color="#eee" width="3" position="0 0 0.01"></a-text>
-        </a-entity>
+        ></a-entity>
 
         <a-entity
           class="menu-target"

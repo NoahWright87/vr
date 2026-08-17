@@ -56,23 +56,33 @@
         </a-entity>
 
         <a-entity data-menu-page="targets" visible="false">
-          <a-plane width="1" height="1.15" color="#101827" position="0 -0.08 -0.01"></a-plane>
-          <a-entity class="menu-chrome-slot" data-title="TARGETS" data-help="false" data-close="true" data-width="1" data-bar-y="0.4"></a-entity>
+          <a-plane width="1" height="1.55" color="#101827" position="0 -0.12 -0.01"></a-plane>
+          <a-entity class="menu-chrome-slot" data-title="TARGETS" data-help="false" data-close="true" data-width="1" data-bar-y="0.58"></a-entity>
           <a-entity
             class="pm-target"
             geometry="primitive: plane; width: 0.78; height: 0.2"
             material="color: #182238"
             menu-item="value: toggle-spinner; label: Pause spinner"
-            position="0 0.08 0"
+            position="0 0.3 0"
           >
             <a-text class="spinner-toggle-label" value="Pause spinner" align="center" color="#eee" width="2.4" position="0 0 0.01"></a-text>
           </a-entity>
+          <a-entity
+            class="spinner-count-option"
+            menu-option="key: spinner-count; label: Targets; values: 2|4|6|8; value: 4"
+            position="0 0.04 0"
+          ></a-entity>
+          <a-entity
+            class="spinner-speed-option"
+            menu-option="key: spinner-speed; label: Speed; values: 15|30|45|60|90; labels: 15°/s|30°/s|45°/s|60°/s|90°/s; value: 45"
+            position="0 -0.22 0"
+          ></a-entity>
           <a-entity
             class="pm-target"
             geometry="primitive: plane; width: 0.78; height: 0.2"
             material="color: #182238"
             menu-item="value: page-main; label: Back"
-            position="0 -0.22 0"
+            position="0 -0.5 0"
           >
             <a-text value="&lt; Back" align="center" color="#aaa" width="2.4" position="0 0 0.01"></a-text>
           </a-entity>

@@ -74,3 +74,22 @@ test('an explicit close suppresses automatic reopening until the activation pose
   assert.equal(component.active, true);
   assert.equal(component.automaticDismissed, false);
 });
+
+test('the center of a multi-value row opens its complete option list', () => {
+  let opened = 0;
+  let propagationStopped = false;
+  const component = Object.assign(Object.create(definitions['menu-option']), {
+    el: { contains() { return true; } },
+    popupEl: null,
+    openPopup() { opened += 1; },
+  });
+
+  component.onInternalSelection({
+    target: {},
+    detail: { value: 'menu-option-open' },
+    stopPropagation() { propagationStopped = true; },
+  });
+
+  assert.equal(opened, 1);
+  assert.equal(propagationStopped, true);
+});
