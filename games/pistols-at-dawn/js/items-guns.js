@@ -28,11 +28,13 @@
       // twist rather than up/down) and reload. The hat has no such
       // problem — it isn't aimed at anything, so its heldRotation is
       // just identity.
-      // Defaults for the "firearm" component — a pistol's numbers.
-      // Anything bigger (the shotgun) overrides them in its own markup
-      // rather than getting its own set of constants here.
-      var RECOIL_KICK_DEG = -8; // extra pitch added on top of heldRotation when firing
-      var RECOIL_RECOVER_MS = 120; // how long the kick takes to settle back
+      // Defaults for the firearm component — a pistol's recoil. Each
+      // shot displaces the tracked grip in all six degrees of freedom;
+      // bigger guns override these values in their item declaration.
+      var RECOIL_BACK_METERS = 0.025;
+      var RECOIL_RISE_DEG = 5;
+      var RECOIL_JITTER = 0.18;
+      var RECOIL_RETURN_RATE = 7; // exponential settling rate per second
       var TRACER_COLOR = '#ffe066';
       var TRACER_RADIUS = 0.004; // meters
       var TRACER_LIFETIME_MS = 80;
@@ -350,17 +352,14 @@
           firearm.data.coneDeg = 0.6 + 11.4 * Math.pow(shortness, 1.35);
           firearm.data.pellets = Math.round(5 + 5 * shortness);
 
-          // A stock shotgun now has real recoil too. Cutting removes
-          // leverage and weight: both the initial snap and persistent
-          // muzzle rise get worse. The support hand is excellent at
-          // full length but progressively less effective as the
-          // forend runs out of barrel to brace against.
-          firearm.data.kickDeg = -(10 + 10 * shortness);
-          firearm.data.recoverMs = 240 + 100 * shortness;
-          firearm.data.climbDegPerShot = 5 + 9 * shortness;
-          firearm.data.maxClimbDeg = firearm.data.climbDegPerShot;
-          firearm.data.climbRecoverDegPerS = 14;
-          firearm.data.supportedRecoilScale = 0.25 + 0.35 * shortness;
+          // Cutting removes leverage and weight, increasing both the
+          // rearward shove and muzzle rise. The remaining forend is a
+          // progressively worse brace as the barrel gets shorter.
+          firearm.data.recoilBack = 0.04 + 0.025 * shortness;
+          firearm.data.recoilRiseDeg = 8 + 8 * shortness;
+          firearm.data.recoilReturnRate = 4.8 - 0.8 * shortness;
+          firearm.data.supportedRiseScale = 0.25 + 0.35 * shortness;
+          firearm.data.supportedBackScale = 0.7 + 0.12 * shortness;
 
           if (this.barrelLength <= SHOTGUN_SMALL_LENGTH) {
             holsterable.data.itemSize = 'small';
@@ -677,7 +676,16 @@
           supportRadius: 0.22,
           maxThrowSpeed: 6,
         });
-        el.setAttribute('firearm', { pellets: 1, coneDeg: 0, kickDeg: -13, recoverMs: 320, heatPerShot: 0.5 });
+        el.setAttribute('firearm', {
+          pellets: 1,
+          coneDeg: 0,
+          recoilBack: 0.065,
+          recoilRiseDeg: 11,
+          recoilReturnRate: 3.2,
+          supportedRiseScale: 0.28,
+          supportedBackScale: 0.72,
+          heatPerShot: 0.5,
+        });
         el.setAttribute('ignition-source', { tipSelector: '.muzzle' });
         el.setAttribute('boxy-sniper', '');
         el.setAttribute('scope', { offset: { x: 0, y: 0.115, z: 0.03 } });
@@ -702,14 +710,14 @@
         el.setAttribute('firearm', {
           pellets: 1,
           coneDeg: 1.2,
-          kickDeg: -6,
-          recoverMs: 85,
+          recoilBack: 0.014,
+          recoilRiseDeg: 2.4,
+          recoilJitter: 0.28,
+          recoilReturnRate: 10.5,
           heatPerShot: 0.08,
           fireIntervalMs: 85,
-          climbDegPerShot: 1.35,
-          maxClimbDeg: 12,
-          climbRecoverDegPerS: 8,
-          supportedRecoilScale: 0.35,
+          supportedRiseScale: 0.35,
+          supportedBackScale: 0.78,
         });
         el.setAttribute('ignition-source', { tipSelector: '.muzzle' });
         el.setAttribute('boxy-tommy', '');
@@ -726,11 +734,9 @@
       // the guns — the hat, bottles, and cigars have no such
       // component, so hand-rig's trigger-pull handler (which looks for
       // this component before calling fire()) is naturally a no-op
-      // while holding them. It reads holsterable's state and writes
-      // its recoil kick into holsterable.extraPitchDeg rather than
-      // touching the object's rotation itself, so recoil, the hand's
-      // fan offset, and drunken sway all compose in one place instead
-      // of three components fighting over one object3D.
+      // while holding them. Recoil is delivered to hand-rig's grip
+      // offset, beside rather than instead of vice drift, so the hand
+      // and gun move together and all those effects stack.
       //
       // `heat` is the other bit of state, and it's what makes rapid
       // fire visibly different from careful shooting: every shot adds
@@ -742,19 +748,17 @@
         schema: {
           pellets: { type: 'number', default: 1 }, // rays per shot
           coneDeg: { type: 'number', default: 0 }, // half-angle of the spread cone
-          kickDeg: { type: 'number', default: RECOIL_KICK_DEG },
-          recoverMs: { type: 'number', default: RECOIL_RECOVER_MS },
+          recoilBack: { type: 'number', default: RECOIL_BACK_METERS },
+          recoilRiseDeg: { type: 'number', default: RECOIL_RISE_DEG },
+          recoilJitter: { type: 'number', default: RECOIL_JITTER },
+          recoilReturnRate: { type: 'number', default: RECOIL_RETURN_RATE },
+          supportedRiseScale: { type: 'number', default: 0.32 },
+          supportedBackScale: { type: 'number', default: 0.75 },
           heatPerShot: { type: 'number', default: 0.22 },
           fireIntervalMs: { type: 'number', default: 0 }, // zero is semi-auto; otherwise milliseconds between shots while held
-          climbDegPerShot: { type: 'number', default: 0 }, // sustained muzzle rise; zero preserves the existing transient-only recoil
-          maxClimbDeg: { type: 'number', default: 0 },
-          climbRecoverDegPerS: { type: 'number', default: 8 },
-          supportedRecoilScale: { type: 'number', default: 1 }, // second hand scales both the snap and accumulated climb
         },
 
         init: function () {
-          this.recoilTimer = 0; // ms remaining on the current fire-recoil kick
-          this.recoilClimbDeg = 0; // persistent upward drift accumulated by sustained fire
           this.heat = 0; // 0..1 barrel temperature — how hard this barrel has been worked lately
           this.sinceLastShot = Infinity;
           this.curlRemaining = 0; // puffs still to come in the post-shooting curl
@@ -767,13 +771,18 @@
           this._forward = new THREE.Vector3();
           this._right = new THREE.Vector3();
           this._up = new THREE.Vector3();
+          this._headPosition = new THREE.Vector3();
+          this._handPosition = new THREE.Vector3();
+          this._headToHand = new THREE.Vector3();
+          this._positionImpulse = new THREE.Vector3();
+          this._rotationImpulse = new THREE.Vector3();
+          this._supportImpulse = new THREE.Vector3();
         },
 
         tick: function (time, dt) {
           var dtSeconds = Math.min((dt || 16) / 1000, 0.05);
           this.sinceLastShot += dtSeconds * 1000;
           this.heat = Math.max(this.heat - GUN_HEAT_DECAY_PER_S * dtSeconds, 0);
-          this.updateRecoil(dtSeconds);
           this.updateAutomatic(dtSeconds);
           this.updateBarrelSmoke(dtSeconds);
 
@@ -783,29 +792,6 @@
           // ignition-source) and lets world-systems do the matching.
           var source = this.el.components['ignition-source'];
           if (source) source.hot = this.heat > MUZZLE_HOT_THRESHOLD;
-        },
-
-        // Composes the quick per-shot snap with persistent muzzle
-        // climb. The climb stays put while automatic fire continues,
-        // then settles back once the burst ends. A hand on the support
-        // grip reduces both parts, so bracing changes the result rather
-        // than merely changing which line aims the gun.
-        updateRecoil: function (dtSeconds) {
-          this.recoilTimer = Math.max(this.recoilTimer - dtSeconds * 1000, 0);
-          var holsterable = this.el.components.holsterable;
-          if (holsterable) {
-            var supportScale = holsterable.supportHand ? this.data.supportedRecoilScale : 1;
-            var quietMs = this.data.fireIntervalMs > 0 ? this.data.fireIntervalMs * 1.5 : this.data.recoverMs;
-            if (this.sinceLastShot > quietMs && this.recoilClimbDeg < 0) {
-              this.recoilClimbDeg = Math.min(
-                this.recoilClimbDeg + this.data.climbRecoverDegPerS * dtSeconds,
-                0
-              );
-            }
-
-            var kick = this.data.kickDeg * (this.recoilTimer / this.data.recoverMs);
-            holsterable.extraPitchDeg = this.recoilClimbDeg + kick * supportScale;
-          }
         },
 
         // Smoke happens after the shooting, not during it. Once the
@@ -931,25 +917,84 @@
         },
 
         playMuzzleEffects: function () {
-          this.recoilTimer = this.data.recoverMs;
-          var holsterable = this.el.components.holsterable;
-          var supportScale = holsterable && holsterable.supportHand ? this.data.supportedRecoilScale : 1;
-          if (this.data.climbDegPerShot > 0) {
-            // Negative local X is muzzle-up in the established held
-            // pose. The scaled cap means a foregrip does not merely
-            // take longer to reach the same bad endpoint: it arrests
-            // the burst at a genuinely lower angle.
-            this.recoilClimbDeg = Math.max(
-              this.recoilClimbDeg - this.data.climbDegPerShot * supportScale,
-              -this.data.maxClimbDeg * supportScale
-            );
-          }
+          this.applyRecoilImpulse();
           this.heat = Math.min(this.heat + this.data.heatPerShot, 1);
           this.sinceLastShot = 0;
           this.curlRemaining = 0; // still shooting — the curl waits
 
           flashMuzzle(this.el);
           spawnSparks(this._origin, 3);
+        },
+
+        // A deliberately lightweight firearm model. Gas pressure
+        // shoves primarily back along the barrel; the player's arms
+        // turn some of that into muzzle rise. A low, waist-braced gun
+        // has a shorter lever, while a barrel aligned with the line
+        // from head to firing hand transfers more force straight back
+        // and less upward. Random translation and yaw/roll keep bursts
+        // from climbing the same perfect line every time.
+        applyRecoilImpulse: function () {
+          var holsterable = this.el.components.holsterable;
+          var handEl = holsterable && holsterable.hand;
+          var handRig = handEl && handEl.components['hand-rig'];
+          if (!handRig || !handRig.addRecoilImpulse) return;
+
+          handEl.object3D.getWorldPosition(this._handPosition);
+          var supported = holsterable.supportHand && holsterable.data.supportAims;
+          var supportGrip = supported ? gripObjectOf(holsterable.supportHand) : null;
+          if (supportGrip) supportGrip.getWorldPosition(this._supportImpulse);
+          var heightScale = 1;
+          var alignmentScale = 1;
+          var headEl = document.querySelector('#head-camera');
+          if (headEl && headEl.object3D) {
+            headEl.object3D.getWorldPosition(this._headPosition);
+            // At eye height the full lever is active; around waist
+            // height only roughly a quarter of it remains.
+            heightScale = Math.min(Math.max(this._origin.y - this._headPosition.y + 1, 0.25), 1);
+            // With a supported gun, use the forward hand as the end of
+            // the head/arms/barrel chain. Bent or misaligned arms then
+            // preserve more rise than a straight shouldered stance.
+            this._headToHand.copy(supportGrip ? this._supportImpulse : this._handPosition).sub(this._headPosition);
+            if (this._headToHand.lengthSq() > 0.0001) {
+              var alignment = Math.max(this._headToHand.normalize().dot(this._forward), 0);
+              alignmentScale = 1 - alignment * 0.5;
+            }
+          }
+
+          var shotVariation = 1 + (Math.random() * 2 - 1) * this.data.recoilJitter;
+          var back = this.data.recoilBack * shotVariation * (supported ? this.data.supportedBackScale : 1);
+          var rise = (this.data.recoilRiseDeg * Math.PI / 180) *
+            heightScale * alignmentScale * shotVariation * (supported ? this.data.supportedRiseScale : 1);
+          var sideways = (Math.random() * 2 - 1) * this.data.recoilJitter;
+          var verticalNoise = (Math.random() * 2 - 1) * this.data.recoilJitter;
+          var rollNoise = (Math.random() * 2 - 1) * this.data.recoilJitter;
+
+          this._positionImpulse.copy(this._forward).multiplyScalar(-back);
+          this._positionImpulse.addScaledVector(this._right, back * 0.28 * sideways);
+          this._positionImpulse.addScaledVector(this._up, back * (0.08 * verticalNoise + 0.06 * rise));
+
+          // A small axis-angle vector gives all three rotational DOF:
+          // dominant pitch around barrel-right, imperfect yaw around
+          // barrel-up, and a little torque around the barrel itself.
+          this._rotationImpulse.copy(this._right).multiplyScalar(rise);
+          this._rotationImpulse.addScaledVector(this._up, rise * 0.22 * sideways);
+          this._rotationImpulse.addScaledVector(this._forward, rise * 0.16 * rollNoise);
+          handRig.addRecoilImpulse(this._positionImpulse, this._rotationImpulse, this.data.recoilReturnRate);
+
+          if (!supported) return;
+          var supportRig = holsterable.supportHand.components['hand-rig'];
+          if (!supportRig || !supportRig.addRecoilImpulse) return;
+
+          // Move both hands back together. Raising the forward hand
+          // relative to the trigger hand produces the reduced two-hand
+          // muzzle rise through the same hand-to-hand aiming geometry
+          // used during ordinary movement.
+          var handSpan = 0.25;
+          if (supportGrip) {
+            handSpan = Math.max(this._supportImpulse.distanceTo(this._handPosition), 0.12);
+          }
+          this._supportImpulse.copy(this._positionImpulse).addScaledVector(this._up, Math.tan(rise) * handSpan);
+          supportRig.addRecoilImpulse(this._supportImpulse, this._rotationImpulse, this.data.recoilReturnRate);
         },
       });
       // ==============================================================
@@ -1180,13 +1225,12 @@
         el.setAttribute('firearm', {
           pellets: 5,
           coneDeg: 0.6,
-          kickDeg: -10,
-          recoverMs: 240,
+          recoilBack: 0.04,
+          recoilRiseDeg: 8,
+          recoilReturnRate: 4.8,
           heatPerShot: 0.4,
-          climbDegPerShot: 5,
-          maxClimbDeg: 5,
-          climbRecoverDegPerS: 14,
-          supportedRecoilScale: 0.25,
+          supportedRiseScale: 0.25,
+          supportedBackScale: 0.7,
         });
         el.setAttribute('ignition-source', { tipSelector: '.muzzle' });
         el.setAttribute('boxy-shotgun', '');

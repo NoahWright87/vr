@@ -9,12 +9,14 @@
       var PROXIMITY_HAPTIC_INTENSITY = 0.15; // 0-1, deliberately light ("slight buzz", not a jolt)
       var PROXIMITY_HAPTIC_PULSE_MS = 60; // re-issued every tick while in range, so this just needs to outlast one frame
       var REGRIP_WINDOW_MS = 400; // release and re-squeeze inside this and you keep what you were holding — see hand-rig.reclaimStash
+      var RECOIL_MAX_POSITION = 0.18; // meters; automatic fire can kick hard, but never detach the hand from the arm
+      var RECOIL_MAX_ROTATION = 0.7; // radians, about 40 degrees on any local axis
       // ==============================================================
       // gripObjectOf
       // Where an object held by this hand should actually hang. Not
       // the hand entity itself: hand-rig keeps a child "grip" that
-      // carries the drink sway, the cigar tremor and the drunk aim
-      // drift (see hand-rig.updateGrip), so that a wobbling hand takes
+      // carries drink sway, cigar tremor, drunk aim drift and recoil
+      // (see hand-rig.updateGrip), so that an offset hand takes
       // whatever it's holding along with it instead of the object
       // swimming inside a steady fist.
       // ==============================================================
@@ -45,8 +47,8 @@
       // same thing as where the controller is once you've been
       // drinking. Everything held hangs off a child "grip" entity
       // rather than off this one, and updateGrip below moves that grip
-      // around with the drink sway, the cigar tremor, and the drunk
-      // aim drift. That's why those effects had to live here rather
+      // around with drink sway, cigar tremor, drunk aim drift and gun
+      // recoil. That's why those effects live here rather
       // than in holsterable: a wobble applied per-object made the gun
       // swim inside a perfectly steady fist. Applied to the grip, the
       // hand and everything in it move together, which is what being
@@ -92,6 +94,11 @@
           this._handWorld = new THREE.Vector3();
           this._drift = new THREE.Vector3();
           this._handQuat = new THREE.Quaternion();
+          this.recoilPosition = new THREE.Vector3(); // independent from vice effects so all offsets stack
+          this.recoilRotation = new THREE.Vector3();
+          this._recoilScratchPosition = new THREE.Vector3();
+          this._recoilScratchRotation = new THREE.Vector3();
+          this.recoilReturnRate = 8;
           this._ghostSeeded = false;
           this._visualBase = null; // the cosmetic hand mesh's own resting transform, captured once
 
@@ -158,20 +165,48 @@
         updateGrip: function (time, dtSeconds) {
           var w = viceWobble(this._wobbleSeed, time, this._wobble);
           this.updateGhostHand(dtSeconds);
+          this.updateRecoil(dtSeconds);
 
           var grip = this.gripEl.object3D;
           grip.position.set(
-            this._drift.x * DRIFT_POSITION_GAIN,
-            this._drift.y * DRIFT_POSITION_GAIN,
-            this._drift.z * DRIFT_POSITION_GAIN
+            this._drift.x * DRIFT_POSITION_GAIN + this.recoilPosition.x,
+            this._drift.y * DRIFT_POSITION_GAIN + this.recoilPosition.y,
+            this._drift.z * DRIFT_POSITION_GAIN + this.recoilPosition.z
           );
           grip.rotation.set(
-            ((w.x - this._drift.y * DRIFT_ROTATION_GAIN) * Math.PI) / 180,
-            ((w.y + this._drift.x * DRIFT_ROTATION_GAIN) * Math.PI) / 180,
-            (w.z * Math.PI) / 180
+            ((w.x - this._drift.y * DRIFT_ROTATION_GAIN) * Math.PI) / 180 + this.recoilRotation.x,
+            ((w.y + this._drift.x * DRIFT_ROTATION_GAIN) * Math.PI) / 180 + this.recoilRotation.y,
+            (w.z * Math.PI) / 180 + this.recoilRotation.z
           );
 
           this.applyToVisual(grip);
+        },
+
+        // Firearms calculate kick in world space from the barrel and
+        // player stance. Convert it into this tracked hand's frame,
+        // accumulate it, and let it settle independently of vice
+        // drift. worldRotation is a small axis-angle vector whose
+        // magnitude is radians.
+        addRecoilImpulse: function (worldPosition, worldRotation, returnRate) {
+          this.el.object3D.getWorldQuaternion(this._handQuat).invert();
+          this.recoilPosition.add(this._recoilScratchPosition.copy(worldPosition).applyQuaternion(this._handQuat));
+          this.recoilRotation.add(this._recoilScratchRotation.copy(worldRotation).applyQuaternion(this._handQuat));
+
+          if (this.recoilPosition.lengthSq() > RECOIL_MAX_POSITION * RECOIL_MAX_POSITION) {
+            this.recoilPosition.setLength(RECOIL_MAX_POSITION);
+          }
+          this.recoilRotation.x = Math.max(-RECOIL_MAX_ROTATION, Math.min(RECOIL_MAX_ROTATION, this.recoilRotation.x));
+          this.recoilRotation.y = Math.max(-RECOIL_MAX_ROTATION, Math.min(RECOIL_MAX_ROTATION, this.recoilRotation.y));
+          this.recoilRotation.z = Math.max(-RECOIL_MAX_ROTATION, Math.min(RECOIL_MAX_ROTATION, this.recoilRotation.z));
+          this.recoilReturnRate = Math.max(returnRate || 8, 0.1);
+        },
+
+        updateRecoil: function (dtSeconds) {
+          var remaining = Math.exp(-this.recoilReturnRate * dtSeconds);
+          this.recoilPosition.multiplyScalar(remaining);
+          this.recoilRotation.multiplyScalar(remaining);
+          if (this.recoilPosition.lengthSq() < 0.00000001) this.recoilPosition.set(0, 0, 0);
+          if (this.recoilRotation.lengthSq() < 0.00000001) this.recoilRotation.set(0, 0, 0);
         },
 
         updateGhostHand: function (dtSeconds) {

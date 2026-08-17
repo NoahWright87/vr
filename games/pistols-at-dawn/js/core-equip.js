@@ -622,12 +622,9 @@
           this.slotIndex = 0;
           this.slotCount = 1;
 
-          // Composed on top of the held pose every frame by firearm,
-          // which writes its recoil kick here rather than fighting
-          // over the same object3D. Unsteady hands are NOT applied
-          // here any more — they belong to the hand (see
-          // hand-rig.updateGrip), and this object inherits them by
-          // being parented to it.
+          // Kept for non-firearm pose effects. Firearm recoil belongs
+          // to the hand now (see hand-rig.updateGrip), so the fist and
+          // gun kick as one instead of the gun floating in its palm.
           this.extraPitchDeg = 0;
           this._heldElapsed = 0;
 
@@ -658,9 +655,15 @@
           this._gripWorld = new THREE.Vector3();
           this._supportWorld = new THREE.Vector3();
           this._aimUp = new THREE.Vector3();
+          this._supportUp = new THREE.Vector3();
+          this._aimForward = new THREE.Vector3();
           this._aimMatrix = new THREE.Matrix4();
           this._aimQuat = new THREE.Quaternion();
           this._parentQuat = new THREE.Quaternion();
+          this._supportQuat = new THREE.Quaternion();
+          this._twoHandTargetQuat = new THREE.Quaternion();
+          this._twoHandQuat = new THREE.Quaternion();
+          this._twoHandSeeded = false;
           this._grabA = new THREE.Vector3();
           this._grabB = new THREE.Vector3();
           this._grabAxis = new THREE.Vector3();
@@ -735,7 +738,7 @@
         applyHeldPose: function (time, dtSeconds) {
           this._heldElapsed += dtSeconds * 1000;
           if (this._poseBlendElapsed < SNAP_BLEND_DUR_MS) return;
-          if (this.supportHand && this.data.supportAims) return this.applyTwoHandedPose();
+          if (this.supportHand && this.data.supportAims) return this.applyTwoHandedPose(dtSeconds);
 
           var d = this.data;
           this.el.object3D.position.set(
@@ -777,32 +780,51 @@
         // wander the way one on a single wrist does, and the effect
         // falls out of the geometry rather than from any damping.
         //
-        // Roll comes from the near hand, so twisting your grip still
-        // rolls the gun. Only the near hand can fire it (see
-        // hand-rig.onTriggerDown) — the support hand is holding a
-        // forend, not a trigger.
-        applyTwoHandedPose: function () {
+        // The hand-to-hand line supplies pitch and yaw. Roll uses the
+        // average "up" of both grip poses, projected perpendicular to
+        // that line, so one noisy controller cannot whip a long rifle
+        // around its barrel. The final quaternion is lightly smoothed
+        // to absorb tracking chatter without making aim feel gummy.
+        applyTwoHandedPose: function (dtSeconds) {
           var d = this.data;
           this.el.object3D.position.set(d.heldPosition.x, d.heldPosition.y, d.heldPosition.z);
 
           var parent = this.el.object3D.parent;
           if (!parent) return;
+          var supportGrip = gripObjectOf(this.supportHand);
+          if (!supportGrip) return;
 
           parent.getWorldPosition(this._gripWorld);
-          this.supportHand.object3D.getWorldPosition(this._supportWorld);
+          supportGrip.getWorldPosition(this._supportWorld);
           if (this._gripWorld.distanceToSquared(this._supportWorld) < 0.0004) return;
 
-          // Matrix4.lookAt builds a rotation whose -Z points from eye
-          // to target, and the object's own -Z is its barrel, so this
-          // aims the gun straight down the line between your hands.
           this._aimUp.set(0, 1, 0).applyQuaternion(parent.getWorldQuaternion(this._parentQuat));
+          this._supportUp.set(0, 1, 0).applyQuaternion(supportGrip.getWorldQuaternion(this._supportQuat));
+          this._aimUp.add(this._supportUp);
+          this._aimForward.copy(this._supportWorld).sub(this._gripWorld).normalize();
+          this._aimUp.addScaledVector(this._aimForward, -this._aimUp.dot(this._aimForward));
+          if (this._aimUp.lengthSq() < 0.0001) {
+            this._aimUp.set(0, 1, 0).addScaledVector(this._aimForward, -this._aimForward.y);
+            if (this._aimUp.lengthSq() < 0.0001) {
+              this._aimUp.set(1, 0, 0).addScaledVector(this._aimForward, -this._aimForward.x);
+            }
+          }
+          this._aimUp.normalize();
+
+          // Matrix4.lookAt builds a rotation whose -Z points from eye
+          // to target, matching the weapons' barrel axis.
           this._aimMatrix.lookAt(this._gripWorld, this._supportWorld, this._aimUp);
           this._aimQuat.setFromRotationMatrix(this._aimMatrix);
 
-          // Into the parent's frame, since that's where local
-          // rotations are expressed.
           parent.getWorldQuaternion(this._parentQuat);
-          this.el.object3D.quaternion.copy(this._parentQuat.invert()).multiply(this._aimQuat);
+          this._twoHandTargetQuat.copy(this._parentQuat.invert()).multiply(this._aimQuat);
+          if (!this._twoHandSeeded) {
+            this._twoHandQuat.copy(this._twoHandTargetQuat);
+            this._twoHandSeeded = true;
+          } else {
+            this._twoHandQuat.slerp(this._twoHandTargetQuat, 1 - Math.exp(-18 * dtSeconds));
+          }
+          this.el.object3D.quaternion.copy(this._twoHandQuat);
 
           if (this.extraPitchDeg) this.el.object3D.rotateX((this.extraPitchDeg * Math.PI) / 180);
         },
@@ -845,6 +867,7 @@
 
         grabSupport: function (handEl) {
           this.supportHand = handEl;
+          this._twoHandSeeded = false;
         },
 
         // Announced rather than acted on, like everything else here:
@@ -858,6 +881,7 @@
           // this object is concerned.
           var draw = this.supportDraw();
           this.supportHand = null;
+          this._twoHandSeeded = false;
           this.el.emit('support-released', { draw: draw }, false);
         },
 
@@ -866,7 +890,7 @@
         supportDraw: function () {
           if (!this.supportHand || !this.el.object3D.parent) return 0;
           this.el.object3D.parent.getWorldPosition(this._gripWorld);
-          this.supportHand.object3D.getWorldPosition(this._supportWorld);
+          gripObjectOf(this.supportHand).getWorldPosition(this._supportWorld);
           return this._gripWorld.distanceTo(this._supportWorld);
         },
 
