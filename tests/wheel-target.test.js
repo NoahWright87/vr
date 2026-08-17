@@ -14,8 +14,8 @@ class FakeEntity {
     this.attributes = {};
     this.classList = { add() {} };
     this.object3D = {
-      position: { set() {} },
-      rotation: { z: 0, set() {} },
+      position: { x: 0, y: 0, z: 0, set(x, y, z) { this.x = x; this.y = y; this.z = z; } },
+      rotation: { x: 0, y: 0, z: 0, set(x, y, z) { this.x = x; this.y = y; this.z = z; } },
     };
   }
 
@@ -79,4 +79,15 @@ test('speed changes are read live by the spinner tick', () => {
   wheel.data.speed = 90;
   wheel.tick(0, 1000);
   assert.ok(Math.abs(wheel.hub.object3D.rotation.z - Math.PI * 0.025) < 0.0001);
+});
+
+test('distance changes reposition the existing spinner', () => {
+  const wheel = createWheel();
+  const originalHub = wheel.hub;
+  wheel.data.distance = 50;
+  wheel.update({ spokeCount: 4, distance: 6, angle: 0 });
+
+  assert.equal(wheel.el.object3D.position.z, -50);
+  assert.equal(wheel.hub, originalHub);
+  assert.equal(wheel.targets.length, 4);
 });

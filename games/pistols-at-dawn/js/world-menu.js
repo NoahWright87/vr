@@ -34,6 +34,8 @@
         spinnerEl.setAttribute('wheel-target', 'spokeCount', numberValue);
       } else if (evt.detail.key === 'spinner-speed') {
         spinnerEl.setAttribute('wheel-target', 'speed', numberValue);
+      } else if (evt.detail.key === 'spinner-distance') {
+        spinnerEl.setAttribute('wheel-target', 'distance', numberValue);
       } else {
         return;
       }
@@ -47,6 +49,7 @@
       this.updateSpinnerLabels();
       this.syncOption('.spinner-count-option', spinner.data.spokeCount);
       this.syncOption('.spinner-speed-option', spinner.data.speed);
+      this.syncOption('.spinner-distance-option', spinner.data.distance);
     },
 
     syncOption: function (selector, value) {

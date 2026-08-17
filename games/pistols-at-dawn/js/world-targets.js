@@ -193,8 +193,14 @@
         },
 
         update: function (oldData) {
-          if (!this.hub || oldData.spokeCount === undefined || oldData.spokeCount === this.data.spokeCount) return;
-          this.buildSpokes();
+          if (!this.hub) return;
+          if (
+            oldData.distance !== undefined &&
+            (oldData.distance !== this.data.distance || oldData.angle !== this.data.angle)
+          ) {
+            placeInArc(this.el, this.data.angle, this.data.distance);
+          }
+          if (oldData.spokeCount !== undefined && oldData.spokeCount !== this.data.spokeCount) this.buildSpokes();
         },
 
         buildSpokes: function () {
