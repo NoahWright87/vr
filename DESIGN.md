@@ -30,6 +30,30 @@ Things that were never implemented, and work:
   Nothing in the code knows what a Molotov is.
 - Drinking fire. Fire is a liquid, liquid that reaches your mouth gets
   swallowed, so of course you can. It costs you nothing but dignity.
+- Setting the bar alight and then revolving it, which delivers a
+  burning armoury. Fire is a pool, pools ride surfaces that move, and
+  the bar is a surface that moves.
+- Hanging a beer bottle on a gun peg, or laying your hat in a rifle
+  cradle. A rack is a socket; a socket doesn't ask what you're putting
+  in it.
+- Shooting a stick of dynamite out of the air, or out of somebody's
+  hand. It's `.shootable` and it explodes when hit; nothing had to
+  agree that this was allowed.
+- Blowing a rack of bottles across the room, catching one in mid-air,
+  and drinking it. A blast hands loose objects a velocity, which is
+  the same thing your arm does, so everything downstream of a throw
+  applies.
+- Loosing a beer bottle, or a lit stick of dynamite, from the bow. The
+  nock is an anchor slot and slots have never asked what you're
+  putting in them.
+- Shooting a flaming arrow into a puddle of spilled beer on the far
+  side of the room and setting the floor alight. An arrow is
+  lightable, a lit one publishes heat, and pools catch from heat.
+- Drinking from the flamethrower. It sprays droplets, droplets that
+  reach your mouth get swallowed, so pointing the nozzle at your own
+  face works exactly as well as pointing it at somebody else's.
+- Filling the tank with fire by lighting the beer as you pour it. The
+  stream catches in mid-air and what lands in the tank is fire.
 
 When something *doesn't* combine and obviously should, that's the bug —
 not a missing feature. "Twirling a cigar should shake the ash off" was
@@ -112,6 +136,362 @@ coming off something solid. Setting the jump rate to zero leaves a
 perfectly good conventional fire, which is how the idea was de-risked
 before it was tried.
 
+## Liquid is not scenery
+
+The particle pool held 110 of everything, and when it filled, the
+oldest thing in it died. That's the right rule for smoke and broken
+glass and completely wrong for liquid, and the bug it produced was
+reported from playtest as "beer only pours an inch out of the bottle
+and then disappears". It wasn't the beer. A spreading fire is made of
+particles — every jumping flame is a droplet and every burning patch
+smokes — so a good fire could fill the pool on its own, and after that
+every drop you poured was evicted within a couple of frames by the
+next drop behind it.
+
+Two changes, and the first is the important one.
+
+**Two budgets, split by what a particle is FOR.** Smoke and glass are
+scenery: run out of room and the oldest puff can stop existing, and
+nobody can tell. A droplet is a unit of beer that will get you drunk
+or a unit of fire that will burn the saloon down — deleting one
+changes the game, not the picture. Visuals can now never evict
+gameplay, whatever else is happening.
+
+**The liquid budget is a merge threshold, not a delete threshold.**
+Over it, the oldest drop in the air stops being its own object but
+does not stop being liquid: it joins the nearest drop of the same
+stuff, which grows to hold both (volume adds, so the radius goes as
+the cube root, and a dense pour becomes fewer, fatter drops rather
+than fewer drops). If there's nothing near enough to join, it lands
+where it is and becomes puddle early. Whatever won't fit under the
+maximum drop size is spilled rather than rounded off, because rounding
+it off is exactly how liquid goes missing.
+
+The same rule now applies one level up: puddles used to stop being
+created past a cap of 26, which silently threw away every spill after
+that. They merge into the nearest puddle instead, and the cap is 60.
+
+Measured after: a sustained pour next to a burning pool peaks at ~22
+live droplets against a budget of 420, because merging and pooling do
+the work that culling used to. The budget is there for the pathological
+case, not the normal one.
+
+## Puddles that behave like puddles
+
+Playtest note: "the pooling behavior is a little strange and fire is
+pretty unpredictable." Both came from the same place — puddles had a
+maximum size, so past a point a spill stopped being a bigger spill and
+just stopped, and fire inherited that.
+
+There is no maximum now, and nothing keeps the count down by refusing
+to make puddles. What keeps it down is that puddles behave like liquid:
+
+- **Overlapping puddles of the same stuff pour into each other.** Area
+  moves from the smaller into the larger, at a rate proportional to how
+  much they overlap, so touching at the edges does almost nothing and
+  sitting on top of each other resolves in a second. Big puddles eat
+  small ones and the count falls out of that.
+- **And they slide.** Each liquid has a `cohesion`: water's is highest
+  and two water puddles that touch become one puddle. Fire's is
+  NEGATIVE, so patches of fire shove each other apart — which turned
+  out to be the fix for unpredictable fire. Fire that coalesces sits
+  still and goes out; fire that pushes outward crawls.
+- **Drying is a size, not a timer.** Each liquid loses radius at its
+  own rate, so a big spill outlasts a splash for the obvious reason
+  rather than because something is counting down.
+
+The bug this shook out: growth was linear in RADIUS. A puddle twice as
+wide holds four times the beer, so a drop has to add a drop's worth of
+AREA — with no cap to hide it, two seconds of pouring made a
+metre-and-a-half lake. Everything that adds or removes liquid now goes
+through `poolArea`/`poolRadiusFor`.
+
+## Projectiles: a thrown thing is a slow bullet
+
+A bullet was an instant raycast; a thrown bottle was a falling object
+that only noticed the floor. So you could not knock a target over by
+throwing something at it, which is the "obviously should combine and
+doesn't" smell the whole design is supposed to catch.
+
+The fix isn't a collision system. Anything in flight fast enough casts
+along the short distance it covered this frame, and if it crosses
+something `.shootable` it emits the very same `shot` event a pistol
+emits. Targets fall, bottles shatter, cigars light — all through code
+that already existed and none of which learned a new word. What the
+impact means to the *thing that hit* is announced separately as
+`impact`, and left to whatever companion cares.
+
+Two details keep it honest. A **speed floor**, because setting a gun
+down on a bar covered in bottles is not an attack, and without one
+every gentle release near the shelf would smash something. And backing
+the ray up to where the object started the frame, so a fast throw
+can't tunnel between two positions.
+
+The scan of the scene is now shared: the first caster in a frame pays
+for it and everyone else reuses the list. That was already true within
+one shotgun blast; it needed to become true across casters once
+dynamite could put twenty objects in the air at once.
+
+## Explosions, and dynamite as an assembly of other people's parts
+
+`detonate()` is a plain function, not a component, because a stick of
+dynamite and (next) a rocket both want the same thing to happen at a
+point in space and neither wants to own it. It spills burning fuel,
+knocks over targets through the same `fall()` a bullet uses, shatters
+glass through the same `shatter()`, and hands every loose object a
+velocity — which is to say it *throws* them, through the ordinary
+throw path, so a blasted bottle is still catchable in mid-air and
+still shootable out of it.
+
+The stick itself is the clearest case yet of assembling rather than
+writing. Its fuse is `buildBurnStick` — literally the object a match
+is made of — so it ashes as it burns, can have its light flicked off,
+and is lit by every existing fire source without any of them being
+told dynamite exists. `holsterable` is the throw. `lightable` is the
+match. The only new component is `explosive`, which listens for the
+three ways anything here ends — a fuse running out, a hard impact, and
+being shot — and calls `detonate`. That is the whole weapon.
+
+## The bow: two hands, and neither of them presses anything
+
+Almost none of the bow is bow code. The second hand on the string is
+the *support grip* the shotgun's forend already introduced — the only
+new idea is `supportBehind`, one boolean meaning "the second hand is
+behind this rather than out along it", which makes a drawn bow aim
+down the line between your hands the same way a braced shotgun does,
+read backwards. The draw is then simply how far apart your hands are,
+and loosing is letting go, which holsterable already announces.
+
+What flies is whatever is in the nock, and the nock is an ordinary
+anchor slot with room for three. Nothing says it takes arrows, so it
+doesn't: three arrows leave as a fanned volley, a beer bottle leaves
+as a beer bottle and smashes into whatever it reaches (because a
+thrown thing is already a slow bullet), and a lit stick of dynamite
+leaves as somebody else's problem.
+
+The aim cheats on purpose, and the cheat is the mirror of the overhand
+throw's. That one fixes the ANGLE your swing picked and solves for
+speed; the bow fixes the SPEED your draw earned and solves for the
+angle, then leans most of the way from where the bow is pointing
+toward that answer. Judging an arrow's arc by eye in VR is not fun;
+watching one drop onto a target across the room very much is.
+
+Two bugs worth remembering, both found by the harness rather than by
+reading:
+
+- **A bow catches its own arrow.** The nock is a slot on a held
+  object, and a held object with a slot on it is supposed to catch
+  things — that's "use your hat to catch your gun". The arrow was
+  being snatched back on the frame it left. The fix was the existing
+  hurl flag, which already means "this is emphatically leaving".
+- **Lerping two equal-length vectors gives a shorter one.** Blending
+  the bow's aim toward the solved arc quietly robbed a full draw of a
+  third of its power. Blend the directions, then put the speed back.
+
+## The tank: a weapon whose ammunition is a liquid type
+
+The pack sprays whatever is in it, and what's in it is whatever you
+last poured through the open hatch. Water makes it a fire hose, beer
+makes it a way to drench a room (or your own face — droplets that
+reach your mouth get swallowed, so it drinks), fire makes it the
+obvious thing.
+
+None of those are modes, and there is no list of what it can hold. The
+tank stores a liquid *type*, filling is a droplet landing in an open
+container, and the nozzle hands that type straight to `spawnDroplet`.
+Everything after that — pooling, burning, spreading, dousing, getting
+you drunk — is the liquid system doing what it already did. Adding
+whiskey would be a data blob, and the flamethrower would learn to
+spray it without being edited.
+
+Two things fell out for free. Light the beer as you pour it in and the
+stream catches in mid-air, so what lands in the tank is fire. And an
+open tank of something flammable catches from any hot point, exactly
+the way a puddle does, because it *is* a puddle in a box.
+
+**The nozzle problem.** A hose and a tank are two things a hand could
+mean, and the fix is spatial rather than a rule: the nozzle's home
+socket is on the pack's chest strap. Worn, the tank is behind you and
+the nozzle is at your chest — reaching over your shoulder takes the
+pack off, reaching to your chest draws the hose. Two gestures that
+can't be confused, and no code had to arbitrate. The hose is drawn as
+a sagging bezier and not simulated, because a hose that fought your
+hand would be a worse toy than one that follows it; if the nozzle ends
+up loose beyond its length it reels home.
+
+## Reach, and things that are not pockets
+
+Two playtest complaints with the same root: the game was guessing at
+intent and guessing wrong.
+
+**"You can only grab arrows by their rear."** The grab test was a
+sphere around the object's origin, and an arrow's origin is its nock.
+Long thin things now declare a `grabSpan` — a second point in local
+space — and the test becomes distance to the SEGMENT between the two.
+A capsule instead of a ball, for a couple of dot products, and it
+applies to every long gun as well.
+
+**"My hand shouldn't be treated like a pocket, especially while I'm
+holding something."** Releasing an object stashed it for the
+quick-re-grip window, whether or not it had landed anywhere. So
+nocking an arrow and then squeezing the grip to steady yourself pulled
+the arrow straight back out of the bow. Putting a thing in a socket is
+a decision: holstered objects aren't stashed and a re-grip won't take
+them back. Deliberately gripping AT the nock still takes the arrow,
+because that's what grip means.
+
+## The trigger opens the lid
+
+An idiom worth naming because it arrived three times. The Zippo's lid
+flipped on the trigger from the start; a bottle cap could only be
+struck off against something solid; the tank needed a hatch. Rather
+than three mechanisms, the rule is now: **the trigger operates the lid
+of whatever you're holding.** The bottle keeps its strike-it-on-the-bar
+opening as well — that one is better, and it's how you open a beer
+one-handed — but you can also just thumb the cap off.
+
+Making the bow draw on the trigger instead of the grip came from the
+same tidying, and from a better reason: grip should mean "take hold of
+the thing", so gripping near a nocked arrow ought to take the arrow,
+not draw the string. One schema field (`supportGrab`) picks which
+button a second grip answers to; a shotgun forend is held, a bowstring
+is drawn.
+
+## Loading, as a shared idea
+
+Three weapons now, and the interesting thing is that the third one
+cost almost nothing. A bow is a socket on a string; a launcher is a
+socket in a tube. Both hand whatever is in that socket a velocity and
+let the projectile system take it from there.
+
+That's the whole design, and it produces the jokes for free, because
+an `anchor-slot` has never asked what you're putting in it: you can
+nock a beer bottle, ram a lit stick of dynamite down the launcher, or
+put a rocket in your hat. Nothing had to permit any of that, and
+nothing would have to be touched to add a blunderbuss.
+
+The rocket is the clearest measure of how much was already built. It
+is: an `explosive` that's armed, so contact is enough; plus a motor
+that pushes along its own velocity and cancels most of gravity while
+it burns, which is the one behaviour that makes it read as a rocket
+rather than a thrown brick. Flight, impact, scoring, fire, the blast
+throwing the furniture around — all of that is machinery that existed
+for thrown bottles and a stick of dynamite.
+
+## The scope is real, and that's why it's usually off
+
+The rifle's scope is a second camera with an 11-degree field of view
+rendering the scene to a 256px texture that is then the glass in the
+eyepiece. Which is to say it costs a whole extra pass over a scene of
+about 160 draw calls, per frame, and that is not a bill worth paying
+for a rifle hanging on a wall.
+
+So it only renders when the eyepiece is within 22cm of your head. The
+optimisation turned out to be the mechanic: the glass is dark until
+you bring the rifle up and put your eye behind it, which is what a
+scope does anyway. Cheapest kind of win — the thing that makes it
+affordable is the thing that makes it feel right.
+
+Three hazards, all the same hazard, all from rendering inside somebody
+else's frame: put the renderer's target back, switch WebXR off for the
+duration (or three.js renders the off-screen pass in stereo into the
+headset's own framebuffer), and hide the lens before rendering or it
+films its own last frame — an infinite corridor, which is a lovely bug
+and quite useless as a sight.
+
+`scope` is its own component rather than part of the rifle, because
+looking through a tube has nothing to do with firing one. It's "a disc
+on this object showing what a narrow camera down its -Z can see",
+which would work just as well as a spyglass or a mirror behind the
+bar.
+
+It shipped broken and the headless test happily passed it, which is
+worth remembering: the test asserted that the render happened and the
+renderer state was restored, and all of that was true. What it could
+not assert was that the picture was pointed at a human. The lens was
+turned to face down the barrel instead of back at the eye, so the only
+thing ever visible through the scope was the back of the glass — and
+the tube it sat in was a solid cylinder, so there was nothing else to
+see either. The tube is open-ended now, which also means that with the
+scope asleep you're looking through a tube at the world rather than at
+a wall, and waking it reads as zooming rather than as a wall becoming
+a window. The scope camera also moved to the far end of the tube: one
+parked at the eyepiece films the inside of its own tube, and at eleven
+degrees the tube walls are most of the picture.
+
+## The revolving bar
+
+The clearest bill of health the "shared systems" bet has had. The
+counter is a drum with the saloon on one face and an armoury on the
+other; shoot the bell hanging over it and the whole thing turns over.
+
+The interesting part is how little of it is the turn. Nothing on the
+bar is "on the bar" in any sense the code knows about — every beer,
+cigar, match and lighter is parented to an anchor slot, and every slot
+is parented to the counter. Rotating one entity brings the lot, and
+there is no take-the-bottles-with-it code because there was never a
+list of bottles to take. The armoury is likewise not a new kind of
+thing: it's the same `addBox`/`addSlot` calls the bar already used,
+authored in the same coordinates, on a child entity turned 180°.
+
+Only two things needed saying out loud, and both because they are the
+things in the scene that *aren't* parented to anything:
+
+- **Spilt liquid.** A pool is a world-space disc, so a spun bar would
+  leave your beer hanging in the air where the counter used to be.
+  Pools resting on a moving surface now ride it round.
+- **The counter as a hard surface.** A hard surface is an axis-aligned
+  rectangle, which stops being true the moment it turns. Surfaces can
+  now name the object they're mounted on and keep their rectangle in
+  *that* frame, so the counter goes on being a counter mid-spin — you
+  can still crack a bottle cap on it while it's moving.
+
+The geometry has one honest compromise in it. The axis has to be the
+counter's own centre or the faces don't swap places, and that axis is
+0.92m from where you stand while the bar is 3.4m wide, so the ends
+sweep straight through you. There is no pivot that avoids that: you
+are standing at the edge of a turntable. Rather than fight it, nothing
+on the drum reaches above chin height, so the sweep passes *under*
+your view rather than blacking it out — at the halfway point you're
+standing in the middle of the bar looking down its length, which is
+better than the effect anyone was aiming for. The tall back wall and
+the high shelves are scenery and don't move.
+
+## Stock and perishing
+
+Two components that are only safe as a pair, and which say something
+about how to add supply to a world like this.
+
+`stocked` goes on a *slot* and means "this socket knows what belongs in
+it": one gets built there at scene load. Give it a `refillMs` and it
+keeps doing it, however many times the socket goes bare. It never
+learns what became of the last one, which is what separates it from
+`breakable`'s respawn — that one is an object coming back from the
+dead, this one is a shop restocking a shelf. `perishable` goes on the
+*item*: a clock that only runs while the thing is loose on the floor or
+in the air, and stops dead the moment anything holds it — a fist, a
+fingertip it's twirling on, or any socket anywhere in the scene.
+
+That one number, `refillMs`, is the whole difference between a holster
+and a shop, and it took a wrong turn to notice. Making the hip holsters
+refill was defended at the time as "no special cases" — but it's a
+gunslinger standing next to a vending machine, and it robs the armoury
+of the only job it has. A holster is stocked once and is thereafter a
+pocket: what's in it is what you put there. An armoury peg refills,
+because an armoury is where guns come from. Same component, one
+number, and the *uniform* rule turned out to be the wrong rule.
+
+Either component alone is still a bug. A refilling rack on its own is a
+gun printer: strip the wall, drop the lot, come back in ten seconds. A
+perishing item with nothing that replaces it eventually leaves an empty
+world. Together, the number of guns settles at the number of refilling
+sockets — which no code enforces, counts, or even knows. A soak test
+that strips everything eight times over lands there on its own.
+
+The knock-on: what a pistol IS had to move out of markup and into a
+maker function so a rack could build one, and once it had, three props
+in markup became one prop and three sockets.
+
 ## Rules learned the hard way
 
 **Never move the camera.** A view that drifts, rolls or sways
@@ -140,7 +520,10 @@ unplanned combinations, degrading beats freezing.
 **Never mutate a collection while iterating it.** Particles spawn other
 particles from inside the particle loop — a droplet landing makes a
 splash. Removal is deferred: mark dead, sweep once at the end of the
-frame.
+frame. The same rule caught the second case for free: A-Frame runs
+every component's tick from one list, so an entity removing *itself*
+from the scene mid-tick (a perished gun) mutates the list being walked.
+Same fix — mark it, sweep it once.
 
 **Aim assist is a feature, not a cheat.** Real hand velocity is too
 noisy for anyone to land a juggling catch or hit a target with a thrown
@@ -160,6 +543,13 @@ Measured, not guessed. On a scene of ~490 meshes:
   bottle necks was carrying **276,000 triangles**. Patching the
   registered primitives' schema defaults once, before the scene
   initializes, took it to **27,000** and touched no creation sites.
+- Writing a primitive's *dimension* rebuilds its geometry. Every
+  anchor slot pulses its indicator sphere by writing `radius` each
+  frame, which was free with five slots and is not free with the
+  armoury's rack of empty ones — an occupied slot early-outs, an empty
+  one never does, so a wall of bare sockets is a wall of spheres being
+  rebuilt to the size they already were. Writing only on an actual
+  change is a two-line guard.
 - Everything transient is pooled — particles, fires, puddles — reused
   from free lists at unit size and scaled, never created and destroyed.
   Entity creation is the expensive operation in A-Frame.
@@ -184,3 +574,51 @@ A randomized soak test — thousands of frames of pouring, igniting,
 shooting, smashing and dousing at random — is what found the crash that
 weeks of ordinary play only hit occasionally. Worth re-running after any
 change to the shared systems.
+
+## File structure: outgrowing "single file"
+
+Pistols at Dawn's own `<script>` block crossed 10,000 lines and made
+"go change the bar" mean scrolling past gun, target, and vice code to
+get there. It's been split into 13 topic files under
+`games/pistols-at-dawn/js/` — `core.js` (the foundation: shared
+physics/ballistics/audio helpers, the particle/liquid/fire system,
+ITEM_MAKERS, and the world-systems bootstrap) plus `core-equip.js`,
+`core-hand-rig.js`, `core-substances.js`, five `items-*.js` files (one
+per weapon/prop family — guns, bow, explosives, tank, bar, vices) and
+three `world-*.js` files (player body, the saloon-bar/wardrobe island,
+the shooting range) — loaded as plain `<script src>` tags, same
+implicit-global style the single file already used, just filed by
+subject instead of dumped in one place. No bundler, no import/export,
+no behavior change; every stage was a move, verified against the
+original with Playwright before being committed. `index.html` itself
+is down to ~310 lines of markup.
+
+One real lesson from doing this for real: almost every cross-file
+reference is safe regardless of which file defines it or the order
+scripts load in, because component `init()`/`tick()` callbacks only
+run once every script on the page has already executed. The one
+exception is a component's `schema` object, which A-Frame evaluates
+the moment `registerComponent()` itself runs — eagerly, not deferred.
+A `default: SOME_CONSTANT` in a schema needs that constant defined by
+files-that-load-earlier, and violating this shipped a real "X is not
+defined" bug mid-split before being caught and fixed. Worth an
+automated check (grep every schema for `default: CONSTANT`, confirm
+the declaring file loads no later than the file using it) rather than
+trusting it by eye, on any repo using this same plain-script pattern.
+
+This makes pistols-at-dawn the one prototype in the repo that isn't a
+single self-contained file (see the README's stated convention). Two
+things worth revisiting later, once the split has paid for itself and
+some of these systems (anchor-slot/holsterable in particular) have
+proven themselves general enough to be worth lifting into a real
+shared library used by other prototypes, not just this one:
+
+- **Whether "no build step" still holds.** It's the right call for a
+  handful of self-contained files with no need to share code between
+  prototypes; a real shared library across games is a different
+  question, and might be the moment a small bundler earns its keep.
+- **How the split should be named/shaped** once code is meant to move
+  *out* of pistols-at-dawn's own folder — worth keeping the
+  genuinely-generic files (the equip contract, the target-range
+  system) free of pistols-specific naming or coupling now, so hoisting
+  them later is a `git mv`, not a rewrite.
