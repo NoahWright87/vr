@@ -76,6 +76,7 @@
           maxThrowSpeed: 11,
           gravityScale: 0.78,
           impactDamage: 2,
+          loadUnits: 15,
         });
         el.setAttribute('boxy-throwing-knife', '');
         el.setAttribute('blade-projectile', { tipOffset: KNIFE_TIP_OFFSET, spinRate: 0 });
@@ -93,6 +94,7 @@
           maxThrowSpeed: 13,
           gravityScale: 0.38,
           impactDamage: 1,
+          loadUnits: 15,
         });
         el.setAttribute('boxy-ninja-star', '');
         el.setAttribute('blade-projectile', { tipOffset: 0.012, spinRate: 19 });

@@ -117,8 +117,8 @@
       // holsterable.tryHolsterElse/findNearestSlot), not a passive
       // basket that scoops up anything that flies near it.
       // ==============================================================
-      function findCatchingSlot(worldPos, itemSize) {
-        var itemRank = SLOT_SIZE_RANK[itemSize];
+      function findCatchingSlot(worldPos, holsterable) {
+        var itemRank = SLOT_SIZE_RANK[holsterable.data.itemSize];
         var slots = document.querySelectorAll('.anchor-slot');
         var slotPos = new THREE.Vector3();
         var best = null;
@@ -127,7 +127,7 @@
         for (var i = 0; i < slots.length; i++) {
           var slotEl = slots[i];
           var slotComp = slotEl.components['anchor-slot'];
-          if (!slotComp || slotComp.isFull()) continue;
+          if (!slotComp || !slotComp.canAccept(holsterable)) continue;
 
           var slotRank = SLOT_SIZE_RANK[slotComp.data.size];
           if (slotRank < itemRank) continue;
@@ -144,6 +144,11 @@
         }
 
         return best;
+      }
+
+      function socketLoadUnits(holsterable) {
+        if (holsterable.data.loadUnits > 0) return holsterable.data.loadUnits;
+        return { large: 105, medium: 35, small: 21 }[holsterable.data.itemSize] || 21;
       }
 
       // ==============================================================
@@ -373,6 +378,7 @@
         schema: {
           size: { type: 'string', default: 'small' }, // 'small' | 'medium' | 'large'
           capacity: { type: 'number', default: 1 },
+          capacityUnits: { type: 'number', default: 0 }, // optional weighted capacity; cannon uses 105 so large/medium/small/extra-small consume 105/35/21/15
           fanSpread: { type: 'number', default: 0.045 }, // meters between stacked occupants
           fanAxis: { type: 'string', default: 'x' }, // which of the slot's own axes they spread along. A row of cigars in your teeth goes across (x); arrows on a bowstring go up it (y)
           fanYaw: { type: 'number', default: 0 }, // degrees of splay per step — only meaningful for things with a long axis, like cigars or barrels
@@ -402,7 +408,23 @@
         },
 
         isFull: function () {
-          return this.occupants.length >= this.data.capacity;
+          if (this.occupants.length >= this.data.capacity) return true;
+          return this.data.capacityUnits > 0 && this.usedUnits() >= this.data.capacityUnits;
+        },
+
+        usedUnits: function () {
+          return this.occupants.reduce(function (total, occupant) {
+            return total + socketLoadUnits(occupant);
+          }, 0);
+        },
+
+        canAccept: function (holsterable) {
+          if (!holsterable) return false;
+          if (this.occupants.indexOf(holsterable) !== -1) return true;
+          if (this.data.swap) return true;
+          if (this.occupants.length >= this.data.capacity) return false;
+          if (!this.data.capacityUnits) return true;
+          return this.usedUnits() + socketLoadUnits(holsterable) <= this.data.capacityUnits;
         },
 
         // Called by holsterable whenever this slot's contents change.
@@ -505,7 +527,7 @@
           this.el.object3D.getWorldPosition(this._slotPos);
 
           for (var i = 0; i < HELD_ITEMS.length; i++) {
-            if (HELD_ITEMS[i].rank > slotRank) continue;
+            if (HELD_ITEMS[i].rank > slotRank || !this.canAccept(HELD_ITEMS[i].holsterable)) continue;
             var d = HELD_ITEMS[i].pos.distanceTo(this._slotPos);
             if (d < best) best = d;
           }
@@ -609,6 +631,7 @@
           maxThrowSpeed: { type: 'number', default: OVERHAND_MAX_DEFAULT_SPEED }, // how hard this particular object can be thrown, whatever your arm does
           gravityScale: { type: 'number', default: 1 }, // multiplies gravity while falling — under 1 keeps a thrown object up longer, which is what makes shooting bottles out of the air possible
           impactDamage: { type: 'number', default: 1 }, // published on projectile `shot` events; current steel targets only care that they were hit, future damageables can care how hard
+          loadUnits: { type: 'number', default: 0 }, // weighted socket footprint; ordinary slots ignore it
           supportGrip: { type: 'vec3', default: { x: 0, y: 0, z: 0 } }, // local position of a second place to hold this, if any
           supportRadius: { type: 'number', default: 0 }, // 0 disables the second grip entirely
           supportAims: { type: 'boolean', default: true }, // does the second hand steer this? A shotgun forend does — the barrel follows the line between your hands. A bowstring does NOT: the bow hand alone aims it, and the string hand only says how far it's drawn
@@ -1263,7 +1286,7 @@
             return true;
           }
 
-          var slotEl = findCatchingSlot(this._worldPos, this.data.itemSize);
+          var slotEl = findCatchingSlot(this._worldPos, this);
           if (slotEl) {
             this.catchIntoSlot(slotEl);
             return true;
@@ -1296,7 +1319,7 @@
             var slotEl = slots[i];
             var slotComp = slotEl.components['anchor-slot'];
             if (!slotComp) continue;
-            if (slotComp.isFull() && slotComp.occupants.indexOf(this) === -1 && !slotComp.data.swap) continue;
+            if (!slotComp.canAccept(this)) continue;
 
             var slotRank = SLOT_SIZE_RANK[slotComp.data.size];
             if (slotRank < itemRank) continue;
@@ -1424,6 +1447,8 @@
         // shelf would smash something.
         // ==========================================================
         checkImpact: function (dt) {
+          var piercing = this.el.components['piercing-projectile'];
+          if (piercing && piercing.checkImpact(this, dt)) return;
           if (this.impactCooldown > 0) {
             this.impactCooldown -= dt * 1000;
             return;

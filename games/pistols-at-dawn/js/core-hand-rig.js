@@ -77,6 +77,7 @@
           this.fingerOnTrigger = false; // capacitive touch, not a pull — see triggertouchstart/end below
           this.gripHeld = false; // true for the whole time the grip is squeezed, not just the initial press
           this.triggerHeld = false; // and the same for the trigger, which a bowstring and a hose nozzle both need
+          this.activeGripInteraction = null; // fixed machinery handles are gripped without joining the carry stack
 
           this.velocity = new THREE.Vector3();
           this._prevPos = new THREE.Vector3();
@@ -398,6 +399,14 @@
         // to take it back.
         onGripDown: function () {
           this.gripHeld = true;
+          if (!this.heldObjects.length && !this.supportObjects.length) {
+            var interaction = this.findGripInteraction();
+            if (interaction) {
+              this.activeGripInteraction = interaction;
+              interaction.grab(this.el);
+              return;
+            }
+          }
           var deliberateRegrip = this.reclaimStash();
           if (this.hasWeapon()) return;
           // Already holding something without having just performed
@@ -446,6 +455,11 @@
         // their slots while the rest hit the floor.
         onGripUp: function () {
           this.gripHeld = false;
+
+          if (this.activeGripInteraction) {
+            this.activeGripInteraction.release(this.el);
+            this.activeGripInteraction = null;
+          }
 
           this.dropSupport('grip');
 
@@ -653,6 +667,24 @@
           });
 
           return nearest;
+        },
+
+        findGripInteraction: function () {
+          var handPos = new THREE.Vector3();
+          this.el.object3D.getWorldPosition(handPos);
+          var handles = document.querySelectorAll('.grip-interactable');
+          var best = null;
+          var bestDist = Infinity;
+          for (var i = 0; i < handles.length; i++) {
+            var control = handles[i].components['siege-control'];
+            if (!control || !control.canGrab(this.el)) continue;
+            var d = control.grabDistance(handPos);
+            if (d < control.data.grabRadius && d < bestDist) {
+              best = control;
+              bestDist = d;
+            }
+          }
+          return best;
         },
       });
 
