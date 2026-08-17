@@ -1,4 +1,4 @@
-import { chooseProjectedMenuMode } from './projected-menu-mode.js';
+import { chooseAutomaticMenuIntent, chooseProjectedMenuMode } from './projected-menu-mode.js';
 
   AFRAME.registerComponent('menu-item', {
     schema: {
@@ -138,6 +138,10 @@ import { chooseProjectedMenuMode } from './projected-menu-mode.js';
     }
 
     var closeBtn = opts.showClose ? addButton(opts.closeValue || 'close', 'Close', 'X', '#f66', '#5c2a2a') : null;
+    var automaticBtn = opts.showAutomaticToggle
+      ? addButton('projected-menu-automatic', opts.automatic ? 'Automatic open' : 'Manual open', opts.automatic ? 'A' : 'M', '#7fd', '#2a5c50')
+      : null;
+    if (automaticBtn) automaticBtn.classList.add('menu-automatic-toggle');
     var helpBtn = opts.showHelp ? addButton(opts.helpValue || 'help', 'Help', '?', '#7cf', '#2a4a5c') : null;
     var titleLeftEdge = -width / 2 + margin;
     var titleAvailableWidth = Math.max(0.25, rightOccupiedEdge - titleLeftEdge);
@@ -150,7 +154,7 @@ import { chooseProjectedMenuMode } from './projected-menu-mode.js';
     titleEl.setAttribute('wrap-count', 20);
     titleEl.setAttribute('position', titleLeftEdge + ' ' + barY + ' 0');
     containerEl.appendChild(titleEl);
-    return { titleEl: titleEl, closeBtn: closeBtn, helpBtn: helpBtn };
+    return { titleEl: titleEl, closeBtn: closeBtn, automaticBtn: automaticBtn, helpBtn: helpBtn };
   }
 
   // Turns any collider-bearing trigger into a menu projected from a
@@ -171,6 +175,7 @@ import { chooseProjectedMenuMode } from './projected-menu-mode.js';
       pokeCooldown: { default: 400 },
       modeHysteresis: { default: 0.12 },
       orientationGrace: { default: 250 },
+      automatic: { default: false },
     },
 
     init: function () {
@@ -183,6 +188,7 @@ import { chooseProjectedMenuMode } from './projected-menu-mode.js';
       this.lastItemsMode = null;
       this.lookAwaySince = null;
       this.orientationLostSince = null;
+      this.automaticDismissed = false;
       this.suppressPointing = false;
       this.cameraEl = document.querySelector('a-camera');
 
@@ -196,6 +202,8 @@ import { chooseProjectedMenuMode } from './projected-menu-mode.js';
           title: slot.getAttribute('data-title') || '',
           showHelp: slot.getAttribute('data-help') !== 'false',
           showClose: slot.getAttribute('data-close') !== 'false',
+          showAutomaticToggle: slot.getAttribute('data-automatic-toggle') !== 'false',
+          automatic: self.data.automatic,
           helpValue: slot.getAttribute('data-help-value') || 'help',
           closeValue: slot.getAttribute('data-close-value') || 'close',
           width: parseFloat(slot.getAttribute('data-width')) || 1,
@@ -233,6 +241,7 @@ import { chooseProjectedMenuMode } from './projected-menu-mode.js';
 
       panel.addEventListener('menu-item-select', function (evt) {
         if (evt.detail.value === 'close') self.close();
+        else if (evt.detail.value === 'projected-menu-automatic') self.setAutomatic(!self.data.automatic);
         else if (evt.detail.value === 'help') el.emit('projected-menu-help');
       });
     },
@@ -244,6 +253,12 @@ import { chooseProjectedMenuMode } from './projected-menu-mode.js';
     },
 
     tick: function () {
+      if (this.data.automatic) {
+        var automaticIntent = this.computeAutomaticIntent();
+        if (automaticIntent !== 'open') this.automaticDismissed = false;
+        if (automaticIntent === 'open' && !this.automaticDismissed) this.active = true;
+        else if (automaticIntent === 'close') this.active = false;
+      }
       if (this.active) {
         var mode = this.computeMode();
         if (!mode) this.active = false;
@@ -290,6 +305,27 @@ import { chooseProjectedMenuMode } from './projected-menu-mode.js';
         if (now - this.orientationLostSince < this.data.orientationGrace) return this.mode;
       }
       return null;
+    },
+
+    computeAutomaticIntent: function () {
+      var THREE = AFRAME.THREE;
+      var camPos = new THREE.Vector3();
+      this.cameraEl.object3D.getWorldPosition(camPos);
+      var pos = new THREE.Vector3();
+      this.el.object3D.getWorldPosition(pos);
+      var worldQuat = new THREE.Quaternion();
+      this.el.object3D.getWorldQuaternion(worldQuat);
+      var normal = new THREE.Vector3(0, 1, 0).applyQuaternion(worldQuat);
+      var toCam = camPos.clone().sub(pos).normalize();
+      return chooseAutomaticMenuIntent(this.data.mode, {
+        distance: camPos.distanceTo(pos),
+        dotUp: normal.dot(new THREE.Vector3(0, 1, 0)),
+        dotCam: normal.dot(toCam),
+      }, {
+        closeDistance: this.data.closeDistance,
+        faceupThreshold: this.data.faceupThreshold,
+        facecamThreshold: this.data.facecamThreshold,
+      });
     },
 
     isLookedAwayTooLong: function (camPos) {
@@ -365,6 +401,30 @@ import { chooseProjectedMenuMode } from './projected-menu-mode.js';
       });
     },
 
-    open: function () { this.active = true; },
-    close: function () { this.active = false; },
+    updateAutomaticChrome: function () {
+      var automatic = this.data.automatic;
+      this.chromes.forEach(function (chrome) {
+        var button = chrome.automaticBtn;
+        if (!button) return;
+        var glyph = button.querySelector('a-text');
+        if (glyph) glyph.setAttribute('text', 'value', automatic ? 'A' : 'M');
+        button.setAttribute('menu-item', 'label', automatic ? 'Automatic open' : 'Manual open');
+      });
+    },
+
+    setAutomatic: function (automatic) {
+      this.data.automatic = Boolean(automatic);
+      this.automaticDismissed = false;
+      this.updateAutomaticChrome();
+      this.el.emit('projected-menu-automatic-changed', { automatic: this.data.automatic });
+    },
+
+    open: function () {
+      this.automaticDismissed = false;
+      this.active = true;
+    },
+    close: function () {
+      this.automaticDismissed = this.data.automatic;
+      this.active = false;
+    },
   });

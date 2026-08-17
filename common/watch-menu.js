@@ -114,6 +114,7 @@ import './menus.js';
       face.setAttribute('projected-menu', {
         template: this.data.menuTemplate,
         mode: 'auto',
+        automatic: true,
         pokeScale: 0.12,
         laserScale: 0.26,
       });

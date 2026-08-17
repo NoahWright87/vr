@@ -58,3 +58,19 @@ test('hover and click feedback never transform the raycast target', async () => 
   assert.equal(writes.at(-1).value, '#182238');
   component.remove();
 });
+
+test('an explicit close suppresses automatic reopening until the activation pose ends', () => {
+  const component = Object.assign(Object.create(definitions['projected-menu']), {
+    active: true,
+    automaticDismissed: false,
+    data: { automatic: true },
+  });
+
+  component.close();
+  assert.equal(component.active, false);
+  assert.equal(component.automaticDismissed, true);
+
+  component.open();
+  assert.equal(component.active, true);
+  assert.equal(component.automaticDismissed, false);
+});
