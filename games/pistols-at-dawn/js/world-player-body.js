@@ -216,6 +216,7 @@
           holsterPosition: { x: 0.11, y: 0, z: 0 },
           heldPosition: { x: -0.1, y: 0, z: 0 },
           grabRadius: 0.35,
+          grabPriority: 30,
           comOffset: { x: 0.11, y: -0.065, z: 0 },
         });
         el.setAttribute('boxy-hat', { felt: felt, band: band });

@@ -3,7 +3,8 @@
       // The generic hold/holster/dangle/throw/catch contract every
       // grabbable item plugs into (holsterable, anchor-slot), and the
       // two things worn on the body that carry their own slots
-      // (body-anchor, belt). Split out of game.js — see DESIGN.md's
+      // (body-anchor, belt; vests build on the same contracts in
+      // items-throwing-weapons.js). Split out of game.js — see DESIGN.md's
       // "File structure" section. GRAVITY, GROUND_REST_Y, and the
       // shared ballistics helpers (computeThrowVelocity and friends)
       // stay in game.js because they're genuinely used outside this
@@ -15,6 +16,8 @@
       var HIP_SIDE_OFFSET = 0.18; // meters, left/right from body centerline
       var BACK_HEIGHT = 1.3; // meters off the ground — the bandolier's anchor sits higher up the torso than the hips
       var BACK_DEPTH_OFFSET = 0.3; // meters behind the body centerline — the headset sits at the FRONT of your head, so a small offset puts the bandolier inside your chest and makes the shotgun nearly impossible to reach
+      var CHEST_HEIGHT = 1.24;
+      var CHEST_DEPTH_OFFSET = -0.18; // local -Z is forward: reachable without putting the vest inside the ghost torso
       var BELT_TUBE_RADIUS = 0.012;
       var BELT_COLOR = '#4a3220'; // matches the hip holster leather
       var BELT_BUCKLE_COLOR = '#c9962c'; // matches other brass trim (e.g. boxy-sniper's trigger)
@@ -181,7 +184,7 @@
       // ==============================================================
       registerComponent('body-anchor', {
         schema: {
-          side: { type: 'string', default: 'waist' }, // 'waist' | 'back'
+          side: { type: 'string', default: 'waist' }, // 'waist' | 'back' | 'chest'
         },
 
         init: function () {
@@ -194,6 +197,9 @@
           if (this.data.side === 'back') {
             this.localOffset = new THREE.Vector3(0, 0, BACK_DEPTH_OFFSET); // local +Z is behind the player
             this.height = BACK_HEIGHT;
+          } else if (this.data.side === 'chest') {
+            this.localOffset = new THREE.Vector3(0, 0, CHEST_DEPTH_OFFSET);
+            this.height = CHEST_HEIGHT;
           } else {
             this.localOffset = new THREE.Vector3(0, 0, 0);
             this.height = HIP_HEIGHT;
@@ -590,6 +596,7 @@
           heldPosition: { type: 'vec3', default: { x: 0, y: 0, z: 0 } },
           heldRotation: { type: 'vec3', default: { x: 0, y: 0, z: 0 } },
           grabRadius: { type: 'number', default: GRAB_RADIUS },
+          grabPriority: { type: 'number', default: 0 }, // lower wins before distance; worn equipment opts into larger values so its contents are drawn first
           // Most props are grabbed by their one natural handle, so the
           // grab test is a sphere around the origin. Long thin ones are
           // not: an arrow's origin is at its nock, and being unable to
@@ -601,6 +608,7 @@
           comOffset: { type: 'vec3', default: { x: 0, y: 0, z: 0 } }, // center of mass, relative to the entity origin
           maxThrowSpeed: { type: 'number', default: OVERHAND_MAX_DEFAULT_SPEED }, // how hard this particular object can be thrown, whatever your arm does
           gravityScale: { type: 'number', default: 1 }, // multiplies gravity while falling — under 1 keeps a thrown object up longer, which is what makes shooting bottles out of the air possible
+          impactDamage: { type: 'number', default: 1 }, // published on projectile `shot` events; current steel targets only care that they were hit, future damageables can care how hard
           supportGrip: { type: 'vec3', default: { x: 0, y: 0, z: 0 } }, // local position of a second place to hold this, if any
           supportRadius: { type: 'number', default: 0 }, // 0 disables the second grip entirely
           supportAims: { type: 'boolean', default: true }, // does the second hand steer this? A shotgun forend does — the barrel follows the line between your hands. A bowstring does NOT: the bow hand alone aims it, and the string hand only says how far it's drawn
@@ -1379,6 +1387,11 @@
           }
 
           this.checkImpact(dt);
+          // Impact companions such as arrows and throwing blades can
+          // end flight synchronously (and may reparent themselves to
+          // what they struck). Do not then interpret their new local Y
+          // as a second, ground-level landing in this same frame.
+          if (this.state !== 'falling') return;
 
           if (this.el.object3D.position.y <= GROUND_REST_Y) {
             var impactSpeed = this.fallVelocity.length();
@@ -1429,8 +1442,18 @@
           if (!hit) return;
 
           this.impactCooldown = IMPACT_COOLDOWN_MS;
-          hit.el.emit('shot', { point: hit.point.clone(), direction: this._impactDir.clone() }, false);
-          this.el.emit('impact', { point: hit.point.clone(), speed: speed, hitEl: hit.el }, false);
+          hit.el.emit('shot', {
+            point: hit.point.clone(),
+            direction: this._impactDir.clone(),
+            damage: this.data.impactDamage,
+          }, false);
+          this.el.emit('impact', {
+            point: hit.point.clone(),
+            direction: this._impactDir.clone(),
+            speed: speed,
+            damage: this.data.impactDamage,
+            hitEl: hit.el,
+          }, false);
 
           // Whatever it hit took most of the energy out of it. If it
           // was something that ends on contact, its own impact handler
@@ -1474,6 +1497,7 @@
           holsterSelector: '#' + slotId,
           itemSize: 'medium',
           grabRadius: 0.22,
+          grabPriority: 30,
         });
         el.setAttribute('boxy-belt', { color: color, buckleColor: buckleColor });
         el.setAttribute('belt', { stockHips: !!stockHips });

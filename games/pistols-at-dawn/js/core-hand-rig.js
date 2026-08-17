@@ -629,6 +629,7 @@
           var self = this;
           var nearest = null;
           var nearestDist = Infinity;
+          var nearestPriority = Infinity;
           var objPos = new THREE.Vector3();
 
           objects.forEach(function (objEl) {
@@ -642,9 +643,12 @@
             if (!eligible) return;
 
             var d = holsterable.grabDistanceTo(handPos);
-            if (d < holsterable.data.grabRadius && d < nearestDist) {
+            var priority = holsterable.data.grabPriority || 0;
+            if (d < holsterable.data.grabRadius &&
+                (priority < nearestPriority || (priority === nearestPriority && d < nearestDist))) {
               nearest = objEl;
               nearestDist = d;
+              nearestPriority = priority;
             }
           });
 

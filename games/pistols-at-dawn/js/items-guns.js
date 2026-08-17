@@ -751,6 +751,7 @@
         schema: {
           pellets: { type: 'number', default: 1 }, // rays per shot
           coneDeg: { type: 'number', default: 0 }, // half-angle of the spread cone
+          damage: { type: 'number', default: 1 }, // published with `shot`; current targets are one-hit steel, but damageable things can distinguish ammunition
           recoilBack: { type: 'number', default: RECOIL_BACK_METERS },
           recoilRiseDeg: { type: 'number', default: RECOIL_RISE_DEG },
           recoilJitter: { type: 'number', default: RECOIL_JITTER },
@@ -1026,7 +1027,11 @@
               // Non-bubbling and aimed straight at the thing that was
               // hit: what a hit MEANS is entirely up to the target
               // (score and tip over, shatter, catch light).
-              hit.el.emit('shot', { point: hit.point.clone(), direction: direction.clone() }, false);
+              hit.el.emit('shot', {
+                point: hit.point.clone(),
+                direction: direction.clone(),
+                damage: this.data.damage,
+              }, false);
               hitCount++;
             } else {
               endPoint = this._origin.clone().addScaledVector(direction, MAX_SHOT_RANGE);
