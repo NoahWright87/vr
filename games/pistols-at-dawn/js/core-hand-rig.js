@@ -34,24 +34,12 @@
       // which is naturally a no-op while holding anything that isn't
       // a gun.
       //
-      // A hand holds up to HAND_CAPACITY things at once rather than
-      // one, which is where a lot of the ridiculousness comes from:
-      // grip again with a full-ish hand and you pick up another
-      // thing. An armful of bottles all launch together on one throw.
-      // None of that is special-cased anywhere — items just get
-      // fanned out (see holsterable.applyHandPose) and every operation
-      // loops.
-      //
-      // One exception: a hand never holds more than one firearm (see
-      // hasWeapon, and findCatchingHand's own use of it). Stacking
-      // guns the same way as everything else meant firing one trigger
-      // pull out of a fistful of pistols, and once a hand had several
-      // it was hard to get any one of them back out — no way to drop
-      // just one, no way for the other hand to pull one away. Simplest
-      // fix that doesn't touch the general stacking model: gate the
-      // few places something joins heldObjects, same as HAND_CAPACITY
-      // already does. See TODO.md for the fuller rework this is
-      // standing in for.
+      // A hand can stack up to HAND_CAPACITY props, but only through
+      // the deliberate quick re-grip gesture: release and squeeze
+      // again inside REGRIP_WINDOW_MS. A continuously closed hand no
+      // longer absorbs nearby catches or repeated gripdown events.
+      // Weapons are exclusive — a hand containing one cannot add a
+      // prop, and a hand containing props cannot add a weapon.
       //
       // It also owns where your hand actually IS, which is not the
       // same thing as where the controller is once you've been
@@ -251,16 +239,35 @@
           return this.heldObjects.length >= HAND_CAPACITY;
         },
 
-        // Whether this hand already has a firearm among heldObjects —
-        // the one-weapon-per-hand exception to the general stacking
-        // rule. Checked wherever something is about to join
-        // heldObjects (onGripDown, reclaimStash) or wherever
-        // findCatchingHand is deciding whether this hand is a legal
-        // catch for an incoming firearm.
+        isWeaponObject: function (objEl) {
+          var components = objEl && objEl.components;
+          return !!(components && (
+            components.firearm ||
+            components.bow ||
+            components.launcher ||
+            components.nozzle
+          ));
+        },
+
+        // Whether this hand already has a weapon among heldObjects.
+        // Guns, bow, launcher and tank nozzle all occupy the hand by
+        // themselves; throwable explosives remain deliberately
+        // stackable props.
         hasWeapon: function () {
+          var self = this;
           return this.heldObjects.some(function (objEl) {
-            return !!objEl.components.firearm;
+            return self.isWeaponObject(objEl);
           });
+        },
+
+        // The invariant at the boundary where something joins a
+        // rigidly held stack. Non-weapons may stack with non-weapons;
+        // a weapon always occupies the hand by itself.
+        canAddToHeld: function (objEl) {
+          if (!objEl || this.isFull()) return false;
+          if (!this.heldObjects.length) return true;
+          if (this.hasWeapon()) return false;
+          return !this.isWeaponObject(objEl);
         },
 
         // Public "this hand now holds that" used both by this
@@ -339,11 +346,16 @@
         // to take it back.
         onGripDown: function () {
           this.gripHeld = true;
-          this.reclaimStash();
+          var deliberateRegrip = this.reclaimStash();
+          if (this.hasWeapon()) return;
+          // Already holding something without having just performed
+          // the release/re-press gesture: this is a duplicate input,
+          // not permission to grow the stack.
+          if (this.heldObjects.length && !deliberateRegrip) return;
           if (this.isFull()) return;
 
           var obj = this.findGrabbableObject();
-          if (obj && !(obj.components.firearm && this.hasWeapon())) {
+          if (obj && this.canAddToHeld(obj)) {
             obj.components.holsterable.grab(this.el);
             this.take(obj);
             return;
@@ -353,7 +365,7 @@
           // won't take — see hasWeapon), but maybe something in your
           // OTHER hand offers a second place to hold it — a shotgun
           // forend.
-          this.takeSupport('grip');
+          if (!this.heldObjects.length) this.takeSupport('grip');
         },
 
         // Shared by both buttons; which one an object answers to is the
@@ -417,17 +429,24 @@
         // Take back everything from the last release, if it was recent
         // enough and nothing else has claimed it in the meantime.
         reclaimStash: function () {
-          if (!this.stash || !this.stash.length) return;
+          if (!this.stash || !this.stash.length) return false;
 
           if (performance.now() - this.stashTime > REGRIP_WINDOW_MS) {
             this.stash = [];
-            return;
+            return false;
           }
 
           var self = this;
-          this.stash.forEach(function (obj) {
-            if (self.isFull()) return;
-            if (obj.components.firearm && self.hasWeapon()) return;
+          var weapon = this.stash.find(function (obj) {
+            return self.isWeaponObject(obj);
+          });
+          // A stale mixed stash can exist after upgrading from the old
+          // behavior. Prefer reclaiming its weapon alone instead of
+          // recreating the invalid gun-plus-props stack.
+          var candidates = weapon ? [weapon] : this.stash;
+          var reclaimed = false;
+          candidates.forEach(function (obj) {
+            if (!self.canAddToHeld(obj)) return;
             var holsterable = obj.components.holsterable;
             if (!holsterable) return;
             // Somebody else picked it up, or it broke, in the
@@ -439,8 +458,10 @@
 
             holsterable.grab(self.el);
             self.take(obj);
+            reclaimed = true;
           });
           this.stash = [];
+          return reclaimed;
         },
 
         // An actual pull (past the digital press threshold), not just
@@ -590,7 +611,12 @@
 
         tick: function () {
           var handRig = this.el.components['hand-rig'];
-          if (handRig && handRig.isFull()) return;
+          if (handRig && (
+            handRig.isFull() ||
+            handRig.heldObjects.length ||
+            handRig.danglingObjects.length ||
+            handRig.supportObjects.length
+          )) return;
 
           var trackedControls = this.el.components['tracked-controls'];
           var gamepad = trackedControls && trackedControls.controller;

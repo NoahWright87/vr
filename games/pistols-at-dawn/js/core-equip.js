@@ -47,14 +47,10 @@
       // Generous catch detection for anything falling/flying (a
       // dropped or thrown holsterable prop — this doesn't know or care
       // which one, it just checks `.hand` elements' public hand-rig
-      // state). A hand can catch by gripping (any grip currently held, not
-      // just a fresh press) within THROW_CATCH_RADIUS, or by resting a
-      // finger on the trigger within that same radius — the two modes
-      // the caller uses to decide "snap into hand" vs. "land on the
-      // finger and dangle." Skips any hand with no room left. isWeapon
-      // additionally skips any hand that already holds a firearm — see
-      // hand-rig.hasWeapon — so a thrown/dropped second pistol sails
-      // past a fist already holding one instead of joining it.
+      // state). An EMPTY hand can catch by gripping within
+      // THROW_CATCH_RADIUS, or by resting a finger on the trigger in
+      // that same radius. A busy hand never passively grows a stack;
+      // stacking is reserved for hand-rig's explicit quick re-grip.
       // ==============================================================
       function findCatchingHand(worldPos, radius, isWeapon) {
         var hands = document.querySelectorAll('.hand');
@@ -67,6 +63,7 @@
           var handRig = handEl.components['hand-rig'];
           if (!handRig) continue;
           if (handRig.isFull()) continue;
+          if (handRig.heldObjects.length || handRig.danglingObjects.length || handRig.supportObjects.length) continue;
           if (isWeapon && handRig.hasWeapon()) continue;
 
           var mode = handRig.gripHeld ? 'grip' : handRig.fingerOnTrigger ? 'trigger' : null;

@@ -43,6 +43,7 @@
       var SHOTGUN_BARREL_MIN_LENGTH = 0.12;
       var SHOTGUN_BARREL_Y = 0.05;
       var SHOTGUN_MEDIUM_LENGTH = 0.29;
+      var SHOTGUN_SMALL_LENGTH = 0.16;
       var SHOTGUN_SUPPORT_MIN_LENGTH = 0.245;
       var SAW_PREVIEW_DISTANCE = 0.14;
       var SAW_REQUIRED_TRAVEL = 0.72;
@@ -344,9 +345,9 @@
           // The spread curve gets violent near the minimum instead of
           // making the first cosmetic trim ruin the weapon. A full
           // tube is substantially tighter than the old fixed 4° cone;
-          // the shortest legal tube throws a 32° cloud and twice as
+          // the shortest legal tube throws a 12° cloud and twice as
           // many actual rays.
-          firearm.data.coneDeg = 1.5 + 30.5 * Math.pow(shortness, 1.35);
+          firearm.data.coneDeg = 0.6 + 11.4 * Math.pow(shortness, 1.35);
           firearm.data.pellets = Math.round(5 + 5 * shortness);
 
           // A stock shotgun now has real recoil too. Cutting removes
@@ -361,7 +362,13 @@
           firearm.data.climbRecoverDegPerS = 14;
           firearm.data.supportedRecoilScale = 0.25 + 0.35 * shortness;
 
-          holsterable.data.itemSize = this.barrelLength <= SHOTGUN_MEDIUM_LENGTH ? 'medium' : 'large';
+          if (this.barrelLength <= SHOTGUN_SMALL_LENGTH) {
+            holsterable.data.itemSize = 'small';
+          } else if (this.barrelLength <= SHOTGUN_MEDIUM_LENGTH) {
+            holsterable.data.itemSize = 'medium';
+          } else {
+            holsterable.data.itemSize = 'large';
+          }
           holsterable.data.grabSpan.z = this.muzzleZ() + 0.06;
           holsterable.data.comOffset.z = -0.08 - this.barrelLength * 0.27;
           holsterable._comLocal.set(
@@ -1172,7 +1179,7 @@
         });
         el.setAttribute('firearm', {
           pellets: 5,
-          coneDeg: 1.5,
+          coneDeg: 0.6,
           kickDeg: -10,
           recoverMs: 240,
           heatPerShot: 0.4,
