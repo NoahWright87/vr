@@ -132,7 +132,7 @@
       var ARMORY_PISTOL_PEGS = 9;
       var ARMORY_CRADLE_Y = 1.1; // long guns lie flat on the bench in rolled slots
       var ARMORY_CRADLE_Z = 0.78; // ditto for a shotgun's stock
-      var ARMORY_CRADLES = 4;
+      var ARMORY_CRADLES = 5;
       var ARMORY_BENCH_ROW_Z = 0.68; // the free-for-all row along the front of the bench
       var ARMORY_BENCH_SOCKETS = 5; // the free row; the arrow trough takes the left end of the bench
       var ARMORY_SHELF_Y = 0.58; // the low shelf in the cavity under the bench
@@ -144,7 +144,7 @@
       // socket is bare on purpose — they're for whatever you decide
       // belongs there.
       var ARMORY_PISTOL_STOCK = [0, 2, 4, 6, 8];
-      var ARMORY_CRADLE_STOCK = ['shotgun', 'sniper', 'bow', 'launcher']; // per cradle, left to right; null leaves one bare
+      var ARMORY_CRADLE_STOCK = ['shotgun', 'tommy', 'sniper', 'bow', 'launcher']; // per cradle, left to right; null leaves one bare
       var ARMORY_QUIVER_X = -1.36; // the arrow trough, along the front of the bench
       var ARMORY_QUIVER_Z = 0.63;
       var ARMORY_REFILL_MS = 10000;
@@ -725,6 +725,7 @@
           this.buildMatchbox();
           this.buildLighter();
           this.buildWaterJug();
+          this.buildHandSaw();
 
           // Two spare sockets on the bar for whatever you're carrying —
           // a place to set your gun down, or your hat, while you drink.
@@ -910,6 +911,20 @@
           el.setAttribute('pourable', { liquid: 'water', capped: false });
           el.setAttribute('breakable', { color: '#9c8466', shards: 12 });
           this.el.sceneEl.appendChild(el);
+        },
+
+        // A hand saw leaning against the player-facing corner of the
+        // bar. The high handle and steep holstered pitch leave the
+        // blade resting down the bar front; once drawn it is just
+        // another medium holsterable prop, with its interaction owned
+        // by the handsaw component in items-guns.js.
+        buildHandSaw: function () {
+          var slotId = this.addSlot(
+            { x: 1.47, y: BAR_TOP_Y - 0.06, z: BAR_NEAR_EDGE_Z - 0.015 },
+            'medium',
+            {}
+          );
+          this.stock(slotId, 'handsaw');
         },
 
         // One Zippo, sitting on the bar. Unlike the matches it never

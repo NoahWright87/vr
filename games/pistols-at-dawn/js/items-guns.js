@@ -1,8 +1,8 @@
       // ==============================================================
       // ITEMS: guns
-      // Pistol, shotgun, and the scoped rifle — their visuals
-      // (boxy-gun/boxy-shotgun/boxy-sniper), the firing mechanism
-      // shared by all three (firearm), the scope (also reused as-is
+      // Pistol, shotgun, scoped rifle, and tommy gun — their visuals
+      // (boxy-gun/boxy-shotgun/boxy-sniper/boxy-tommy), the firing
+      // mechanism shared by all four (firearm), the scope (also reused as-is
       // for the wardrobe mirror — see boxy-mirror in
       // world-saloon-bar.js), and the pistol/sniper item-maker
       // recipes. Split out of game.js — see DESIGN.md's
@@ -38,6 +38,14 @@
       var TRACER_LIFETIME_MS = 80;
       var IMPACT_RADIUS = 0.04; // meters
       var IMPACT_LIFETIME_MS = 150;
+      var SHOTGUN_BARREL_BREECH_Z = -0.135;
+      var SHOTGUN_BARREL_FULL_LENGTH = 0.45;
+      var SHOTGUN_BARREL_MIN_LENGTH = 0.12;
+      var SHOTGUN_BARREL_Y = 0.05;
+      var SHOTGUN_MEDIUM_LENGTH = 0.29;
+      var SHOTGUN_SUPPORT_MIN_LENGTH = 0.245;
+      var SAW_PREVIEW_DISTANCE = 0.14;
+      var SAW_REQUIRED_TRAVEL = 0.72;
       // ==============================================================
       // THE SCOPE
       // A real one: a second camera with a narrow field of view,
@@ -193,13 +201,13 @@
 
           addBox(0.05, 0.14, 0.055, '0 -0.05 0.02', wood, '10 0 0'); // grip
           addBox(0.05, 0.06, 0.18, '0 0.02 -0.06', metal); // receiver
-          addBox(0.035, 0.035, 0.45, '0 0.05 -0.36', metal); // barrel
-          addBox(0.055, 0.045, 0.16, '0 0.01 -0.22', wood); // pump forend
+          this.barrel = addBox(0.035, 0.035, SHOTGUN_BARREL_FULL_LENGTH, '0 0.05 -0.36', metal);
+          this.forend = addBox(0.055, 0.045, 0.16, '0 0.01 -0.22', wood);
           addBox(0.06, 0.09, 0.28, '0 -0.02 0.24', wood, '-6 0 0'); // stock
           addBox(0.045, 0.006, 0.06, '0 -0.028 -0.02', metal); // trigger guard (bottom)
           addBox(0.045, 0.05, 0.006, '0 -0.005 -0.05', metal); // trigger guard (front)
           addBox(0.008, 0.03, 0.008, '0 -0.01 -0.035', brass); // trigger
-          addBox(0.01, 0.014, 0.01, '0 0.085 -0.58', metal); // front sight bead
+          this.frontSight = addBox(0.01, 0.014, 0.01, '0 0.085 -0.58', metal);
 
           var flash = document.createElement('a-circle');
           flash.setAttribute('radius', 0.045);
@@ -208,9 +216,418 @@
           flash.setAttribute('visible', false);
           flash.classList.add('muzzle-flash');
           el.appendChild(flash);
+          this.flash = flash;
 
           var muzzle = document.createElement('a-entity');
           muzzle.setAttribute('position', '0 0.05 -0.585');
+          muzzle.classList.add('muzzle');
+          el.appendChild(muzzle);
+          this.muzzle = muzzle;
+        },
+
+        setBarrelLength: function (length) {
+          length = Math.min(Math.max(length, SHOTGUN_BARREL_MIN_LENGTH), SHOTGUN_BARREL_FULL_LENGTH);
+          var muzzleZ = SHOTGUN_BARREL_BREECH_Z - length;
+          var centerZ = SHOTGUN_BARREL_BREECH_Z - length / 2;
+          this.barrel.setAttribute('depth', length);
+          this.barrel.setAttribute('position', { x: 0, y: SHOTGUN_BARREL_Y, z: centerZ });
+          this.frontSight.setAttribute('position', { x: 0, y: 0.085, z: muzzleZ + 0.005 });
+          this.flash.setAttribute('position', { x: 0, y: SHOTGUN_BARREL_Y, z: muzzleZ - 0.015 });
+          this.muzzle.setAttribute('position', { x: 0, y: SHOTGUN_BARREL_Y, z: muzzleZ });
+
+          var forendLength = Math.min(0.16, Math.max(length - 0.09, 0.04));
+          this.forend.setAttribute('depth', forendLength);
+          this.forend.setAttribute('position', {
+            x: 0,
+            y: 0.01,
+            z: SHOTGUN_BARREL_BREECH_Z - 0.045 - forendLength / 2,
+          });
+          this.forend.setAttribute('visible', length >= SHOTGUN_SUPPORT_MIN_LENGTH);
+        },
+      });
+
+      // ==============================================================
+      // COMPONENT: cuttable-shotgun
+      // Owns the one piece of state a customized shotgun needs: how
+      // much barrel is left. Everything derived from that state is
+      // updated together — model, muzzle, spread, pellet count, slot
+      // size, support grip, and recoil — so no half-sawn configuration
+      // can escape into the rest of the generic equipment system.
+      // ==============================================================
+      registerComponent('cuttable-shotgun', {
+        init: function () {
+          this.barrelLength = SHOTGUN_BARREL_FULL_LENGTH;
+          this.applied = false;
+          this._local = new THREE.Vector3();
+
+          this.marker = document.createElement('a-entity');
+          this.marker.setAttribute('visible', false);
+          for (var i = 0; i < 7; i++) {
+            var dot = document.createElement('a-sphere');
+            dot.setAttribute('radius', 0.007);
+            dot.setAttribute('position', { x: -0.06 + i * 0.02, y: 0, z: 0 });
+            dot.setAttribute('material', 'color: #ffe066; shader: flat; opacity: 0.95');
+            this.marker.appendChild(dot);
+          }
+          this.el.appendChild(this.marker);
+        },
+
+        tick: function () {
+          if (this.applied) return;
+          if (!this.el.components['boxy-shotgun'] || !this.el.components.firearm || !this.el.components.holsterable) return;
+          this.applied = true;
+          this.applyBarrelState();
+        },
+
+        muzzleZ: function () {
+          return SHOTGUN_BARREL_BREECH_Z - this.barrelLength;
+        },
+
+        candidateAt: function (worldPoint) {
+          if (this.barrelLength <= SHOTGUN_BARREL_MIN_LENGTH + 0.01) return null;
+
+          this._local.copy(worldPoint);
+          this.el.object3D.worldToLocal(this._local);
+          var radial = Math.sqrt(
+            this._local.x * this._local.x +
+            (this._local.y - SHOTGUN_BARREL_Y) * (this._local.y - SHOTGUN_BARREL_Y)
+          );
+          if (radial > SAW_PREVIEW_DISTANCE) return null;
+
+          var firstUsefulCut = this.muzzleZ() + 0.025;
+          var lastUsefulCut = SHOTGUN_BARREL_BREECH_Z - SHOTGUN_BARREL_MIN_LENGTH;
+          if (this._local.z < firstUsefulCut || this._local.z > lastUsefulCut + 0.045) return null;
+
+          return {
+            z: Math.min(Math.max(this._local.z, firstUsefulCut), lastUsefulCut),
+            distance: radial,
+          };
+        },
+
+        showCutPreview: function (z, progress) {
+          this.marker.setAttribute('position', { x: 0, y: SHOTGUN_BARREL_Y, z: z });
+          this.marker.setAttribute('visible', true);
+          var dots = this.marker.children;
+          var lit = Math.round((progress || 0) * dots.length);
+          for (var i = 0; i < dots.length; i++) {
+            dots[i].setAttribute('material', 'color: ' + (i < lit ? '#ff8c42' : '#ffe066') + '; shader: flat; opacity: 0.95');
+          }
+        },
+
+        hideCutPreview: function () {
+          this.marker.setAttribute('visible', false);
+        },
+
+        cutAtZ: function (z) {
+          var nextLength = Math.min(
+            Math.max(SHOTGUN_BARREL_BREECH_Z - z, SHOTGUN_BARREL_MIN_LENGTH),
+            SHOTGUN_BARREL_FULL_LENGTH
+          );
+          if (nextLength >= this.barrelLength - 0.01) return false;
+          this.barrelLength = nextLength;
+          this.applyBarrelState();
+          return true;
+        },
+
+        applyBarrelState: function () {
+          var visual = this.el.components['boxy-shotgun'];
+          var firearm = this.el.components.firearm;
+          var holsterable = this.el.components.holsterable;
+          if (!visual || !firearm || !holsterable) return;
+
+          visual.setBarrelLength(this.barrelLength);
+          var fullRatio = (this.barrelLength - SHOTGUN_BARREL_MIN_LENGTH) /
+            (SHOTGUN_BARREL_FULL_LENGTH - SHOTGUN_BARREL_MIN_LENGTH);
+          fullRatio = Math.min(Math.max(fullRatio, 0), 1);
+          var shortness = 1 - fullRatio;
+
+          // The spread curve gets violent near the minimum instead of
+          // making the first cosmetic trim ruin the weapon. A full
+          // tube is substantially tighter than the old fixed 4° cone;
+          // the shortest legal tube throws a 32° cloud and twice as
+          // many actual rays.
+          firearm.data.coneDeg = 1.5 + 30.5 * Math.pow(shortness, 1.35);
+          firearm.data.pellets = Math.round(5 + 5 * shortness);
+
+          // A stock shotgun now has real recoil too. Cutting removes
+          // leverage and weight: both the initial snap and persistent
+          // muzzle rise get worse. The support hand is excellent at
+          // full length but progressively less effective as the
+          // forend runs out of barrel to brace against.
+          firearm.data.kickDeg = -(10 + 10 * shortness);
+          firearm.data.recoverMs = 240 + 100 * shortness;
+          firearm.data.climbDegPerShot = 5 + 9 * shortness;
+          firearm.data.maxClimbDeg = firearm.data.climbDegPerShot;
+          firearm.data.climbRecoverDegPerS = 14;
+          firearm.data.supportedRecoilScale = 0.25 + 0.35 * shortness;
+
+          holsterable.data.itemSize = this.barrelLength <= SHOTGUN_MEDIUM_LENGTH ? 'medium' : 'large';
+          holsterable.data.grabSpan.z = this.muzzleZ() + 0.06;
+          holsterable.data.comOffset.z = -0.08 - this.barrelLength * 0.27;
+          holsterable._comLocal.set(
+            holsterable.data.comOffset.x,
+            holsterable.data.comOffset.y,
+            holsterable.data.comOffset.z
+          );
+
+          var canSupport = this.barrelLength >= SHOTGUN_SUPPORT_MIN_LENGTH;
+          holsterable.data.supportRadius = canSupport ? 0.22 : 0;
+          holsterable.data.supportGrip.z = SHOTGUN_BARREL_BREECH_Z - Math.min(this.barrelLength * 0.55, 0.22);
+          if (!canSupport && holsterable.supportHand) {
+            var supportHand = holsterable.supportHand;
+            holsterable.releaseSupport();
+            var supportRig = supportHand.components['hand-rig'];
+            if (supportRig) supportRig.discard(this.el);
+          }
+        },
+      });
+
+      // ==============================================================
+      // COMPONENTS: boxy-handsaw + handsaw
+      // The blade is long along local -Z. While the trigger is held,
+      // the saw is corrected only perpendicular to that axis: it stays
+      // engaged with the chosen cut but remains free to slide along
+      // its teeth. Real tracked hand travel along that axis advances
+      // the cut, so wagging or merely holding still does nothing.
+      // ==============================================================
+      registerComponent('boxy-handsaw', {
+        init: function () {
+          var el = this.el;
+
+          var handle = document.createElement('a-box');
+          handle.setAttribute('width', 0.045);
+          handle.setAttribute('height', 0.12);
+          handle.setAttribute('depth', 0.12);
+          handle.setAttribute('position', '0 -0.035 -0.015');
+          handle.setAttribute('rotation', '-8 0 0');
+          handle.setAttribute('color', '#6b3f20');
+          el.appendChild(handle);
+
+          var blade = document.createElement('a-box');
+          blade.setAttribute('width', 0.012);
+          blade.setAttribute('height', 0.09);
+          blade.setAttribute('depth', 0.42);
+          blade.setAttribute('position', '0 0 -0.27');
+          blade.setAttribute('material', 'color: #aeb5b8; metalness: 0.65; roughness: 0.35');
+          el.appendChild(blade);
+
+          for (var i = 0; i < 12; i++) {
+            var tooth = document.createElement('a-box');
+            tooth.setAttribute('width', 0.016);
+            tooth.setAttribute('height', 0.018);
+            tooth.setAttribute('depth', 0.014);
+            tooth.setAttribute('position', { x: 0, y: -0.052, z: -0.075 - i * 0.034 });
+            tooth.setAttribute('rotation', { x: 0, y: 0, z: i % 2 ? 12 : -12 });
+            tooth.setAttribute('color', '#858d91');
+            el.appendChild(tooth);
+          }
+        },
+      });
+
+      registerComponent('handsaw', {
+        init: function () {
+          this.target = null;
+          this.previewTarget = null;
+          this.cutZ = 0;
+          this.sawing = false;
+          this.travel = 0;
+          this.sparkTravel = 0;
+          this.seededHand = false;
+          this._bladeWorld = new THREE.Vector3();
+          this._targetWorld = new THREE.Vector3();
+          this._axis = new THREE.Vector3();
+          this._quat = new THREE.Quaternion();
+          this._delta = new THREE.Vector3();
+          this._worldPos = new THREE.Vector3();
+          this._handWorld = new THREE.Vector3();
+          this._prevHandWorld = new THREE.Vector3();
+        },
+
+        onTriggerUse: function () {
+          if (this.sawing || !this.previewTarget) return;
+          this.target = this.previewTarget;
+          this.sawing = true;
+          this.travel = 0;
+          this.sparkTravel = 0;
+          this.seededHand = false;
+          this.target.showCutPreview(this.cutZ, 0);
+        },
+
+        tick: function (time, dt) {
+          var holsterable = this.el.components.holsterable;
+          if (!holsterable || holsterable.state !== 'held') {
+            this.finishSawing();
+            this.clearPreview();
+            return;
+          }
+
+          if (this.sawing) {
+            var handRig = holsterable.hand && holsterable.hand.components['hand-rig'];
+            if (!handRig || !handRig.triggerHeld || !this.target.el.parentNode) {
+              this.finishSawing();
+              return;
+            }
+            this.updateSawing(Math.min((dt || 16) / 1000, 0.05), holsterable);
+          } else {
+            this.updatePreview();
+          }
+        },
+
+        bladeWorldPosition: function () {
+          this._bladeWorld.set(0, 0, -0.27);
+          this.el.object3D.localToWorld(this._bladeWorld);
+          return this._bladeWorld;
+        },
+
+        updatePreview: function () {
+          var point = this.bladeWorldPosition();
+          var shotguns = document.querySelectorAll('[cuttable-shotgun]');
+          var best = null;
+          var bestCandidate = null;
+          for (var i = 0; i < shotguns.length; i++) {
+            var component = shotguns[i].components['cuttable-shotgun'];
+            if (!component) continue;
+            var candidate = component.candidateAt(point);
+            if (candidate && (!bestCandidate || candidate.distance < bestCandidate.distance)) {
+              best = component;
+              bestCandidate = candidate;
+            }
+          }
+
+          if (this.previewTarget && this.previewTarget !== best) this.previewTarget.hideCutPreview();
+          this.previewTarget = best;
+          if (best) {
+            this.cutZ = bestCandidate.z;
+            best.showCutPreview(this.cutZ, 0);
+          }
+        },
+
+        updateSawing: function (dtSeconds, holsterable) {
+          var targetEl = this.target.el;
+          this._targetWorld.set(0, SHOTGUN_BARREL_Y, this.cutZ);
+          targetEl.object3D.localToWorld(this._targetWorld);
+
+          this.el.object3D.getWorldQuaternion(this._quat);
+          this._axis.set(0, 0, -1).applyQuaternion(this._quat).normalize();
+          var bladeWorld = this.bladeWorldPosition();
+
+          // Remove only the offset perpendicular to the blade. The
+          // remaining freedom along its length is the sawing stroke.
+          this._delta.copy(this._targetWorld).sub(bladeWorld);
+          this._delta.addScaledVector(this._axis, -this._delta.dot(this._axis));
+          this.el.object3D.getWorldPosition(this._worldPos);
+          this._worldPos.add(this._delta);
+          var parent = this.el.object3D.parent;
+          if (parent) {
+            parent.worldToLocal(this._worldPos);
+            this.el.object3D.position.copy(this._worldPos);
+          }
+
+          holsterable.hand.object3D.getWorldPosition(this._handWorld);
+          if (!this.seededHand) {
+            this._prevHandWorld.copy(this._handWorld);
+            this.seededHand = true;
+            return;
+          }
+
+          var alongBlade = Math.abs(this._delta.copy(this._handWorld).sub(this._prevHandWorld).dot(this._axis));
+          this._prevHandWorld.copy(this._handWorld);
+          if (alongBlade < 0.002) return;
+          alongBlade = Math.min(alongBlade, 0.07);
+          this.travel += alongBlade;
+          this.sparkTravel += alongBlade;
+          this.target.showCutPreview(this.cutZ, Math.min(this.travel / SAW_REQUIRED_TRAVEL, 1));
+
+          if (this.sparkTravel >= 0.12) {
+            this.sparkTravel = 0;
+            spawnSparks(this._targetWorld, 2);
+          }
+          if (this.travel >= SAW_REQUIRED_TRAVEL) {
+            this.target.cutAtZ(this.cutZ);
+            this.finishSawing();
+          }
+        },
+
+        finishSawing: function () {
+          if (this.target) this.target.hideCutPreview();
+          this.target = null;
+          this.sawing = false;
+          this.seededHand = false;
+        },
+
+        clearPreview: function () {
+          if (this.previewTarget) this.previewTarget.hideCutPreview();
+          this.previewTarget = null;
+        },
+      });
+
+      // ==============================================================
+      // COMPONENT: boxy-tommy
+      // A deliberately anachronistic Thompson silhouette: slab-sided
+      // receiver, finned barrel, vertical foregrip, shoulder stock,
+      // and the unmistakable drum hanging below. It keeps the same
+      // trigger-guard origin and local -Z barrel convention as every
+      // other gun, so all the generic holding/firing code applies.
+      // ==============================================================
+      registerComponent('boxy-tommy', {
+        init: function () {
+          var el = this.el;
+          var metal = '#25262a';
+          var darkMetal = '#17181b';
+          var wood = '#6b3f20';
+
+          function box(w, h, d, pos, color, rot) {
+            var b = document.createElement('a-box');
+            b.setAttribute('width', w);
+            b.setAttribute('height', h);
+            b.setAttribute('depth', d);
+            b.setAttribute('position', pos);
+            b.setAttribute('color', color);
+            if (rot) b.setAttribute('rotation', rot);
+            el.appendChild(b);
+            return b;
+          }
+
+          box(0.052, 0.14, 0.055, '0 -0.05 0.02', wood, '10 0 0'); // pistol grip
+          box(0.07, 0.08, 0.23, '0 0.035 -0.08', metal); // receiver
+          box(0.032, 0.032, 0.3, '0 0.055 -0.34', darkMetal); // barrel
+          box(0.075, 0.1, 0.29, '0 0.015 0.22', wood, '-5 0 0'); // shoulder stock
+          box(0.052, 0.15, 0.06, '0 -0.045 -0.25', wood, '-12 0 0'); // vertical foregrip
+          box(0.05, 0.008, 0.065, '0 -0.03 -0.025', darkMetal); // trigger guard
+          box(0.008, 0.032, 0.008, '0 -0.01 -0.04', '#c9962c'); // trigger
+          box(0.018, 0.018, 0.025, '0.045 0.065 -0.02', darkMetal); // charging handle
+          box(0.01, 0.014, 0.01, '0 0.082 -0.49', darkMetal); // front sight
+
+          var drum = document.createElement('a-cylinder');
+          drum.setAttribute('radius', 0.085);
+          drum.setAttribute('height', 0.048);
+          drum.setAttribute('segments-radial', 16);
+          drum.setAttribute('rotation', '90 0 0');
+          drum.setAttribute('position', '0 -0.075 -0.105');
+          drum.setAttribute('color', darkMetal);
+          el.appendChild(drum);
+
+          for (var i = 0; i < 5; i++) {
+            var fin = document.createElement('a-cylinder');
+            fin.setAttribute('radius', 0.024);
+            fin.setAttribute('height', 0.012);
+            fin.setAttribute('segments-radial', 12);
+            fin.setAttribute('rotation', '90 0 0');
+            fin.setAttribute('position', { x: 0, y: 0.055, z: -0.24 - i * 0.045 });
+            fin.setAttribute('color', metal);
+            el.appendChild(fin);
+          }
+
+          var flash = document.createElement('a-circle');
+          flash.setAttribute('radius', 0.038);
+          flash.setAttribute('material', 'color: #ffe066; shader: flat; opacity: 0.9');
+          flash.setAttribute('position', '0 0.055 -0.505');
+          flash.setAttribute('visible', false);
+          flash.classList.add('muzzle-flash');
+          el.appendChild(flash);
+
+          var muzzle = document.createElement('a-entity');
+          muzzle.setAttribute('position', '0 0.055 -0.5');
           muzzle.classList.add('muzzle');
           el.appendChild(muzzle);
         },
@@ -258,6 +675,38 @@
         el.setAttribute('boxy-sniper', '');
         el.setAttribute('scope', { offset: { x: 0, y: 0.115, z: 0.03 } });
       });
+
+      // Hold the trigger and it keeps firing at roughly 700 RPM. The
+      // interval is opt-in on firearm, so pistols, rifles, and the
+      // shotgun remain one shot per trigger pull.
+      defineItem('tommy', function (el, slotId) {
+        el.setAttribute('holsterable', {
+          holsterSelector: '#' + slotId,
+          itemSize: 'large',
+          holsterRotation: { x: -90, y: 0, z: 0 },
+          heldRotation: { x: -90, y: 0, z: 0 },
+          grabRadius: 0.25,
+          grabSpan: { x: 0, y: 0, z: -0.42 },
+          comOffset: { x: 0, y: 0.01, z: -0.15 },
+          supportGrip: { x: 0, y: -0.02, z: -0.25 },
+          supportRadius: 0.22,
+          maxThrowSpeed: 7,
+        });
+        el.setAttribute('firearm', {
+          pellets: 1,
+          coneDeg: 1.2,
+          kickDeg: -6,
+          recoverMs: 85,
+          heatPerShot: 0.08,
+          fireIntervalMs: 85,
+          climbDegPerShot: 1.35,
+          maxClimbDeg: 12,
+          climbRecoverDegPerS: 8,
+          supportedRecoilScale: 0.35,
+        });
+        el.setAttribute('ignition-source', { tipSelector: '.muzzle' });
+        el.setAttribute('boxy-tommy', '');
+      });
       // ==============================================================
       // COMPONENT: firearm
       // Everything that can be fired, in one component. This used to
@@ -289,14 +738,22 @@
           kickDeg: { type: 'number', default: RECOIL_KICK_DEG },
           recoverMs: { type: 'number', default: RECOIL_RECOVER_MS },
           heatPerShot: { type: 'number', default: 0.22 },
+          fireIntervalMs: { type: 'number', default: 0 }, // zero is semi-auto; otherwise milliseconds between shots while held
+          climbDegPerShot: { type: 'number', default: 0 }, // sustained muzzle rise; zero preserves the existing transient-only recoil
+          maxClimbDeg: { type: 'number', default: 0 },
+          climbRecoverDegPerS: { type: 'number', default: 8 },
+          supportedRecoilScale: { type: 'number', default: 1 }, // second hand scales both the snap and accumulated climb
         },
 
         init: function () {
           this.recoilTimer = 0; // ms remaining on the current fire-recoil kick
+          this.recoilClimbDeg = 0; // persistent upward drift accumulated by sustained fire
           this.heat = 0; // 0..1 barrel temperature — how hard this barrel has been worked lately
           this.sinceLastShot = Infinity;
           this.curlRemaining = 0; // puffs still to come in the post-shooting curl
           this.curlTimer = 0;
+          this.automatic = false;
+          this.automaticTimer = 0;
 
           this._origin = new THREE.Vector3();
           this._quat = new THREE.Quaternion();
@@ -310,6 +767,7 @@
           this.sinceLastShot += dtSeconds * 1000;
           this.heat = Math.max(this.heat - GUN_HEAT_DECAY_PER_S * dtSeconds, 0);
           this.updateRecoil(dtSeconds);
+          this.updateAutomatic(dtSeconds);
           this.updateBarrelSmoke(dtSeconds);
 
           // A barrel that's just been fired is hot enough to light a
@@ -320,17 +778,26 @@
           if (source) source.hot = this.heat > MUZZLE_HOT_THRESHOLD;
         },
 
-        // Eases the kick back down to zero. The kick itself is handed
-        // to holsterable, which composes it into the held pose — a
-        // gun that's been dropped or holstered mid-recovery just stops
-        // having its pose written at all, which is exactly right.
+        // Composes the quick per-shot snap with persistent muzzle
+        // climb. The climb stays put while automatic fire continues,
+        // then settles back once the burst ends. A hand on the support
+        // grip reduces both parts, so bracing changes the result rather
+        // than merely changing which line aims the gun.
         updateRecoil: function (dtSeconds) {
-          if (this.recoilTimer <= 0) return;
-
           this.recoilTimer = Math.max(this.recoilTimer - dtSeconds * 1000, 0);
           var holsterable = this.el.components.holsterable;
           if (holsterable) {
-            holsterable.extraPitchDeg = this.data.kickDeg * (this.recoilTimer / this.data.recoverMs);
+            var supportScale = holsterable.supportHand ? this.data.supportedRecoilScale : 1;
+            var quietMs = this.data.fireIntervalMs > 0 ? this.data.fireIntervalMs * 1.5 : this.data.recoverMs;
+            if (this.sinceLastShot > quietMs && this.recoilClimbDeg < 0) {
+              this.recoilClimbDeg = Math.min(
+                this.recoilClimbDeg + this.data.climbRecoverDegPerS * dtSeconds,
+                0
+              );
+            }
+
+            var kick = this.data.kickDeg * (this.recoilTimer / this.data.recoverMs);
+            holsterable.extraPitchDeg = this.recoilClimbDeg + kick * supportScale;
           }
         },
 
@@ -372,6 +839,33 @@
         // trigger pull on a held gun means fire.
         onTriggerUse: function () {
           this.fire();
+          if (this.data.fireIntervalMs > 0) {
+            this.automatic = true;
+            this.automaticTimer = this.data.fireIntervalMs;
+          }
+        },
+
+        // Automatic fire reads the hand's existing triggerHeld state
+        // rather than installing timers or teaching hand-rig about a
+        // special weapon. Dropping the gun or releasing the trigger
+        // stops the stream on the next frame, even after it has left
+        // the hand's heldObjects list.
+        updateAutomatic: function (dtSeconds) {
+          if (!this.automatic) return;
+
+          var holsterable = this.el.components.holsterable;
+          var handRig = holsterable && holsterable.hand && holsterable.hand.components['hand-rig'];
+          if (!holsterable || holsterable.state !== 'held' || !handRig || !handRig.triggerHeld) {
+            this.automatic = false;
+            this.automaticTimer = 0;
+            return;
+          }
+
+          this.automaticTimer -= dtSeconds * 1000;
+          if (this.automaticTimer <= 0) {
+            this.fire();
+            this.automaticTimer += this.data.fireIntervalMs;
+          }
         },
 
         // Raycasts from the muzzle at everything wearing the
@@ -431,6 +925,18 @@
 
         playMuzzleEffects: function () {
           this.recoilTimer = this.data.recoverMs;
+          var holsterable = this.el.components.holsterable;
+          var supportScale = holsterable && holsterable.supportHand ? this.data.supportedRecoilScale : 1;
+          if (this.data.climbDegPerShot > 0) {
+            // Negative local X is muzzle-up in the established held
+            // pose. The scaled cap means a foregrip does not merely
+            // take longer to reach the same bad endpoint: it arrests
+            // the burst at a genuinely lower angle.
+            this.recoilClimbDeg = Math.max(
+              this.recoilClimbDeg - this.data.climbDegPerShot * supportScale,
+              -this.data.maxClimbDeg * supportScale
+            );
+          }
           this.heat = Math.min(this.heat + this.data.heatPerShot, 1);
           this.sinceLastShot = 0;
           this.curlRemaining = 0; // still shooting — the curl waits
@@ -641,17 +1147,15 @@
 
       // defineItem('shotgun', ...) — left behind in game.js during
       // the original items-guns.js split, moved here on a later pass.
-      // The same declaration with different numbers, which is the
-      // point of firearm having a schema at all: a pistol is
-      // pellets:1, coneDeg:0, and the spread is the only thing that
-      // makes this a shotgun.
+      // The same firearm declaration with shotgun starting values;
+      // cuttable-shotgun derives the live values from however much
+      // tube remains after that.
       //
       // supportGrip/supportRadius are what put a second place to hold
       // it at the forend: grip near there with your off hand and the
       // barrel points along the line between your two hands instead of
-      // wherever one wrist happens to be. Steadier by geometry rather
-      // than by damping, and only the hand on the actual grip can fire
-      // it.
+      // wherever one wrist happens to be. It also scales the actual
+      // recoil now, and only the hand on the trigger grip can fire it.
       defineItem('shotgun', function (el, slotId) {
         el.setAttribute('holsterable', {
           holsterSelector: '#' + slotId,
@@ -666,7 +1170,33 @@
           supportRadius: 0.22,
           maxThrowSpeed: 7,
         });
-        el.setAttribute('firearm', { pellets: 6, coneDeg: 4, kickDeg: -16, recoverMs: 200, heatPerShot: 0.4 });
+        el.setAttribute('firearm', {
+          pellets: 5,
+          coneDeg: 1.5,
+          kickDeg: -10,
+          recoverMs: 240,
+          heatPerShot: 0.4,
+          climbDegPerShot: 5,
+          maxClimbDeg: 5,
+          climbRecoverDegPerS: 14,
+          supportedRecoilScale: 0.25,
+        });
         el.setAttribute('ignition-source', { tipSelector: '.muzzle' });
         el.setAttribute('boxy-shotgun', '');
+        el.setAttribute('cuttable-shotgun', '');
+      });
+
+      defineItem('handsaw', function (el, slotId) {
+        el.setAttribute('holsterable', {
+          holsterSelector: '#' + slotId,
+          itemSize: 'medium',
+          holsterRotation: { x: -75, y: 0, z: -8 },
+          heldRotation: { x: -90, y: 0, z: 0 },
+          grabRadius: 0.18,
+          grabSpan: { x: 0, y: 0, z: -0.48 },
+          comOffset: { x: 0, y: 0, z: -0.2 },
+          maxThrowSpeed: 7,
+        });
+        el.setAttribute('boxy-handsaw', '');
+        el.setAttribute('handsaw', '');
       });
