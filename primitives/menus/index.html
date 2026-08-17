@@ -428,6 +428,13 @@
             <a-entity class="pm-target" geometry="primitive: plane; width: 0.92; height: 0.16" material="color: #182238" menu-item="value: vignette-radius-larger; label: Larger vignette" position="0 -1.74 0">
               <a-text value="Larger vignette" align="center" color="#eee" width="2.5" position="0 0 0.01"></a-text>
             </a-entity>
+
+            <a-entity class="pm-target" geometry="primitive: plane; width: 0.92; height: 0.16" material="color: #182238" menu-item="value: teleport-left; label: Teleport hand left" position="0 -1.98 0">
+              <a-text value="Teleport hand left" align="center" color="#eee" width="2.5" position="0 0 0.01"></a-text>
+            </a-entity>
+            <a-entity class="pm-target" geometry="primitive: plane; width: 0.92; height: 0.16" material="color: #182238" menu-item="value: teleport-right; label: Teleport hand right" position="0 -2.2 0">
+              <a-text value="Teleport hand right" align="center" color="#eee" width="2.5" position="0 0 0.01"></a-text>
+            </a-entity>
           </a-entity>
         </a-entity>
       </template>
@@ -669,6 +676,8 @@
         else if (value === 'station-wall') locomotion.goToStation('wall');
         else if (value === 'station-pedestal') locomotion.goToStation('pedestal');
         else if (value === 'station-right') locomotion.goToStation('right');
+        else if (value === 'teleport-left') locomotion.setTeleportHand('left');
+        else if (value === 'teleport-right') locomotion.setTeleportHand('right');
         else if (value === 'page-controls') return;
       }
 

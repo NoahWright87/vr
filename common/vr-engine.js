@@ -98,6 +98,7 @@
       this._teleportAimX = 0;
       this._teleportAimY = 0;
       this._teleportAimMag = 0;
+      this._teleportHand = 'left';
 
       var self = this;
       var sceneEl = this.el.sceneEl;
@@ -215,8 +216,10 @@
         return;
       }
 
-      var axisX = this.leftAxes[2] !== undefined ? this.leftAxes[2] : this.leftAxes[0] || 0;
-      var axisY = this.leftAxes[3] !== undefined ? this.leftAxes[3] : this.leftAxes[1] || 0;
+      var hand = this.getTeleportHand();
+      var axes = hand === 'right' ? this.rightAxes : this.leftAxes;
+      var axisX = axes[2] !== undefined ? axes[2] : axes[0] || 0;
+      var axisY = axes[3] !== undefined ? axes[3] : axes[1] || 0;
       var active = this.data.moveMode === 'teleport' && (Math.abs(axisX) > this.data.teleportCommitDeadzone || Math.abs(axisY) > this.data.teleportCommitDeadzone);
       if (!active) {
         this.teleportPreview.setAttribute('visible', false);
@@ -244,6 +247,14 @@
       targetPos.y = 0.02;
       this.teleportPreview.object3D.position.copy(targetPos);
       this.teleportPreview.setAttribute('visible', true);
+    },
+
+    getTeleportHand: function () {
+      return this._teleportHand === 'right' ? 'right' : 'left';
+    },
+
+    setTeleportHand: function (hand) {
+      this._teleportHand = hand === 'right' ? 'right' : 'left';
     },
 
     applySmoothMove: function (deltaMs) {
@@ -284,8 +295,9 @@
         this.applySmoothMove(delta);
       } else if (this.data.moveMode === 'teleport') {
         this.updateTeleportPreview();
-        var moveX = this.leftAxes[2] !== undefined ? this.leftAxes[2] : this.leftAxes[0] || 0;
-        var moveY = this.leftAxes[3] !== undefined ? this.leftAxes[3] : this.leftAxes[1] || 0;
+        var teleportAxes = this.getTeleportHand() === 'right' ? this.rightAxes : this.leftAxes;
+        var moveX = teleportAxes[2] !== undefined ? teleportAxes[2] : teleportAxes[0] || 0;
+        var moveY = teleportAxes[3] !== undefined ? teleportAxes[3] : teleportAxes[1] || 0;
         var stickDistance = Math.hypot(moveX, moveY);
 
         if (Math.abs(moveX) < this.data.teleportCommitDeadzone && Math.abs(moveY) < this.data.teleportCommitDeadzone) {
