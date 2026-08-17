@@ -98,6 +98,9 @@
           this.recoilRotation = new THREE.Vector3();
           this._recoilScratchPosition = new THREE.Vector3();
           this._recoilScratchRotation = new THREE.Vector3();
+          this.gripAnchorWorld = new THREE.Vector3(); // a scenery brace pins the grip child here while its trigger is held
+          this.gripAnchored = false;
+          this._gripAnchorLocal = new THREE.Vector3();
           this.recoilReturnRate = 8;
           this._ghostSeeded = false;
           this._visualBase = null; // the cosmetic hand mesh's own resting transform, captured once
@@ -173,6 +176,11 @@
             this._drift.y * DRIFT_POSITION_GAIN + this.recoilPosition.y,
             this._drift.z * DRIFT_POSITION_GAIN + this.recoilPosition.z
           );
+          if (this.gripAnchored) {
+            this._gripAnchorLocal.copy(this.gripAnchorWorld);
+            this.el.object3D.worldToLocal(this._gripAnchorLocal);
+            grip.position.copy(this._gripAnchorLocal);
+          }
           grip.rotation.set(
             ((w.x - this._drift.y * DRIFT_ROTATION_GAIN) * Math.PI) / 180 + this.recoilRotation.x,
             ((w.y + this._drift.x * DRIFT_ROTATION_GAIN) * Math.PI) / 180 + this.recoilRotation.y,
@@ -180,6 +188,15 @@
           );
 
           this.applyToVisual(grip);
+        },
+
+        setGripAnchor: function (worldPoint) {
+          this.gripAnchorWorld.copy(worldPoint);
+          this.gripAnchored = true;
+        },
+
+        clearGripAnchor: function () {
+          this.gripAnchored = false;
         },
 
         // Firearms calculate kick in world space from the barrel and
@@ -508,6 +525,17 @@
         onTriggerDown: function () {
           this.triggerHeld = true;
 
+          // The trigger on a hand already holding a support grip is a
+          // separate control from the gun's firing trigger. Firearms
+          // use it to clamp that hand to nearby scenery; bows and any
+          // other support object simply ignore the generic dispatch.
+          if (this.supportObjects.length) {
+            this.supportObjects.forEach(function (objEl) {
+              useHeldObject(objEl, 'onSupportTriggerUse');
+            });
+            return;
+          }
+
           // A bowstring is drawn with the finger that would shoot,
           // which is both how a bow works and what keeps GRIP free to
           // mean "take the arrow off it". Checked before the press is
@@ -553,6 +581,9 @@
         // pickup from something lying right there.
         onTriggerUp: function () {
           this.triggerHeld = false;
+          this.supportObjects.forEach(function (objEl) {
+            useHeldObject(objEl, 'onSupportTriggerEnd');
+          });
           this.dropSupport('trigger');
         },
 

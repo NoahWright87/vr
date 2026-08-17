@@ -757,6 +757,8 @@
           recoilReturnRate: { type: 'number', default: RECOIL_RETURN_RATE },
           supportedRiseScale: { type: 'number', default: 0.32 },
           supportedBackScale: { type: 'number', default: 0.75 },
+          bracedRiseScale: { type: 'number', default: 0.08 },
+          bracedBackScale: { type: 'number', default: 0.28 },
           heatPerShot: { type: 'number', default: 0.22 },
           fireIntervalMs: { type: 'number', default: 0 }, // zero is semi-auto; otherwise milliseconds between shots while held
         },
@@ -768,6 +770,10 @@
           this.curlTimer = 0;
           this.automatic = false;
           this.automaticTimer = 0;
+          this.braced = false;
+          this.braceHand = null;
+          this.previewSurface = null;
+          this.bracePreviewDistance = 0.16;
 
           this._origin = new THREE.Vector3();
           this._quat = new THREE.Quaternion();
@@ -780,6 +786,21 @@
           this._positionImpulse = new THREE.Vector3();
           this._rotationImpulse = new THREE.Vector3();
           this._supportImpulse = new THREE.Vector3();
+          this._supportPosition = new THREE.Vector3();
+          this._trackedSupportPosition = new THREE.Vector3();
+          this._braceCandidate = new THREE.Vector3();
+          this._bracePoint = new THREE.Vector3();
+          this._braceDots = [];
+          this._braceIndicatorColor = '#ffe066';
+          this.createBraceIndicator();
+        },
+
+        remove: function () {
+          this.endBrace();
+          this._braceDots.forEach(function (dot) {
+            if (dot.parentNode) dot.parentNode.removeChild(dot);
+          });
+          this._braceDots = [];
         },
 
         tick: function (time, dt) {
@@ -788,6 +809,7 @@
           this.heat = Math.max(this.heat - GUN_HEAT_DECAY_PER_S * dtSeconds, 0);
           this.updateAutomatic(dtSeconds);
           this.updateBarrelSmoke(dtSeconds);
+          this.updateBracePreview();
 
           // A barrel that's just been fired is hot enough to light a
           // cigar off. firearm doesn't know what a cigar is — it only
@@ -795,6 +817,106 @@
           // ignition-source) and lets world-systems do the matching.
           var source = this.el.components['ignition-source'];
           if (source) source.hot = this.heat > MUZZLE_HOT_THRESHOLD;
+        },
+
+        createBraceIndicator: function () {
+          if (!this.el.sceneEl) return;
+          for (var i = 0; i < 6; i++) {
+            var dot = document.createElement('a-sphere');
+            dot.setAttribute('radius', i === 5 ? 0.012 : 0.007);
+            dot.setAttribute('material', 'color: #ffe066; shader: flat; opacity: 0.95');
+            dot.object3D.visible = false;
+            this.el.sceneEl.appendChild(dot);
+            this._braceDots.push(dot);
+          }
+        },
+
+        setBraceIndicator: function (from, to, color) {
+          if (color !== this._braceIndicatorColor) {
+            this._braceIndicatorColor = color;
+            this._braceDots.forEach(function (dot) {
+              dot.setAttribute('material', 'color: ' + color + '; shader: flat; opacity: 0.95');
+            });
+          }
+          for (var i = 0; i < this._braceDots.length; i++) {
+            var t = (i + 1) / this._braceDots.length;
+            this._braceDots[i].object3D.position.copy(from).lerp(to, t);
+            this._braceDots[i].object3D.visible = true;
+          }
+        },
+
+        hideBraceIndicator: function () {
+          this._braceDots.forEach(function (dot) {
+            dot.object3D.visible = false;
+          });
+        },
+
+        updateBracePreview: function () {
+          var holsterable = this.el.components.holsterable;
+          var supportHand = holsterable && holsterable.supportHand;
+          if (!holsterable || holsterable.state !== 'held' || !supportHand || !holsterable.data.supportAims) {
+            this.endBrace();
+            this.previewSurface = null;
+            this.hideBraceIndicator();
+            return;
+          }
+
+          if (this.braced) {
+            if (supportHand !== this.braceHand) {
+              this.endBrace();
+              return;
+            }
+            supportHand.object3D.getWorldPosition(this._trackedSupportPosition);
+            this.setBraceIndicator(this._trackedSupportPosition, this._bracePoint, '#86ff72');
+            return;
+          }
+
+          var supportGrip = gripObjectOf(supportHand);
+          supportGrip.getWorldPosition(this._supportPosition);
+          var surfaces = document.querySelectorAll('[gun-brace-surface]');
+          var nearest = null;
+          var nearestDistance = Infinity;
+          for (var i = 0; i < surfaces.length; i++) {
+            var surface = surfaces[i].components['gun-brace-surface'];
+            if (!surface) continue;
+            surface.nearestPoint(this._supportPosition, this._braceCandidate);
+            var distance = this._braceCandidate.distanceTo(this._supportPosition);
+            if (distance < nearestDistance) {
+              nearestDistance = distance;
+              nearest = surface;
+              this._bracePoint.copy(this._braceCandidate);
+            }
+          }
+
+          this.previewSurface = nearestDistance <= this.bracePreviewDistance ? nearest : null;
+          if (this.previewSurface) {
+            this.setBraceIndicator(this._supportPosition, this._bracePoint, '#ffe066');
+          } else {
+            this.hideBraceIndicator();
+          }
+        },
+
+        onSupportTriggerUse: function () {
+          var holsterable = this.el.components.holsterable;
+          if (this.braced || !this.previewSurface || !holsterable || !holsterable.supportHand) return;
+          var handRig = holsterable.supportHand.components['hand-rig'];
+          if (!handRig || !handRig.setGripAnchor) return;
+          this.braced = true;
+          this.braceHand = holsterable.supportHand;
+          handRig.setGripAnchor(this._bracePoint);
+        },
+
+        onSupportTriggerEnd: function () {
+          this.endBrace();
+        },
+
+        endBrace: function () {
+          if (this.braceHand) {
+            var handRig = this.braceHand.components['hand-rig'];
+            if (handRig && handRig.clearGripAnchor) handRig.clearGripAnchor();
+          }
+          this.braced = false;
+          this.braceHand = null;
         },
 
         // Smoke happens after the shooting, not during it. Once the
@@ -964,10 +1086,13 @@
             }
           }
 
+          var braced = supported && this.braced;
           var shotVariation = 1 + (Math.random() * 2 - 1) * this.data.recoilJitter;
-          var back = this.data.recoilBack * shotVariation * (supported ? this.data.supportedBackScale : 1);
+          var back = this.data.recoilBack * shotVariation *
+            (braced ? this.data.bracedBackScale : (supported ? this.data.supportedBackScale : 1));
           var rise = (this.data.recoilRiseDeg * Math.PI / 180) *
-            heightScale * alignmentScale * shotVariation * (supported ? this.data.supportedRiseScale : 1);
+            heightScale * alignmentScale * shotVariation *
+            (braced ? this.data.bracedRiseScale : (supported ? this.data.supportedRiseScale : 1));
           var sideways = (Math.random() * 2 - 1) * this.data.recoilJitter;
           var verticalNoise = (Math.random() * 2 - 1) * this.data.recoilJitter;
           var rollNoise = (Math.random() * 2 - 1) * this.data.recoilJitter;
@@ -984,7 +1109,7 @@
           this._rotationImpulse.addScaledVector(this._forward, rise * 0.16 * rollNoise);
           handRig.addRecoilImpulse(this._positionImpulse, this._rotationImpulse, this.data.recoilReturnRate);
 
-          if (!supported) return;
+          if (!supported || braced) return;
           var supportRig = holsterable.supportHand.components['hand-rig'];
           if (!supportRig || !supportRig.addRecoilImpulse) return;
 
