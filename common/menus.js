@@ -1,3 +1,5 @@
+import { chooseProjectedMenuMode } from './projected-menu-mode.js';
+
   AFRAME.registerComponent('menu-item', {
     schema: {
       value: { type: 'string' },
@@ -11,35 +13,41 @@
       this.onMouseLeave = this.onMouseLeave.bind(this);
       this.onClick = this.onClick.bind(this);
       this.flashTimer = null;
+      this.hovered = false;
+      this.flashing = false;
       this.el.addEventListener('mouseenter', this.onMouseEnter);
       this.el.addEventListener('mouseleave', this.onMouseLeave);
       this.el.addEventListener('click', this.onClick);
     },
 
     onMouseEnter: function () {
-      this.el.setAttribute('material', 'color', this.data.hoverColor);
-      this.el.setAttribute('scale', '1.05 1.05 1.05');
+      this.hovered = true;
+      // The clickable mesh is also the raycast surface. Transforming it as
+      // feedback can invalidate the cursor's current intersection and cause
+      // enter/leave to alternate, especially with a tracked hand near an edge.
+      if (!this.flashing) this.el.setAttribute('material', 'color', this.data.hoverColor);
     },
 
     onMouseLeave: function () {
-      this.el.setAttribute('material', 'color', this.baseColor);
-      this.el.setAttribute('scale', '1 1 1');
+      this.hovered = false;
+      if (!this.flashing) this.el.setAttribute('material', 'color', this.baseColor);
     },
 
     onClick: function () {
       var self = this;
+      this.flashing = true;
       this.el.setAttribute('material', 'color', '#ffd54a');
-      this.el.setAttribute('scale', '1.08 1.08 1.08');
       clearTimeout(this.flashTimer);
       this.flashTimer = setTimeout(function () {
         if (!self.el.parentNode) return;
-        self.el.setAttribute('material', 'color', self.baseColor);
-        self.el.setAttribute('scale', '1 1 1');
+        self.flashing = false;
+        self.el.setAttribute('material', 'color', self.hovered ? self.data.hoverColor : self.baseColor);
       }, 140);
       this.el.emit('menu-item-select', { value: this.data.value, label: this.data.label }, true);
     },
 
     remove: function () {
+      clearTimeout(this.flashTimer);
       this.el.removeEventListener('mouseenter', this.onMouseEnter);
       this.el.removeEventListener('mouseleave', this.onMouseLeave);
       this.el.removeEventListener('click', this.onClick);
@@ -161,6 +169,8 @@
       lookAwayThreshold: { default: 0.3 },
       lookAwayDelay: { default: 2500 },
       pokeCooldown: { default: 400 },
+      modeHysteresis: { default: 0.12 },
+      orientationGrace: { default: 250 },
     },
 
     init: function () {
@@ -172,6 +182,7 @@
       this.visible = false;
       this.lastItemsMode = null;
       this.lookAwaySince = null;
+      this.orientationLostSince = null;
       this.suppressPointing = false;
       this.cameraEl = document.querySelector('a-camera');
 
@@ -261,8 +272,23 @@
       var toCam = camPos.clone().sub(pos).normalize();
       var dotUp = normal.dot(new THREE.Vector3(0, 1, 0));
       var dotCam = normal.dot(toCam);
-      if (dotUp > this.data.faceupThreshold) return 'laser';
-      if (dotCam > this.data.facecamThreshold) return 'poke';
+      // Tracked wrists naturally wobble around the boundary between the poke
+      // and laser poses. Keep the current layout through a deadband so the
+      // panel cannot move out from under a live raycast every other frame.
+      var nextMode = chooseProjectedMenuMode(this.mode, dotUp, dotCam, {
+        faceupThreshold: this.data.faceupThreshold,
+        facecamThreshold: this.data.facecamThreshold,
+        hysteresis: this.data.modeHysteresis,
+      });
+      if (nextMode) {
+        this.orientationLostSince = null;
+        return nextMode;
+      }
+      if (this.mode === 'laser' || this.mode === 'poke') {
+        var now = performance.now();
+        if (!this.orientationLostSince) this.orientationLostSince = now;
+        if (now - this.orientationLostSince < this.data.orientationGrace) return this.mode;
+      }
       return null;
     },
 
