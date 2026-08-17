@@ -34,7 +34,10 @@
       var RECOIL_BACK_METERS = 0.025;
       var RECOIL_RISE_DEG = 5;
       var RECOIL_JITTER = 0.18;
-      var RECOIL_RETURN_RATE = 7; // exponential settling rate per second
+      // Exponential settling rate per second. 2.4 gives the pistol a
+      // roughly 290 ms half-life: long enough to read in-headset while
+      // still returning cleanly before a deliberately paced next shot.
+      var RECOIL_RETURN_RATE = 2.4;
       var TRACER_COLOR = '#ffe066';
       var TRACER_RADIUS = 0.004; // meters
       var TRACER_LIFETIME_MS = 80;
@@ -357,7 +360,7 @@
           // progressively worse brace as the barrel gets shorter.
           firearm.data.recoilBack = 0.04 + 0.025 * shortness;
           firearm.data.recoilRiseDeg = 8 + 8 * shortness;
-          firearm.data.recoilReturnRate = 4.8 - 0.8 * shortness;
+          firearm.data.recoilReturnRate = 1.8 - 0.4 * shortness;
           firearm.data.supportedRiseScale = 0.25 + 0.35 * shortness;
           firearm.data.supportedBackScale = 0.7 + 0.12 * shortness;
 
@@ -681,7 +684,7 @@
           coneDeg: 0,
           recoilBack: 0.065,
           recoilRiseDeg: 11,
-          recoilReturnRate: 3.2,
+          recoilReturnRate: 1.1,
           supportedRiseScale: 0.28,
           supportedBackScale: 0.72,
           heatPerShot: 0.5,
@@ -713,7 +716,7 @@
           recoilBack: 0.014,
           recoilRiseDeg: 2.4,
           recoilJitter: 0.28,
-          recoilReturnRate: 10.5,
+          recoilReturnRate: 4.5,
           heatPerShot: 0.08,
           fireIntervalMs: 85,
           supportedRiseScale: 0.35,
@@ -1227,7 +1230,7 @@
           coneDeg: 0.6,
           recoilBack: 0.04,
           recoilRiseDeg: 8,
-          recoilReturnRate: 4.8,
+          recoilReturnRate: 1.8,
           heatPerShot: 0.4,
           supportedRiseScale: 0.25,
           supportedBackScale: 0.7,
