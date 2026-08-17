@@ -12,6 +12,7 @@
       this.onMouseEnter = this.onMouseEnter.bind(this);
       this.onMouseLeave = this.onMouseLeave.bind(this);
       this.onClick = this.onClick.bind(this);
+      this.flashTimer = null;
       this.el.addEventListener('mouseenter', this.onMouseEnter);
       this.el.addEventListener('mouseleave', this.onMouseLeave);
       this.el.addEventListener('click', this.onClick);
@@ -28,6 +29,15 @@
     },
 
     onClick: function () {
+      var self = this;
+      this.el.setAttribute('material', 'color', '#ffd54a');
+      this.el.setAttribute('scale', '1.08 1.08 1.08');
+      clearTimeout(this.flashTimer);
+      this.flashTimer = setTimeout(function () {
+        if (!self.el.parentNode) return;
+        self.el.setAttribute('material', 'color', self.baseColor);
+        self.el.setAttribute('scale', '1 1 1');
+      }, 140);
       this.el.emit('menu-item-select', { value: this.data.value, label: this.data.label }, true);
     },
 
@@ -55,6 +65,11 @@
     init: function () {
       this.pages = Array.prototype.slice.call(this.el.querySelectorAll('[data-menu-page]'));
       this.currentPage = null;
+      this.pageOffsets = {
+        main: 0,
+        help: 0.01,
+        controls: 0.02,
+      };
       this.showPage(this.data.defaultPage);
     },
 
@@ -63,6 +78,7 @@
       this.pages.forEach(function (page) {
         var matches = page.getAttribute('data-menu-page') === nextPage;
         page.setAttribute('visible', matches);
+        if (matches) page.object3D.position.z = this.pageOffsets[nextPage] || 0;
       });
       this.currentPage = nextPage;
     },

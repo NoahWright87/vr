@@ -1662,7 +1662,7 @@
         // wall too. Toggles open/closed on repeat ❔ clicks, same as
         // the pedestal's tutorial; auto-hides if the main menu closes.
         var wallSidecar = document.getElementById('wall-sidecar-template').content.cloneNode(true).firstElementChild;
-        wallSidecar.setAttribute('position', '1.125 0 0.015');
+        wallSidecar.setAttribute('position', '1.22 0 0.035');
         wallScreenTrigger.parentNode.appendChild(wallSidecar);
         var wallSidecarChromeSlot = wallSidecar.querySelector('.menu-chrome-slot');
         buildMenuChrome(wallSidecarChromeSlot.parentNode, {
@@ -1703,6 +1703,7 @@
         var pedestalPm = pedestalButton.components['projected-menu'];
         var pedestalTutorial = document.getElementById('pedestal-tutorial-template').content.cloneNode(true).firstElementChild;
         pedestalPm.panelEl.appendChild(pedestalTutorial);
+        pedestalTutorial.object3D.position.z = 0.03;
         var tutorialArrowEl = pedestalTutorial.querySelector('.tutorial-arrow');
         var tutorialTextEl = pedestalTutorial.querySelector('.tutorial-text');
         var tutorialIndicatorEl = pedestalTutorial.querySelector('.tutorial-page-indicator');
