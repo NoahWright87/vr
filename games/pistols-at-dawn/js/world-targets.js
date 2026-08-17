@@ -162,6 +162,8 @@
         init: function () {
           placeInArc(this.el, this.data.angle, this.data.distance);
 
+          this.paused = false;
+
           this.targets = [];
           var self = this;
           this.onTargetFallen = makeGroupResetHandler(function () { return self.targets; });
@@ -212,8 +214,13 @@
         },
 
         tick: function (time, dt) {
+          if (this.paused) return;
           var dtSeconds = Math.min((dt || 16) / 1000, 0.05);
           this.hub.object3D.rotation.z += ((this.data.speed * Math.PI) / 180) * dtSeconds;
+        },
+
+        setPaused: function (paused) {
+          this.paused = !!paused;
         },
       });
 

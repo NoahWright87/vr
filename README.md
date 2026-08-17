@@ -1,8 +1,6 @@
 # vr
 
-A collection of small WebXR prototypes for the Meta Quest 2 browser, built with [A-Frame](https://aframe.io) via CDN — no build step, no npm install. Each prototype is a single, self-contained HTML file.
-
-> **Note:** both of those are under reconsideration for `pistols-at-dawn`, which outgrew a single file (see its own `js/` folder and [DESIGN.md](DESIGN.md#file-structure-outgrowing-single-file)) and is where a future shared library across prototypes — and the build step that would come with one — is most likely to start.
+A collection of small WebXR prototypes for the Meta Quest 2 browser, built with [A-Frame](https://aframe.io) and a deliberately small Vite multi-page build. The smaller prototypes remain mostly single-file experiments; Pistols at Dawn and the shared primitives have deliberately outgrown that convention.
 
 Deployed as a static site (planned: `vr.noahwright.dev` via Netlify).
 
@@ -10,11 +8,24 @@ Deployed as a static site (planned: `vr.noahwright.dev` via Netlify).
 
 ```
 /index.html                   landing page linking to every prototype and primitive
-/games/<name>/index.html      one folder per prototype, fully self-contained
-/primitives/<name>/index.html one folder per reusable interaction primitive, fully self-contained
+/games/<name>/index.html      one folder per prototype
+/primitives/<name>/index.html one folder per reusable interaction showcase
+/common/menus.js              shared menu rows, pages, chrome, and projection
+/common/watch-menu.js         shared wrist watch and pointing interaction
+/common/locomotion.js         shared locomotion component
+/vite.config.js               Vite entries and runtime-asset copying
 ```
 
-To add a new prototype: create `games/<name>/index.html`, and add a link to it from the root `index.html`. Nothing else needs to change — each game manages its own A-Frame version, components, and assets.
+To add a new prototype: create `games/<name>/index.html`, add it to the Vite inputs in `vite.config.js`, add a link from the root `index.html`, and import only the shared modules it uses. `watch-menu.js` imports its menu dependency; locomotion remains independent.
+
+## Development
+
+```sh
+npm install
+npm run dev
+```
+
+`npm run build` produces the deployable site in `dist/`, and `npm run preview` serves that production build locally. Existing prototype URLs are preserved by the multi-page inputs.
 
 A-Frame itself is vendored into `/vendor` rather than loaded from the `aframe.io` CDN — see [`vendor/README.md`](vendor/README.md) for why and how to bump versions.
 
@@ -50,7 +61,7 @@ The core idea being tested: **punching is the locomotion**, not a separate joyst
 - An optional in-view **stats HUD** (menu, MORE tab → Show Stats) shows the last punch/uppercut's axis and whether it fired via full extension or stopping, max speed / hand distance / head distance, computed magnitude (and, if the lock-on distance cap kicked in, the capped value), lock/memory/hit-assist state, and distance to target — for understanding what the targeting system is actually doing while playtesting.
 - A separate, opt-in **live debug HUD** (menu, DEBUG tab → Live Debug HUD) shows the raw handful of numbers the detection logic reads *every frame*, continuously, rather than a post-punch snapshot: both hands' raw vs. head-relative speed and current forward/overhead axis state (`A`/`E`/`H` for armed/extending/holdForReset), the live stop-speed threshold, the turn filter percentage, the calibrated reach values, and the active hit-assist mode. This is meant to make a confusing in-headset moment legible on the spot, or at least screenshot-able, instead of guessed at from outside the headset.
 
-**Menu:** press any face button (A/B on the right controller, X/Y on the left) to open it — grip used to, but got pressed by accident too often during normal punching. A bigger panel spawns fixed in world space, a couple feet in front of wherever you're currently standing and facing, oriented back toward you; press a face button again to close it. Two things happen structurally while it's open: punching and cube-popping are disabled and rig physics freeze entirely (gated on a shared `menuOpen` flag), the always-on debug line/punch label and any opt-in stats/live-debug HUDs are hidden (they'd otherwise visually clutter the panel, and were reported as possibly blocking menu buttons), and the *other* hand (never the one that pressed the face button) gets a small laser pointer + cursor to click menu buttons with. Because only one hand can ever be an active pointer at a time, there's no way for an absent-minded trigger pull on the "wrong" hand to register a click on whatever it happened to be aimed at. The laser stops exactly at whatever it's pointing at (a `laser-beam` component rescales it to the raycaster's live hit distance every frame). **A genuinely important fix, found by reading A-Frame 1.6.0's actual `cursor` component source rather than assuming**: the hand `cursor` components now explicitly bind `downEvents`/`upEvents` to the real `triggerdown`/`triggerup` controller events — left at their default (empty), `cursor` instead listens for *mouse/touch events on the canvas*, and a real trigger pull only ever produced a click via whatever synthetic click a given WebXR browser happens to fire on "select" for accessibility-fallback purposes, which is exactly the kind of thing that would register "some of the time" — the actual cause of a round of "the menu buttons don't work reliably" playtesting feedback. The small `+`/`-` adjust buttons were also enlarged, since hand tremor during a trigger pull nudging the raycast off a small target between press and release compounds the same problem. The trigger's normal "quick reset" job is suspended while the menu is open. Content is organized into tabs, built with a small generic `createTabbedPanel` helper that has nothing Punch-Pop-specific in it, meant to be copy-pasted into future prototypes that need tabs (this repo has no build step or shared module system, so "reusable" means "self-contained enough to lift wholesale," not an import):
+**Menu:** press any face button (A/B on the right controller, X/Y on the left) to open it — grip used to, but got pressed by accident too often during normal punching. A bigger panel spawns fixed in world space, a couple feet in front of wherever you're currently standing and facing, oriented back toward you; press a face button again to close it. Two things happen structurally while it's open: punching and cube-popping are disabled and rig physics freeze entirely (gated on a shared `menuOpen` flag), the always-on debug line/punch label and any opt-in stats/live-debug HUDs are hidden (they'd otherwise visually clutter the panel, and were reported as possibly blocking menu buttons), and the *other* hand (never the one that pressed the face button) gets a small laser pointer + cursor to click menu buttons with. Because only one hand can ever be an active pointer at a time, there's no way for an absent-minded trigger pull on the "wrong" hand to register a click on whatever it happened to be aimed at. The laser stops exactly at whatever it's pointing at (a `laser-beam` component rescales it to the raycaster's live hit distance every frame). **A genuinely important fix, found by reading A-Frame 1.6.0's actual `cursor` component source rather than assuming**: the hand `cursor` components now explicitly bind `downEvents`/`upEvents` to the real `triggerdown`/`triggerup` controller events — left at their default (empty), `cursor` instead listens for *mouse/touch events on the canvas*, and a real trigger pull only ever produced a click via whatever synthetic click a given WebXR browser happens to fire on "select" for accessibility-fallback purposes, which is exactly the kind of thing that would register "some of the time" — the actual cause of a round of "the menu buttons don't work reliably" playtesting feedback. The small `+`/`-` adjust buttons were also enlarged, since hand tremor during a trigger pull nudging the raycast off a small target between press and release compounds the same problem. The trigger's normal "quick reset" job is suspended while the menu is open. Content is organized into tabs, built with a small generic `createTabbedPanel` helper that has nothing Punch-Pop-specific in it. That older helper is still local to Punch Pop; new cross-experience menu work should use or extend the shared modules in `common/` rather than copy-pasting it:
 
 - **PUNCH** — Move Speed, Gravity, Max Speed, Reset Arena
 - **FOES** — Cube Count, Cube Health, cycle Cube Behavior
@@ -110,7 +121,7 @@ Tuning knobs not yet exposed in the menu (drag, room size, cube-cube collision r
 
 ## Primitives
 
-Small, reusable interaction building blocks — a design-system for VR, in the Storybook sense. Rather than one experience per primitive, each primitive category gets ONE demo covering every style/variant, so they can be compared side by side — the equivalent of a Storybook page listing every story for a component. The reusable pieces (A-Frame components) are meant to be copied into other prototypes as-is rather than reimplemented per game.
+Small, reusable interaction building blocks — a design-system for VR, in the Storybook sense. Rather than one experience per primitive, each primitive category gets ONE demo covering every style/variant, so they can be compared side by side — the equivalent of a Storybook page listing every story for a component. Reusable A-Frame components live under `common/` and are loaded directly by both the showcase and the experiences that consume them.
 
 - **[Menus](primitives/menus/index.html)** — every menu style in one scene, on a checkerboard floor (a tiny canvas-generated texture, tiled) so there's some sense of scale and footing:
   - **Fixed panel** — a menu fixed in world space. The `menu-item` component is the reusable part: attach it to any entity with its own geometry/material and it becomes a clickable row that highlights on hover and emits a `menu-item-select` event (with `{value, label}`) on click.

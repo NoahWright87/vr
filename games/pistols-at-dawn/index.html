@@ -5,7 +5,9 @@
     <title>Pistols at Dawn — WebXR Prototype</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
+    <script>window.AFRAME_CDN_ROOT = '../../vendor/aframe-1.6.0/';</script>
+    <script src="../../vendor/aframe-1.6.0/aframe-v1.6.0.min.js"></script>
+    <script type="module" src="../../common/watch-menu.js"></script>
 
     <style>
       body {
@@ -37,7 +39,48 @@
       <span>Pistols at Dawn — grip near a holstered pistol, shotgun, or your hat to draw it. Guns fire on the trigger; let go of the grip while a finger still rests on the trigger to dangle and twirl whatever you're holding. Anything can snap into any anchor it's small enough for — glance at the glowing spheres for a hint — so go ahead and wear a gun like a hat, or hide one inside your hat. Turn around for the saloon bar: knock a bottle's cap on the counter edge to open it, then tip it over your face and drink what pours out. Fling a fistful of bottles skyward and shoot them apart. Strike a match on the counter or flip open the lighter and thumb a face button, then light a cigar off either — or off a barrel you just emptied, or a well-aimed bullet. Hold a cigar at your lips to draw on it and again to blow the smoke back out; flick or twirl it to knock the ash off. Let go and re-squeeze the grip quickly to keep hold of what you had and pick up the next thing too. Grab the shotgun's forend with your off hand to steady it. Spilled beer pools where it lands and burns if you light it, fire spreads along it and sets light to whatever it reaches, and a smashed bottle spills its own — so a lit puddle and a well-thrown beer make a Molotov out of parts that were already lying about. There's a jug of water for when that goes wrong — and yes, since fire is a liquid and liquid that reaches your mouth gets swallowed, you can drink it. Throw overhand and it goes where you're looking; let go early to lob it, late to line-drive it. Both meters at the bottom of your view have opinions about your aim. Shoot the brass bell hanging over the bar and the whole counter revolves — beers, cigars, lit matches and all — to show an armoury on its back: guns on the pegs, long guns in the cradles, and a lot of empty sockets to arrange your own loadout in. There's dynamite on the low shelf: light the fuse off anything hot and throw it, or shoot a stick out of the air. Take the bow in one hand and the string in the other and pull — how far apart your hands are is your draw, and where you're looking is where it'll land. The nock holds three, and it has no opinion about what: nock arrows, or a beer, or a lit stick of dynamite. Set an arrow alight first and it'll set alight whatever it lands in. The launcher works the same way — load the tube, point it somewhere you don't like, and stand well back. There's a scoped rifle in the rack too: the glass is dark until you actually bring the eyepiece to your eye, and then it's a real magnified view of whatever the barrel is pointed at. On the shelf under the bench there's a tank with a hose: pull the trigger on it to flip the hatch open, pour something in — beer, water, or a beer you've set alight — sling it on your back, and take the nozzle off the chest clip. It sprays whatever you put in it, so it's a flamethrower, a fire hose or a way to get a whole room drunk depending on what you last poured. The hatch falls shut on its own, and an open tank of beer will catch light off anything hot. The armoury's racks refill ten seconds after you empty them; your own holsters don't, so what's on your hip is whatever you put there. Any weapon left lying loose goes up in smoke half a minute later. <a href="../../index.html">All prototypes</a></span>
     </div>
 
-    <a-scene>
+    <template id="watch-menu-template">
+      <a-entity class="watch-menu-panel" visible="false">
+        <a-entity data-menu-page="main">
+          <a-plane width="1" height="0.9" color="#101827" position="0 0 -0.01"></a-plane>
+          <a-entity class="menu-chrome-slot" data-title="" data-help="false" data-close="true" data-width="1" data-bar-y="0.32"></a-entity>
+          <a-entity
+            class="pm-target"
+            geometry="primitive: plane; width: 0.78; height: 0.2"
+            material="color: #182238"
+            menu-item="value: page-targets; label: Targets"
+            position="0 0 0"
+          >
+            <a-text value="Targets  >" align="center" color="#eee" width="2.4" position="0 0 0.01"></a-text>
+          </a-entity>
+        </a-entity>
+
+        <a-entity data-menu-page="targets" visible="false">
+          <a-plane width="1" height="1.15" color="#101827" position="0 -0.08 -0.01"></a-plane>
+          <a-entity class="menu-chrome-slot" data-title="TARGETS" data-help="false" data-close="true" data-width="1" data-bar-y="0.4"></a-entity>
+          <a-entity
+            class="pm-target"
+            geometry="primitive: plane; width: 0.78; height: 0.2"
+            material="color: #182238"
+            menu-item="value: toggle-spinner; label: Pause spinner"
+            position="0 0.08 0"
+          >
+            <a-text class="spinner-toggle-label" value="Pause spinner" align="center" color="#eee" width="2.4" position="0 0 0.01"></a-text>
+          </a-entity>
+          <a-entity
+            class="pm-target"
+            geometry="primitive: plane; width: 0.78; height: 0.2"
+            material="color: #182238"
+            menu-item="value: page-main; label: Back"
+            position="0 -0.22 0"
+          >
+            <a-text value="&lt; Back" align="center" color="#aaa" width="2.4" position="0 0 0.01"></a-text>
+          </a-entity>
+        </a-entity>
+      </a-entity>
+    </template>
+
+    <a-scene pistols-watch-menu>
       <!-- ============================================================
            RANGE
       ============================================================ -->
@@ -162,10 +205,10 @@
            findCatchingHand (used for tossing/catching) enumerate both
            hands without hardcoding left/right.
       ============================================================ -->
-      <a-entity class="hand" oculus-touch-controls="hand: left; model: false" hand-rig="visual: #hand-visual-left" proximity-haptics></a-entity>
+      <a-entity class="hand" oculus-touch-controls="hand: left; model: false" hand-rig="visual: #hand-visual-left" proximity-haptics hand-with-watch="hand: left"></a-entity>
       <a-entity id="hand-visual-left" hand-controls="hand: left; handModelStyle: lowPoly; color: #3a3a3a"></a-entity>
 
-      <a-entity class="hand" oculus-touch-controls="hand: right; model: false" hand-rig="visual: #hand-visual-right" proximity-haptics></a-entity>
+      <a-entity class="hand" oculus-touch-controls="hand: right; model: false" hand-rig="visual: #hand-visual-right" proximity-haptics hand-with-watch="hand: right"></a-entity>
       <a-entity id="hand-visual-right" hand-controls="hand: right; handModelStyle: lowPoly; color: #3a3a3a"></a-entity>
 
       <!-- ============================================================
@@ -283,28 +326,13 @@
       <!-- ============================================================
            TARGET GALLERY
            range-manager owns score/shots/HUD only. Everything else
-           here is an independent group of pop-up targets (see
-           pop-target, target-group, wheel-target, conveyor-target,
-           popper-target below) that spawns and resets itself, placed
-           at its own angle/distance in an arc in front of the player
-           so nothing crowds or hides behind anything else. Straight
-           ahead (angle 0) is the three stationary distance tiers;
-           wheels sit off to the left, conveyors off to the right, and
-           the pop-up "poppers" sit close in, front and center.
+           This proof of concept deliberately keeps one spinner gallery.
+           Its animation can be paused from Watch > Targets while its
+           individual faces remain shootable and keep their normal reset.
       ============================================================ -->
       <a-entity id="range-manager" shooting-range></a-entity>
 
-      <a-entity target-group="count: 3; distanceScale: 1"></a-entity>
-      <a-entity target-group="count: 4; distanceScale: 2"></a-entity>
-      <a-entity target-group="count: 5; distanceScale: 3"></a-entity>
-
-      <a-entity wheel-target="spokeCount: 4; wheelRadius: 0.9; speed: 45; targetScale: 0.5; angle: -50; distance: 6"></a-entity>
-      <a-entity wheel-target="spokeCount: 6; wheelRadius: 1.3; speed: 20; targetScale: 0.5; angle: -82; distance: 8.5"></a-entity>
-
-      <a-entity conveyor-target="count: 3; length: 3; speed: 0.5; direction: 1; angle: 50; distance: 6"></a-entity>
-      <a-entity conveyor-target="count: 4; length: 4; speed: 0.35; direction: -1; angle: 82; distance: 8.5"></a-entity>
-
-      <a-entity popper-target="count: 4; angle: 0; distance: 3"></a-entity>
+      <a-entity id="spinner-target" wheel-target="spokeCount: 4; wheelRadius: 0.9; speed: 45; targetScale: 0.5; angle: 0; distance: 6"></a-entity>
     </a-scene>
 
     <script src="js/core.js"></script>
@@ -320,5 +348,6 @@
     <script src="js/world-player-body.js"></script>
     <script src="js/world-saloon-bar.js"></script>
     <script src="js/world-targets.js"></script>
+    <script src="js/world-menu.js"></script>
   </body>
 </html>
