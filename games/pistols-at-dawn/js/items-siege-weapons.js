@@ -10,7 +10,48 @@
       var CANNON_CAPACITY_UNITS = 105;
       var CANNON_FUSE_MS = 4000;
       var CANNONBALL_DAMAGE = 30;
+      var SIEGE_WHEEL_RADIUS = 0.5;
       var _siegeUp = new THREE.Vector3(0, 1, 0);
+
+      // A stocked, disposable match attached to the cannon. Declared
+      // before siege-battery is registered so its opening-stock tick
+      // can always resolve the maker, even while the scene is still
+      // completing its first component initialization pass.
+      defineItem('cannon-match', function (el, slotId) {
+        el.classList.add('shootable');
+        el.setAttribute('holsterable', {
+          holsterSelector: '#' + slotId,
+          itemSize: 'small',
+          heldRotation: { x: -90, y: 0, z: 0 },
+          grabRadius: 0.1,
+          comOffset: { x: 0, y: 0, z: -0.04 },
+        });
+        el.setAttribute('boxy-match', '');
+        el.setAttribute('burnable', {
+          visual: 'boxy-match',
+          length: MATCH_LENGTH,
+          ashRate: MATCH_ASH_RATE,
+          minLength: MATCH_MIN_LENGTH,
+          ashColor: '#3a3229',
+        });
+        el.setAttribute('match', '');
+        el.setAttribute('lightable', { tipSelector: '.ember' });
+        el.setAttribute('ignition-source', { tipSelector: '.ember' });
+        el.setAttribute('cannon-match-consumable', '');
+      });
+
+      registerComponent('cannon-match-consumable', {
+        init: function () {
+          this.onBurntOut = this.onBurntOut.bind(this);
+          this.el.addEventListener('burnt-out', this.onBurntOut);
+        },
+        remove: function () {
+          this.el.removeEventListener('burnt-out', this.onBurntOut);
+        },
+        onBurntOut: function () {
+          despawnItem(this.el);
+        },
+      });
 
       function siegeBox(parent, size, position, color) {
         var el = document.createElement('a-box');
@@ -73,7 +114,7 @@
       }
 
       function addWheel(root, side) {
-        var wheel = siegeCylinder(root, 0.31, 0.065, { x: side * 0.43, y: 0.34, z: 0 }, { x: 0, y: 0, z: 90 }, '#4a3425');
+        var wheel = siegeCylinder(root, SIEGE_WHEEL_RADIUS, 0.075, { x: side * 0.43, y: 0.51, z: 0 }, { x: 0, y: 0, z: 90 }, '#4a3425');
         wheel.classList.add('siege-wheel');
         siegeCylinder(wheel, 0.055, 0.08, { x: 0, y: 0, z: 0 }, null, '#81633f');
       }
@@ -86,19 +127,19 @@
 
         addWheel(root, -1);
         addWheel(root, 1);
-        siegeBox(root, { x: 0.76, y: 0.12, z: 0.38 }, { x: 0, y: 0.39, z: 0.08 }, '#6d4d30');
-        siegeBox(root, { x: 0.14, y: 0.12, z: 0.52 }, { x: 0, y: 0.31, z: 0.36 }, '#765537');
+        siegeBox(root, { x: 0.76, y: 0.12, z: 0.38 }, { x: 0, y: 0.59, z: 0.08 }, '#6d4d30');
+        siegeBox(root, { x: 0.14, y: 0.12, z: 0.52 }, { x: 0, y: 0.65, z: 0.36 }, '#765537');
 
         var trail = document.createElement('a-entity');
-        trail.classList.add('grip-interactable');
-        trail.setAttribute('position', { x: 0, y: 0.36, z: 0.64 });
+        trail.classList.add('grip-interactable', 'siege-trail-control');
+        trail.setAttribute('position', { x: 0, y: 0.84, z: 0.64 });
         siegeBox(trail, { x: 0.3, y: 0.055, z: 0.09 }, { x: 0, y: 0, z: 0 }, '#c8a66b').classList.add('machine-grip');
         trail.setAttribute('siege-control', { mode: 'trail', machine: '#' + root.id, grabRadius: 0.22 });
         root.appendChild(trail);
 
         var pivot = document.createElement('a-entity');
         pivot.classList.add('barrel-pivot');
-        pivot.setAttribute('position', { x: 0, y: 0.55, z: 0 });
+        pivot.setAttribute('position', { x: 0, y: 0.91, z: 0 });
         root.appendChild(pivot);
         root.setAttribute('siege-carriage', { barrelPivot: '.barrel-pivot' });
         return { root: root, pivot: pivot };
@@ -123,7 +164,6 @@
           var machine = document.querySelector(this.data.machine);
           if (!machine) return null;
           if (this.data.mode === 'trail') return machine.components['siege-carriage'];
-          if (this.data.mode === 'hatch') return machine.components.cannon;
           return machine.components['gatling-gun'];
         },
 
@@ -148,8 +188,10 @@
         },
 
         onTriggerUse: function () {
-          var machine = this.machineComponent();
-          if (this.data.mode === 'hatch' && machine) machine.toggleHatch();
+          if (this.data.mode !== 'trail') return;
+          var machineEl = document.querySelector(this.data.machine);
+          var cannon = machineEl && machineEl.components.cannon;
+          if (cannon) cannon.toggleHatch();
         },
 
         tick: function (time, dt) {
@@ -161,8 +203,6 @@
             machine.pullTrail(this._handWorld, Math.min((dt || 16) / 1000, 0.05));
             return;
           }
-          if (this.data.mode === 'hatch') return;
-
           this._local.copy(this._handWorld);
           this.el.object3D.parent.worldToLocal(this._local);
           this._local.sub(this.el.object3D.position);
@@ -215,11 +255,11 @@
           var maxMove = 0.42 * dt;
           if (this._travel.length() > maxMove) this._travel.setLength(maxMove);
           rootPos.add(this._travel);
-          var wheelTurn = this._travel.length() / 0.31;
+          var wheelTurn = this._travel.length() / SIEGE_WHEEL_RADIUS;
           var wheels = this.el.querySelectorAll('.siege-wheel');
           for (var i = 0; i < wheels.length; i++) wheels[i].object3D.rotation.x += wheelTurn;
 
-          var elevation = THREE.MathUtils.clamp((1.05 - handWorld.y) * 0.55, -0.08, 0.42);
+          var elevation = THREE.MathUtils.clamp((1.2 - handWorld.y) * 0.52, -0.08, 0.42);
           if (this.pivot) this.pivot.object3D.rotation.x += (elevation - this.pivot.object3D.rotation.x) * Math.min(dt * 4, 1);
         },
       });
@@ -227,7 +267,7 @@
       function buildCrank(pivot, root, side) {
         var crank = document.createElement('a-entity');
         crank.classList.add('grip-interactable');
-        crank.setAttribute('position', { x: side * 0.33, y: -0.02, z: 0.08 });
+        crank.setAttribute('position', { x: side * 0.31, y: 0.13, z: 0.4 });
         siegeBox(crank, { x: 0.055, y: 0.035, z: 0.23 }, { x: 0, y: 0, z: 0.11 }, '#b08b51');
         siegeBox(crank, { x: 0.11, y: 0.055, z: 0.055 }, { x: side * 0.045, y: 0, z: 0.23 }, '#d0aa68').classList.add('machine-grip');
         crank.setAttribute('siege-control', { mode: 'crank', machine: '#' + root.id, grabRadius: 0.2 });
@@ -320,9 +360,10 @@
         });
         pivot.appendChild(chamber);
 
-        // An intentionally game-friendly breech loader. Grip the brass
-        // latch and pull that hand's trigger; the door swings aside and
-        // the ordinary anchor-slot behind it becomes the loading target.
+        // An intentionally game-friendly breech loader. The same rear
+        // trail handle used to aim the cannon toggles this door when
+        // that hand's trigger is pulled, matching every carried item's
+        // "hold it, then use its trigger" interaction.
         var hatchHinge = document.createElement('a-entity');
         hatchHinge.classList.add('cannon-hatch-hinge');
         hatchHinge.setAttribute('position', { x: -0.19, y: 0, z: 0.37 });
@@ -339,13 +380,6 @@
         loadingGlow.setAttribute('material', 'color: #ffd85c; emissive: #ffb51f; emissiveIntensity: 1.4; shader: standard; transparent: true; opacity: 0');
         loadingGlow.setAttribute('visible', false);
         pivot.appendChild(loadingGlow);
-
-        var hatchControl = document.createElement('a-entity');
-        hatchControl.classList.add('grip-interactable', 'cannon-hatch-control');
-        hatchControl.setAttribute('position', { x: 0.24, y: -0.02, z: 0.43 });
-        siegeBox(hatchControl, { x: 0.14, y: 0.06, z: 0.07 }, { x: 0, y: 0, z: 0 }, '#d0aa68').classList.add('machine-grip');
-        hatchControl.setAttribute('siege-control', { mode: 'hatch', machine: '#' + parts.root.id, grabRadius: 0.2 });
-        pivot.appendChild(hatchControl);
 
         var fuse = document.createElement('a-entity');
         fuse.classList.add('cannon-fuse');
@@ -369,6 +403,24 @@
           pip.classList.add('gauge-pip');
         }
         pivot.appendChild(gauge);
+
+        var instruction = document.createElement('a-text');
+        instruction.classList.add('cannon-hatch-instruction');
+        instruction.setAttribute('value', 'HOLD REAR HANDLE + TRIGGER: BREECH');
+        instruction.setAttribute('align', 'center');
+        instruction.setAttribute('color', '#ffe59a');
+        instruction.setAttribute('width', 0.8);
+        instruction.setAttribute('position', { x: 0, y: 1.04, z: 0.65 });
+        parts.root.appendChild(instruction);
+
+        var matchSlot = document.createElement('a-entity');
+        matchSlot.id = 'cannon-match-slot-' + SIEGE_SERIAL++;
+        matchSlot.classList.add('anchor-slot', 'cannon-match-slot');
+        matchSlot.setAttribute('anchor-slot', { size: 'small', indicatorScale: 0.35, idleHidden: true, revealDistance: 0.12 });
+        matchSlot.setAttribute('position', { x: -0.25, y: 0.91, z: 0.65 });
+        matchSlot.setAttribute('stocked', { item: 'cannon-match', refillMs: 1000 });
+        parts.root.appendChild(matchSlot);
+
         addSights(pivot, 0.05, -1.08, 0.22);
         parts.root.setAttribute('cannon', '');
       }
@@ -487,7 +539,7 @@
             this.el.object3D.translateZ(travel);
             this.recoilVelocity *= Math.exp(-4.2 * dtSeconds);
             var wheels = this.el.querySelectorAll('.siege-wheel');
-            for (var w = 0; w < wheels.length; w++) wheels[w].object3D.rotation.x -= travel / 0.31;
+            for (var w = 0; w < wheels.length; w++) wheels[w].object3D.rotation.x -= travel / SIEGE_WHEEL_RADIUS;
           }
 
           if (this.pivot) {

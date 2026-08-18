@@ -12,11 +12,11 @@
       // ==============================================================
 
       var GRAB_RADIUS = 0.15; // meters — how close a hand must be to pick something up
-      var HIP_HEIGHT = 0.9; // meters off the ground
+      var HIP_HEAD_DROP = 0.75; // headset-to-body offsets keep worn gear attached while standing, crouching, or sitting
       var HIP_SIDE_OFFSET = 0.18; // meters, left/right from body centerline
-      var BACK_HEIGHT = 1.3; // meters off the ground — the bandolier's anchor sits higher up the torso than the hips
+      var BACK_HEAD_DROP = 0.35;
       var BACK_DEPTH_OFFSET = 0.3; // meters behind the body centerline — the headset sits at the FRONT of your head, so a small offset puts the bandolier inside your chest and makes the shotgun nearly impossible to reach
-      var CHEST_HEIGHT = 1.24;
+      var CHEST_HEAD_DROP = 0.41;
       var CHEST_DEPTH_OFFSET = -0.18; // local -Z is forward: reachable without putting the vest inside the ghost torso
       var BELT_TUBE_RADIUS = 0.012;
       var BELT_COLOR = '#4a3220'; // matches the hip holster leather
@@ -168,8 +168,8 @@
       // ==============================================================
       // COMPONENT: body-anchor
       // Drives an invisible entity to sit at roughly a fixed spot on
-      // the player's body, following the headset's horizontal position
-      // and yaw only (deliberately ignoring pitch/roll, so looking up
+      // the player's body, following the headset's position and yaw
+      // (deliberately ignoring pitch/roll, so looking up
       // or tilting your head doesn't drag it around) — there's no real
       // body tracking on a Quest, so this is an approximation for both
       // spots it's used for: the waist and the back-center bandolier
@@ -201,13 +201,13 @@
 
           if (this.data.side === 'back') {
             this.localOffset = new THREE.Vector3(0, 0, BACK_DEPTH_OFFSET); // local +Z is behind the player
-            this.height = BACK_HEIGHT;
+            this.headDrop = BACK_HEAD_DROP;
           } else if (this.data.side === 'chest') {
             this.localOffset = new THREE.Vector3(0, 0, CHEST_DEPTH_OFFSET);
-            this.height = CHEST_HEIGHT;
+            this.headDrop = CHEST_HEAD_DROP;
           } else {
             this.localOffset = new THREE.Vector3(0, 0, 0);
-            this.height = HIP_HEIGHT;
+            this.headDrop = HIP_HEAD_DROP;
           }
 
           this.buildProps();
@@ -225,7 +225,7 @@
 
           this.el.object3D.position.set(
             this.camPos.x + this.offsetVec.x,
-            this.height,
+            Math.max(this.camPos.y - this.headDrop, 0.3),
             this.camPos.z + this.offsetVec.z
           );
           this.el.object3D.rotation.set(0, yaw, 0);
