@@ -56,38 +56,43 @@
         </a-entity>
 
         <a-entity data-menu-page="targets" visible="false">
-          <a-plane width="1" height="1.85" color="#101827" position="0 -0.12 -0.01"></a-plane>
-          <a-entity class="menu-chrome-slot" data-title="TARGETS" data-help="false" data-close="true" data-width="1" data-bar-y="0.72"></a-entity>
+          <a-plane width="1" height="2.15" color="#101827" position="0 -0.12 -0.01"></a-plane>
+          <a-entity class="menu-chrome-slot" data-title="TARGETS" data-help="false" data-close="true" data-width="1" data-bar-y="0.86"></a-entity>
           <a-entity
             class="pm-target"
             geometry="primitive: plane; width: 0.78; height: 0.2"
             material="color: #182238"
-            menu-item="value: toggle-spinner; label: Pause spinner"
-            position="0 0.44 0"
+            menu-item="value: toggle-target-motion; label: Pause targets"
+            position="0 0.58 0"
           >
-            <a-text class="spinner-toggle-label" value="Pause spinner" align="center" color="#eee" width="2.4" position="0 0 0.01"></a-text>
+            <a-text class="target-motion-toggle-label" value="Pause targets" align="center" color="#eee" width="2.4" position="0 0 0.01"></a-text>
           </a-entity>
           <a-entity
-            class="spinner-count-option"
+            class="target-kind-option"
+            menu-option="key: target-kind; label: Type; values: stationary|spinner|conveyor|popper; labels: Stationary|Spinner|Conveyor|Pop-up; value: spinner"
+            position="0 0.32 0"
+          ></a-entity>
+          <a-entity
+            class="target-count-option"
             menu-option="key: spinner-count; label: Targets; values: 2|4|6|8; value: 4"
-            position="0 0.18 0"
+            position="0 0.06 0"
           ></a-entity>
           <a-entity
-            class="spinner-speed-option"
-            menu-option="key: spinner-speed; label: Speed; values: 15|30|45|60|90; labels: 15°/s|30°/s|45°/s|60°/s|90°/s; value: 45"
-            position="0 -0.08 0"
+            class="target-speed-option"
+            menu-option="key: spinner-speed; label: Speed; values: 15|30|45|60|90; labels: Very slow|Slow|Normal|Fast|Very fast; value: 45"
+            position="0 -0.2 0"
           ></a-entity>
           <a-entity
-            class="spinner-distance-option"
+            class="target-distance-option"
             menu-option="key: spinner-distance; label: Distance; values: 5|50|500; labels: 5m|50m|500m; value: 5"
-            position="0 -0.34 0"
+            position="0 -0.46 0"
           ></a-entity>
           <a-entity
             class="pm-target"
             geometry="primitive: plane; width: 0.78; height: 0.2"
             material="color: #182238"
             menu-item="value: page-main; label: Back"
-            position="0 -0.64 0"
+            position="0 -0.76 0"
           >
             <a-text value="&lt; Back" align="center" color="#aaa" width="2.4" position="0 0 0.01"></a-text>
           </a-entity>
@@ -341,13 +346,12 @@
       <!-- ============================================================
            TARGET GALLERY
            range-manager owns score/shots/HUD only. Everything else
-           This proof of concept deliberately keeps one spinner gallery.
-           Its animation can be paused from Watch > Targets while its
-           individual faces remain shootable and keep their normal reset.
+           Exactly one configurable gallery is active. Watch > Targets
+           swaps its target component while retaining the selected settings.
       ============================================================ -->
       <a-entity id="range-manager" shooting-range></a-entity>
 
-      <a-entity id="spinner-target" wheel-target="spokeCount: 4; wheelRadius: 0.9; speed: 45; targetScale: 0.5; angle: 0; distance: 5"></a-entity>
+      <a-entity id="target-gallery"></a-entity>
     </a-scene>
 
     <script src="js/core.js"></script>

@@ -271,6 +271,7 @@
         init: function () {
           placeInArc(this.el, this.data.angle, this.data.distance);
 
+          this.paused = false;
           this.targets = [];
           var self = this;
           this.onTargetFallen = makeGroupResetHandler(function () { return self.targets; });
@@ -311,6 +312,7 @@
         },
 
         tick: function (time, dt) {
+          if (this.paused) return;
           var dtSeconds = Math.min((dt || 16) / 1000, 0.05);
           var delta = this.data.speed * this.data.direction * dtSeconds;
           var halfLength = this.data.length / 2;
@@ -321,6 +323,10 @@
             if (pos.x > halfLength) pos.x -= halfLength * 2;
             else if (pos.x < -halfLength) pos.x += halfLength * 2;
           });
+        },
+
+        setPaused: function (paused) {
+          this.paused = !!paused;
         },
       });
 
@@ -354,6 +360,7 @@
         init: function () {
           placeInArc(this.el, this.data.angle, this.data.distance);
 
+          this.paused = false;
           this.targets = [];
           this.poppers = [];
           var self = this;
@@ -389,6 +396,7 @@
         },
 
         tick: function (time, dt) {
+          if (this.paused) return;
           var self = this;
           this.poppers.forEach(function (popper) {
             popper.timer -= dt || 16;
@@ -406,6 +414,10 @@
               ? self.data.upDurationMs
               : self.data.cycleMinMs + Math.random() * (self.data.cycleMaxMs - self.data.cycleMinMs);
           });
+        },
+
+        setPaused: function (paused) {
+          this.paused = !!paused;
         },
       });
 
@@ -516,6 +528,7 @@
         schema: {
           count: { type: 'number', default: 3 },
           distanceScale: { type: 'number', default: 1 }, // multiplies how far this group stands from the player
+          distance: { type: 'number', default: 0 }, // absolute distance; zero preserves distanceScale compatibility
         },
 
         init: function () {
@@ -525,16 +538,16 @@
           this.onTargetFallen = makeGroupResetHandler(function () { return self.targets; });
           this.el.addEventListener('target-fallen', this.onTargetFallen);
 
-          this.buildLayout(this.data.count, this.data.distanceScale).forEach(function (spot) {
+          var distance = this.data.distance || 4.5 * this.data.distanceScale;
+          this.buildLayout(this.data.count, distance).forEach(function (spot) {
             self.targets.push(self.spawnTarget(spot.x, spot.standHeight, spot.z, spot.rotY));
           });
         },
 
-        // A shallow arc of `count` stands at a distance scaled by
-        // distanceScale, wider arcs for bigger groups so the stands
-        // don't crowd together at longer range.
-        buildLayout: function (count, distanceScale) {
-          var baseRadius = 4.5 * distanceScale;
+        // A shallow arc of `count` stands at the requested distance,
+        // wider for bigger groups so the stands don't crowd together.
+        buildLayout: function (count, distance) {
+          var baseRadius = distance;
           var totalSpreadDeg = Math.min(14 * count, 60);
           var positions = [];
 
