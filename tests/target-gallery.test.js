@@ -30,7 +30,7 @@ test('current settings are adapted for each target kind', () => {
     spokeCount: 24,
     wheelRadius: 0.9,
     speed: 45,
-    targetScale: 1,
+    targetScale: 0.65,
     angle: 0,
     distance: 30,
   });
@@ -40,7 +40,7 @@ test('current settings are adapted for each target kind', () => {
     length: 6,
     speed: 0.45,
     direction: 1,
-    targetScale: 1,
+    targetScale: 0.65,
     angle: 0,
     distance: 30,
   });
@@ -49,8 +49,18 @@ test('current settings are adapted for each target kind', () => {
     cycleMinMs: 2000,
     cycleMaxMs: 4500,
     upDurationMs: 2200,
-    targetScale: 1,
+    targetScale: 0.65,
     angle: 0,
     distance: 30,
   });
+});
+
+test('distance changes only ground-plane placement, not moving-target scale', () => {
+  const adapter = createAdapter();
+  const nearScale = adapter.dataForKind('popper').targetScale;
+  adapter.settings.distance = 45;
+
+  assert.equal(adapter.dataForKind('popper').targetScale, nearScale);
+  assert.equal(adapter.dataForKind('spinner').targetScale, nearScale);
+  assert.equal(adapter.dataForKind('conveyor').targetScale, nearScale);
 });

@@ -150,7 +150,7 @@ test('pop-up targets span a 120-degree arc at staggered distances', () => {
   const component = Object.assign(Object.create(definitions['popper-target']), {
     el: new FakeEntity(),
     data: {
-      count: 24, spacing: 0.8, upHeight: 1.1, downHeight: -0.5,
+      count: 24, spacing: 0.8,
       targetScale: 1, cycleMinMs: 2000, cycleMaxMs: 4500,
       upDurationMs: 2200, angle: 0, distance: 30,
     },
@@ -162,4 +162,10 @@ test('pop-up targets span a 120-degree arc at staggered distances', () => {
   assert.ok(Math.min(...angles) <= -59.9);
   assert.ok(Math.max(...angles) >= 59.9);
   assert.deepEqual([...new Set(distances)].sort(), [29, 30, 31]);
+  component.poppers.forEach((popper) => {
+    const halfHeight = component.data.targetScale * 0.55;
+    assert.equal(popper.upY - halfHeight, 0);
+    assert.ok(popper.downY + halfHeight < 0);
+    assert.equal(popper.hinge.attributes.position.y, popper.downY);
+  });
 });

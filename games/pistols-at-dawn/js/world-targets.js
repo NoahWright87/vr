@@ -380,8 +380,6 @@
         schema: {
           count: { type: 'number', default: 4 },
           spacing: { type: 'number', default: 0.8 },
-          upHeight: { type: 'number', default: 1.1 },
-          downHeight: { type: 'number', default: -0.5 }, // below the ground plane, so it's genuinely hidden
           targetScale: { type: 'number', default: 0.5 },
           cycleMinMs: { type: 'number', default: 2000 }, // shortest time spent hidden between pops
           cycleMaxMs: { type: 'number', default: 4500 }, // longest time spent hidden between pops
@@ -397,6 +395,9 @@
           var self = this;
           this.onTargetFallen = makeGroupResetHandler(function () { return self.targets; });
           this.el.addEventListener('target-fallen', this.onTargetFallen);
+          var targetHalfHeight = 0.55 * this.data.targetScale;
+          var upY = targetHalfHeight; // target's bottom edge rests on the ground
+          var downY = -targetHalfHeight - 0.05; // top edge clears the ground while hidden
 
           for (var i = 0; i < this.data.count; i++) {
             var t = this.data.count === 1 ? 0 : i / (this.data.count - 1) - 0.5;
@@ -405,7 +406,6 @@
             var staggeredDistance = Math.max(2, this.data.distance + (i % 3 - 1));
             var x = staggeredDistance * Math.sin(angleRad);
             var z = -staggeredDistance * Math.cos(angleRad);
-            var upY = this.data.upHeight + (i % 2) * 0.75;
 
             var hole = document.createElement('a-circle');
             hole.setAttribute('radius', 0.18);
@@ -416,7 +416,7 @@
 
             var hinge = document.createElement('a-entity');
             hinge.setAttribute('pop-target', '');
-            hinge.setAttribute('position', { x: x, y: this.data.downHeight, z: z });
+            hinge.setAttribute('position', { x: x, y: downY, z: z });
             this.el.appendChild(hinge);
             var face = createTargetFace(this.data.targetScale);
             face.setAttribute('rotation', { x: 0, y: -angleDeg, z: 0 });
@@ -428,6 +428,7 @@
               x: x,
               z: z,
               upY: upY,
+              downY: downY,
               isUp: false,
               timer: Math.random() * this.data.cycleMaxMs, // stagger initial pops
             });
@@ -442,7 +443,7 @@
             if (popper.timer > 0) return;
 
             popper.isUp = !popper.isUp;
-            var targetY = popper.isUp ? popper.upY : self.data.downHeight;
+            var targetY = popper.isUp ? popper.upY : popper.downY;
             popper.hinge.setAttribute('animation__pop', {
               property: 'position',
               to: popper.x + ' ' + targetY + ' ' + popper.z,

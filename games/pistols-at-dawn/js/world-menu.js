@@ -44,9 +44,10 @@
 
     dataForKind: function (kind) {
       var settings = this.settings;
-      // Distant targets need to remain readable, while nearby galleries stay
-      // compact enough to use comfortably in a small play space.
-      var targetScale = Math.min(1.25, 0.5 + settings.distance / 60);
+      // Distance is a ground-plane translation only. Keeping scale fixed also
+      // keeps spinner hubs, conveyor rows, and pop-up travel at the same
+      // physical height when the selected range changes.
+      var targetScale = 0.65;
       if (kind === 'stationary') return { count: settings.count, distance: settings.distance };
       if (kind === 'conveyor') {
         var conveyorCount = settings.count <= 6 ? 1 : settings.count <= 12 ? 2 : settings.count <= 18 ? 3 : 4;
