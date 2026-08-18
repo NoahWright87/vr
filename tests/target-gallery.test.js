@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const definitions = {};
@@ -7,6 +8,7 @@ globalThis.registerComponent = function (name, definition) {
 };
 
 await import('../games/pistols-at-dawn/js/world-menu.js');
+const gameMarkup = readFileSync(new URL('../games/pistols-at-dawn/index.html', import.meta.url), 'utf8');
 
 function createAdapter() {
   return Object.assign(Object.create(definitions['pistols-watch-menu']), {
@@ -63,4 +65,11 @@ test('distance changes only ground-plane placement, not moving-target scale', ()
   assert.equal(adapter.dataForKind('popper').targetScale, nearScale);
   assert.equal(adapter.dataForKind('spinner').targetScale, nearScale);
   assert.equal(adapter.dataForKind('conveyor').targetScale, nearScale);
+});
+
+test('the floor extends beneath every configured target distance', () => {
+  const floor = gameMarkup.match(/<a-plane[\s\S]*?rotation="-90 0 0"[\s\S]*?width="(\d+)"[\s\S]*?height="(\d+)"/);
+  assert.ok(floor);
+  assert.ok(Number(floor[1]) >= 150);
+  assert.ok(Number(floor[2]) >= 150);
 });
