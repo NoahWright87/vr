@@ -23,7 +23,9 @@
           comOffset: { x: 0, y: -0.04, z: 0 },
           maxThrowSpeed: 5,
         });
-        el.setAttribute('boxy-vest', '');
+        // The vest is equipment, not scenery in front of the player's
+        // face. Its two packs remain visible and reachable; the body
+        // panel itself is intentionally not rendered while worn.
         el.setAttribute('vest', '');
       }, { keep: true });
 
@@ -73,13 +75,13 @@
           grabRadius: 0.13,
           grabSpan: { x: 0, y: 0, z: -0.11 },
           comOffset: { x: 0, y: 0, z: -0.105 },
-          maxThrowSpeed: 11,
-          gravityScale: 0.78,
+          maxThrowSpeed: 18,
+          gravityScale: 0.45,
           impactDamage: 2,
           loadUnits: 15,
         });
         el.setAttribute('boxy-throwing-knife', '');
-        el.setAttribute('blade-projectile', { tipOffset: KNIFE_TIP_OFFSET, spinRate: 0 });
+        el.setAttribute('blade-projectile', { tipOffset: KNIFE_TIP_OFFSET, spinRate: 0, guided: false });
       });
 
       defineItem('ninja-star', function (el, slotId) {
@@ -91,13 +93,13 @@
           heldRotation: { x: -90, y: 0, z: 0 },
           grabRadius: 0.12,
           comOffset: { x: 0, y: 0, z: 0 },
-          maxThrowSpeed: 13,
-          gravityScale: 0.38,
+          maxThrowSpeed: 21,
+          gravityScale: 0.28,
           impactDamage: 1,
           loadUnits: 15,
         });
         el.setAttribute('boxy-ninja-star', '');
-        el.setAttribute('blade-projectile', { tipOffset: 0.012, spinRate: 19 });
+        el.setAttribute('blade-projectile', { tipOffset: 0.012, spinRate: 24, guided: true, curveRate: 2.6 });
       });
 
       // ==============================================================
@@ -302,6 +304,8 @@
         schema: {
           tipOffset: { type: 'number', default: 0 },
           spinRate: { type: 'number', default: 0 },
+          guided: { type: 'boolean', default: false },
+          curveRate: { type: 'number', default: 0 },
         },
 
         init: function () {
@@ -310,12 +314,67 @@
           this._direction = new THREE.Vector3();
           this._quat = new THREE.Quaternion();
           this._world = new THREE.Vector3();
+          this._target = new THREE.Vector3();
+          this._perfect = new THREE.Vector3();
+          this._raw = new THREE.Vector3();
+          this._desired = new THREE.Vector3();
+          this.curveTarget = null;
+          this.curveElapsed = 0;
+          this.previousTargetDistance = Infinity;
           this.onImpact = this.onImpact.bind(this);
+          this.onThrown = this.onThrown.bind(this);
           this.el.addEventListener('impact', this.onImpact);
+          this.el.addEventListener('thrown', this.onThrown);
         },
 
         remove: function () {
           this.el.removeEventListener('impact', this.onImpact);
+          this.el.removeEventListener('thrown', this.onThrown);
+        },
+
+        // Hand throws get a release-locked gaze target. Knives take a
+        // fast, flat solved arc straight to it. Stars start from a
+        // deliberately imperfect blend of that solution and the real
+        // hand motion, then visibly bend back toward the same frozen
+        // point rather than following the player's gaze like a cursor.
+        onThrown: function (evt) {
+          var detail = evt.detail || {};
+          if (!detail.handVelocity) return; // cannon payloads do not home
+          var holsterable = this.el.components.holsterable;
+          var camera = document.querySelector('#head-camera');
+          if (!holsterable || !camera) return;
+
+          camera.object3D.getWorldPosition(this._world);
+          var target = findLookTarget(camera, this._world);
+          if (!target) {
+            if (holsterable.fallVelocity.lengthSq() > 0.001) holsterable.fallVelocity.setLength(holsterable.data.maxThrowSpeed);
+            return;
+          }
+
+          this.el.object3D.getWorldPosition(this._world);
+          var solved = solveArcAtSpeed(
+            this._world,
+            target,
+            holsterable.data.maxThrowSpeed,
+            GRAVITY * holsterable.data.gravityScale,
+            this._perfect
+          );
+          if (!solved) return;
+
+          if (!this.data.guided) {
+            holsterable.fallVelocity.copy(solved);
+            return;
+          }
+
+          var speed = solved.length();
+          this._perfect.normalize();
+          this._raw.copy(detail.handVelocity);
+          if (this._raw.lengthSq() < 0.01) this._raw.copy(this._perfect);
+          else this._raw.normalize();
+          holsterable.fallVelocity.copy(this._perfect).multiplyScalar(0.68).addScaledVector(this._raw, 0.32).normalize().multiplyScalar(speed);
+          this.curveTarget = this._target.copy(target);
+          this.curveElapsed = 0;
+          this.previousTargetDistance = this._world.distanceTo(this.curveTarget);
         },
 
         tick: function (time, dt) {
@@ -323,11 +382,28 @@
           if (!holsterable || holsterable.state !== 'falling') return;
           if (holsterable.fallVelocity.lengthSq() < 1) return;
 
+          var dtSeconds = Math.min((dt || 16) / 1000, 0.05);
+          if (this.curveTarget) {
+            this.el.object3D.getWorldPosition(this._world);
+            var distance = this._world.distanceTo(this.curveTarget);
+            this.curveElapsed += dtSeconds;
+            if (distance < 0.22 || this.curveElapsed > 2.2 || (this.curveElapsed > 0.18 && distance > this.previousTargetDistance + 0.02)) {
+              this.curveTarget = null;
+            } else {
+              var speed = holsterable.fallVelocity.length();
+              this._direction.copy(holsterable.fallVelocity).normalize();
+              this._desired.copy(this.curveTarget).sub(this._world).normalize();
+              this._direction.lerp(this._desired, Math.min(this.data.curveRate * dtSeconds, 0.16)).normalize();
+              holsterable.fallVelocity.copy(this._direction).multiplyScalar(speed);
+              this.previousTargetDistance = distance;
+            }
+          }
+
           this._direction.copy(holsterable.fallVelocity).normalize();
           this._quat.setFromUnitVectors(this._forward, this._direction);
           this.el.object3D.quaternion.copy(this._quat);
           if (this.data.spinRate) {
-            this.spin = (this.spin + this.data.spinRate * Math.min((dt || 16) / 1000, 0.05)) % (Math.PI * 2);
+            this.spin = (this.spin + this.data.spinRate * dtSeconds) % (Math.PI * 2);
             this.el.object3D.rotateZ(this.spin);
           }
           holsterable.angularVelocity.set(0, 0, 0);

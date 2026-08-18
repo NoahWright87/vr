@@ -390,6 +390,7 @@
 
         init: function () {
           this.occupants = [];
+          this.accepting = true; // machinery can temporarily close a socket without dismantling it (see cannon hatch)
           this.wasInRange = false;
           this.clickElapsed = null; // ms into the click bounce, or null when idle
 
@@ -419,6 +420,7 @@
         },
 
         canAccept: function (holsterable) {
+          if (!this.accepting) return false;
           if (!holsterable) return false;
           if (this.occupants.indexOf(holsterable) !== -1) return true;
           if (this.data.swap) return true;
@@ -440,6 +442,12 @@
         },
 
         tick: function (time, dt) {
+          if (!this.accepting) {
+            this.sphere.setAttribute('visible', false);
+            this.wasInRange = false;
+            this.clickElapsed = null;
+            return;
+          }
           // A swap slot stays "live" even while full — the indicator
           // should still glow as a replacement approaches, the same
           // invitation an empty slot gives.
@@ -1151,6 +1159,9 @@
         // it — a spinning object thrown should keep spinning, just as
         // hard, not reset to a slower default.
         throwWithVelocity: function (velocity) {
+          var releaseHand = this.hand;
+          var releaseRig = releaseHand && releaseHand.components['hand-rig'];
+          var handVelocity = releaseRig ? releaseRig.velocity.clone() : null;
           this.state = 'falling';
           this.hand = null;
           this.releaseSupport();
@@ -1171,6 +1182,10 @@
           if (this.angularVelocity.length() < THROW_SPIN_RATE) {
             this.angularVelocity.set(THROW_SPIN_RATE, 0, 0);
           }
+          this.el.emit('thrown', {
+            handVelocity: handVelocity,
+            assistedVelocity: this.fallVelocity.clone(),
+          }, false);
         },
 
         // Grip-catch: snaps rigidly into handEl, but blends smoothly
@@ -1415,6 +1430,9 @@
           // what they struck). Do not then interpret their new local Y
           // as a second, ground-level landing in this same frame.
           if (this.state !== 'falling') return;
+
+          var ballistic = this.el.components['ballistic-projectile'];
+          if (ballistic && ballistic.updateFlight(this, dt)) return;
 
           if (this.el.object3D.position.y <= GROUND_REST_Y) {
             var impactSpeed = this.fallVelocity.length();

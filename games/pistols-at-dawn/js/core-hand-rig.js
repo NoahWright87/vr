@@ -539,6 +539,11 @@
         onTriggerDown: function () {
           this.triggerHeld = true;
 
+          if (this.activeGripInteraction) {
+            this.activeGripInteraction.onTriggerUse();
+            return;
+          }
+
           // The trigger on a hand already holding a support grip is a
           // separate control from the gun's firing trigger. Firearms
           // use it to clamp that hand to nearby scenery; bows and any
