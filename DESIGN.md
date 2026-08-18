@@ -588,8 +588,8 @@ per weapon/prop family — guns, bow, explosives, tank, bar, vices) and
 three `world-*.js` files (player body, the saloon-bar/wardrobe island,
 the shooting range) — loaded as plain `<script src>` tags, same
 implicit-global style the single file already used, just filed by
-subject instead of dumped in one place. No bundler, no import/export,
-no behavior change; every stage was a move, verified against the
+subject instead of dumped in one place. Those files still have no
+import/export boundary; every stage of the split was a move, verified against the
 original with Playwright before being committed. `index.html` itself
 is down to ~310 lines of markup.
 
@@ -607,16 +607,13 @@ the declaring file loads no later than the file using it) rather than
 trusting it by eye, on any repo using this same plain-script pattern.
 
 This makes pistols-at-dawn the one prototype in the repo that isn't a
-single self-contained file (see the README's stated convention). Two
-things worth revisiting later, once the split has paid for itself and
+single self-contained file. Vite was later added once shared menu/watch
+primitives made manual globals and cache-busting a recurring cost. One
+thing remains worth revisiting once the split has paid for itself and
 some of these systems (anchor-slot/holsterable in particular) have
 proven themselves general enough to be worth lifting into a real
 shared library used by other prototypes, not just this one:
 
-- **Whether "no build step" still holds.** It's the right call for a
-  handful of self-contained files with no need to share code between
-  prototypes; a real shared library across games is a different
-  question, and might be the moment a small bundler earns its keep.
 - **How the split should be named/shaped** once code is meant to move
   *out* of pistols-at-dawn's own folder — worth keeping the
   genuinely-generic files (the equip contract, the target-range

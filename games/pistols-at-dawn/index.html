@@ -5,7 +5,9 @@
     <title>Pistols at Dawn — WebXR Prototype</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
+    <script>window.AFRAME_CDN_ROOT = '../../vendor/aframe-1.6.0/';</script>
+    <script src="../../vendor/aframe-1.6.0/aframe-v1.6.0.min.js"></script>
+    <script type="module" src="../../common/watch-menu.js"></script>
 
     <style>
       body {
@@ -71,14 +73,78 @@
       <div class="teleport-label">Teleport</div>
     </div>
 
-    <a-scene>
+    <template id="watch-menu-template">
+      <a-entity class="watch-menu-panel" visible="false">
+        <a-entity data-menu-page="main">
+          <a-plane width="1" height="0.9" color="#101827" position="0 0 -0.01"></a-plane>
+          <a-entity class="menu-chrome-slot" data-title="" data-help="false" data-close="true" data-width="1" data-bar-y="0.32"></a-entity>
+          <a-entity
+            class="pm-target"
+            geometry="primitive: plane; width: 0.78; height: 0.2"
+            material="color: #182238"
+            menu-item="value: page-targets; label: Targets"
+            position="0 0 0"
+          >
+            <a-text value="Targets  >" align="center" color="#eee" width="2.4" position="0 0 0.01"></a-text>
+          </a-entity>
+        </a-entity>
+
+        <a-entity data-menu-page="targets" visible="false">
+          <a-plane width="1" height="2.15" color="#101827" position="0 -0.12 -0.01"></a-plane>
+          <a-entity class="menu-chrome-slot" data-title="TARGETS" data-help="false" data-close="true" data-width="1" data-bar-y="0.86"></a-entity>
+          <a-entity
+            class="pm-target"
+            geometry="primitive: plane; width: 0.78; height: 0.2"
+            material="color: #182238"
+            menu-item="value: toggle-target-motion; label: Pause targets"
+            position="0 0.58 0"
+          >
+            <a-text class="target-motion-toggle-label" value="Pause targets" align="center" color="#eee" width="2.4" position="0 0 0.01"></a-text>
+          </a-entity>
+          <a-entity
+            class="target-kind-option"
+            menu-option="key: target-kind; label: Type; values: stationary|spinner|conveyor|popper; labels: Stationary|Spinner|Conveyor|Pop-up; value: spinner"
+            position="0 0.32 0"
+          ></a-entity>
+          <a-entity
+            class="target-count-option"
+            menu-option="key: spinner-count; label: Targets; values: 2|4|6|8|12|16|24; value: 4"
+            position="0 0.06 0"
+          ></a-entity>
+          <a-entity
+            class="target-speed-option"
+            menu-option="key: spinner-speed; label: Speed; values: 15|30|45|60|90; labels: Very slow|Slow|Normal|Fast|Very fast; value: 45"
+            position="0 -0.2 0"
+          ></a-entity>
+          <a-entity
+            class="target-distance-option"
+            menu-option="key: spinner-distance; label: Distance; values: 5|15|30|45; labels: 5m|15m|30m|45m; value: 5"
+            position="0 -0.46 0"
+          ></a-entity>
+          <a-entity
+            class="pm-target"
+            geometry="primitive: plane; width: 0.78; height: 0.2"
+            material="color: #182238"
+            menu-item="value: page-main; label: Back"
+            position="0 -0.76 0"
+          >
+            <a-text value="&lt; Back" align="center" color="#aaa" width="2.4" position="0 0 0.01"></a-text>
+          </a-entity>
+        </a-entity>
+      </a-entity>
+    </template>
+
+    <a-scene pistols-watch-menu>
       <!-- ============================================================
            RANGE
       ============================================================ -->
+      <!-- The 120-degree galleries reach roughly 51m from the player.
+           This must extend beneath them: an absent floor cannot occlude a
+           pop-up target after it moves below y=0. -->
       <a-plane
         rotation="-90 0 0"
-        width="30"
-        height="30"
+        width="160"
+        height="160"
         color="#7a6a52"
         position="0 0 0"
       ></a-plane>
@@ -140,9 +206,9 @@
             position="0 0 -1"
             geometry="primitive: ring; radiusInner: 0.005; radiusOuter: 0.008"
             material="color: #FFFFFF; shader: flat; opacity: 0.8"
-            raycaster="objects: .shootable; far: 20"
+            raycaster="objects: .shootable; far: 75"
           ></a-entity>
-  
+
           <!-- Teleport fade: a plain black quad parented to the camera so
                it always covers the view regardless of head orientation.
                teleport-hub (world-town.js) animates its opacity up, jumps
@@ -157,7 +223,7 @@
             position="0 0 -0.2"
             material="color: #000000; shader: flat; opacity: 0; transparent: true; depthTest: false"
           ></a-plane>
-  
+
           <!-- Nested directly under the camera (rather than a body-anchor-style
                tick() component) so it inherits full head rotation for free,
                pitch/roll included — unlike the hips, a worn hat SHOULD tilt
@@ -170,19 +236,19 @@
                already wearing one just replaces it instead of bouncing off a
                full slot — the old hat falls, exactly like an evicted belt. -->
           <a-entity id="head-anchor" class="anchor-slot" anchor-slot="size: medium; swap: true" position="0 0.1 0"></a-entity>
-  
+
           <!-- Drunk vision. Parented to the camera on purpose: rigidly
                head-locked means there is no relative motion for your
                inner ear to argue with, which is the whole reason the
                alcohol effects are allowed to be visual at all. -->
           <a-entity booze-overlay></a-entity>
-  
+
           <!-- Your mouth: an ordinary small anchor-slot that happens to
                sit under the camera, with capacity for five. Nothing about
                it is cigar-specific — it's the same socket as a hip
                holster, so a pistol clenched in your teeth is a perfectly
                legal thing to do.
-  
+
                A slot this close to your eyes needs its indicator kept on
                a very short leash: idleHidden plus a tenth-scale sphere
                plus revealDistance means it's a small dot that only shows
@@ -196,7 +262,7 @@
             anchor-slot="size: small; capacity: 5; fanSpread: 0.032; fanYaw: 21; idleHidden: true; indicatorScale: 0.35; revealDistance: 0.16"
             position="0 -0.07 -0.08"
           ></a-entity>
-  
+
           <!-- The player's own body: a simple ghost (see boxy-ghost and
                the GHOST BODY constants). Nested here, like the hat, so it
                inherits full head rotation. Unlike the hat, this one is
@@ -207,11 +273,11 @@
                #mirror exists. -->
           <a-entity id="player-ghost" boxy-ghost></a-entity>
         </a-camera>
-  
+
         <!-- ============================================================
              HANDS
              Two entities per hand, deliberately decoupled:
-  
+
              - oculus-touch-controls (model:false) is the one the gun
                actually attaches to and the one hand-rig listens to for
                grip/trigger events. Its forward axis is the same one
@@ -224,23 +290,34 @@
                where you're pointing" — which is why the first version of
                this file, with the gun parented directly to a
                hand-controls entity, aimed inconsistently.
-  
+
              Because the two are separate entities, anything that
              perturbs "your hand" (drink and cigar shakes — see
              hand-rig.updateGrip) has to be applied to both, or the gun
              would visibly detach from the fist holding it. hand-rig
              takes a selector to its own cosmetic twin for exactly that.
-  
+
              proximity-haptics is generic and unrelated to pistols
              specifically — see its own comment below. The "hand" class
              is what lets generic helpers like findOtherHand and
              findCatchingHand (used for tossing/catching) enumerate both
              hands without hardcoding left/right.
+
+             hand-with-watch (common/watch-menu.js) is what puts a
+             pokeable/pointable wrist watch on each hand — see the
+             TELEPORT template page below and teleport-hub's own
+             menu-item-select listener (world-town.js) for how it feeds
+             into teleport. Nested inside #player-rig (rather than
+             top-level, which is how the shared component itself
+             assumes hands sit) so a menu-item-select the watch emits
+             bubbles up through the rig on its way to <a-scene>,
+             exactly like it would from a top-level hand — the wrap
+             doesn't change that path, just adds a stop along it.
         ============================================================ -->
-        <a-entity class="hand" oculus-touch-controls="hand: left; model: false" hand-rig="visual: #hand-visual-left" proximity-haptics></a-entity>
+        <a-entity class="hand" oculus-touch-controls="hand: left; model: false" hand-rig="visual: #hand-visual-left" proximity-haptics hand-with-watch="hand: left"></a-entity>
         <a-entity id="hand-visual-left" hand-controls="hand: left; handModelStyle: lowPoly; color: #3a3a3a"></a-entity>
-  
-        <a-entity class="hand" oculus-touch-controls="hand: right; model: false" hand-rig="visual: #hand-visual-right" proximity-haptics></a-entity>
+
+        <a-entity class="hand" oculus-touch-controls="hand: right; model: false" hand-rig="visual: #hand-visual-right" proximity-haptics hand-with-watch="hand: right"></a-entity>
         <a-entity id="hand-visual-right" hand-controls="hand: right; handModelStyle: lowPoly; color: #3a3a3a"></a-entity>
       </a-entity>
       <!-- end #player-rig -->
@@ -360,28 +437,12 @@
       <!-- ============================================================
            TARGET GALLERY
            range-manager owns score/shots/HUD only. Everything else
-           here is an independent group of pop-up targets (see
-           pop-target, target-group, wheel-target, conveyor-target,
-           popper-target below) that spawns and resets itself, placed
-           at its own angle/distance in an arc in front of the player
-           so nothing crowds or hides behind anything else. Straight
-           ahead (angle 0) is the three stationary distance tiers;
-           wheels sit off to the left, conveyors off to the right, and
-           the pop-up "poppers" sit close in, front and center.
+           Exactly one configurable gallery is active. Watch > Targets
+           swaps its target component while retaining the selected settings.
       ============================================================ -->
       <a-entity id="range-manager" shooting-range></a-entity>
 
-      <a-entity target-group="count: 3; distanceScale: 1"></a-entity>
-      <a-entity target-group="count: 4; distanceScale: 2"></a-entity>
-      <a-entity target-group="count: 5; distanceScale: 3"></a-entity>
-
-      <a-entity wheel-target="spokeCount: 4; wheelRadius: 0.9; speed: 45; targetScale: 0.5; angle: -50; distance: 6"></a-entity>
-      <a-entity wheel-target="spokeCount: 6; wheelRadius: 1.3; speed: 20; targetScale: 0.5; angle: -82; distance: 8.5"></a-entity>
-
-      <a-entity conveyor-target="count: 3; length: 3; speed: 0.5; direction: 1; angle: 50; distance: 6"></a-entity>
-      <a-entity conveyor-target="count: 4; length: 4; speed: 0.35; direction: -1; angle: 82; distance: 8.5"></a-entity>
-
-      <a-entity popper-target="count: 4; angle: 0; distance: 3"></a-entity>
+      <a-entity id="target-gallery"></a-entity>
 
       <!-- ============================================================
            TOWN
@@ -415,6 +476,7 @@
     <script src="js/world-player-body.js"></script>
     <script src="js/world-saloon-bar.js"></script>
     <script src="js/world-targets.js"></script>
+    <script src="js/world-menu.js"></script>
     <script src="js/world-town.js"></script>
     <script src="js/world-structures.js"></script>
     <script src="js/world-saloon-darts.js"></script>

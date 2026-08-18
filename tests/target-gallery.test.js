@@ -1,0 +1,75 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import test from 'node:test';
+
+const definitions = {};
+globalThis.registerComponent = function (name, definition) {
+  definitions[name] = definition;
+};
+
+await import('../games/pistols-at-dawn/js/world-menu.js');
+const gameMarkup = readFileSync(new URL('../games/pistols-at-dawn/index.html', import.meta.url), 'utf8');
+
+function createAdapter() {
+  return Object.assign(Object.create(definitions['pistols-watch-menu']), {
+    settings: { kind: 'spinner', count: 24, speed: 45, distance: 30 },
+  });
+}
+
+test('every restored target kind maps to its original gallery component', () => {
+  const adapter = createAdapter();
+  assert.equal(adapter.componentForKind('stationary'), 'target-group');
+  assert.equal(adapter.componentForKind('spinner'), 'wheel-target');
+  assert.equal(adapter.componentForKind('conveyor'), 'conveyor-target');
+  assert.equal(adapter.componentForKind('popper'), 'popper-target');
+});
+
+test('current settings are adapted for each target kind', () => {
+  const adapter = createAdapter();
+
+  assert.deepEqual(adapter.dataForKind('stationary'), { count: 24, distance: 30 });
+  assert.deepEqual(adapter.dataForKind('spinner'), {
+    spokeCount: 24,
+    wheelRadius: 0.9,
+    speed: 45,
+    targetScale: 0.65,
+    angle: 0,
+    distance: 30,
+  });
+  assert.deepEqual(adapter.dataForKind('conveyor'), {
+    count: 24,
+    conveyorCount: 4,
+    length: 6,
+    speed: 0.45,
+    direction: 1,
+    targetScale: 0.65,
+    angle: 0,
+    distance: 30,
+  });
+  assert.deepEqual(adapter.dataForKind('popper'), {
+    count: 24,
+    cycleMinMs: 2000,
+    cycleMaxMs: 4500,
+    upDurationMs: 2200,
+    targetScale: 0.65,
+    angle: 0,
+    distance: 30,
+  });
+});
+
+test('distance changes only ground-plane placement, not moving-target scale', () => {
+  const adapter = createAdapter();
+  const nearScale = adapter.dataForKind('popper').targetScale;
+  adapter.settings.distance = 45;
+
+  assert.equal(adapter.dataForKind('popper').targetScale, nearScale);
+  assert.equal(adapter.dataForKind('spinner').targetScale, nearScale);
+  assert.equal(adapter.dataForKind('conveyor').targetScale, nearScale);
+});
+
+test('the floor extends beneath every configured target distance', () => {
+  const floor = gameMarkup.match(/<a-plane[\s\S]*?rotation="-90 0 0"[\s\S]*?width="(\d+)"[\s\S]*?height="(\d+)"/);
+  assert.ok(floor);
+  assert.ok(Number(floor[1]) >= 150);
+  assert.ok(Number(floor[2]) >= 150);
+});

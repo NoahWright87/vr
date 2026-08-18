@@ -5,7 +5,7 @@ Guidance for Claude Code working in this repo.
 ## What this is
 
 A collection of small WebXR prototypes for the Meta Quest 2 browser,
-built with A-Frame via CDN — no build step, no npm install. See
+built with vendored A-Frame and a vanilla Vite multi-page build. See
 `README.md` for the full picture (structure, how to test each
 prototype, deployment) and `DESIGN.md` for Pistols at Dawn's own
 design philosophy (it's the prototype that's grown into "the place
@@ -20,12 +20,10 @@ evaporate.
 
 ## Testing without a headset
 
-The CDN A-Frame URL (`https://aframe.io/releases/1.6.0/aframe.min.js`)
-is not reachable from a sandboxed environment. `vendor/aframe-1.6.0/`
-has a local copy — for headless testing, copy the game's `index.html`
-(and, for Pistols at Dawn, everything under its `js/` folder) into a
-scratch directory, swap the CDN script tag for the vendored path, and
-serve it with `python3 -m http.server` from that directory. Drive it
+Run `npm install`, then `npm run dev` for source development. Use
+`npm run build` and `npm run preview` to test the deployable `dist/`
+output. A-Frame is checked in under `vendor/aframe-1.6.0/`, so tests do
+not depend on the CDN. Drive the served site
 with Playwright (`chromium.launch({ executablePath:
 '/opt/pw-browsers/chromium' })`) — call components' methods and drive
 the real code paths (not just shortcut method calls) rather than only
@@ -38,8 +36,10 @@ the actual code path it's standing in for is broken. See DESIGN.md's
 Pistols at Dawn's own logic outgrew a single file and now lives in
 `games/pistols-at-dawn/js/` as ~14 topic files (`core.js`,
 `core-equip.js`, `items-guns.js`, `world-saloon-bar.js`, and so on),
-loaded as plain `<script src>` tags — no bundler, no import/export,
-same implicit-global style the original single file used. Two things
+loaded as plain `<script src>` tags inside the Vite-built page — still no
+import/export within those legacy files, and the same implicit-global style
+the original single file used. Shared primitives under `common/` are ES
+modules. Two things
 worth knowing if you're moving code between these files:
 
 - Almost every cross-file reference is safe regardless of which file
