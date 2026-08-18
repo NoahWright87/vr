@@ -143,7 +143,13 @@
           ground.setAttribute('height', FARM_YARD_SOUTH_Z - FARM_YARD_NORTH_Z + FARM_GROUND_MARGIN * 2);
           ground.setAttribute('position', {
             x: (FARM_YARD_MIN_X + FARM_YARD_MAX_X) / 2,
-            y: 0,
+            // 0.002, not 0 — the range's own ground plane is 160x160 at
+            // the world origin (see index.html's RANGE comment), which
+            // reaches this yard's position (world z 60) fine within
+            // that. Coincident coplanar geometry z-fights; a hair of
+            // clearance is cheaper than coordinating with a file this
+            // one doesn't (and shouldn't) know about.
+            y: 0.002,
             z: (FARM_YARD_SOUTH_Z + FARM_YARD_NORTH_Z) / 2,
           });
           ground.setAttribute('color', FARM_GROUND_COLOR);

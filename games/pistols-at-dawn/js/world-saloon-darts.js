@@ -499,7 +499,13 @@
           floor.setAttribute('rotation', '-90 0 0');
           floor.setAttribute('width', SALOON_ROOM_WIDTH);
           floor.setAttribute('height', SALOON_ROOM_DEPTH);
-          floor.setAttribute('position', { x: 0, y: 0, z: centerZ });
+          // y: 0.002, not 0 — the range's own ground plane is 160x160 at
+          // the world origin (see index.html's RANGE comment), which
+          // reaches this room's position (world z -60) fine within that.
+          // Coincident coplanar geometry z-fights; a hair of clearance is
+          // cheaper than coordinating with a file this one doesn't (and
+          // shouldn't) know about.
+          floor.setAttribute('position', { x: 0, y: 0.002, z: centerZ });
           floor.setAttribute('color', SALOON_FLOOR_COLOR);
           this.el.appendChild(floor);
 
