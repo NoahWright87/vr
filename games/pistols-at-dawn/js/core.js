@@ -90,7 +90,10 @@
       // Also read by castShot/findLookTarget (see items-guns.js and
       // core-equip.js's computeThrowVelocity) for the raycaster's far
       // distance and a miss tracer's length alike.
-      var MAX_SHOT_RANGE = 20; // meters
+      // The configurable range extends past 45m once an arc staggers some
+      // targets behind its nominal distance. Keep one shared ceiling for
+      // hits, aim assistance, projectiles, and miss tracers.
+      var MAX_SHOT_RANGE = 75; // meters
 
       // Juggling: an aimed toss, not raw physics. The vertical speed of
       // your hand at release controls how high/long the arc is; the

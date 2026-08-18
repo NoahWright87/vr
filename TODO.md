@@ -32,10 +32,8 @@ this is only for work that has been decided on and postponed.
 ## Refactor leftovers
 
 From the games/pistols-at-dawn/js/ file split (see DESIGN.md's "File
-structure" section for the rationale and the two bigger open
-questions already tracked there — whether "no build step" still holds,
-and how the split should be shaped once code is meant to move into a
-shared library):
+structure" section for the rationale and the remaining question of how
+the split should be shaped once more code moves into a shared library):
 
 - **Duplicate `CIGAR_PUFF_INTERVAL_MS`.** `core.js` declares it twice
   (1100, then 750 a bit further down, silently shadowing the first) —
@@ -44,6 +42,35 @@ shared library):
   runs. Worth deciding which one was meant to win and deleting the
   other; both are currently commented as pointing at each other so
   whoever looks at either one finds the other.
+
+## Build tooling and the shared design package
+
+- **Finish the incremental module migration when it earns its keep.** Vite
+  now builds the site as a vanilla multi-page app and the files in `common/`
+  are ES modules. Pistols at Dawn's older topic scripts intentionally remain
+  ordered classic scripts for now; give them explicit import/export
+  boundaries as they are changed, rather than making a risky mechanical
+  rewrite. Explicitly validate the production build on the Quest browser
+  before tightening Vite's browser target or adopting newer syntax.
+
+- **Use `@noahwright/design` for the website framing, not inside VR.** The
+  current package (`github.com/noahWright87/design`, inspected at main commit
+  `a5a0194`) already publishes ESM (`dist/index.mjs`), types, and a CSS export
+  (`@noahwright/design/styles.css`), so Vite can consume its published npm
+  package normally. Its scope here is the conventional DOM/site layer—the
+  prototype landing page, navigation and page shell, primitive editors,
+  documentation, and similar UI surrounding an immersive experience. Do not
+  import its components or tokens into A-Frame scenes, in-world watch menus,
+  materials, or text; the VR interaction/design system remains independent.
+
+  The package currently has React 18 peer dependencies, so decide during the
+  Vite work whether the outer site shell should use its React components or
+  only its exported CSS. This must not turn into a React rewrite of any game.
+  Prefer the published npm version for reproducible builds. A pinned Git
+  revision is possible after the design repo adds a `prepare` build or checks
+  in `dist` (its current exports point at uncommitted `dist` files), while a
+  local workspace/link would need the design build running as the two
+  repositories are developed together.
 
 ## Weapons not built yet
 
