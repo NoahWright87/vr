@@ -40,17 +40,14 @@ function createMenuItem() {
   return { component, writes };
 }
 
-test('hover and click feedback never transform the raycast target', async () => {
+test('hover feedback is a stable color shift and never transforms the raycast target', () => {
   const { component, writes } = createMenuItem();
 
   component.onMouseEnter();
   component.onClick();
-  await new Promise((resolve) => setTimeout(resolve, 160));
 
   assert.equal(writes.some((write) => write.name === 'scale'), false);
   assert.deepEqual(writes.filter((write) => write.name === 'material').map((write) => write.value), [
-    '#2a3a5c',
-    '#ffd54a',
     '#2a3a5c',
   ]);
 
@@ -92,4 +89,18 @@ test('the center of a multi-value row opens its complete option list', () => {
 
   assert.equal(opened, 1);
   assert.equal(propagationStopped, true);
+});
+
+test('only visible targets on the topmost option layer can be selected', () => {
+  const popupChoice = { object3D: { visible: true, parent: null } };
+  const coveredRow = { object3D: { visible: true, parent: null } };
+  const hiddenRow = { object3D: { visible: false, parent: null } };
+  const popup = { contains(item) { return item === popupChoice; } };
+  const component = Object.assign(Object.create(definitions['projected-menu']), {
+    panelEl: { querySelector() { return popup; } },
+  });
+
+  assert.equal(component.isMenuTargetInteractive(popupChoice), true);
+  assert.equal(component.isMenuTargetInteractive(coveredRow), false);
+  assert.equal(component.isMenuTargetInteractive(hiddenRow), false);
 });

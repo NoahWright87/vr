@@ -10,7 +10,7 @@ await import('../games/pistols-at-dawn/js/world-menu.js');
 
 function createAdapter() {
   return Object.assign(Object.create(definitions['pistols-watch-menu']), {
-    settings: { kind: 'spinner', count: 6, speed: 45, distance: 50 },
+    settings: { kind: 'spinner', count: 24, speed: 45, distance: 30 },
   });
 }
 
@@ -25,29 +25,31 @@ test('every restored target kind maps to its original gallery component', () => 
 test('current settings are adapted for each target kind', () => {
   const adapter = createAdapter();
 
-  assert.deepEqual(adapter.dataForKind('stationary'), { count: 6, distance: 50 });
+  assert.deepEqual(adapter.dataForKind('stationary'), { count: 24, distance: 30 });
   assert.deepEqual(adapter.dataForKind('spinner'), {
-    spokeCount: 6,
-    wheelRadius: 0.9,
+    spokeCount: 24,
+    wheelRadius: 3.12,
     speed: 45,
-    targetScale: 0.5,
+    targetScale: 1,
     angle: 0,
-    distance: 50,
+    distance: 30,
   });
   assert.deepEqual(adapter.dataForKind('conveyor'), {
-    count: 6,
-    length: 4.8,
+    count: 24,
+    length: 9.6,
     speed: 0.45,
     direction: 1,
+    targetScale: 1,
     angle: 0,
-    distance: 50,
+    distance: 30,
   });
   assert.deepEqual(adapter.dataForKind('popper'), {
-    count: 6,
+    count: 24,
     cycleMinMs: 2000,
     cycleMaxMs: 4500,
     upDurationMs: 2200,
+    targetScale: 1,
     angle: 0,
-    distance: 50,
+    distance: 30,
   });
 });

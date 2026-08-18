@@ -84,10 +84,20 @@ test('speed changes are read live by the spinner tick', () => {
 test('distance changes reposition the existing spinner', () => {
   const wheel = createWheel();
   const originalHub = wheel.hub;
-  wheel.data.distance = 50;
+  wheel.data.distance = 45;
   wheel.update({ spokeCount: 4, distance: 6, angle: 0 });
 
-  assert.equal(wheel.el.object3D.position.z, -50);
+  assert.equal(wheel.el.object3D.position.z, -45);
   assert.equal(wheel.hub, originalHub);
   assert.equal(wheel.targets.length, 4);
+});
+
+test('large stationary galleries stagger targets across depth and height', () => {
+  const group = Object.assign(Object.create(definitions['target-group']), {});
+  const layout = group.buildLayout(24, 5);
+
+  assert.equal(layout.length, 24);
+  assert.ok(new Set(layout.map((spot) => spot.z)).size > 1);
+  assert.ok(new Set(layout.map((spot) => spot.standHeight)).size > 2);
+  assert.ok(Math.max(...layout.map((spot) => spot.x)) - Math.min(...layout.map((spot) => spot.x)) > 8);
 });

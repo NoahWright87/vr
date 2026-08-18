@@ -44,13 +44,17 @@
 
     dataForKind: function (kind) {
       var settings = this.settings;
+      // Distant targets need to remain readable, while nearby galleries stay
+      // compact enough to use comfortably in a small play space.
+      var targetScale = Math.min(1.25, 0.5 + settings.distance / 60);
       if (kind === 'stationary') return { count: settings.count, distance: settings.distance };
       if (kind === 'conveyor') {
         return {
           count: settings.count,
-          length: Math.max(3, Math.round(settings.count * 8) / 10),
+          length: Math.round(Math.max(3, Math.ceil(settings.count / 2) * 0.8) * 10) / 10,
           speed: settings.speed / 100,
           direction: 1,
+          targetScale: targetScale,
           angle: 0,
           distance: settings.distance,
         };
@@ -62,15 +66,16 @@
           cycleMinMs: Math.round(2000 * timingScale),
           cycleMaxMs: Math.round(4500 * timingScale),
           upDurationMs: Math.round(2200 * timingScale),
+          targetScale: targetScale,
           angle: 0,
           distance: settings.distance,
         };
       }
       return {
         spokeCount: settings.count,
-        wheelRadius: 0.9,
+        wheelRadius: Math.max(0.9, settings.count * 0.13),
         speed: settings.speed,
-        targetScale: 0.5,
+        targetScale: targetScale,
         angle: 0,
         distance: settings.distance,
       };

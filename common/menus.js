@@ -13,9 +13,7 @@ import { cycleMenuOptionIndex, parseMenuOptions } from './menu-options.js';
       this.onMouseEnter = this.onMouseEnter.bind(this);
       this.onMouseLeave = this.onMouseLeave.bind(this);
       this.onClick = this.onClick.bind(this);
-      this.flashTimer = null;
       this.hovered = false;
-      this.flashing = false;
       this.el.addEventListener('mouseenter', this.onMouseEnter);
       this.el.addEventListener('mouseleave', this.onMouseLeave);
       this.el.addEventListener('click', this.onClick);
@@ -26,29 +24,19 @@ import { cycleMenuOptionIndex, parseMenuOptions } from './menu-options.js';
       // The clickable mesh is also the raycast surface. Transforming it as
       // feedback can invalidate the cursor's current intersection and cause
       // enter/leave to alternate, especially with a tracked hand near an edge.
-      if (!this.flashing) this.el.setAttribute('material', 'color', this.data.hoverColor);
+      this.el.setAttribute('material', 'color', this.data.hoverColor);
     },
 
     onMouseLeave: function () {
       this.hovered = false;
-      if (!this.flashing) this.el.setAttribute('material', 'color', this.baseColor);
+      this.el.setAttribute('material', 'color', this.baseColor);
     },
 
     onClick: function () {
-      var self = this;
-      this.flashing = true;
-      this.el.setAttribute('material', 'color', '#ffd54a');
-      clearTimeout(this.flashTimer);
-      this.flashTimer = setTimeout(function () {
-        if (!self.el.parentNode) return;
-        self.flashing = false;
-        self.el.setAttribute('material', 'color', self.hovered ? self.data.hoverColor : self.baseColor);
-      }, 140);
       this.el.emit('menu-item-select', { value: this.data.value, label: this.data.label }, true);
     },
 
     remove: function () {
-      clearTimeout(this.flashTimer);
       this.el.removeEventListener('mouseenter', this.onMouseEnter);
       this.el.removeEventListener('mouseleave', this.onMouseLeave);
       this.el.removeEventListener('click', this.onClick);
@@ -74,6 +62,7 @@ import { cycleMenuOptionIndex, parseMenuOptions } from './menu-options.js';
         return option.value === this.data.value;
       }, this));
       this.popupEl = null;
+      this.suppressedTargets = [];
       this.onInternalSelection = this.onInternalSelection.bind(this);
       this.onDismissPopovers = this.closePopup.bind(this);
       this.el.addEventListener('menu-item-select', this.onInternalSelection);
@@ -181,6 +170,13 @@ import { cycleMenuOptionIndex, parseMenuOptions } from './menu-options.js';
         if (component) component.closePopup();
       }, this);
       this.el.emit('menu-dismiss-popovers', { except: this.el }, true);
+      // A popup is a modal interaction layer. Removing the underlying rows
+      // from the raycaster selector prevents a slightly angled ray from
+      // selecting a visually covered control on another depth plane.
+      this.suppressedTargets = Array.prototype.slice.call(scope.querySelectorAll('.menu-target'));
+      this.suppressedTargets.forEach(function (target) {
+        target.classList.remove('menu-target');
+      });
       var popup = document.createElement('a-entity');
       popup.classList.add('menu-option-popup');
       popup.setAttribute('position', '0 0 0.04');
@@ -215,6 +211,10 @@ import { cycleMenuOptionIndex, parseMenuOptions } from './menu-options.js';
       if (!this.popupEl) return;
       this.popupEl.parentNode.removeChild(this.popupEl);
       this.popupEl = null;
+      this.suppressedTargets.forEach(function (target) {
+        if (target.parentNode && isVisibleInHierarchy(target.object3D)) target.classList.add('menu-target');
+      });
+      this.suppressedTargets = [];
       this.el.emit('menu-targets-changed', null, true);
     },
 
@@ -406,7 +406,7 @@ import { cycleMenuOptionIndex, parseMenuOptions } from './menu-options.js';
           if (
             self.mode === 'poke' && !self.suppressPointing &&
             poker.handComponent && poker.handComponent.isPointing &&
-            isVisibleInHierarchy(item.object3D) &&
+            self.isMenuTargetInteractive(item) &&
             now - item._lastPokeAt > self.data.pokeCooldown
           ) {
             item._lastPokeAt = now;
@@ -582,12 +582,19 @@ import { cycleMenuOptionIndex, parseMenuOptions } from './menu-options.js';
 
     setItemsMode: function (mode, force) {
       if (this.suppressPointing) mode = 'closed';
-      if (mode === this.lastItemsMode && !force) return;
       this.lastItemsMode = mode;
+      var self = this;
       this.pmTargets.forEach(function (item) {
-        if (mode === 'closed') item.classList.remove('menu-target');
-        else item.classList.add('menu-target');
+        var interactive = mode !== 'closed' && self.isMenuTargetInteractive(item);
+        if (interactive && !item.classList.contains('menu-target')) item.classList.add('menu-target');
+        else if (!interactive && item.classList.contains('menu-target')) item.classList.remove('menu-target');
       });
+    },
+
+    isMenuTargetInteractive: function (item) {
+      if (!isVisibleInHierarchy(item.object3D)) return false;
+      var popup = this.panelEl.querySelector('.menu-option-popup');
+      return !popup || popup.contains(item);
     },
 
     updateAutomaticChrome: function () {

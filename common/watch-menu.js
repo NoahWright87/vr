@@ -17,34 +17,58 @@ import './menus.js';
     fingertipEl.setAttribute('raycaster', { objects: '.menu-target', far: 10, enabled: false, direction: direction });
     fingertipEl.setAttribute('cursor', { fuse: false, downEvents: ACTIVATE_DOWN_EVENTS, upEvents: ACTIVATE_UP_EVENTS });
     var hasIntersection = false;
-    var triggerHeld = false;
-    function updateShowLine() {
-      fingertipEl.setAttribute('raycaster', 'showLine', handComp.laserActive && hasIntersection && !triggerHeld);
-    }
-    fingertipEl.addEventListener('raycaster-intersection', function () { hasIntersection = true; updateShowLine(); });
-    fingertipEl.addEventListener('raycaster-intersection-cleared', function () { hasIntersection = false; updateShowLine(); });
+    var gripHeld = false;
+    var activationCount = 0;
     var settleTimer = null;
-    rawEl.addEventListener('gripdown', function () {
+    var releaseTimer = null;
+    function updateShowLine() {
+      fingertipEl.setAttribute('raycaster', 'showLine', handComp.laserActive && hasIntersection);
+    }
+    function enableLaser() {
       handComp.isPointing = true;
-      clearTimeout(settleTimer);
-      settleTimer = setTimeout(function () {
-        handComp.laserActive = true;
-        fingertipEl.setAttribute('raycaster', 'enabled', true);
-        updateShowLine();
-      }, 180);
-    });
-    rawEl.addEventListener('gripup', function () {
+      handComp.laserActive = true;
+      fingertipEl.setAttribute('raycaster', 'enabled', true);
+      updateShowLine();
+    }
+    function disableLaser() {
+      if (gripHeld || activationCount > 0) return;
       handComp.isPointing = false;
       handComp.laserActive = false;
-      clearTimeout(settleTimer);
       fingertipEl.setAttribute('raycaster', 'enabled', false);
       hasIntersection = false;
       updateShowLine();
+    }
+    fingertipEl.addEventListener('raycaster-intersection', function () { hasIntersection = true; updateShowLine(); });
+    fingertipEl.addEventListener('raycaster-intersection-cleared', function () { hasIntersection = false; updateShowLine(); });
+    rawEl.addEventListener('gripdown', function () {
+      gripHeld = true;
+      handComp.isPointing = true;
+      clearTimeout(settleTimer);
+      clearTimeout(releaseTimer);
+      settleTimer = setTimeout(function () {
+        enableLaser();
+      }, 180);
     });
-    rawEl.addEventListener('triggerdown', function () { triggerHeld = true; updateShowLine(); });
-    rawEl.addEventListener('triggerup', function () { triggerHeld = false; updateShowLine(); });
-    ACTIVATE_DOWN_EVENTS.concat(ACTIVATE_UP_EVENTS).forEach(function (name) {
-      rawEl.addEventListener(name, function () { fingertipEl.emit(name, null, false); });
+    rawEl.addEventListener('gripup', function () {
+      gripHeld = false;
+      clearTimeout(settleTimer);
+      disableLaser();
+    });
+    ACTIVATE_DOWN_EVENTS.forEach(function (name) {
+      rawEl.addEventListener(name, function () {
+        activationCount++;
+        clearTimeout(releaseTimer);
+        enableLaser();
+        fingertipEl.emit(name, null, false);
+      });
+    });
+    ACTIVATE_UP_EVENTS.forEach(function (name) {
+      rawEl.addEventListener(name, function () {
+        activationCount = Math.max(0, activationCount - 1);
+        fingertipEl.emit(name, null, false);
+        clearTimeout(releaseTimer);
+        releaseTimer = setTimeout(disableLaser, 250);
+      });
     });
   }
 

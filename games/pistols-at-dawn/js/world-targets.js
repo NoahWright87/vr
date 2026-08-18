@@ -297,13 +297,18 @@
             self.el.appendChild(leg);
           });
 
-          var spacing = this.data.length / this.data.count;
+          var laneCount = this.data.count > 6 ? 2 : 1;
+          var columnCount = Math.ceil(this.data.count / laneCount);
+          var spacing = this.data.length / columnCount;
           for (var i = 0; i < this.data.count; i++) {
-            var startX = -halfLength + spacing * (i + 0.5);
+            var column = Math.floor(i / laneCount);
+            var lane = i % laneCount;
+            var startX = -halfLength + spacing * (column + 0.5);
+            var startY = this.data.height + lane * 1.15 * this.data.targetScale;
 
             var hinge = document.createElement('a-entity');
             hinge.setAttribute('pop-target', '');
-            hinge.setAttribute('position', { x: startX, y: this.data.height, z: 0 });
+            hinge.setAttribute('position', { x: startX, y: startY, z: -lane * 0.25 });
             this.el.appendChild(hinge);
             hinge.appendChild(createTargetFace(this.data.targetScale));
 
@@ -367,21 +372,27 @@
           this.onTargetFallen = makeGroupResetHandler(function () { return self.targets; });
           this.el.addEventListener('target-fallen', this.onTargetFallen);
 
-          var totalWidth = (this.data.count - 1) * this.data.spacing;
+          var columnCount = Math.min(8, Math.ceil(Math.sqrt(this.data.count * 2)));
+          var spacing = Math.max(this.data.spacing, 1.15 * this.data.targetScale);
 
           for (var i = 0; i < this.data.count; i++) {
-            var x = -totalWidth / 2 + i * this.data.spacing;
+            var row = Math.floor(i / columnCount);
+            var column = i % columnCount;
+            var columnsInRow = Math.min(columnCount, this.data.count - row * columnCount);
+            var x = (column - (columnsInRow - 1) / 2) * spacing;
+            var z = -row * 1.15 * this.data.targetScale;
+            var upY = this.data.upHeight + row * 0.25;
 
             var hole = document.createElement('a-circle');
             hole.setAttribute('radius', 0.18);
             hole.setAttribute('rotation', '-90 0 0');
             hole.setAttribute('color', '#3a2f22');
-            hole.setAttribute('position', { x: x, y: 0.005, z: 0 });
+            hole.setAttribute('position', { x: x, y: 0.005, z: z });
             this.el.appendChild(hole);
 
             var hinge = document.createElement('a-entity');
             hinge.setAttribute('pop-target', '');
-            hinge.setAttribute('position', { x: x, y: this.data.downHeight, z: 0 });
+            hinge.setAttribute('position', { x: x, y: this.data.downHeight, z: z });
             this.el.appendChild(hinge);
             hinge.appendChild(createTargetFace(this.data.targetScale));
 
@@ -389,6 +400,8 @@
             this.poppers.push({
               hinge: hinge,
               x: x,
+              z: z,
+              upY: upY,
               isUp: false,
               timer: Math.random() * this.data.cycleMaxMs, // stagger initial pops
             });
@@ -403,10 +416,10 @@
             if (popper.timer > 0) return;
 
             popper.isUp = !popper.isUp;
-            var targetY = popper.isUp ? self.data.upHeight : self.data.downHeight;
+            var targetY = popper.isUp ? popper.upY : self.data.downHeight;
             popper.hinge.setAttribute('animation__pop', {
               property: 'position',
-              to: popper.x + ' ' + targetY + ' 0',
+              to: popper.x + ' ' + targetY + ' ' + popper.z,
               dur: 220,
               easing: popper.isUp ? 'easeOutQuad' : 'easeInQuad',
             });
@@ -544,21 +557,25 @@
           });
         },
 
-        // A shallow arc of `count` stands at the requested distance,
-        // wider for bigger groups so the stands don't crowd together.
+        // Lay large galleries out in staggered depth rows. That keeps nearby
+        // ranges usable without stacking targets directly over one another,
+        // and provides more apparent separation at longer distances.
         buildLayout: function (count, distance) {
-          var baseRadius = distance;
-          var totalSpreadDeg = Math.min(14 * count, 60);
+          var columnCount = Math.min(8, count);
+          var spacing = Math.max(1.25, Math.min(2.5, 1 + distance * 0.06));
           var positions = [];
 
           for (var i = 0; i < count; i++) {
-            var t = count === 1 ? 0 : i / (count - 1) - 0.5; // -0.5..0.5 across the group
-            var angleDeg = t * totalSpreadDeg;
-            var angleRad = (angleDeg * Math.PI) / 180;
+            var row = Math.floor(i / columnCount);
+            var column = i % columnCount;
+            var columnsInRow = Math.min(columnCount, count - row * columnCount);
+            var x = (column - (columnsInRow - 1) / 2) * spacing;
+            var z = -(distance + row * 1.8);
+            var angleDeg = Math.atan2(x, -z) * 180 / Math.PI;
             positions.push({
-              x: baseRadius * Math.sin(angleRad),
-              z: -baseRadius * Math.cos(angleRad),
-              standHeight: i % 2 === 0 ? 1.2 : 1.4,
+              x: x,
+              z: z,
+              standHeight: 1.1 + row * 0.55 + (column % 2) * 0.18,
               rotY: -angleDeg, // angle the board back toward the player
             });
           }
