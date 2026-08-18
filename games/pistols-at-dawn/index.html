@@ -34,11 +34,12 @@
       }
       /* Flat HTML teleport panel — outside the canvas, so it's a
          desktop/phone-browser convenience the same way the reticle
-         fallback is. In a headset it's not reachable by hand at all;
-         it's here because it's what was asked for, and a real in-VR
-         waypoint (a "walk to this glowing marker" panel mounted on a
-         wall somewhere reachable) is the natural next step if teleport
-         needs to work for someone actually wearing the headset. */
+         fallback is, and not reachable by hand in a headset. The real
+         in-headset equivalent is the watch's own TELEPORT page (see
+         the #watch-menu-template markup and teleport-hub's
+         menu-item-select listener in world-town.js) — this panel stays
+         alongside it purely so teleporting is still sanity-checkable
+         without a headset. */
       #teleport-buttons {
         position: absolute;
         bottom: 1rem;
@@ -76,16 +77,25 @@
     <template id="watch-menu-template">
       <a-entity class="watch-menu-panel" visible="false">
         <a-entity data-menu-page="main">
-          <a-plane width="1" height="0.9" color="#101827" position="0 0 -0.01"></a-plane>
-          <a-entity class="menu-chrome-slot" data-title="" data-help="false" data-close="true" data-width="1" data-bar-y="0.32"></a-entity>
+          <a-plane width="1" height="1" color="#101827" position="0 0 -0.01"></a-plane>
+          <a-entity class="menu-chrome-slot" data-title="" data-help="false" data-close="true" data-width="1" data-bar-y="0.36"></a-entity>
           <a-entity
             class="pm-target"
             geometry="primitive: plane; width: 0.78; height: 0.2"
             material="color: #182238"
             menu-item="value: page-targets; label: Targets"
-            position="0 0 0"
+            position="0 0.13 0"
           >
             <a-text value="Targets  >" align="center" color="#eee" width="2.4" position="0 0 0.01"></a-text>
+          </a-entity>
+          <a-entity
+            class="pm-target"
+            geometry="primitive: plane; width: 0.78; height: 0.2"
+            material="color: #182238"
+            menu-item="value: page-teleport; label: Teleport"
+            position="0 -0.13 0"
+          >
+            <a-text value="Teleport  >" align="center" color="#eee" width="2.4" position="0 0 0.01"></a-text>
           </a-entity>
         </a-entity>
 
@@ -127,6 +137,60 @@
             material="color: #182238"
             menu-item="value: page-main; label: Back"
             position="0 -0.76 0"
+          >
+            <a-text value="&lt; Back" align="center" color="#aaa" width="2.4" position="0 0 0.01"></a-text>
+          </a-entity>
+        </a-entity>
+
+        <!-- Teleport page. One row per TOWN_LOCATIONS entry (world-town.js)
+             — value follows the "teleport-<id>" convention teleport-hub's
+             own menu-item-select listener matches on, so a location added
+             there only needs a matching row added here, nothing in JS. -->
+        <a-entity data-menu-page="teleport" visible="false">
+          <a-plane width="1" height="1.8" color="#101827" position="0 0.05 -0.01"></a-plane>
+          <a-entity class="menu-chrome-slot" data-title="TELEPORT" data-help="false" data-close="true" data-width="1" data-bar-y="0.86"></a-entity>
+          <a-entity
+            class="pm-target"
+            geometry="primitive: plane; width: 0.78; height: 0.2"
+            material="color: #182238"
+            menu-item="value: teleport-range; label: The Range"
+            position="0 0.58 0"
+          >
+            <a-text value="The Range" align="center" color="#eee" width="2.4" position="0 0 0.01"></a-text>
+          </a-entity>
+          <a-entity
+            class="pm-target"
+            geometry="primitive: plane; width: 0.78; height: 0.2"
+            material="color: #182238"
+            menu-item="value: teleport-saloon; label: The Saloon"
+            position="0 0.32 0"
+          >
+            <a-text value="The Saloon" align="center" color="#eee" width="2.4" position="0 0 0.01"></a-text>
+          </a-entity>
+          <a-entity
+            class="pm-target"
+            geometry="primitive: plane; width: 0.78; height: 0.2"
+            material="color: #182238"
+            menu-item="value: teleport-farm; label: The Farm"
+            position="0 0.06 0"
+          >
+            <a-text value="The Farm" align="center" color="#eee" width="2.4" position="0 0 0.01"></a-text>
+          </a-entity>
+          <a-entity
+            class="pm-target"
+            geometry="primitive: plane; width: 0.78; height: 0.2"
+            material="color: #182238"
+            menu-item="value: teleport-stable; label: The Stable"
+            position="0 -0.2 0"
+          >
+            <a-text value="The Stable" align="center" color="#eee" width="2.4" position="0 0 0.01"></a-text>
+          </a-entity>
+          <a-entity
+            class="pm-target"
+            geometry="primitive: plane; width: 0.78; height: 0.2"
+            material="color: #182238"
+            menu-item="value: page-main; label: Back"
+            position="0 -0.5 0"
           >
             <a-text value="&lt; Back" align="center" color="#aaa" width="2.4" position="0 0 0.01"></a-text>
           </a-entity>

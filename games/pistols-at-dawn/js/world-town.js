@@ -13,8 +13,14 @@
       // has to know the rest of the town exists. A few of them share
       // generic scenery code (world-structures.js) without sharing
       // anything location-specific. Adding another stop later is one
-      // more entry here plus whatever world-<place>.js builds it, not a
-      // change to this file.
+      // more entry here plus whatever world-<place>.js builds it — plus
+      // one more row on the watch's TELEPORT page (index.html's
+      // #watch-menu-template), which isn't generated from this array
+      // and so is the one place a new stop still has to be named by
+      // hand. Not a change to teleport-hub itself either way: its
+      // menu-item-select listener matches the generic "teleport-<id>"
+      // prefix, so it already knows what to do with whatever id that
+      // row names.
       //
       // Split out as its own file (rather than folded into core.js)
       // because it's the one other prototypes could plausibly lift
@@ -59,13 +65,39 @@
       // button to remember to add) and does the actual move: fade to
       // black, jump position/rotation while nothing is visible, fade
       // back in. No tick — it only ever does anything in response to a
-      // button click.
+      // button click or a watch menu selection.
+      //
+      // The watch (common/watch-menu.js, wired up in index.html's
+      // hand-with-watch markup) is the in-headset half of teleport —
+      // the flat HTML buttons are a desktop/phone convenience, same as
+      // the reticle fallback elsewhere in this file, and were never
+      // reachable by hand in a headset. Both hands sit inside
+      // #player-rig (see index.html's own comment on that), so a
+      // menu-item-select from either watch's panel bubbles up through
+      // this.el on its way to <a-scene> — no separate listener needed
+      // on the watch's own markup. The template (index.html's TELEPORT
+      // page) names each destination "teleport-<id>"; this only needs
+      // to strip that prefix and hand the id to the exact same
+      // teleportTo() the buttons already call.
       // ==============================================================
       registerComponent('teleport-hub', {
         init: function () {
           this.fadeEl = document.querySelector('#teleport-fade');
           this.fading = false;
           this.buildButtons();
+
+          this.onMenuSelect = this.onMenuSelect.bind(this);
+          this.el.addEventListener('menu-item-select', this.onMenuSelect);
+        },
+
+        remove: function () {
+          this.el.removeEventListener('menu-item-select', this.onMenuSelect);
+        },
+
+        onMenuSelect: function (evt) {
+          var value = evt.detail.value;
+          if (value.indexOf('teleport-') !== 0) return;
+          this.teleportTo(value.slice('teleport-'.length));
         },
 
         buildButtons: function () {
