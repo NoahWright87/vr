@@ -22,10 +22,18 @@
       // stall shed, not a sealed building) built around wherever
       // TOWN_LOCATIONS says "saloon" lands the player, so the room is
       // never at risk of drifting away from its own front door.
-      var SALOON_ROOM_WIDTH = 12;
-      var SALOON_ROOM_DEPTH = 10; // z spans roughly -9 (back wall) to +1 (open front), entry sits at local z 0
+      //
+      // Sized for a real guardian boundary, not a real dart alley: most
+      // people playing this on a Quest have something like a 2x2m room-
+      // scale space, not the run of a whole saloon, so the player has to
+      // land close enough to reach a rack without walking out of their
+      // play area, and the farthest throw (HARD, below) has to still fit
+      // inside it. Everything here is picked to that constraint first —
+      // see DART_STALLS' own comment for the walking-distance math.
+      var SALOON_ROOM_WIDTH = 5;
+      var SALOON_ROOM_DEPTH = 4; // z spans roughly -1.9 (back wall) to +2.1, floor centered on local z 0.1
       var SALOON_WALL_HEIGHT = 3.2;
-      var SALOON_BACK_WALL_Z = -8.9;
+      var SALOON_BACK_WALL_Z = -1.7;
       var SALOON_WALL_COLOR = '#4a3220';
       var SALOON_FLOOR_COLOR = '#5b4633';
 
@@ -35,7 +43,7 @@
       // stall. BOARD_RADIUS (0.24m) is close to a regulation dartboard's
       // own ~0.23m playing radius — everything else here is invented for
       // a low-poly boxy aesthetic, not measured against a real one.
-      var DART_BOARD_LOCAL_Z = -8.7;
+      var DART_BOARD_LOCAL_Z = -1.4;
       var DART_BOARD_HEIGHT = 1.4;
       var DART_RING_Z_STEP = 0.008; // each zone drawn a hair further forward than the last, inner-to-outer — see createDartFace
       var DART_SLOT_HEIGHT = 1.1; // comfortable "reach out and take one" height, not the board's own height
@@ -55,10 +63,20 @@
       // across the room; `distance` is the one number that actually
       // makes a stall harder — everything about the board and the darts
       // themselves is identical across all three.
+      //
+      // Both numbers are deliberately small rather than realistic: real
+      // regulation throw distance (2.37m) alone can exceed a small
+      // guardian, so all three are compressed well under that, and 1.3m
+      // between stalls means reaching any of the three racks from the
+      // middle one is a step, not a walk. TOWN_LOCATIONS' "saloon" entry
+      // point (world-town.js) lands the player at this file's local
+      // origin, which — see buildSlots — puts them within about 0.4m of
+      // every rack: right in front of MEDIUM's, a half-step from EASY's
+      // or HARD's.
       var DART_STALLS = [
-        { id: 'easy', label: 'EASY', distance: 1.6, x: -3.5 },
-        { id: 'medium', label: 'MEDIUM', distance: 2.37, x: 0 }, // regulation steel-tip throw distance
-        { id: 'hard', label: 'HARD', distance: 3.1, x: 3.5 },
+        { id: 'easy', label: 'EASY', distance: 1.0, x: -1.3 },
+        { id: 'medium', label: 'MEDIUM', distance: 1.4, x: 0 },
+        { id: 'hard', label: 'HARD', distance: 1.8, x: 1.3 },
       ];
 
       // ==============================================================
@@ -472,11 +490,16 @@
         },
 
         buildRoom: function () {
+          // Floor/side walls span forward from the back wall, so their
+          // center is derived from it rather than a second magic number
+          // that could quietly drift out of sync with SALOON_BACK_WALL_Z.
+          var centerZ = SALOON_BACK_WALL_Z + SALOON_ROOM_DEPTH / 2;
+
           var floor = document.createElement('a-plane');
           floor.setAttribute('rotation', '-90 0 0');
           floor.setAttribute('width', SALOON_ROOM_WIDTH);
           floor.setAttribute('height', SALOON_ROOM_DEPTH);
-          floor.setAttribute('position', { x: 0, y: 0, z: -4 });
+          floor.setAttribute('position', { x: 0, y: 0, z: centerZ });
           floor.setAttribute('color', SALOON_FLOOR_COLOR);
           this.el.appendChild(floor);
 
@@ -494,7 +517,7 @@
             wall.setAttribute('width', 0.2);
             wall.setAttribute('height', SALOON_WALL_HEIGHT);
             wall.setAttribute('depth', SALOON_ROOM_DEPTH);
-            wall.setAttribute('position', { x: side * (SALOON_ROOM_WIDTH / 2), y: SALOON_WALL_HEIGHT / 2, z: -4 });
+            wall.setAttribute('position', { x: side * (SALOON_ROOM_WIDTH / 2), y: SALOON_WALL_HEIGHT / 2, z: centerZ });
             wall.setAttribute('color', SALOON_WALL_COLOR);
             el.appendChild(wall);
           });
