@@ -28,7 +28,7 @@ test('current settings are adapted for each target kind', () => {
   assert.deepEqual(adapter.dataForKind('stationary'), { count: 24, distance: 30 });
   assert.deepEqual(adapter.dataForKind('spinner'), {
     spokeCount: 24,
-    wheelRadius: 3.12,
+    wheelRadius: 0.9,
     speed: 45,
     targetScale: 1,
     angle: 0,
@@ -36,7 +36,8 @@ test('current settings are adapted for each target kind', () => {
   });
   assert.deepEqual(adapter.dataForKind('conveyor'), {
     count: 24,
-    length: 9.6,
+    conveyorCount: 4,
+    length: 6,
     speed: 0.45,
     direction: 1,
     targetScale: 1,

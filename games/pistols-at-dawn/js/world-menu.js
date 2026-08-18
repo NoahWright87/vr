@@ -49,9 +49,11 @@
       var targetScale = Math.min(1.25, 0.5 + settings.distance / 60);
       if (kind === 'stationary') return { count: settings.count, distance: settings.distance };
       if (kind === 'conveyor') {
+        var conveyorCount = settings.count <= 6 ? 1 : settings.count <= 12 ? 2 : settings.count <= 18 ? 3 : 4;
         return {
           count: settings.count,
-          length: Math.round(Math.max(3, Math.ceil(settings.count / 2) * 0.8) * 10) / 10,
+          conveyorCount: conveyorCount,
+          length: Math.round(Math.max(3, Math.ceil(settings.count / conveyorCount)) * 10) / 10,
           speed: settings.speed / 100,
           direction: 1,
           targetScale: targetScale,
@@ -73,7 +75,7 @@
       }
       return {
         spokeCount: settings.count,
-        wheelRadius: Math.max(0.9, settings.count * 0.13),
+        wheelRadius: 0.9,
         speed: settings.speed,
         targetScale: targetScale,
         angle: 0,
