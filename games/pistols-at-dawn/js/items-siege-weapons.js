@@ -421,6 +421,38 @@
         matchSlot.setAttribute('stocked', { item: 'cannon-match', refillMs: 1000 });
         parts.root.appendChild(matchSlot);
 
+        // A rough plate beside the stocked match gives the cannon its
+        // own obvious striking surface. HARD_SURFACES uses the
+        // carriage's local X/Z frame, so the plate keeps working after
+        // the cannon has been dragged or turned.
+        var matchStriker = siegeBox(
+          parts.root,
+          { x: 0.26, y: 0.018, z: 0.16 },
+          { x: 0.28, y: 0.91, z: 0.65 },
+          '#6b3024'
+        );
+        matchStriker.classList.add('cannon-match-striker');
+        for (var ridge = -2; ridge <= 2; ridge++) {
+          siegeBox(matchStriker, { x: 0.012, y: 0.004, z: 0.145 }, { x: ridge * 0.045, y: 0.011, z: 0 }, '#b45c3b');
+        }
+        var strikeLabel = document.createElement('a-text');
+        strikeLabel.classList.add('cannon-match-striker-label');
+        strikeLabel.setAttribute('value', 'STRIKE');
+        strikeLabel.setAttribute('align', 'center');
+        strikeLabel.setAttribute('color', '#ffe0a0');
+        strikeLabel.setAttribute('width', 0.34);
+        strikeLabel.setAttribute('position', { x: 0, y: 0.016, z: 0 });
+        strikeLabel.setAttribute('rotation', { x: -90, y: 0, z: 0 });
+        matchStriker.appendChild(strikeLabel);
+        HARD_SURFACES.push({
+          obj: parts.root.object3D,
+          y: 0.93,
+          minX: 0.15,
+          maxX: 0.41,
+          minZ: 0.57,
+          maxZ: 0.73,
+        });
+
         addSights(pivot, 0.05, -1.08, 0.22);
         parts.root.setAttribute('cannon', '');
       }
