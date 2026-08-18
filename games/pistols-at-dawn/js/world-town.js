@@ -4,11 +4,15 @@
       // (TOWN_LOCATIONS) and teleport-hub, the component on #player-rig
       // that can jump to any of them. Deliberately knows nothing about
       // what's AT any of those spots — the range is the scene's
-      // original origin, unchanged; the saloon (world-saloon-darts.js)
-      // and the farm (world-farm.js) each just look up their own entry
-      // by id and build a room/yard out at its position. Each of those
-      // is placed far enough from the others that nothing has to know
-      // the rest of the town exists. Adding another stop later is one
+      // original origin, unchanged; the saloon (world-saloon-darts.js),
+      // the farm (world-farm.js) and the stable (world-stable.js) each
+      // just look up their own entry by id and build themselves out at
+      // its position. Each location is its own file — none of them
+      // read or modify another's state, so none of them can disturb
+      // each other — placed far enough apart in the world that nothing
+      // has to know the rest of the town exists. A few of them share
+      // generic scenery code (world-structures.js) without sharing
+      // anything location-specific. Adding another stop later is one
       // more entry here plus whatever world-<place>.js builds it, not a
       // change to this file.
       //
@@ -31,6 +35,7 @@
         { id: 'range', label: 'The Range', position: { x: 0, y: 0, z: 0 }, rotationY: 0 },
         { id: 'saloon', label: 'The Saloon', position: { x: 0, y: 0, z: -60 }, rotationY: 0 },
         { id: 'farm', label: 'The Farm', position: { x: 0, y: 0, z: 60 }, rotationY: 0 },
+        { id: 'stable', label: 'The Stable', position: { x: -60, y: 0, z: 0 }, rotationY: 0 },
       ];
 
       // Looked up by id rather than exported as an index — the list is

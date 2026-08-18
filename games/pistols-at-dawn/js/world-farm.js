@@ -7,6 +7,11 @@
       // way the saloon's own room existed before darts got built into
       // it. Reachable via teleport-hub (world-town.js); see farm's own
       // init() for how it finds where to build itself.
+      //
+      // The barn's roof is buildGableRoof from world-structures.js —
+      // shared with the stable rather than duplicated here. Everything
+      // else (the yard, the fence, the barn itself) is specific to this
+      // one location.
       // ==============================================================
 
       // YARD — a 20x20m square, axis-aligned in this room's own local
@@ -52,47 +57,6 @@
       var FARM_ROOF_PITCH_DEG = 38;
       var FARM_ROOF_THICKNESS = 0.12;
       var FARM_ROOF_OVERHANG = 0.4; // meters the roof extends past the walls on every edge
-
-      // ==============================================================
-      // buildGableRoof
-      // Two slabs meeting at a ridge — the same "compute both endpoints,
-      // find the midpoint and the angle between them" technique
-      // boxy-bow's addString uses for the bowstring, just for a fixed
-      // shape instead of one that moves every frame. Solved from the
-      // actual ridge/eave coordinates rather than plugging pitchDeg
-      // straight into rotation.x, because the two slabs are NOT mirror
-      // images of each other in rotation terms — a box has no
-      // direction to its own depth axis, so the north-side slab needs
-      // an angle on the far side of 90° from the south-side slab's, not
-      // its negative. Extending the eave point along the same ridge-to-
-      // eave line by ROOF_OVERHANG (rather than just padding the box's
-      // depth) is what keeps the slope angle exact while still
-      // overhanging the wall.
-      // ==============================================================
-      function buildGableRoof(parentEl, opts) {
-        var halfDepth = opts.depth / 2;
-        var pitchRad = (opts.pitchDeg * Math.PI) / 180;
-        var rise = halfDepth * Math.tan(pitchRad);
-        var ridgeY = opts.wallHeight + rise;
-
-        [-1, 1].forEach(function (sign) {
-          var dirY = opts.wallHeight - ridgeY; // = -rise, ridge to eave
-          var dirZ = sign * halfDepth;
-          var runLength = Math.sqrt(dirY * dirY + dirZ * dirZ);
-          var t = (runLength + FARM_ROOF_OVERHANG) / runLength;
-          var farY = ridgeY + dirY * t;
-          var farZ = dirZ * t;
-
-          var slab = document.createElement('a-box');
-          slab.setAttribute('width', opts.width + FARM_ROOF_OVERHANG * 2);
-          slab.setAttribute('height', FARM_ROOF_THICKNESS);
-          slab.setAttribute('depth', runLength + FARM_ROOF_OVERHANG);
-          slab.setAttribute('color', opts.color);
-          slab.setAttribute('position', { x: 0, y: (ridgeY + farY) / 2, z: farZ / 2 });
-          slab.setAttribute('rotation', { x: (Math.atan2(-dirY, dirZ) * 180) / Math.PI, y: 0, z: 0 });
-          parentEl.appendChild(slab);
-        });
-      }
 
       // ==============================================================
       // buildFenceRunAlongX / buildFenceRunAlongZ
@@ -243,6 +207,8 @@
             wallHeight: FARM_BARN_WALL_HEIGHT,
             pitchDeg: FARM_ROOF_PITCH_DEG,
             color: FARM_ROOF_COLOR,
+            thickness: FARM_ROOF_THICKNESS,
+            overhang: FARM_ROOF_OVERHANG,
           });
 
           // Double doors on the south (gate-facing) wall.
