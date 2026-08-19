@@ -233,9 +233,91 @@
           grid-template-columns: 1fr;
         }
       }
+      #mp-panel {
+        position: fixed;
+        bottom: 0;
+        right: 0;
+        z-index: 5;
+        width: 22rem;
+        max-height: 60vh;
+        overflow-y: auto;
+        box-sizing: border-box;
+        padding: 0.75rem;
+        background: rgba(8, 14, 26, 0.92);
+        color: #dce8ff;
+        font: 0.8rem/1.4 ui-monospace, SFMono-Regular, Consolas, monospace;
+        border-top-left-radius: 0.6rem;
+      }
+      #mp-panel button {
+        appearance: none;
+        border: 1px solid #35507c;
+        background: #15233b;
+        color: #dce8ff;
+        border-radius: 0.4rem;
+        padding: 0.3rem 0.6rem;
+        cursor: pointer;
+        font: inherit;
+        margin: 0.2rem 0.3rem 0.2rem 0;
+      }
+      #mp-panel button:disabled {
+        opacity: 0.5;
+        cursor: default;
+      }
+      #mp-panel label {
+        display: block;
+        margin-top: 0.4rem;
+      }
+      #mp-panel textarea {
+        width: 100%;
+        box-sizing: border-box;
+        min-height: 3.5rem;
+        margin-top: 0.2rem;
+        background: #0a1426;
+        color: #eef4ff;
+        border: 1px solid #35507c;
+        border-radius: 0.4rem;
+        font: inherit;
+      }
+      #mp-status {
+        margin: 0.3rem 0;
+        color: #93f0bf;
+      }
+      #mp-log {
+        margin-top: 0.4rem;
+        max-height: 6rem;
+        overflow-y: auto;
+        color: #9fb0d4;
+      }
     </style>
   </head>
   <body>
+    <!-- Multiplayer connection POC — proves two peers can find each
+         other with a manual copy/paste signaling exchange and no
+         server (see common/multiplayer.js). Deliberately plain HTML,
+         not part of the VR scene: this is only here to validate the
+         WebRTC handshake itself before it gets wired into the
+         pedestal menu and an in-VR join flow. -->
+    <div id="mp-panel">
+      <strong>Multiplayer (connection test)</strong>
+      <div id="mp-status">Not connected</div>
+      <div id="mp-role-row">
+        <button id="mp-host-btn" type="button">Host</button>
+        <button id="mp-join-btn" type="button">Join</button>
+      </div>
+      <div id="mp-offer-row" hidden>
+        <label>Offer — copy to the joining peer<textarea id="mp-local-offer" readonly></textarea></label>
+        <label>Answer — paste what the joining peer sends back<textarea id="mp-remote-answer"></textarea></label>
+        <button id="mp-accept-answer-btn" type="button">Accept answer</button>
+      </div>
+      <div id="mp-join-row" hidden>
+        <label>Offer — paste what the host sent you<textarea id="mp-remote-offer"></textarea></label>
+        <button id="mp-accept-offer-btn" type="button">Accept offer</button>
+        <label>Answer — copy back to the host<textarea id="mp-local-answer" readonly></textarea></label>
+      </div>
+      <button id="mp-send-ping-btn" type="button" hidden>Send ping</button>
+      <div id="mp-log"></div>
+    </div>
+
     <div id="editor-screen">
       <div class="editor-shell">
         <div class="editor-topbar">
@@ -1401,5 +1483,80 @@
       setInterval(updateAllDisplays, 1000);
     </script>
     </div>
+
+    <script type="module">
+      import { createHostConnection, createJoinConnection } from '../../common/multiplayer.js';
+
+      var statusEl = document.getElementById('mp-status');
+      var hostBtn = document.getElementById('mp-host-btn');
+      var joinBtn = document.getElementById('mp-join-btn');
+      var offerRow = document.getElementById('mp-offer-row');
+      var joinRow = document.getElementById('mp-join-row');
+      var localOfferEl = document.getElementById('mp-local-offer');
+      var remoteAnswerEl = document.getElementById('mp-remote-answer');
+      var acceptAnswerBtn = document.getElementById('mp-accept-answer-btn');
+      var remoteOfferEl = document.getElementById('mp-remote-offer');
+      var acceptOfferBtn = document.getElementById('mp-accept-offer-btn');
+      var localAnswerEl = document.getElementById('mp-local-answer');
+      var sendPingBtn = document.getElementById('mp-send-ping-btn');
+      var logEl = document.getElementById('mp-log');
+
+      var connection = null;
+
+      function log (text) {
+        var line = document.createElement('div');
+        line.textContent = text;
+        logEl.appendChild(line);
+        logEl.scrollTop = logEl.scrollHeight;
+      }
+
+      function onOpen () {
+        statusEl.textContent = 'Connected';
+        sendPingBtn.hidden = false;
+      }
+      function onMessage (data) {
+        log('recv: ' + data);
+      }
+      function onClose () {
+        statusEl.textContent = 'Disconnected';
+        sendPingBtn.hidden = true;
+      }
+
+      hostBtn.addEventListener('click', async function () {
+        hostBtn.disabled = true;
+        joinBtn.disabled = true;
+        connection = createHostConnection({ onOpen: onOpen, onMessage: onMessage, onClose: onClose });
+        statusEl.textContent = 'Hosting — generating offer...';
+        var offer = await connection.createOffer();
+        localOfferEl.value = offer;
+        offerRow.hidden = false;
+        statusEl.textContent = 'Waiting for a joining peer';
+      });
+
+      joinBtn.addEventListener('click', function () {
+        hostBtn.disabled = true;
+        joinBtn.disabled = true;
+        joinRow.hidden = false;
+        statusEl.textContent = "Paste the host's offer below";
+      });
+
+      acceptOfferBtn.addEventListener('click', async function () {
+        connection = createJoinConnection({ onOpen: onOpen, onMessage: onMessage, onClose: onClose });
+        statusEl.textContent = 'Generating answer...';
+        var answer = await connection.acceptOffer(remoteOfferEl.value);
+        localAnswerEl.value = answer;
+        statusEl.textContent = 'Waiting for the host to accept';
+      });
+
+      acceptAnswerBtn.addEventListener('click', async function () {
+        await connection.acceptAnswer(remoteAnswerEl.value);
+      });
+
+      sendPingBtn.addEventListener('click', function () {
+        var message = 'ping ' + Date.now();
+        connection.send(message);
+        log('sent: ' + message);
+      });
+    </script>
   </body>
 </html>
