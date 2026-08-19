@@ -32,26 +32,70 @@
       #overlay a {
         color: #9ad;
       }
+      /* Flat HTML teleport panel — outside the canvas, so it's a
+         desktop/phone-browser convenience the same way the reticle
+         fallback is, and not reachable by hand in a headset. The real
+         in-headset equivalent is the watch's own TELEPORT page (see
+         the #watch-menu-template markup and teleport-hub's
+         menu-item-select listener in world-town.js) — this panel stays
+         alongside it purely so teleporting is still sanity-checkable
+         without a headset. */
+      #teleport-buttons {
+        position: absolute;
+        bottom: 1rem;
+        right: 1rem;
+        z-index: 1;
+        display: flex;
+        flex-direction: column;
+        gap: 0.4rem;
+        background: rgba(0, 0, 0, 0.55);
+        padding: 0.6rem;
+        border-radius: 6px;
+      }
+      #teleport-buttons .teleport-label {
+        color: #ccc;
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        margin-bottom: 0.1rem;
+      }
+      #teleport-buttons button {
+        font-size: 0.9rem;
+        padding: 0.35rem 0.9rem;
+        cursor: pointer;
+      }
     </style>
   </head>
   <body>
     <div id="overlay">
-      <span>Pistols at Dawn — grip near a holstered pistol, shotgun, or your hat to draw it. Guns fire on the trigger; let go of the grip while a finger still rests on the trigger to dangle and twirl whatever you're holding. Anything can snap into any anchor it's small enough for — glance at the glowing spheres for a hint — so go ahead and wear a gun like a hat, or hide one inside your hat. Turn around for the saloon bar: knock a bottle's cap on the counter edge to open it, then tip it over your face and drink what pours out. Fling a fistful of bottles skyward and shoot them apart. Strike a match on the counter or flip open the lighter and thumb a face button, then light a cigar off either — or off a barrel you just emptied, or a well-aimed bullet. Hold a cigar at your lips to draw on it and again to blow the smoke back out; flick or twirl it to knock the ash off. Let go and re-squeeze the grip quickly to keep hold of what you had and pick up the next thing too. Grab the shotgun's forend with your off hand to steady it. Spilled beer pools where it lands and burns if you light it, fire spreads along it and sets light to whatever it reaches, and a smashed bottle spills its own — so a lit puddle and a well-thrown beer make a Molotov out of parts that were already lying about. There's a jug of water for when that goes wrong — and yes, since fire is a liquid and liquid that reaches your mouth gets swallowed, you can drink it. Throw overhand and it goes where you're looking; let go early to lob it, late to line-drive it. Both meters at the bottom of your view have opinions about your aim. Shoot the brass bell hanging over the bar and the whole counter revolves — beers, cigars, lit matches and all — to show an armoury on its back: guns on the pegs, long guns in the cradles, and a lot of empty sockets to arrange your own loadout in. There's dynamite on the low shelf: light the fuse off anything hot and throw it, or shoot a stick out of the air. Take the bow in one hand and the string in the other and pull — how far apart your hands are is your draw, and where you're looking is where it'll land. The nock holds three, and it has no opinion about what: nock arrows, or a beer, or a lit stick of dynamite. Set an arrow alight first and it'll set alight whatever it lands in. The launcher works the same way — load the tube, point it somewhere you don't like, and stand well back. There's a scoped rifle in the rack too: the glass is dark until you actually bring the eyepiece to your eye, and then it's a real magnified view of whatever the barrel is pointed at. On the shelf under the bench there's a tank with a hose: pull the trigger on it to flip the hatch open, pour something in — beer, water, or a beer you've set alight — sling it on your back, and take the nozzle off the chest clip. It sprays whatever you put in it, so it's a flamethrower, a fire hose or a way to get a whole room drunk depending on what you last poured. The hatch falls shut on its own, and an open tank of beer will catch light off anything hot. The armoury's racks refill ten seconds after you empty them; your own holsters don't, so what's on your hip is whatever you put there. Any weapon left lying loose goes up in smoke half a minute later. <a href="../../index.html">All prototypes</a></span>
+      <span>Pistols at Dawn — grip near a holstered pistol, shotgun, or your hat to draw it. Guns fire on the trigger; let go of the grip while a finger still rests on the trigger to dangle and twirl whatever you're holding. Anything can snap into any anchor it's small enough for — glance at the glowing spheres for a hint — so go ahead and wear a gun like a hat, or hide one inside your hat. Turn around for the saloon bar: knock a bottle's cap on the counter edge to open it, then tip it over your face and drink what pours out. Fling a fistful of bottles skyward and shoot them apart. Strike a match on the counter or flip open the lighter and thumb a face button, then light a cigar off either — or off a barrel you just emptied, or a well-aimed bullet. Hold a cigar at your lips to draw on it and again to blow the smoke back out; flick or twirl it to knock the ash off. Let go and re-squeeze the grip quickly to keep hold of what you had and pick up the next thing too. Grab the shotgun's forend with your off hand to steady it. Spilled beer pools where it lands and burns if you light it, fire spreads along it and sets light to whatever it reaches, and a smashed bottle spills its own — so a lit puddle and a well-thrown beer make a Molotov out of parts that were already lying about. There's a jug of water for when that goes wrong — and yes, since fire is a liquid and liquid that reaches your mouth gets swallowed, you can drink it. Throw overhand and it goes where you're looking; let go early to lob it, late to line-drive it. Both meters at the bottom of your view have opinions about your aim. Shoot the brass bell hanging over the bar and the whole counter revolves — beers, cigars, lit matches and all — to show an armoury on its back: guns on the pegs, long guns in the cradles, and a lot of empty sockets to arrange your own loadout in. There's dynamite on the low shelf: light the fuse off anything hot and throw it, or shoot a stick out of the air. Take the bow in one hand and the string in the other and pull — how far apart your hands are is your draw, and where you're looking is where it'll land. The nock holds three, and it has no opinion about what: nock arrows, or a beer, or a lit stick of dynamite. Set an arrow alight first and it'll set alight whatever it lands in. The launcher works the same way — load the tube, point it somewhere you don't like, and stand well back. There's a scoped rifle in the rack too: the glass is dark until you actually bring the eyepiece to your eye, and then it's a real magnified view of whatever the barrel is pointed at. On the shelf under the bench there's a tank with a hose: pull the trigger on it to flip the hatch open, pour something in — beer, water, or a beer you've set alight — sling it on your back, and take the nozzle off the chest clip. It sprays whatever you put in it, so it's a flamethrower, a fire hose or a way to get a whole room drunk depending on what you last poured. The hatch falls shut on its own, and an open tank of beer will catch light off anything hot. The armoury's racks refill ten seconds after you empty them; your own holsters don't, so what's on your hip is whatever you put there. Any weapon left lying loose goes up in smoke half a minute later. Through the saloon doors (teleport button, bottom right) are three dart stalls at three distances — throw the same overhand way, and darts stick where they land. Teleport out to the farm for a look at the barn and the picket-fenced yard around it, or the stable for a row of hay-filled stalls — no horses yet. <a href="../../index.html">All prototypes</a></span>
+    </div>
+    <div id="teleport-buttons">
+      <div class="teleport-label">Teleport</div>
     </div>
 
     <template id="watch-menu-template">
       <a-entity class="watch-menu-panel" visible="false">
         <a-entity data-menu-page="main">
-          <a-plane width="1" height="0.9" color="#101827" position="0 0 -0.01"></a-plane>
-          <a-entity class="menu-chrome-slot" data-title="" data-help="false" data-close="true" data-width="1" data-bar-y="0.32"></a-entity>
+          <a-plane width="1" height="1" color="#101827" position="0 0 -0.01"></a-plane>
+          <a-entity class="menu-chrome-slot" data-title="" data-help="false" data-close="true" data-width="1" data-bar-y="0.36"></a-entity>
           <a-entity
             class="pm-target"
             geometry="primitive: plane; width: 0.78; height: 0.2"
             material="color: #182238"
             menu-item="value: page-targets; label: Targets"
-            position="0 0 0"
+            position="0 0.13 0"
           >
             <a-text value="Targets  >" align="center" color="#eee" width="2.4" position="0 0 0.01"></a-text>
+          </a-entity>
+          <a-entity
+            class="pm-target"
+            geometry="primitive: plane; width: 0.78; height: 0.2"
+            material="color: #182238"
+            menu-item="value: page-teleport; label: Teleport"
+            position="0 -0.13 0"
+          >
+            <a-text value="Teleport  >" align="center" color="#eee" width="2.4" position="0 0 0.01"></a-text>
           </a-entity>
         </a-entity>
 
@@ -97,6 +141,60 @@
             <a-text value="&lt; Back" align="center" color="#aaa" width="2.4" position="0 0 0.01"></a-text>
           </a-entity>
         </a-entity>
+
+        <!-- Teleport page. One row per TOWN_LOCATIONS entry (world-town.js)
+             — value follows the "teleport-<id>" convention teleport-hub's
+             own menu-item-select listener matches on, so a location added
+             there only needs a matching row added here, nothing in JS. -->
+        <a-entity data-menu-page="teleport" visible="false">
+          <a-plane width="1" height="1.8" color="#101827" position="0 0.05 -0.01"></a-plane>
+          <a-entity class="menu-chrome-slot" data-title="TELEPORT" data-help="false" data-close="true" data-width="1" data-bar-y="0.86"></a-entity>
+          <a-entity
+            class="pm-target"
+            geometry="primitive: plane; width: 0.78; height: 0.2"
+            material="color: #182238"
+            menu-item="value: teleport-range; label: The Range"
+            position="0 0.58 0"
+          >
+            <a-text value="The Range" align="center" color="#eee" width="2.4" position="0 0 0.01"></a-text>
+          </a-entity>
+          <a-entity
+            class="pm-target"
+            geometry="primitive: plane; width: 0.78; height: 0.2"
+            material="color: #182238"
+            menu-item="value: teleport-saloon; label: The Saloon"
+            position="0 0.32 0"
+          >
+            <a-text value="The Saloon" align="center" color="#eee" width="2.4" position="0 0 0.01"></a-text>
+          </a-entity>
+          <a-entity
+            class="pm-target"
+            geometry="primitive: plane; width: 0.78; height: 0.2"
+            material="color: #182238"
+            menu-item="value: teleport-farm; label: The Farm"
+            position="0 0.06 0"
+          >
+            <a-text value="The Farm" align="center" color="#eee" width="2.4" position="0 0 0.01"></a-text>
+          </a-entity>
+          <a-entity
+            class="pm-target"
+            geometry="primitive: plane; width: 0.78; height: 0.2"
+            material="color: #182238"
+            menu-item="value: teleport-stable; label: The Stable"
+            position="0 -0.2 0"
+          >
+            <a-text value="The Stable" align="center" color="#eee" width="2.4" position="0 0 0.01"></a-text>
+          </a-entity>
+          <a-entity
+            class="pm-target"
+            geometry="primitive: plane; width: 0.78; height: 0.2"
+            material="color: #182238"
+            menu-item="value: page-main; label: Back"
+            position="0 -0.5 0"
+          >
+            <a-text value="&lt; Back" align="center" color="#aaa" width="2.4" position="0 0 0.01"></a-text>
+          </a-entity>
+        </a-entity>
       </a-entity>
     </template>
 
@@ -124,115 +222,169 @@
            The reticle + click-to-score fallback from the previous
            version is kept as-is, purely so target scoring stays
            sanity-checkable without a headset.
+
+           Camera and hands used to be top-level scene entities with no
+           shared parent — fine when the only way to get around was the
+           island's own flip-in-place trick (see world-saloon-bar.js),
+           dead wrong the moment "teleport somewhere else" needs to mean
+           anything. Wrapping both under one entity and moving THAT
+           entity is the standard WebXR room-scale rig pattern: the
+           headset/controllers' own tracked pose becomes local to
+           whatever parent they sit under, so nothing about head or
+           hand tracking changes — see world-town.js's teleport-hub,
+           attached here, for the part that actually moves it.
+
+           Everything that reads camera/hand position elsewhere in the
+           codebase does so via object3D.getWorldPosition/
+           getWorldQuaternion rather than the raw local .position/
+           .rotation, which is what makes this wrap safe without
+           touching any of that code — world-space reads already
+           resolve through whatever parent chain exists.
+
+           body-anchor (waist/back, below) deliberately stays OUTSIDE
+           this rig: it already recomputes its own world position from
+           the camera's world position every tick, so it tracks the
+           rig's movement for free regardless of where it sits in the
+           hierarchy.
       ============================================================ -->
-      <a-camera id="head-camera">
-        <a-text
-          id="hud-text"
-          value="Score: 0   Shots: 0"
-          align="center"
-          color="#FFFFFF"
-          width="2"
-          position="0 -0.35 -1"
-        ></a-text>
-        <a-text
-          id="vice-text"
-          value=""
-          align="center"
-          color="#ffd9a0"
-          width="1.6"
-          position="0 -0.46 -1"
-        ></a-text>
-        <a-entity
-          cursor="fuse: false"
-          position="0 0 -1"
-          geometry="primitive: ring; radiusInner: 0.005; radiusOuter: 0.008"
-          material="color: #FFFFFF; shader: flat; opacity: 0.8"
-          raycaster="objects: .shootable; far: 75"
-        ></a-entity>
-        <!-- Nested directly under the camera (rather than a body-anchor-style
-             tick() component) so it inherits full head rotation for free,
-             pitch/roll included — unlike the hips, a worn hat SHOULD tilt
-             with your head. The 0.1m vertical offset is an estimate for
-             "brim just clips the top of view"; real headset FOV isn't
-             something testable from here, so this (and/or boxy-hat's own
-             geometry) will likely need eyes-on tuning. A medium anchor-slot
-             — yes, you can wear a gun on your head like a hat. `swap` (see
-             anchor-slot's own comment) means trying on a wardrobe hat while
-             already wearing one just replaces it instead of bouncing off a
-             full slot — the old hat falls, exactly like an evicted belt. -->
-        <a-entity id="head-anchor" class="anchor-slot" anchor-slot="size: medium; swap: true" position="0 0.1 0"></a-entity>
+      <a-entity id="player-rig" teleport-hub>
+        <a-camera id="head-camera">
+          <a-text
+            id="hud-text"
+            value="Score: 0   Shots: 0"
+            align="center"
+            color="#FFFFFF"
+            width="2"
+            position="0 -0.35 -1"
+          ></a-text>
+          <a-text
+            id="vice-text"
+            value=""
+            align="center"
+            color="#ffd9a0"
+            width="1.6"
+            position="0 -0.46 -1"
+          ></a-text>
+          <a-entity
+            cursor="fuse: false"
+            position="0 0 -1"
+            geometry="primitive: ring; radiusInner: 0.005; radiusOuter: 0.008"
+            material="color: #FFFFFF; shader: flat; opacity: 0.8"
+            raycaster="objects: .shootable; far: 75"
+          ></a-entity>
 
-        <!-- Drunk vision. Parented to the camera on purpose: rigidly
-             head-locked means there is no relative motion for your
-             inner ear to argue with, which is the whole reason the
-             alcohol effects are allowed to be visual at all. -->
-        <a-entity booze-overlay></a-entity>
+          <!-- Teleport fade: a plain black quad parented to the camera so
+               it always covers the view regardless of head orientation.
+               teleport-hub (world-town.js) animates its opacity up, jumps
+               the rig's position, then fades it back down — a blink
+               instead of a snap, which is the whole comfort case for
+               teleport over sliding. Not .shootable/.grabbable, so it's
+               otherwise invisible to every other system. -->
+          <a-plane
+            id="teleport-fade"
+            width="6"
+            height="6"
+            position="0 0 -0.2"
+            material="color: #000000; shader: flat; opacity: 0; transparent: true; depthTest: false"
+          ></a-plane>
 
-        <!-- Your mouth: an ordinary small anchor-slot that happens to
-             sit under the camera, with capacity for five. Nothing about
-             it is cigar-specific — it's the same socket as a hip
-             holster, so a pistol clenched in your teeth is a perfectly
-             legal thing to do.
+          <!-- Nested directly under the camera (rather than a body-anchor-style
+               tick() component) so it inherits full head rotation for free,
+               pitch/roll included — unlike the hips, a worn hat SHOULD tilt
+               with your head. The 0.1m vertical offset is an estimate for
+               "brim just clips the top of view"; real headset FOV isn't
+               something testable from here, so this (and/or boxy-hat's own
+               geometry) will likely need eyes-on tuning. A medium anchor-slot
+               — yes, you can wear a gun on your head like a hat. `swap` (see
+               anchor-slot's own comment) means trying on a wardrobe hat while
+               already wearing one just replaces it instead of bouncing off a
+               full slot — the old hat falls, exactly like an evicted belt. -->
+          <a-entity id="head-anchor" class="anchor-slot" anchor-slot="size: medium; swap: true" position="0 0.1 0"></a-entity>
 
-             A slot this close to your eyes needs its indicator kept on
-             a very short leash: idleHidden plus a tenth-scale sphere
-             plus revealDistance means it's a small dot that only shows
-             up in the last few centimeters, rather than a bright ball
-             parked in the middle of your vision the whole time you're
-             carrying anything small. fanSpread/fanYaw are wide enough
-             that five cigars read as a hand of cards. -->
-        <a-entity
-          id="mouth-anchor"
-          class="anchor-slot"
-          anchor-slot="size: small; capacity: 5; fanSpread: 0.032; fanYaw: 21; idleHidden: true; indicatorScale: 0.35; revealDistance: 0.16"
-          position="0 -0.07 -0.08"
-        ></a-entity>
+          <!-- Drunk vision. Parented to the camera on purpose: rigidly
+               head-locked means there is no relative motion for your
+               inner ear to argue with, which is the whole reason the
+               alcohol effects are allowed to be visual at all. -->
+          <a-entity booze-overlay></a-entity>
 
-        <!-- The player's own body: a simple ghost (see boxy-ghost and
-             the GHOST BODY constants). Nested here, like the hat, so it
-             inherits full head rotation. Unlike the hat, this one is
-             built so its front surface sits just behind the camera
-             rather than fully enclosing it (GHOST_FRONT_Z) — nothing
-             of it is ever in front of you looking forward, so there's
-             nothing to see yourself, which is the entire reason
-             #mirror exists. -->
-        <a-entity id="player-ghost" boxy-ghost></a-entity>
-      </a-camera>
+          <!-- Your mouth: an ordinary small anchor-slot that happens to
+               sit under the camera, with capacity for five. Nothing about
+               it is cigar-specific — it's the same socket as a hip
+               holster, so a pistol clenched in your teeth is a perfectly
+               legal thing to do.
 
-      <!-- ============================================================
-           HANDS
-           Two entities per hand, deliberately decoupled:
+               A slot this close to your eyes needs its indicator kept on
+               a very short leash: idleHidden plus a tenth-scale sphere
+               plus revealDistance means it's a small dot that only shows
+               up in the last few centimeters, rather than a bright ball
+               parked in the middle of your vision the whole time you're
+               carrying anything small. fanSpread/fanYaw are wide enough
+               that five cigars read as a hand of cards. -->
+          <a-entity
+            id="mouth-anchor"
+            class="anchor-slot"
+            anchor-slot="size: small; capacity: 5; fanSpread: 0.032; fanYaw: 21; idleHidden: true; indicatorScale: 0.35; revealDistance: 0.16"
+            position="0 -0.07 -0.08"
+          ></a-entity>
 
-           - oculus-touch-controls (model:false) is the one the gun
-             actually attaches to and the one hand-rig listens to for
-             grip/trigger events. Its forward axis is the same one
-             laser-controls uses for aiming in Cube Pop, so a gun
-             welded to it points where you'd expect.
-           - hand-controls is purely cosmetic: it renders the animated
-             hand mesh (fist on grip, point on trigger) at the same
-             tracked position, but its own orientation convention is
-             tuned for a believable-looking hand pose, not for "-Z is
-             where you're pointing" — which is why the first version of
-             this file, with the gun parented directly to a
-             hand-controls entity, aimed inconsistently.
+          <!-- The player's own body: a simple ghost (see boxy-ghost and
+               the GHOST BODY constants). Nested here, like the hat, so it
+               inherits full head rotation. Unlike the hat, this one is
+               built so its front surface sits just behind the camera
+               rather than fully enclosing it (GHOST_FRONT_Z) — nothing
+               of it is ever in front of you looking forward, so there's
+               nothing to see yourself, which is the entire reason
+               #mirror exists. -->
+          <a-entity id="player-ghost" boxy-ghost></a-entity>
+        </a-camera>
 
-           Because the two are separate entities, anything that
-           perturbs "your hand" (drink and cigar shakes — see
-           hand-rig.updateGrip) has to be applied to both, or the gun
-           would visibly detach from the fist holding it. hand-rig
-           takes a selector to its own cosmetic twin for exactly that.
+        <!-- ============================================================
+             HANDS
+             Two entities per hand, deliberately decoupled:
 
-           proximity-haptics is generic and unrelated to pistols
-           specifically — see its own comment below. The "hand" class
-           is what lets generic helpers like findOtherHand and
-           findCatchingHand (used for tossing/catching) enumerate both
-           hands without hardcoding left/right.
-      ============================================================ -->
-      <a-entity class="hand" oculus-touch-controls="hand: left; model: false" hand-rig="visual: #hand-visual-left" proximity-haptics hand-with-watch="hand: left"></a-entity>
-      <a-entity id="hand-visual-left" hand-controls="hand: left; handModelStyle: lowPoly; color: #3a3a3a"></a-entity>
+             - oculus-touch-controls (model:false) is the one the gun
+               actually attaches to and the one hand-rig listens to for
+               grip/trigger events. Its forward axis is the same one
+               laser-controls uses for aiming in Cube Pop, so a gun
+               welded to it points where you'd expect.
+             - hand-controls is purely cosmetic: it renders the animated
+               hand mesh (fist on grip, point on trigger) at the same
+               tracked position, but its own orientation convention is
+               tuned for a believable-looking hand pose, not for "-Z is
+               where you're pointing" — which is why the first version of
+               this file, with the gun parented directly to a
+               hand-controls entity, aimed inconsistently.
 
-      <a-entity class="hand" oculus-touch-controls="hand: right; model: false" hand-rig="visual: #hand-visual-right" proximity-haptics hand-with-watch="hand: right"></a-entity>
-      <a-entity id="hand-visual-right" hand-controls="hand: right; handModelStyle: lowPoly; color: #3a3a3a"></a-entity>
+             Because the two are separate entities, anything that
+             perturbs "your hand" (drink and cigar shakes — see
+             hand-rig.updateGrip) has to be applied to both, or the gun
+             would visibly detach from the fist holding it. hand-rig
+             takes a selector to its own cosmetic twin for exactly that.
+
+             proximity-haptics is generic and unrelated to pistols
+             specifically — see its own comment below. The "hand" class
+             is what lets generic helpers like findOtherHand and
+             findCatchingHand (used for tossing/catching) enumerate both
+             hands without hardcoding left/right.
+
+             hand-with-watch (common/watch-menu.js) is what puts a
+             pokeable/pointable wrist watch on each hand — see the
+             TELEPORT template page below and teleport-hub's own
+             menu-item-select listener (world-town.js) for how it feeds
+             into teleport. Nested inside #player-rig (rather than
+             top-level, which is how the shared component itself
+             assumes hands sit) so a menu-item-select the watch emits
+             bubbles up through the rig on its way to <a-scene>,
+             exactly like it would from a top-level hand — the wrap
+             doesn't change that path, just adds a stop along it.
+        ============================================================ -->
+        <a-entity class="hand" oculus-touch-controls="hand: left; model: false" hand-rig="visual: #hand-visual-left" proximity-haptics hand-with-watch="hand: left"></a-entity>
+        <a-entity id="hand-visual-left" hand-controls="hand: left; handModelStyle: lowPoly; color: #3a3a3a"></a-entity>
+
+        <a-entity class="hand" oculus-touch-controls="hand: right; model: false" hand-rig="visual: #hand-visual-right" proximity-haptics hand-with-watch="hand: right"></a-entity>
+        <a-entity id="hand-visual-right" hand-controls="hand: right; handModelStyle: lowPoly; color: #3a3a3a"></a-entity>
+      </a-entity>
+      <!-- end #player-rig -->
 
       <!-- ============================================================
            BODY ANCHORS
@@ -355,6 +507,24 @@
       <a-entity id="range-manager" shooting-range></a-entity>
 
       <a-entity id="target-gallery"></a-entity>
+
+      <!-- ============================================================
+           TOWN
+           Everywhere teleport-hub (world-town.js) knows how to send the
+           player. The range above is the first stop, at the origin,
+           unchanged. The saloon (world-saloon-darts.js), the farm
+           (world-farm.js), and the stable (world-stable.js) are
+           physically separate locations, each far enough from the
+           others that nothing in any of them has to know the rest of
+           the town exists — and each its own file, so none of them can
+           disturb each other. Future stops in a bigger town are just
+           more entries in TOWN_LOCATIONS plus whatever builds that
+           spot, following the same "world-<place>.js" naming this
+           file's own comment block describes.
+      ============================================================ -->
+      <a-entity saloon-darts></a-entity>
+      <a-entity farm></a-entity>
+      <a-entity stable></a-entity>
     </a-scene>
 
     <script src="js/core.js"></script>
@@ -371,5 +541,10 @@
     <script src="js/world-saloon-bar.js"></script>
     <script src="js/world-targets.js"></script>
     <script src="js/world-menu.js"></script>
+    <script src="js/world-town.js"></script>
+    <script src="js/world-structures.js"></script>
+    <script src="js/world-saloon-darts.js"></script>
+    <script src="js/world-farm.js"></script>
+    <script src="js/world-stable.js"></script>
   </body>
 </html>
