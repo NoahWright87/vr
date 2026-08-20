@@ -1,0 +1,42 @@
+name: Build relay exe
+
+# Manual only — this is an experimental dev tool (see README's
+# "Multiplayer connection relay" section), not something that should
+# rebuild on every push. Trigger it from the Actions tab when you
+# want a fresh, downloadable Windows build.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    # Native Windows runner rather than cross-compiling, so this both
+    # matches what a user's machine actually is and lets the smoke
+    # test below actually execute the built binary.
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - run: npm ci
+
+      - run: npm run package:relay:win
+
+      - name: Smoke-test the built exe
+        shell: pwsh
+        run: |
+          $proc = Start-Process -FilePath "dist-exe\vr-signal-relay.exe" -RedirectStandardOutput "relay-output.log" -PassThru
+          Start-Sleep -Seconds 5
+          Stop-Process -Id $proc.Id -Force
+          Get-Content "relay-output.log"
+          if (-not (Select-String -Path "relay-output.log" -Pattern "Signaling relay listening" -Quiet)) {
+            throw "The built exe never printed its startup banner - packaging may be broken."
+          }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vr-signal-relay-windows
+          path: dist-exe/vr-signal-relay.exe
+          retention-days: 30

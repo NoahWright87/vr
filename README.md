@@ -226,19 +226,23 @@ one-time handshake — actual gameplay traffic goes directly
 peer-to-peer once two peers connect.
 
 **Prebuilt Windows executable**, so people without Node.js installed
-can run the relay too:
+can run the relay too — a standalone ~58MB binary (bundles its own
+Node runtime via [`@yao-pkg/pkg`](https://github.com/yao-pkg/pkg))
+that does the same thing as `npm run signal`. Two ways to get it:
 
-```
-npm run package:relay:win
-```
+- **GitHub Actions (no local build needed)**: open this repo's
+  Actions tab → "Build relay exe" → "Run workflow". It builds
+  natively on a Windows runner, actually launches the result to
+  confirm it starts up correctly, then attaches
+  `vr-signal-relay-windows` as a downloadable artifact on that run
+  (kept 30 days).
+- **Locally**: `npm run package:relay:win` produces
+  `dist-exe/vr-signal-relay.exe` directly. The first build on a fresh
+  machine downloads ~130MB of base Node binaries from GitHub; later
+  builds reuse the local cache.
 
-Produces `dist-exe/vr-signal-relay.exe` — a standalone ~58MB
-executable (bundles its own Node runtime via
-[`@yao-pkg/pkg`](https://github.com/yao-pkg/pkg)) that does the same
-thing as `npm run signal`. Double-click it (or run it from a terminal
-to see the printed addresses) and leave the window open while people
-connect. The first build on a fresh machine downloads ~130MB of base
-Node binaries from GitHub; later builds reuse the local cache.
+Either way: double-click it (or run it from a terminal to see the
+printed addresses) and leave the window open while people connect.
 
 This `.exe` is **unsigned** — Windows SmartScreen will likely show an
 "unrecognized app" warning on first run (click "More info" → "Run
