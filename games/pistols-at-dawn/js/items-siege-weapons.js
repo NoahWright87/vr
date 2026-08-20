@@ -559,7 +559,7 @@
           this.hatchAngle = Math.abs(wantedHatchAngle - this.hatchAngle) <= Math.abs(hatchStep) ? wantedHatchAngle : this.hatchAngle + hatchStep;
           if (this.hatchHinge) this.hatchHinge.object3D.rotation.y = (this.hatchAngle * Math.PI) / 180;
           if (this.loadingGlow) {
-            this.loadingGlow.setAttribute('visible', this.hatchOpen);
+            this.loadingGlow.object3D.visible = this.hatchOpen;
             if (this.hatchOpen) {
               var pulse = 0.58 + Math.sin((time || 0) * 0.009) * 0.24;
               this.loadingGlow.setAttribute('material', 'opacity', pulse);

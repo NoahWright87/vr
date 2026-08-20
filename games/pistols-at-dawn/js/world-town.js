@@ -1,26 +1,11 @@
       // ==============================================================
-      // WORLD: town
-      // The generic half of teleport: a flat list of named spots
-      // (TOWN_LOCATIONS) and teleport-hub, the component on #player-rig
-      // that can jump to any of them. Deliberately knows nothing about
-      // what's AT any of those spots — the range is the scene's
-      // original origin, unchanged; the saloon (world-saloon-darts.js),
-      // the farm (world-farm.js) and the stable (world-stable.js) each
-      // just look up their own entry by id and build themselves out at
-      // its position. Each location is its own file — none of them
-      // read or modify another's state, so none of them can disturb
-      // each other — placed far enough apart in the world that nothing
-      // has to know the rest of the town exists. A few of them share
-      // generic scenery code (world-structures.js) without sharing
-      // anything location-specific. Adding another stop later is one
-      // more entry here plus whatever world-<place>.js builds it — plus
-      // one more row on the watch's TELEPORT page (index.html's
-      // #watch-menu-template), which isn't generated from this array
-      // and so is the one place a new stop still has to be named by
-      // hand. Not a change to teleport-hub itself either way: its
-      // menu-item-select listener matches the generic "teleport-<id>"
-      // prefix, so it already knows what to do with whatever id that
-      // row names.
+      // WORLD: town / area loading
+      // Only the player and shared simulation services live for the whole
+      // session. Each destination is an HTML fragment under areas/ and its
+      // builder scripts are loaded the first time that destination is used.
+      // The old area's entity tree is removed after the next fragment has
+      // arrived, so invisible destinations do not render, tick, raycast, or
+      // participate in any of the scene-wide interaction scans.
       //
       // Split out as its own file (rather than folded into core.js)
       // because it's the one other prototypes could plausibly lift
@@ -38,10 +23,23 @@
       // when you loaded in) — it can't and shouldn't touch which way
       // your actual head is turned inside the headset.
       var TOWN_LOCATIONS = [
-        { id: 'range', label: 'The Range', position: { x: 0, y: 0, z: 0 }, rotationY: 0 },
-        { id: 'saloon', label: 'The Saloon', position: { x: 0, y: 0, z: -60 }, rotationY: 0 },
-        { id: 'farm', label: 'The Farm', position: { x: 0, y: 0, z: 60 }, rotationY: 0 },
-        { id: 'stable', label: 'The Stable', position: { x: -60, y: 0, z: 0 }, rotationY: 0 },
+        {
+          id: 'range', label: 'The Range', position: { x: 0, y: 0, z: 0 }, rotationY: 0,
+          fragment: 'areas/range.html',
+          scripts: ['js/items-siege-weapons.js', 'js/world-saloon-bar.js', 'js/world-shooting-stall.js', 'js/world-targets.js'],
+        },
+        {
+          id: 'saloon', label: 'The Saloon', position: { x: 0, y: 0, z: -60 }, rotationY: 0,
+          fragment: 'areas/saloon.html', scripts: ['js/world-saloon-darts.js'],
+        },
+        {
+          id: 'farm', label: 'The Farm', position: { x: 0, y: 0, z: 60 }, rotationY: 0,
+          fragment: 'areas/farm.html', scripts: ['js/world-farm.js'],
+        },
+        {
+          id: 'stable', label: 'The Stable', position: { x: -60, y: 0, z: 0 }, rotationY: 0,
+          fragment: 'areas/stable.html', scripts: ['js/world-stable.js'],
+        },
       ];
 
       // Looked up by id rather than exported as an index — the list is
@@ -57,6 +55,208 @@
         }
         return null;
       }
+
+      var AREA_SCRIPT_PROMISES = {};
+
+      function loadAreaScript(src) {
+        if (AREA_SCRIPT_PROMISES[src]) return AREA_SCRIPT_PROMISES[src];
+        AREA_SCRIPT_PROMISES[src] = new Promise(function (resolve, reject) {
+          var script = document.createElement('script');
+          script.src = src;
+          script.async = false;
+          script.addEventListener('load', resolve, { once: true });
+          script.addEventListener('error', function () {
+            delete AREA_SCRIPT_PROMISES[src];
+            reject(new Error('Could not load area script: ' + src));
+          }, { once: true });
+          document.body.appendChild(script);
+        });
+        return AREA_SCRIPT_PROMISES[src];
+      }
+
+      function loadAreaScripts(scripts) {
+        return scripts.reduce(function (ready, src) {
+          return ready.then(function () { return loadAreaScript(src); });
+        }, Promise.resolve());
+      }
+
+      // Owns the one active destination. A MutationObserver marks effects or
+      // projectiles appended directly to the scene. Props keep their original
+      // DOM parent while their three.js object is attached to hands and slots,
+      // so unloadActiveArea separately moves carried prop elements into a
+      // persistent DOM home before removing the area's tree.
+      registerComponent('area-manager', {
+        init: function () {
+          this.host = document.querySelector('#area-host');
+          this.carriedHost = document.querySelector('#carried-items');
+          this.loadingText = document.querySelector('#area-loading-text');
+          this.activeId = null;
+          this.activeRoot = null;
+          this.switchPromise = null;
+          this.observeOwnership();
+
+          var start = function () {
+            this.setLoading(true, 'Loading The Range...');
+            this.switchTo('range').then(function () {
+              var rig = document.querySelector('#player-rig');
+              var hub = rig && rig.components['teleport-hub'];
+              this.setLoading(false);
+              if (hub) hub.fadeTo(0, TELEPORT_FADE_IN_MS, function () {});
+            }.bind(this)).catch(function (error) {
+              this.showLoadError(error);
+            }.bind(this));
+          }.bind(this);
+
+          if (this.el.hasLoaded) start();
+          else this.el.addEventListener('loaded', start, { once: true });
+        },
+
+        remove: function () {
+          if (this.observer) this.observer.disconnect();
+        },
+
+        observeOwnership: function () {
+          var self = this;
+          this.observer = new MutationObserver(function (mutations) {
+            mutations.forEach(function (mutation) {
+              Array.prototype.forEach.call(mutation.addedNodes, function (node) {
+                if (node.nodeType !== 1) return;
+                var persistent = node.closest && node.closest('[data-area-persistent]');
+                if (persistent) {
+                  self.clearOwnership(node);
+                  return;
+                }
+                if (!self.activeId || node === self.host || (self.host && self.host.contains(node))) return;
+                node.setAttribute('data-area-owner', self.activeId);
+              });
+            });
+          });
+          this.observer.observe(this.el, { childList: true, subtree: true });
+        },
+
+        clearOwnership: function (root) {
+          if (root.removeAttribute) root.removeAttribute('data-area-owner');
+          if (!root.querySelectorAll) return;
+          Array.prototype.forEach.call(root.querySelectorAll('[data-area-owner]'), function (el) {
+            el.removeAttribute('data-area-owner');
+          });
+        },
+
+        setLoading: function (visible, message) {
+          if (!this.loadingText) return;
+          if (message) this.loadingText.setAttribute('text', 'value', message);
+          this.loadingText.setAttribute('visible', visible);
+        },
+
+        showLoadError: function (error) {
+          this.setLoading(true, 'Could not load area');
+          console.error('[pistols] Area load failed:', error);
+        },
+
+        switchTo: function (id) {
+          if (id === this.activeId) return Promise.resolve(this.activeRoot);
+          if (this.switchPromise) return this.switchPromise;
+
+          var loc = findTownLocation(id);
+          if (!loc) return Promise.reject(new Error('Unknown area: ' + id));
+          this.setLoading(true, 'Loading ' + loc.label + '...');
+          this.el.emit('area-loading', { id: id, location: loc }, false);
+
+          var markupPromise = fetch(loc.fragment).then(function (response) {
+            if (!response.ok) throw new Error('Could not load ' + loc.fragment + ' (' + response.status + ')');
+            return response.text();
+          });
+
+          this.switchPromise = Promise.all([loadAreaScripts(loc.scripts || []), markupPromise])
+            .then(function (results) {
+              this.unloadActiveArea();
+
+              var root = document.createElement('a-entity');
+              root.setAttribute('data-area-root', id);
+              root.innerHTML = results[1];
+              this.host.appendChild(root);
+              this.activeId = id;
+              this.activeRoot = root;
+
+              return new Promise(function (resolve) {
+                if (root.hasLoaded) resolve(root);
+                else root.addEventListener('loaded', function () { resolve(root); }, { once: true });
+              });
+            }.bind(this))
+            .then(function (root) {
+              this.setLoading(false);
+              this.el.emit('area-loaded', { id: id, location: loc, root: root }, false);
+              return root;
+            }.bind(this))
+            .finally(function () {
+              this.switchPromise = null;
+            }.bind(this));
+
+          return this.switchPromise;
+        },
+
+        unloadActiveArea: function () {
+          if (!this.activeId) return;
+          var oldId = this.activeId;
+          this.el.emit('area-unloading', { id: oldId, root: this.activeRoot }, false);
+          this.activeId = null;
+
+          this.preservePlayerItems();
+
+          if (this.activeRoot && this.activeRoot.parentNode) this.activeRoot.parentNode.removeChild(this.activeRoot);
+          this.activeRoot = null;
+
+          // These are pooled globally for allocation-free effects, so clear
+          // their live records rather than carrying fire/smoke to a new town.
+          if (typeof resetTransientWorld === 'function') resetTransientWorld();
+
+          Array.prototype.forEach.call(document.querySelectorAll('[data-area-owner="' + oldId + '"]'), function (el) {
+            if (!el.closest('[data-area-persistent]') && el.parentNode) el.parentNode.removeChild(el);
+          });
+
+          // Area furniture may register a collision surface in its own local
+          // frame. Drop any whose entity left the document with the area.
+          for (var i = HARD_SURFACES.length - 1; i >= 0; i--) {
+            var obj = HARD_SURFACES[i].obj;
+            if (obj && obj.el && !obj.el.isConnected) HARD_SURFACES.splice(i, 1);
+          }
+        },
+
+        preservePlayerItems: function () {
+          if (!this.activeRoot || !this.carriedHost) return;
+          var self = this;
+          Array.prototype.forEach.call(this.activeRoot.querySelectorAll('[holsterable]'), function (el) {
+            var holsterable = el.components && el.components.holsterable;
+            if (!holsterable || !self.isPlayerOwnedObject(holsterable)) return;
+
+            // Moving the element can make A-Frame briefly adopt object3D into
+            // the new DOM parent's graph. Restore its real physics parent and
+            // exact local pose afterwards; component state stays untouched.
+            var object = el.object3D;
+            var objectParent = object.parent;
+            var position = object.position.clone();
+            var quaternion = object.quaternion.clone();
+            var scale = object.scale.clone();
+            self.clearOwnership(el);
+            self.carriedHost.appendChild(el);
+            if (objectParent) objectParent.add(object);
+            object.position.copy(position);
+            object.quaternion.copy(quaternion);
+            object.scale.copy(scale);
+          });
+        },
+
+        isPlayerOwnedObject: function (holsterable) {
+          if (holsterable.hand && holsterable.hand.closest('[data-area-persistent]')) return true;
+
+          var node = holsterable.el.object3D.parent;
+          while (node) {
+            if (node.el && node.el.closest && node.el.closest('[data-area-persistent]')) return true;
+            node = node.parent;
+          }
+          return false;
+        },
+      });
 
       // ==============================================================
       // COMPONENT: teleport-hub
@@ -127,14 +327,24 @@
           }
           if (!loc) return;
 
+          var areaManager = this.el.sceneEl.components['area-manager'];
+          if (!areaManager) return;
+
           this.fading = true;
           var el = this.el;
           this.fadeTo(1, TELEPORT_FADE_OUT_MS, function () {
-            el.object3D.position.set(loc.position.x, loc.position.y, loc.position.z);
-            el.object3D.rotation.set(0, (loc.rotationY * Math.PI) / 180, 0);
+            areaManager.switchTo(id).then(function () {
+              el.object3D.position.set(loc.position.x, loc.position.y, loc.position.z);
+              el.object3D.rotation.set(0, (loc.rotationY * Math.PI) / 180, 0);
 
-            this.fadeTo(0, TELEPORT_FADE_IN_MS, function () {
-              this.fading = false;
+              this.fadeTo(0, TELEPORT_FADE_IN_MS, function () {
+                this.fading = false;
+              }.bind(this));
+            }.bind(this)).catch(function (error) {
+              areaManager.showLoadError(error);
+              this.fadeTo(0, TELEPORT_FADE_IN_MS, function () {
+                this.fading = false;
+              }.bind(this));
             }.bind(this));
           }.bind(this));
         },

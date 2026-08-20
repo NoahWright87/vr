@@ -7,7 +7,8 @@
 
       var PROXIMITY_HAPTIC_RADIUS = 0.2; // meters — a bit past GRAB_RADIUS, so the buzz gives you a heads-up just before you're in range
       var PROXIMITY_HAPTIC_INTENSITY = 0.15; // 0-1, deliberately light ("slight buzz", not a jolt)
-      var PROXIMITY_HAPTIC_PULSE_MS = 60; // re-issued every tick while in range, so this just needs to outlast one frame
+      var PROXIMITY_HAPTIC_CHECK_MS = 80; // advisory feedback does not need a full scene scan at headset refresh rate
+      var PROXIMITY_HAPTIC_PULSE_MS = 90; // overlaps the throttled check slightly for a continuous-feeling buzz
       var REGRIP_WINDOW_MS = 400; // release and re-squeeze inside this and you keep what you were holding — see hand-rig.reclaimStash
       var RECOIL_MAX_POSITION = 0.18; // meters; automatic fire can kick hard, but never detach the hand from the arm
       var RECOIL_MAX_ROTATION = 0.7; // radians, about 40 degrees on any local axis
@@ -611,7 +612,7 @@
           var gripPos = new THREE.Vector3();
           this.el.object3D.getWorldPosition(handPos);
 
-          var objects = document.querySelectorAll('.grabbable');
+          var objects = sceneElements('.grabbable');
           var nearest = null;
           var nearestDist = Infinity;
 
@@ -644,7 +645,7 @@
           var handPos = new THREE.Vector3();
           this.el.object3D.getWorldPosition(handPos);
 
-          var objects = Array.prototype.slice.call(document.querySelectorAll('.grabbable'));
+          var objects = sceneElements('.grabbable');
           var self = this;
           var nearest = null;
           var nearestDist = Infinity;
@@ -677,7 +678,7 @@
         findGripInteraction: function () {
           var handPos = new THREE.Vector3();
           this.el.object3D.getWorldPosition(handPos);
-          var handles = document.querySelectorAll('.grip-interactable');
+          var handles = sceneElements('.grip-interactable');
           var best = null;
           var bestDist = Infinity;
           for (var i = 0; i < handles.length; i++) {
@@ -714,9 +715,14 @@
         init: function () {
           this.handPos = new THREE.Vector3();
           this.targetPos = new THREE.Vector3();
+          this.checkElapsed = Math.random() * PROXIMITY_HAPTIC_CHECK_MS; // stagger the two hands
         },
 
-        tick: function () {
+        tick: function (time, dt) {
+          this.checkElapsed -= dt || 16;
+          if (this.checkElapsed > 0) return;
+          this.checkElapsed = PROXIMITY_HAPTIC_CHECK_MS;
+
           var handRig = this.el.components['hand-rig'];
           if (handRig && (
             handRig.isFull() ||
@@ -732,7 +738,7 @@
 
           this.el.object3D.getWorldPosition(this.handPos);
 
-          var targets = document.querySelectorAll('.grabbable');
+          var targets = sceneElements('.grabbable');
           var inRange = false;
 
           var grip = gripObjectOf(this.el);
@@ -741,7 +747,7 @@
             if (targetEl.object3D.parent === grip) continue; // already holding this one
 
             targetEl.object3D.getWorldPosition(this.targetPos);
-            if (this.handPos.distanceTo(this.targetPos) < PROXIMITY_HAPTIC_RADIUS) {
+            if (this.handPos.distanceToSquared(this.targetPos) < PROXIMITY_HAPTIC_RADIUS * PROXIMITY_HAPTIC_RADIUS) {
               inRange = true;
               break;
             }

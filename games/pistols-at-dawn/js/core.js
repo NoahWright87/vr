@@ -45,6 +45,134 @@
       }
 
       // ==============================================================
+      // SCENE INDEX
+      // querySelectorAll is convenient but allocating and walking the full
+      // A-Frame DOM several times per frame is not. These lists are rebuilt
+      // only when relevant entities/classes enter or leave the document.
+      // Positions and component state remain live on the returned elements.
+      // ==============================================================
+      var SCENE_INDEX_VERSION = 0;
+      var SCENE_INDEX_CACHE = {};
+
+      function invalidateSceneIndex() {
+        SCENE_INDEX_VERSION++;
+      }
+
+      function sceneElements(selector) {
+        var cached = SCENE_INDEX_CACHE[selector];
+        if (cached && cached.version === SCENE_INDEX_VERSION) return cached.elements;
+        var elements = Array.prototype.slice.call(document.querySelectorAll(selector));
+        SCENE_INDEX_CACHE[selector] = { version: SCENE_INDEX_VERSION, elements: elements };
+        return elements;
+      }
+
+      registerComponent('scene-index', {
+        init: function () {
+          this.observer = new MutationObserver(invalidateSceneIndex);
+          this.observer.observe(this.el, {
+            childList: true,
+            subtree: true,
+            attributes: true,
+            attributeFilter: [
+              'class', 'breakable', 'cuttable-shotgun', 'gun-brace-surface',
+              'ignition-source', 'lightable', 'liquid-tank', 'pop-target',
+            ],
+          });
+          invalidateSceneIndex();
+        },
+
+        remove: function () {
+          if (this.observer) this.observer.disconnect();
+          SCENE_INDEX_CACHE = {};
+          invalidateSceneIndex();
+        },
+      });
+
+      // ==============================================================
+      // COMPONENT: model-prop
+      // Future GLBs keep their detailed visual mesh separate from a cheap
+      // gameplay proxy. The proxy is the only descendant raycastable by gun
+      // shots, so imported visual detail never becomes collision complexity.
+      // Put `class="shootable"` on the component's root when appropriate.
+      // ==============================================================
+      function ignoreModelRaycast() {}
+
+      registerComponent('model-prop', {
+        schema: {
+          src: { type: 'asset' },
+          visualPosition: { type: 'vec3', default: { x: 0, y: 0, z: 0 } },
+          visualRotation: { type: 'vec3', default: { x: 0, y: 0, z: 0 } },
+          visualScale: { type: 'vec3', default: { x: 1, y: 1, z: 1 } },
+          hitbox: { type: 'string', default: 'box', oneOf: ['box', 'sphere', 'cylinder', 'none'] },
+          hitboxPosition: { type: 'vec3', default: { x: 0, y: 0, z: 0 } },
+          hitboxRotation: { type: 'vec3', default: { x: 0, y: 0, z: 0 } },
+          hitboxSize: { type: 'vec3', default: { x: 1, y: 1, z: 1 } },
+          hitboxRadius: { type: 'number', default: 0.5 },
+          hitboxHeight: { type: 'number', default: 1 },
+        },
+
+        init: function () {
+          this.visualEl = document.createElement('a-entity');
+          this.visualEl.classList.add('model-visual');
+          this.onModelLoaded = this.onModelLoaded.bind(this);
+          this.visualEl.addEventListener('model-loaded', this.onModelLoaded);
+          this.el.appendChild(this.visualEl);
+        },
+
+        update: function () {
+          var data = this.data;
+          this.visualEl.setAttribute('gltf-model', data.src);
+          this.visualEl.setAttribute('position', data.visualPosition);
+          this.visualEl.setAttribute('rotation', data.visualRotation);
+          this.visualEl.setAttribute('scale', data.visualScale);
+          this.buildHitbox();
+          if (data.hitbox !== 'none') this.disableVisualRaycasts();
+        },
+
+        remove: function () {
+          this.visualEl.removeEventListener('model-loaded', this.onModelLoaded);
+          if (this.visualEl.parentNode) this.visualEl.parentNode.removeChild(this.visualEl);
+          if (this.hitboxEl && this.hitboxEl.parentNode) this.hitboxEl.parentNode.removeChild(this.hitboxEl);
+        },
+
+        onModelLoaded: function () {
+          if (this.data.hitbox !== 'none') this.disableVisualRaycasts();
+        },
+
+        disableVisualRaycasts: function () {
+          var mesh = this.visualEl.getObject3D('mesh');
+          if (!mesh) return;
+          mesh.traverse(function (object) {
+            if (object.isMesh) object.raycast = ignoreModelRaycast;
+          });
+        },
+
+        buildHitbox: function () {
+          if (this.hitboxEl && this.hitboxEl.parentNode) this.hitboxEl.parentNode.removeChild(this.hitboxEl);
+          this.hitboxEl = null;
+          if (this.data.hitbox === 'none') return;
+
+          var hitbox = document.createElement('a-entity');
+          hitbox.classList.add('model-hitbox');
+          hitbox.setAttribute('data-simple-hitbox', '');
+          hitbox.setAttribute('position', this.data.hitboxPosition);
+          hitbox.setAttribute('rotation', this.data.hitboxRotation);
+          hitbox.setAttribute('material', 'shader: flat; transparent: true; opacity: 0; depthWrite: false');
+          if (this.data.hitbox === 'sphere') {
+            hitbox.setAttribute('geometry', { primitive: 'sphere', radius: this.data.hitboxRadius, segmentsWidth: 6, segmentsHeight: 4 });
+          } else if (this.data.hitbox === 'cylinder') {
+            hitbox.setAttribute('geometry', { primitive: 'cylinder', radius: this.data.hitboxRadius, height: this.data.hitboxHeight, segmentsRadial: 8 });
+          } else {
+            hitbox.setAttribute('geometry', {
+              primitive: 'box', width: this.data.hitboxSize.x, height: this.data.hitboxSize.y, depth: this.data.hitboxSize.z,
+            });
+          }
+          this.el.appendChild(hitbox);
+          this.hitboxEl = hitbox;
+        },
+      });
+
+      // ==============================================================
       // LOW-POLY GEOMETRY DEFAULTS
       // A-Frame builds a-cylinder at 36 radial x 18 height segments and
       // a-sphere at 36 x 18, which is ~1300 triangles for a bottle neck
@@ -477,6 +605,9 @@
       // module object rather than a component lookup because it's read
       // by everything, every frame.
       var VICES = { alcohol: 0, nicotine: 0 };
+      // The watch menu owns this switch. HUD producers check it before doing
+      // text geometry work that cannot be seen while the HUD is hidden.
+      var PLAYER_HUD_VISIBLE = true;
 
       // The particle pool and the per-frame wind snapshot, both owned
       // by world-systems.
@@ -532,7 +663,7 @@
         if (SHOOTABLE_STAMP === FRAME_STAMP) return SHOOTABLE_ROOTS;
         SHOOTABLE_STAMP = FRAME_STAMP;
 
-        var shootables = document.querySelectorAll('.shootable');
+        var shootables = sceneElements('.shootable');
         SHOOTABLE_ROOTS.length = 0;
         for (var i = 0; i < shootables.length; i++) {
           if (shootables[i].object3D && shootables[i].object3D.visible) SHOOTABLE_ROOTS.push(shootables[i].object3D);
@@ -598,6 +729,7 @@
         }
 
         el = document.createElement(shape === 'box' ? 'a-box' : 'a-sphere');
+        el.setAttribute('data-area-persistent', '');
         if (shape === 'box') {
           el.setAttribute('geometry', { primitive: 'box', width: 1, height: 1, depth: 1 });
         } else {
@@ -770,6 +902,18 @@
           PARTICLES[write++] = PARTICLES[i];
         }
         PARTICLES.length = write;
+      }
+
+      function resetTransientWorld() {
+        for (var i = 0; i < PARTICLES.length; i++) killParticle(PARTICLES[i]);
+        sweepParticles();
+        if (typeof releasePool === 'function') {
+          for (var p = POOLS.length - 1; p >= 0; p--) releasePool(p);
+        }
+        HOT_POINTS.length = 0;
+        WIND_HANDS.length = 0;
+        HELD_ITEMS.length = 0;
+        if (fireLight) fireLight.intensity = 0;
       }
 
       function randomUnitVector() {
@@ -1259,7 +1403,7 @@
       // rather than assuming which is left/right.
       // ==============================================================
       function findOtherHand(handEl) {
-        var hands = document.querySelectorAll('.hand');
+        var hands = sceneElements('.hand');
         for (var i = 0; i < hands.length; i++) {
           if (hands[i] !== handEl) return hands[i];
         }
@@ -1579,7 +1723,7 @@
           // claiming, first — an occupant that stops existing without
           // saying so leaves a slot that looks full forever, and a
           // rack that looks full never restocks.
-          var hands = document.querySelectorAll('.hand');
+          var hands = sceneElements('.hand');
           for (var h = 0; h < hands.length; h++) {
             var handRig = hands[h].components['hand-rig'];
             if (handRig) handRig.discard(el);
@@ -1747,6 +1891,7 @@
           this._quat = new THREE.Quaternion();
           this._delta = new THREE.Vector3();
           this._heldPool = []; // reused entries behind HELD_ITEMS
+          this._windPool = []; // reused entries behind WIND_HANDS
           this._hotPool = []; // reused entries behind HOT_POINTS
           this._containerPool = []; // and behind OPEN_CONTAINERS
           this._scratch = new THREE.Vector3();
@@ -1777,37 +1922,48 @@
         // indicator. Vectors are pooled rather than reallocated, since
         // this runs every frame forever.
         updateHeldItems: function () {
-          var items = document.querySelectorAll('.grabbable');
+          var hands = sceneElements('.hand');
           var count = 0;
           HELD_ITEMS.length = 0;
 
-          for (var i = 0; i < items.length; i++) {
-            var holsterable = items[i].components.holsterable;
-            if (!holsterable || holsterable.state !== 'held') continue;
+          for (var i = 0; i < hands.length; i++) {
+            var handRig = hands[i].components['hand-rig'];
+            if (!handRig) continue;
+            for (var j = 0; j < handRig.heldObjects.length; j++) {
+              var item = handRig.heldObjects[j];
+              var holsterable = item.components.holsterable;
+              if (!holsterable || holsterable.state !== 'held') continue;
 
-            if (!this._heldPool[count]) this._heldPool[count] = { rank: 0, pos: new THREE.Vector3(), holsterable: null };
-            var entry = this._heldPool[count];
-            items[i].object3D.getWorldPosition(entry.pos);
-            entry.rank = SLOT_SIZE_RANK[holsterable.data.itemSize];
-            entry.holsterable = holsterable;
-            HELD_ITEMS.push(entry);
-            count++;
+              if (!this._heldPool[count]) this._heldPool[count] = { rank: 0, pos: new THREE.Vector3(), holsterable: null };
+              var entry = this._heldPool[count];
+              item.object3D.getWorldPosition(entry.pos);
+              entry.rank = SLOT_SIZE_RANK[holsterable.data.itemSize];
+              entry.holsterable = holsterable;
+              HELD_ITEMS.push(entry);
+              count++;
+            }
           }
         },
 
         // A snapshot of where the hands are and how fast they're
         // moving, taken once and reused by every puff of smoke.
         updateWind: function () {
-          var hands = document.querySelectorAll('.hand');
+          var hands = sceneElements('.hand');
           WIND_HANDS.length = 0;
+          var count = 0;
 
           for (var i = 0; i < hands.length; i++) {
             var handRig = hands[i].components['hand-rig'];
             if (!handRig) continue;
             if (handRig.velocity.length() < WIND_HAND_MIN_SPEED) continue;
 
-            hands[i].object3D.getWorldPosition(this._handPos);
-            WIND_HANDS.push({ pos: this._handPos.clone(), vel: handRig.velocity.clone() });
+            if (!this._windPool[count]) {
+              this._windPool[count] = { pos: new THREE.Vector3(), vel: new THREE.Vector3() };
+            }
+            var entry = this._windPool[count++];
+            hands[i].object3D.getWorldPosition(entry.pos);
+            entry.vel.copy(handRig.velocity);
+            WIND_HANDS.push(entry);
           }
         },
 
@@ -1832,7 +1988,7 @@
             HOT_POINTS.push(entry);
           }
 
-          var sources = document.querySelectorAll('[ignition-source]');
+          var sources = sceneElements('[ignition-source]');
           for (var i = 0; i < sources.length; i++) {
             var source = sources[i].components['ignition-source'];
             if (!source || !source.hot) continue;
@@ -1875,7 +2031,7 @@
               this.updateFirePool(pool, time, dtSeconds);
               if (!brightest || pool.radius > brightest.radius) brightest = pool;
             } else {
-              if (pool.flame) pool.flame.setAttribute('visible', false);
+              if (pool.flame) pool.flame.object3D.visible = false;
               // Drying out is a size, not a timer: a puddle shrinks at
               // its liquid's own rate, so a big spill lasts longer than
               // a splash for the obvious reason rather than because
@@ -1977,7 +2133,7 @@
             pool.needsColor = true;
             pool.radius = POOL_START_RADIUS * 2;
             pool.age = 0;
-            if (pool.flame) pool.flame.setAttribute('visible', false);
+            if (pool.flame) pool.flame.object3D.visible = false;
             spawnSmoke(poolPosition(pool, this._scratch), null, 0.7);
             return;
           }
@@ -1985,7 +2141,7 @@
           var strength = Math.min(pool.radius / POOL_REFERENCE_RADIUS, 1);
 
           if (pool.flame) {
-            pool.flame.setAttribute('visible', true);
+            pool.flame.object3D.visible = true;
             var phase = (time / 1000) * FIRE_WIGGLE_HZ + pool.phase;
             var height = FIRE_MIN_RADIUS + (FIRE_MAX_RADIUS - FIRE_MIN_RADIUS) * Math.sqrt(strength);
             var stretch = 1.7 + 0.35 * Math.sin(phase);
@@ -2033,7 +2189,7 @@
           if (pool.damageTimer > 0) return;
           pool.damageTimer = FIRE_DAMAGE_DELAY_MS;
 
-          var hinges = document.querySelectorAll('[pop-target]');
+          var hinges = sceneElements('[pop-target]');
           var reach = FIRE_DAMAGE_RADIUS + pool.radius;
 
           for (var i = 0; i < hinges.length; i++) {
@@ -2132,7 +2288,7 @@
               // mouth goes down your throat — there is no separate
               // "am I drinking" check anywhere, just beer and a head
               // in the way of it.
-              if (this.mouthEl && obj.position.distanceTo(this._mouthPos) < DROPLET_SWALLOW_RADIUS) {
+              if (this.mouthEl && obj.position.distanceToSquared(this._mouthPos) < DROPLET_SWALLOW_RADIUS * DROPLET_SWALLOW_RADIUS) {
                 this.swallow(liquid);
                 killParticle(p);
                 continue;
@@ -2219,7 +2375,7 @@
           if (!liquid.flammable) return false;
 
           for (var i = 0; i < HOT_POINTS.length; i++) {
-            if (obj.position.distanceTo(HOT_POINTS[i].pos) > DROPLET_IGNITE_RADIUS) continue;
+            if (obj.position.distanceToSquared(HOT_POINTS[i].pos) > DROPLET_IGNITE_RADIUS * DROPLET_IGNITE_RADIUS) continue;
 
             p.liquid = 'fire';
             p.baseScale = LIQUIDS.fire.dropRadius;
@@ -2236,7 +2392,7 @@
         // hot points are, since every droplet in the air asks.
         updateContainers: function () {
           OPEN_CONTAINERS.length = 0;
-          var tanks = document.querySelectorAll('[liquid-tank]');
+          var tanks = sceneElements('[liquid-tank]');
           for (var i = 0; i < tanks.length; i++) {
             var tank = tanks[i].components['liquid-tank'];
             if (!tank || !tank.isOpen()) continue;
@@ -2252,7 +2408,7 @@
 
         fillContainer: function (p, obj) {
           for (var i = 0; i < OPEN_CONTAINERS.length; i++) {
-            if (obj.position.distanceTo(OPEN_CONTAINERS[i].pos) > TANK_MOUTH_RADIUS) continue;
+            if (obj.position.distanceToSquared(OPEN_CONTAINERS[i].pos) > TANK_MOUTH_RADIUS * TANK_MOUTH_RADIUS) continue;
             OPEN_CONTAINERS[i].tank.fill(p.liquid || 'beer');
             return true;
           }
@@ -2318,8 +2474,9 @@
         applyWind: function (p, dtSeconds) {
           for (var i = 0; i < WIND_HANDS.length; i++) {
             this._delta.copy(p.el.object3D.position).sub(WIND_HANDS[i].pos);
-            var d = this._delta.length();
-            if (d > WIND_HAND_RADIUS) continue;
+            var distanceSq = this._delta.lengthSq();
+            if (distanceSq > WIND_HAND_RADIUS * WIND_HAND_RADIUS) continue;
+            var d = Math.sqrt(distanceSq);
 
             var falloff = 1 - d / WIND_HAND_RADIUS;
             p.vel.addScaledVector(WIND_HANDS[i].vel, WIND_HAND_FACTOR * falloff * dtSeconds);
@@ -2330,7 +2487,7 @@
         // source. Both lists are tiny (a handful of cigars, two guns),
         // and neither side knows what the other is.
         updateIgnition: function () {
-          var lightables = document.querySelectorAll('[lightable]');
+          var lightables = sceneElements('[lightable]');
           if (!lightables.length || !HOT_POINTS.length) return;
 
           for (var i = 0; i < lightables.length; i++) {
@@ -2340,7 +2497,7 @@
 
             for (var j = 0; j < HOT_POINTS.length; j++) {
               if (HOT_POINTS[j].el === lightables[i]) continue;
-              if (this._tipA.distanceTo(HOT_POINTS[j].pos) < IGNITE_RADIUS) {
+              if (this._tipA.distanceToSquared(HOT_POINTS[j].pos) < IGNITE_RADIUS * IGNITE_RADIUS) {
                 lightable.ignite();
                 break;
               }
@@ -2355,7 +2512,7 @@
         updateBlow: function () {
           if (!this.mouthEl || !this.cameraEl) return; // _mouthPos is refreshed once per frame in tick
 
-          var hands = document.querySelectorAll('.hand');
+          var hands = sceneElements('.hand');
           for (var i = 0; i < hands.length; i++) {
             var handRig = hands[i].components['hand-rig'];
             if (!handRig) continue;
@@ -2366,7 +2523,7 @@
               if (!muzzleEl || !handRig.heldObjects[j].components.firearm) continue;
 
               muzzleEl.object3D.getWorldPosition(this._muzzlePos);
-              if (this._muzzlePos.distanceTo(this._mouthPos) > BLOW_RADIUS) continue;
+              if (this._muzzlePos.distanceToSquared(this._mouthPos) > BLOW_RADIUS * BLOW_RADIUS) continue;
 
               muzzleEl.object3D.getWorldQuaternion(this._quat);
               this._muzzleDir.set(0, 0, -1).applyQuaternion(this._quat);
@@ -2389,7 +2546,7 @@
           for (var i = 0; i < PARTICLES.length; i++) {
             var p = PARTICLES[i];
             if (p.kind !== 'smoke') continue;
-            if (p.el.object3D.position.distanceTo(this._mouthPos) > BLOW_GUST_RADIUS) continue;
+            if (p.el.object3D.position.distanceToSquared(this._mouthPos) > BLOW_GUST_RADIUS * BLOW_GUST_RADIUS) continue;
 
             p.vel.addScaledVector(this._headDir, BLOW_GUST_SPEED);
             p.vel.y += 0.6;
