@@ -267,10 +267,10 @@
         display: block;
         margin-top: 0.4rem;
       }
-      #mp-panel textarea {
+      #mp-panel textarea,
+      #mp-panel input[type='text'] {
         width: 100%;
         box-sizing: border-box;
-        min-height: 3.5rem;
         margin-top: 0.2rem;
         background: #0a1426;
         color: #eef4ff;
@@ -278,9 +278,33 @@
         border-radius: 0.4rem;
         font: inherit;
       }
+      #mp-panel textarea {
+        min-height: 3.5rem;
+      }
+      #mp-panel input[type='text'] {
+        padding: 0.3rem 0.5rem;
+      }
       #mp-status {
         margin: 0.3rem 0;
         color: #93f0bf;
+      }
+      #mp-relay-section {
+        padding-bottom: 0.5rem;
+        border-bottom: 1px solid #223454;
+      }
+      #mp-room-code-display {
+        display: inline-block;
+        margin-top: 0.3rem;
+        color: #93f0bf;
+      }
+      #mp-join-relay-row {
+        display: flex;
+        gap: 0.3rem;
+        margin-top: 0.4rem;
+      }
+      #mp-join-relay-row input {
+        flex: 1;
+        margin-top: 0;
       }
       #mp-log {
         margin-top: 0.4rem;
@@ -300,7 +324,19 @@
     <div id="mp-panel">
       <strong>Multiplayer (connection test)</strong>
       <div id="mp-status">Not connected</div>
+
+      <div id="mp-relay-section">
+        <label>Local relay (optional) — run <code>npm run signal</code> on a laptop, then paste one of its printed ws:// addresses here. Leave blank to fall back to manual copy/paste below.<input id="mp-relay-url" type="text" placeholder="ws://192.168.1.23:8787" /></label>
+        <button id="mp-host-relay-btn" type="button">Host via relay</button>
+        <span id="mp-room-code-display" hidden>Room code: <strong id="mp-room-code-value"></strong></span>
+        <div id="mp-join-relay-row">
+          <input id="mp-room-code-input" type="text" placeholder="Room code" maxlength="4" />
+          <button id="mp-join-relay-btn" type="button">Join via relay</button>
+        </div>
+      </div>
+
       <div id="mp-role-row">
+        <strong>Manual copy/paste</strong><br />
         <button id="mp-host-btn" type="button">Host</button>
         <button id="mp-join-btn" type="button">Join</button>
       </div>
@@ -1497,8 +1533,15 @@
 
     <script type="module">
       import { createHostConnection, createJoinConnection } from '../../common/multiplayer.js';
+      import { hostViaRelay, joinViaRelay } from '../../common/signal-relay.js';
 
       var statusEl = document.getElementById('mp-status');
+      var relayUrlEl = document.getElementById('mp-relay-url');
+      var hostRelayBtn = document.getElementById('mp-host-relay-btn');
+      var joinRelayBtn = document.getElementById('mp-join-relay-btn');
+      var roomCodeInputEl = document.getElementById('mp-room-code-input');
+      var roomCodeDisplayEl = document.getElementById('mp-room-code-display');
+      var roomCodeValueEl = document.getElementById('mp-room-code-value');
       var hostBtn = document.getElementById('mp-host-btn');
       var joinBtn = document.getElementById('mp-join-btn');
       var offerRow = document.getElementById('mp-offer-row');
@@ -1604,9 +1647,60 @@
         remoteLaserEl.setAttribute('visible', false);
       }
 
+      hostRelayBtn.addEventListener('click', function () {
+        if (!relayUrlEl.value) {
+          statusEl.textContent = 'Enter a relay address first.';
+          return;
+        }
+        hostRelayBtn.disabled = true;
+        joinRelayBtn.disabled = true;
+        hostBtn.disabled = true;
+        joinBtn.disabled = true;
+        isHost = true;
+        connection = createHostConnection({ onOpen: onOpen, onMessage: onMessage, onClose: onClose });
+        statusEl.textContent = 'Connecting to relay...';
+        hostViaRelay(relayUrlEl.value, connection, {
+          onRoomCode: function (code) {
+            roomCodeValueEl.textContent = code;
+            roomCodeDisplayEl.hidden = false;
+            statusEl.textContent = 'Waiting for a joining peer (room ' + code + ')';
+          },
+          onHandshakeComplete: function () {
+            statusEl.textContent = 'Handshake complete, waiting for the connection to open...';
+          },
+          onError: function (message) {
+            statusEl.textContent = message;
+          },
+        });
+      });
+
+      joinRelayBtn.addEventListener('click', function () {
+        if (!relayUrlEl.value || !roomCodeInputEl.value) {
+          statusEl.textContent = 'Enter a relay address and room code first.';
+          return;
+        }
+        hostRelayBtn.disabled = true;
+        joinRelayBtn.disabled = true;
+        hostBtn.disabled = true;
+        joinBtn.disabled = true;
+        isHost = false;
+        connection = createJoinConnection({ onOpen: onOpen, onMessage: onMessage, onClose: onClose });
+        statusEl.textContent = 'Connecting to relay...';
+        joinViaRelay(relayUrlEl.value, roomCodeInputEl.value.toUpperCase(), connection, {
+          onHandshakeComplete: function () {
+            statusEl.textContent = 'Handshake complete, waiting for the connection to open...';
+          },
+          onError: function (message) {
+            statusEl.textContent = message;
+          },
+        });
+      });
+
       hostBtn.addEventListener('click', async function () {
         hostBtn.disabled = true;
         joinBtn.disabled = true;
+        hostRelayBtn.disabled = true;
+        joinRelayBtn.disabled = true;
         isHost = true;
         connection = createHostConnection({ onOpen: onOpen, onMessage: onMessage, onClose: onClose });
         statusEl.textContent = 'Hosting — generating offer...';
@@ -1619,6 +1713,8 @@
       joinBtn.addEventListener('click', function () {
         hostBtn.disabled = true;
         joinBtn.disabled = true;
+        hostRelayBtn.disabled = true;
+        joinRelayBtn.disabled = true;
         joinRow.hidden = false;
         statusEl.textContent = "Paste the host's offer below";
       });

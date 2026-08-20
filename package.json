@@ -6,9 +6,13 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node --test"
+    "test": "node --test",
+    "signal": "node server/signal-server.js"
   },
   "devDependencies": {
     "vite": "^8.1.5"
+  },
+  "dependencies": {
+    "ws": "^8.21.3"
   }
 }
