@@ -39,6 +39,7 @@ export default defineConfig({
     rolldownOptions: {
       input: {
         home: resolve(root, 'index.html'),
+        about: resolve(root, 'about/index.html'),
         cubePop: resolve(root, 'games/cube-pop/index.html'),
         punchPop: resolve(root, 'games/punch-pop/index.html'),
         pistolsAtDawn: resolve(root, 'games/pistols-at-dawn/index.html'),

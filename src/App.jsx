@@ -1,38 +1,9 @@
-import {
-  Layout,
-  Header,
-  Footer,
-  Container,
-  Heading,
-  Text,
-  Link,
-  Card,
-  CardGrid,
-} from '@noahwright/design';
+import { Layout, Container, Heading, Text, Link, Card, CardGrid } from '@noahwright/design';
+import { SiteHeader, SiteFooter } from './SiteChrome.jsx';
 
 export function App() {
   return (
-    <Layout
-      header={
-        <Header
-          left={
-            <Heading level={2} gradient>
-              WebXR Lab
-            </Heading>
-          }
-          right={<Link href="primitives/menus/" variant="subtle">Primitives ↗</Link>}
-        />
-      }
-      footer={
-        <Footer
-          bottom={
-            <Text align="center" tone="muted">
-              Built with A-Frame, for the Meta Quest 2 browser.
-            </Text>
-          }
-        />
-      }
-    >
+    <Layout header={<SiteHeader />} footer={<SiteFooter />}>
       <Container padding="xl" alignItems="center" itemSpacing="sm">
         <Heading level={1} align="center" gradient eyebrow="Meta Quest 2 · WebXR">
           Strap in and play
@@ -48,7 +19,7 @@ export function App() {
           <Card
             title="Pistols at Dawn"
             subtitle="The flagship"
-            href="games/pistols-at-dawn/"
+            href="/games/pistols-at-dawn/"
             interactive
             footer={<Text tone="muted">Play →</Text>}
           >
@@ -57,7 +28,7 @@ export function App() {
           </Card>
           <Card
             title="Punch Pop"
-            href="games/punch-pop/"
+            href="/games/punch-pop/"
             interactive
             footer={<Text tone="muted">Play →</Text>}
           >
@@ -66,7 +37,7 @@ export function App() {
           </Card>
           <Card
             title="Cube Pop"
-            href="games/cube-pop/"
+            href="/games/cube-pop/"
             interactive
             footer={<Text tone="muted">Play →</Text>}
           >
@@ -78,7 +49,7 @@ export function App() {
       <Container padding="lg" alignItems="center">
         <Text align="center" tone="muted">
           Also here: a{' '}
-          <Link href="primitives/menus/">showcase of the interaction building blocks</Link>{' '}
+          <Link href="/primitives/menus/">showcase of the interaction building blocks</Link>{' '}
           these games are made from.
         </Text>
       </Container>
