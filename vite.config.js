@@ -1,6 +1,7 @@
 import { cp, mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
 
 const root = import.meta.dirname;
 const output = resolve(root, 'dist');
@@ -31,7 +32,7 @@ function copyRuntimeAssets() {
 }
 
 export default defineConfig({
-  plugins: [copyRuntimeAssets()],
+  plugins: [react(), copyRuntimeAssets()],
   build: {
     outDir: 'dist',
     emptyOutDir: true,
