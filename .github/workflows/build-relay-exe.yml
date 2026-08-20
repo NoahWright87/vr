@@ -1,10 +1,20 @@
 name: Build relay exe
 
-# Manual only — this is an experimental dev tool (see README's
-# "Multiplayer connection relay" section), not something that should
-# rebuild on every push. Trigger it from the Actions tab when you
-# want a fresh, downloadable Windows build.
+# Runs automatically on PRs that touch the relay, so a PR gets a
+# downloadable preview build as a check. Also manually triggerable —
+# but note workflow_dispatch only appears in the Actions tab's "Run
+# workflow" picker once this file exists on the default branch, so
+# that option won't show up until this PR (or some other change to
+# this file) merges to main.
 on:
+  pull_request:
+    paths:
+      - 'server/**'
+      - 'common/multiplayer.js'
+      - 'common/signal-relay.js'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/build-relay-exe.yml'
   workflow_dispatch: {}
 
 jobs:

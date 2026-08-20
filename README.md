@@ -230,12 +230,14 @@ can run the relay too — a standalone ~58MB binary (bundles its own
 Node runtime via [`@yao-pkg/pkg`](https://github.com/yao-pkg/pkg))
 that does the same thing as `npm run signal`. Two ways to get it:
 
-- **GitHub Actions (no local build needed)**: open this repo's
-  Actions tab → "Build relay exe" → "Run workflow". It builds
-  natively on a Windows runner, actually launches the result to
-  confirm it starts up correctly, then attaches
-  `vr-signal-relay-windows` as a downloadable artifact on that run
-  (kept 30 days).
+- **GitHub Actions (no local build needed)**: runs automatically as a
+  check on any PR that touches the relay — open the PR's checks,
+  find the "Build relay exe" run, and download the
+  `vr-signal-relay-windows` artifact (kept 30 days). It builds
+  natively on a Windows runner and actually launches the result to
+  confirm it starts up correctly before attaching it. Also
+  manually triggerable from the Actions tab's "Run workflow" button
+  once this workflow file exists on the default branch.
 - **Locally**: `npm run package:relay:win` produces
   `dist-exe/vr-signal-relay.exe` directly. The first build on a fresh
   machine downloads ~130MB of base Node binaries from GitHub; later
