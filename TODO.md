@@ -179,3 +179,38 @@ it, with the rough edges named rather than silently accepted:
   (e.g. `node22-macos-arm64`, `node22-linux-x64`) — not built only
   because the ask so far has been a Windows laptop specifically. Same
   command, different target string, whenever it's needed.
+
+## Playing over the internet, not just LAN
+
+Everything built so far (`common/multiplayer.js`, the signaling
+relay) is deliberately LAN-only, and not just because the relay
+happens to run on a home laptop — `common/multiplayer.js` sets
+`iceServers: []`, so peers only ever gather local host ICE candidates
+and can't find each other across two different networks at all.
+Decided against doing this now: it trades "no server, no hosting
+costs" (the explicit starting premise of this whole feature) for real
+recurring infrastructure, so it should be a deliberate choice, not
+something added piecemeal. If it's ever wanted, it's three layers,
+and they only pay off bundled together — doing just one leaves
+multiplayer exactly as LAN-only as today:
+
+- **A publicly reachable relay.** Deploy `server/signal-server.js`
+  somewhere with a real domain and TLS (`wss://`, not `ws://` — a
+  page served over `https://` can't open a plain `ws://` connection).
+  Cheapest is a small always-on host (a few dollars a month, or a
+  free tier on something like Render/Railway/Fly.io). No code changes
+  to the relay itself, since it already listens on all interfaces.
+- **STUN**, added to `iceServers` in `common/multiplayer.js`, so each
+  peer can learn its own public IP:port as seen from outside its home
+  router (that's the one thing missing today that keeps this
+  LAN-only at the WebRTC layer, independent of the relay). Free
+  public STUN servers exist, or self-host `coturn`. On its own, with
+  no public relay, this changes nothing — the relay is what lets two
+  peers find each other to exchange addresses in the first place.
+- **TURN**, for the fraction of real-world NAT setups (symmetric NAT,
+  restrictive carrier/corporate NAT, some double-NAT routers) where
+  even STUN can't establish a direct path. Unlike STUN, a TURN server
+  actually relays the live game traffic, so it's an ongoing bandwidth
+  cost, not a one-time setup — pay a TURN provider or self-host
+  `coturn` on a VPS with bandwidth headroom. This is the piece that
+  most changes "zero cost" into "real hosting bill."
