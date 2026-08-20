@@ -194,12 +194,26 @@
       var moveAmount = Math.hypot(moveX, moveY);
       if (moveAmount < this.data.moveDeadzone) return;
 
+      this.applyMoveVector(moveX, moveY, deltaMs);
+    },
+
+    // Input-source-neutral movement core. XR thumbsticks and desktop WASD
+    // both express a local x/z intent and arrive here.
+    applyMoveVector: function (moveX, moveY, deltaMs) {
+      if (!this.cameraEl) return;
+
       var direction = new AFRAME.THREE.Vector3(moveX, 0, moveY);
       var cameraQuat = new AFRAME.THREE.Quaternion();
       this.cameraEl.object3D.getWorldQuaternion(cameraQuat);
       var worldMove = direction.applyQuaternion(cameraQuat).setY(0);
       worldMove.normalize().multiplyScalar(this.data.speed * (deltaMs / 1000));
       this.rigEl.object3D.position.add(worldMove);
+    },
+
+    applyDesktopMove: function (moveX, moveY, deltaMs) {
+      var amount = Math.hypot(moveX, moveY);
+      if (!amount) return;
+      this.applyMoveVector(moveX / amount, moveY / amount, deltaMs);
     },
 
     applySmoothTurn: function (deltaMs) {

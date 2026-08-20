@@ -364,6 +364,7 @@ import { cycleMenuOptionIndex, parseMenuOptions } from './menu-options.js';
       this.orientationLostSince = null;
       this.automaticDismissed = false;
       this.suppressPointing = false;
+      this.forcedMode = null;
       this.cameraEl = document.querySelector('a-camera');
 
       var panel = this.data.template.content.cloneNode(true).firstElementChild;
@@ -438,7 +439,7 @@ import { cycleMenuOptionIndex, parseMenuOptions } from './menu-options.js';
     },
 
     tick: function () {
-      if (this.data.automatic) {
+      if (this.data.automatic && !this.forcedMode) {
         var automaticIntent = this.computeAutomaticIntent();
         if (automaticIntent !== 'open') this.automaticDismissed = false;
         if (automaticIntent === 'open' && !this.automaticDismissed) this.active = true;
@@ -460,6 +461,7 @@ import { cycleMenuOptionIndex, parseMenuOptions } from './menu-options.js';
       this.cameraEl.object3D.getWorldPosition(camPos);
       var pos = new THREE.Vector3();
       this.el.object3D.getWorldPosition(pos);
+      if (this.forcedMode === 'poke' || this.forcedMode === 'laser') return this.forcedMode;
       if (this.data.mode === 'poke' || this.data.mode === 'laser') {
         if (camPos.distanceTo(pos) > this.data.closeDistance) return null;
         if (this.isLookedAwayTooLong(camPos)) return null;
@@ -619,8 +621,16 @@ import { cycleMenuOptionIndex, parseMenuOptions } from './menu-options.js';
       this.automaticDismissed = false;
       this.active = true;
     },
+    // Semantic input can ask for the same projected menu in a known
+    // interaction layout without pretending to be a tracked controller.
+    // Physical XR input continues to derive the mode from the prop pose.
+    openInMode: function (mode) {
+      this.forcedMode = mode === 'poke' ? 'poke' : 'laser';
+      this.open();
+    },
     close: function () {
       this.automaticDismissed = this.data.automatic;
       this.active = false;
+      this.forcedMode = null;
     },
   });

@@ -296,7 +296,7 @@
          watch style.
     ============================================================== -->
     <div id="overlay">
-      <span>Showcase — this page is the shared VR engine surface for primitives and their reusable interaction patterns. Right now it demonstrates menus, but the goal is to make every primitive here usable by other experiences with the same core systems. To your right, a wall screen; to your left, a pedestal button — poke either to project a menu outward, then poke or point-and-activate its options. Each ❔ shows a different help style: the watch's swaps in a paged modal, the wall's opens a sidecar panel beside the screen, the pedestal's draws a tutorial overlay on top (step it with any A/X or B/Y face button). Walking far enough away, or looking away for a few seconds, auto-closes a menu. <a href="../../index.html">All prototypes</a><a class="menu-edit-link" href="?edit=1" aria-label="Open menu editor">⚙️</a></span>
+      <span>Showcase — shared VR mechanics, now testable with either tracked hands or semantic desktop hands. Desktop: click the scene for mouse look, use WASD to move, Tab (or Esc when the browser delivers it) for the watch, E for a highlighted mounted control, and F to grab/drop a highlighted box. E or Esc exits a mounted interaction. In XR, the existing tracked-hand behavior is unchanged. <a href="../../index.html">All prototypes</a><a class="menu-edit-link" href="?edit=1" aria-label="Open menu editor">⚙️</a></span>
     </div>
 
     <a-scene>
@@ -315,7 +315,7 @@
            highlighting two at once and letting a stray glance select the
            wrong item. -->
       <a-entity id="rig" position="0 0 0">
-        <a-camera>
+        <a-camera look-controls="pointerLockEnabled: true">
           <a-entity
             id="gaze-cursor"
             cursor="fuse: false"
@@ -328,13 +328,15 @@
 
         <a-entity id="left-hand" position="-0.2 1.35 -0.4"
           hand-with-watch="hand: left"
+          semantic-hand="hand: left; maxReach: 1.0"
         ></a-entity>
-        <a-entity hand-controls="hand: left; handModelStyle: lowPoly"></a-entity>
+        <a-entity id="tracked-hand-visual-left" hand-controls="hand: left; handModelStyle: lowPoly"></a-entity>
 
         <a-entity id="right-hand" position="0.2 1.35 -0.4"
           hand-with-watch="hand: right"
+          semantic-hand="hand: right; maxReach: 1.0"
         ></a-entity>
-        <a-entity hand-controls="hand: right; handModelStyle: lowPoly"></a-entity>
+        <a-entity id="tracked-hand-visual-right" hand-controls="hand: right; handModelStyle: lowPoly"></a-entity>
       </a-entity>
            Every clickable row is just an entity with its own
            geometry/material plus the "menu-item" component below —
@@ -360,30 +362,30 @@
           class="menu-target"
           geometry="primitive: plane; width: 1.6; height: 0.26"
           material="color: #182238"
-          menu-item="value: move-teleport; label: Teleport"
+          menu-item="value: spawn-box; label: Spawn box"
           position="0 0.24 0"
         >
-          <a-text value="Teleport" align="center" color="#eee" width="3" position="0 0 0.01"></a-text>
+          <a-text value="Spawn box" align="center" color="#eee" width="3" position="0 0 0.01"></a-text>
         </a-entity>
 
         <a-entity
           class="menu-target"
           geometry="primitive: plane; width: 1.6; height: 0.26"
           material="color: #182238"
-          menu-item="value: turn-snap; label: Snap turn"
+          menu-item="value: reset-boxes; label: Reset boxes"
           position="0 -0.12 0"
         >
-          <a-text value="Snap turn" align="center" color="#eee" width="3" position="0 0 0.01"></a-text>
+          <a-text value="Reset boxes" align="center" color="#eee" width="3" position="0 0 0.01"></a-text>
         </a-entity>
 
         <a-entity
           class="menu-target"
           geometry="primitive: plane; width: 1.6; height: 0.26"
           material="color: #182238"
-          menu-item="value: turn-smooth; label: Smooth turn"
+          menu-item="value: station-right; label: Box station"
           position="0 -0.48 0"
         >
-          <a-text value="Smooth turn" align="center" color="#eee" width="3" position="0 0 0.01"></a-text>
+          <a-text value="Box station" align="center" color="#eee" width="3" position="0 0 0.01"></a-text>
         </a-entity>
 
         <a-entity
@@ -512,7 +514,7 @@
       <template id="watch-menu-template">
         <a-entity class="watch-menu-panel" visible="false">
           <a-entity class="watch-menu-main" data-menu-page="main">
-            <a-plane width="1.2" height="2.4" color="#101827" position="0 -0.1 -0.01"></a-plane>
+            <a-plane width="1.2" height="3.25" color="#101827" position="0 -0.64 -0.01"></a-plane>
 
             <!-- Chrome slot's title starts empty — hand-with-watch
                  points its live clock at menu-chrome-title instead of a
@@ -594,8 +596,17 @@
             <a-entity class="pm-target"
               geometry="primitive: plane; width: 0.92; height: 0.18"
               material="color: #182238"
-              menu-item="value: haptics; label: Haptics Test"
+              menu-item="value: page-input; label: Input and hints"
               position="0 -1.7 0"
+            >
+              <a-text value="Input and hints" align="center" color="#eee" width="2.6" position="0 0 0.01"></a-text>
+            </a-entity>
+
+            <a-entity class="pm-target"
+              geometry="primitive: plane; width: 0.92; height: 0.18"
+              material="color: #182238"
+              menu-item="value: haptics; label: Haptics Test"
+              position="0 -1.96 0"
             >
               <a-text value="Haptics Test" align="center" color="#eee" width="2.6" position="0 0 0.01"></a-text>
             </a-entity>
@@ -604,7 +615,7 @@
               geometry="primitive: plane; width: 0.92; height: 0.18"
               material="color: #182238"
               menu-item="value: about; label: About"
-              position="0 -1.96 0"
+              position="0 -2.22 0"
             >
               <a-text class="watch-menu-about-label" value="About" align="center" color="#eee" width="2.6" position="0 0 0.01"></a-text>
             </a-entity>
@@ -686,6 +697,22 @@
             <a-entity class="pm-target" geometry="primitive: plane; width: 0.92; height: 0.16" material="color: #182238" menu-item="value: teleport-right; label: Teleport hand right" position="0 -2.2 0">
               <a-text value="Teleport hand right" align="center" color="#eee" width="2.5" position="0 0 0.01"></a-text>
             </a-entity>
+          </a-entity>
+
+          <a-entity class="watch-menu-input-view" data-menu-page="input" visible="false">
+            <a-plane width="1.2" height="1.55" color="#101827" position="0 -0.08 -0.01"></a-plane>
+            <a-entity class="menu-chrome-slot" data-title="INPUT" data-help="false" data-close="true" data-close-value="input-close" data-width="1.2" data-bar-y="0.62"></a-entity>
+
+            <a-entity
+              menu-option="key: handedness; label: Hand; values: right|left; labels: Right-handed|Left-handed; value: right; width: 0.96; height: 0.18"
+              position="0 0.3 0"
+            ></a-entity>
+            <a-entity
+              menu-option="key: interaction-hints; label: Hints; values: always|delayed|never; labels: Always|Delayed|Never; value: delayed; width: 0.96; height: 0.18"
+              position="0 0.02 0"
+            ></a-entity>
+
+            <a-text value="Desktop: WASD move\nTab watch   Esc exit\nE mounted   F grab/drop" align="center" color="#9fb0d4" width="1.55" wrap-count="28" position="0 -0.38 0"></a-text>
           </a-entity>
         </a-entity>
       </template>
@@ -773,10 +800,15 @@
 
       <a-entity id="wall-slab" position="1.1 1.4 -0.7" rotation="0 -58 0">
         <a-box width="1.4" height="1.8" depth="0.1" color="#2b2f38"></a-box>
+        <!-- The authored anchor is where a desktop player's head lands
+             after the small alignment snap. Local +Z is the wall's front. -->
+        <a-entity id="wall-interaction-anchor" position="0 0 0.74"></a-entity>
         <a-entity id="wall-screen-trigger"
           geometry="primitive: plane; width: 0.4; height: 0.28"
           material="color: #16324a; side: double"
           position="0 0 0.051"
+          mounted-interaction="anchor: #wall-interaction-anchor; previewStandoff: 0.12"
+          hint-zone="action: mounted; radius: 0.34; maxReach: 1.0; gazeThreshold: 0.88; priority: 20; desktopKey: E; desktopLabel: Open menu; xrKey: POKE; xrLabel: Open menu; hintOffset: 0 0.42 0"
         >
           <a-text value="TAP" align="center" color="#7fd" width="4" position="0 0 0.002"></a-text>
         </a-entity>
@@ -857,10 +889,24 @@
           position="0 0.92 0"
         ></a-entity>
       </a-entity>
+
+      <!-- V1 object manipulation story. This intentionally uses the small
+           shared grab/drop state machine rather than importing Pistols at
+           Dawn's holster/stack/throw/catch equipment graph. -->
+      <a-box id="box-test-stand" width="1.2" height="0.62" depth="0.8" color="#353b48" position="2.7 0.31 -1.8"></a-box>
+      <a-box id="showcase-grab-box"
+        class="showcase-grab-box"
+        width="0.26" height="0.26" depth="0.26"
+        color="#d78b42"
+        position="2.55 0.77 -1.8"
+        simple-grabbable="heldPosition: 0 0 -0.08; floorY: 0.13"
+        hint-zone="action: grab; radius: 0.34; maxReach: 1.0; gazeThreshold: 0.93; priority: 10; desktopKey: F; desktopLabel: Grab; xrKey: GRIP; xrLabel: Grab; hintOffset: 0 0.32 0"
+      ></a-box>
     </a-scene>
 
     <script type="module" src="../../common/watch-menu.js"></script>
     <script type="module" src="../../common/locomotion.js"></script>
+    <script type="module" src="../../common/desktop-controls.js"></script>
     <script type="module">
       import { buildMenuChrome } from '../../common/menus.js';
       var MENU_EDITOR_DEFAULTS = {
@@ -872,9 +918,9 @@
           height: 2,
         },
         items: [
-          { value: 'start', label: 'Start', position: { x: 0, y: 0.25, z: 0 } },
-          { value: 'options', label: 'Options', position: { x: 0, y: -0.15, z: 0 } },
-          { value: 'quit', label: 'Quit', position: { x: 0, y: -0.55, z: 0 } },
+          { value: 'spawn-box', label: 'Spawn box', position: { x: 0, y: 0.24, z: 0 } },
+          { value: 'reset-boxes', label: 'Reset boxes', position: { x: 0, y: -0.12, z: 0 } },
+          { value: 'station-right', label: 'Box station', position: { x: 0, y: -0.48, z: 0 } },
         ],
       };
 
@@ -1003,10 +1049,46 @@
         else if (value === 'page-controls') return;
       }
 
+      function spawnShowcaseBox () {
+        var boxes = document.querySelectorAll('.showcase-grab-box');
+        if (boxes.length >= 8) return;
+        var source = document.querySelector('#showcase-grab-box');
+        if (!source) return;
+        var clone = source.cloneNode(true);
+        var index = boxes.length;
+        clone.removeAttribute('id');
+        clone.setAttribute('data-box-number', String(index + 1));
+        clone.setAttribute('position', {
+          x: 2.38 + (index % 3) * 0.28,
+          y: 0.77 + Math.floor(index / 6) * 0.28,
+          z: -1.68 - (Math.floor(index / 3) % 2) * 0.28,
+        });
+        document.querySelector('a-scene').appendChild(clone);
+      }
+
+      function resetShowcaseBoxes () {
+        document.querySelectorAll('[simple-grabbable]').forEach(function (boxEl) {
+          var component = boxEl.components['simple-grabbable'];
+          if (component) component.resetToSpawn();
+        });
+      }
+
+      function setupDesktopPlayer () {
+        if (!rigEl || rigEl.components['desktop-controls']) return;
+        rigEl.setAttribute('desktop-controls', {
+          camera: document.querySelector('a-camera'),
+          leftHand: document.querySelector('#left-hand'),
+          rightHand: document.querySelector('#right-hand'),
+        });
+      }
+
       var menuScene = document.querySelector('a-scene');
       if (menuScene) {
         menuScene.addEventListener('menu-item-select', function (evt) {
+          menuScene.setAttribute('data-last-menu-selection', evt.detail.value);
           handleLocomotionSelection(evt.detail.value);
+          if (evt.detail.value === 'spawn-box') spawnShowcaseBox();
+          else if (evt.detail.value === 'reset-boxes') resetShowcaseBoxes();
         });
       }
 
@@ -1383,10 +1465,12 @@
       if (sceneEl.hasLoaded) {
         setupFixedProjectedMenus();
         setupFixedPanelChrome();
+        setupDesktopPlayer();
       } else {
         sceneEl.addEventListener('loaded', function () {
           setupFixedProjectedMenus();
           setupFixedPanelChrome();
+          setupDesktopPlayer();
         });
       }
 
