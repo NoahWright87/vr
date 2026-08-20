@@ -221,6 +221,7 @@ import './menus.js';
 
     tick: function () {
       var second = Math.floor(Date.now() / 1000);
+
       if (second === this.lastDisplaySecond) return;
       this.lastDisplaySecond = second;
       this.updateDisplay();
