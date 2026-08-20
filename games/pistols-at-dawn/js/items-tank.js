@@ -345,7 +345,7 @@
           var color = liquid ? liquid.dropColor || liquid.poolColor : '#2b2b2f';
 
           if (this.gaugeEl) {
-            this.gaugeEl.setAttribute('visible', !!liquid);
+            this.gaugeEl.object3D.visible = !!liquid;
             this.gaugeEl.setAttribute(
               'material',
               'color: ' + color + '; shader: flat; opacity: 0.85; transparent: true'

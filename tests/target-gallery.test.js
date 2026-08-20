@@ -9,6 +9,7 @@ globalThis.registerComponent = function (name, definition) {
 
 await import('../games/pistols-at-dawn/js/world-menu.js');
 const gameMarkup = readFileSync(new URL('../games/pistols-at-dawn/index.html', import.meta.url), 'utf8');
+const rangeMarkup = readFileSync(new URL('../games/pistols-at-dawn/areas/range.html', import.meta.url), 'utf8');
 
 function createAdapter() {
   return Object.assign(Object.create(definitions['pistols-watch-menu']), {
@@ -68,7 +69,8 @@ test('distance changes only ground-plane placement, not moving-target scale', ()
 });
 
 test('the floor extends beneath every configured target distance', () => {
-  const floor = gameMarkup.match(/<a-plane[\s\S]*?rotation="-90 0 0"[\s\S]*?width="(\d+)"[\s\S]*?height="(\d+)"/);
+  assert.match(gameMarkup, /id="area-host"/);
+  const floor = rangeMarkup.match(/<a-plane[\s\S]*?rotation="-90 0 0"[\s\S]*?width="(\d+)"[\s\S]*?height="(\d+)"/);
   assert.ok(floor);
   assert.ok(Number(floor[1]) >= 150);
   assert.ok(Number(floor[2]) >= 150);

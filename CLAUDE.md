@@ -42,6 +42,11 @@ the original single file used. Shared primitives under `common/` are ES
 modules. Two things
 worth knowing if you're moving code between these files:
 
+- Destination markup lives under `games/pistols-at-dawn/areas/`. `world-town.js`
+  fetches one fragment at a time and lazily injects the destination-only legacy
+  scripts listed in `TOWN_LOCATIONS`; do not add those scripts back to the eager
+  list in `index.html`. Persistent player/global systems stay in the page.
+
 - Almost every cross-file reference is safe regardless of which file
   defines it or load order, because component `init()`/`tick()`
   callbacks only run once every script on the page has finished

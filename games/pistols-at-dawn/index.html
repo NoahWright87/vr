@@ -77,14 +77,14 @@
     <template id="watch-menu-template">
       <a-entity class="watch-menu-panel" visible="false">
         <a-entity data-menu-page="main">
-          <a-plane width="1" height="1" color="#101827" position="0 0 -0.01"></a-plane>
-          <a-entity class="menu-chrome-slot" data-title="" data-help="false" data-close="true" data-width="1" data-bar-y="0.36"></a-entity>
+          <a-plane width="1" height="1.3" color="#101827" position="0 -0.05 -0.01"></a-plane>
+          <a-entity class="menu-chrome-slot" data-title="" data-help="false" data-close="true" data-width="1" data-bar-y="0.49"></a-entity>
           <a-entity
             class="pm-target"
             geometry="primitive: plane; width: 0.78; height: 0.2"
             material="color: #182238"
             menu-item="value: page-targets; label: Targets"
-            position="0 0.13 0"
+            position="0 0.3 0"
           >
             <a-text value="Targets  >" align="center" color="#eee" width="2.4" position="0 0 0.01"></a-text>
           </a-entity>
@@ -93,9 +93,27 @@
             geometry="primitive: plane; width: 0.78; height: 0.2"
             material="color: #182238"
             menu-item="value: page-teleport; label: Teleport"
-            position="0 -0.13 0"
+            position="0 0.08 0"
           >
             <a-text value="Teleport  >" align="center" color="#eee" width="2.4" position="0 0 0.01"></a-text>
+          </a-entity>
+          <a-entity
+            class="pm-target"
+            geometry="primitive: plane; width: 0.78; height: 0.2"
+            material="color: #182238"
+            menu-item="value: toggle-hud; label: Hide HUD"
+            position="0 -0.14 0"
+          >
+            <a-text class="hud-toggle-label" value="Hide HUD" align="center" color="#eee" width="2.4" position="0 0 0.01"></a-text>
+          </a-entity>
+          <a-entity
+            class="pm-target"
+            geometry="primitive: plane; width: 0.78; height: 0.2"
+            material="color: #182238"
+            menu-item="value: toggle-performance; label: Show Performance"
+            position="0 -0.36 0"
+          >
+            <a-text class="performance-toggle-label" value="Show Performance" align="center" color="#eee" width="2.4" position="0 0 0.01"></a-text>
           </a-entity>
         </a-entity>
 
@@ -198,21 +216,8 @@
       </a-entity>
     </template>
 
-    <a-scene pistols-watch-menu>
-      <!-- ============================================================
-           RANGE
-      ============================================================ -->
-      <!-- The 120-degree galleries reach roughly 51m from the player.
-           This must extend beneath them: an absent floor cannot occlude a
-           pop-up target after it moves below y=0. -->
-      <a-plane
-        rotation="-90 0 0"
-        width="160"
-        height="160"
-        color="#7a6a52"
-        position="0 0 0"
-      ></a-plane>
-      <a-sky color="#7d6b8f"></a-sky>
+    <a-scene pistols-watch-menu area-manager scene-index>
+      <a-sky color="#7d6b8f" data-area-persistent></a-sky>
 
       <!-- ============================================================
            PLAYER RIG + DESKTOP/PHONE FALLBACK
@@ -247,23 +252,35 @@
            rig's movement for free regardless of where it sits in the
            hierarchy.
       ============================================================ -->
-      <a-entity id="player-rig" teleport-hub>
+      <a-entity id="player-rig" teleport-hub data-area-persistent>
         <a-camera id="head-camera">
+          <a-entity id="player-hud">
+            <a-text
+              id="hud-text"
+              value="Score: 0   Shots: 0"
+              align="center"
+              color="#FFFFFF"
+              width="2"
+              position="0 -0.35 -1"
+            ></a-text>
+            <a-text
+              id="vice-text"
+              value=""
+              align="center"
+              color="#ffd9a0"
+              width="1.6"
+              position="0 -0.46 -1"
+            ></a-text>
+          </a-entity>
           <a-text
-            id="hud-text"
-            value="Score: 0   Shots: 0"
-            align="center"
-            color="#FFFFFF"
-            width="2"
-            position="0 -0.35 -1"
-          ></a-text>
-          <a-text
-            id="vice-text"
+            id="performance-text"
+            performance-monitor
+            visible="false"
             value=""
             align="center"
-            color="#ffd9a0"
-            width="1.6"
-            position="0 -0.46 -1"
+            color="#9dffb0"
+            width="1.45"
+            position="0 0.37 -1"
           ></a-text>
           <a-entity
             cursor="fuse: false"
@@ -285,8 +302,17 @@
             width="6"
             height="6"
             position="0 0 -0.2"
-            material="color: #000000; shader: flat; opacity: 0; transparent: true; depthTest: false"
+            material="color: #000000; shader: flat; opacity: 1; transparent: true; depthTest: false"
           ></a-plane>
+          <a-text
+            id="area-loading-text"
+            value="Loading..."
+            align="center"
+            color="#FFFFFF"
+            width="0.65"
+            position="0 0 -0.18"
+            material="shader: flat; depthTest: false"
+          ></a-text>
 
           <!-- Nested directly under the camera (rather than a body-anchor-style
                tick() component) so it inherits full head rotation for free,
@@ -417,9 +443,12 @@
            has: stocked once at scene load, never refilled, a shotgun
            on your back when you start and a pocket after that.
       ============================================================ -->
-      <a-entity id="waist-anchor" class="anchor-slot" body-anchor="side: waist" anchor-slot="size: medium; swap: true" stocked="item: belt-classic"></a-entity>
-      <a-entity id="chest-anchor" class="anchor-slot" body-anchor="side: chest" anchor-slot="size: medium; swap: true; idleHidden: true; indicatorScale: 0.5; revealDistance: 0.2" stocked="item: vest-classic"></a-entity>
-      <a-entity id="back-anchor" class="anchor-slot" body-anchor="side: back" anchor-slot="size: large" stocked="item: shotgun"></a-entity>
+      <a-entity id="waist-anchor" data-area-persistent class="anchor-slot" body-anchor="side: waist" anchor-slot="size: medium; swap: true" stocked="item: belt-classic"></a-entity>
+      <a-entity id="chest-anchor" data-area-persistent class="anchor-slot" body-anchor="side: chest" anchor-slot="size: medium; swap: true; idleHidden: true; indicatorScale: 0.5; revealDistance: 0.2" stocked="item: vest-classic"></a-entity>
+      <a-entity id="back-anchor" data-area-persistent class="anchor-slot" body-anchor="side: back" anchor-slot="size: large" stocked="item: shotgun"></a-entity>
+      <!-- DOM home for props carried out of a disposable area. Their three.js
+           parent remains the hand/body/item slot that actually poses them. -->
+      <a-entity id="carried-items" data-area-persistent></a-entity>
 
       <!-- ============================================================
            THE HAT
@@ -455,12 +484,6 @@
            It also carries its own small anchor-slot tucked inside the
            crown (see boxy-hat) — hide a gun in your hat.
       ============================================================ -->
-      <a-entity
-        class="grabbable"
-        holsterable="holsterSelector: #head-anchor; itemSize: medium; holsterRotation: 0 0 0; heldRotation: 90 0 0; holsterPosition: 0.11 0 0; heldPosition: -0.1 0 0; grabRadius: 0.35; grabPriority: 30; comOffset: 0.11 -0.065 0"
-        boxy-hat
-      ></a-entity>
-
       <!-- ============================================================
            THE ISLAND
            Everything saloon-bar builds — bar, armoury, and now a
@@ -496,10 +519,8 @@
            per-frame particle/wind/ignition simulation shared by gun
            smoke, cigar smoke, and shattering glass.
       ============================================================ -->
-      <a-entity saloon-bar></a-entity>
-      <a-entity id="bell-pole" boxy-bell-pole></a-entity>
-      <a-entity id="vices" vice-meter></a-entity>
-      <a-entity world-systems></a-entity>
+      <a-entity id="vices" vice-meter data-area-persistent></a-entity>
+      <a-entity world-systems data-area-persistent></a-entity>
 
       <!-- ============================================================
            TARGET GALLERY
@@ -507,14 +528,8 @@
            Exactly one configurable gallery is active. Watch > Targets
            swaps its target component while retaining the selected settings.
       ============================================================ -->
-      <a-entity id="range-manager" shooting-range></a-entity>
-
-      <!-- Range-only equipment remains at the origin; teleporting the
-           player rig leaves these stations in their intended location. -->
-      <a-entity id="shooting-stall" shooting-stall position="0 0 -1.15"></a-entity>
-      <a-entity id="siege-battery" siege-battery></a-entity>
-
-      <a-entity id="target-gallery"></a-entity>
+      <!-- area-manager keeps exactly one fragment from areas/ mounted here. -->
+      <a-entity id="area-host" data-area-persistent></a-entity>
 
       <!-- ============================================================
            TOWN
@@ -530,9 +545,6 @@
            spot, following the same "world-<place>.js" naming this
            file's own comment block describes.
       ============================================================ -->
-      <a-entity saloon-darts></a-entity>
-      <a-entity farm></a-entity>
-      <a-entity stable></a-entity>
     </a-scene>
 
     <script src="js/core.js"></script>
@@ -547,16 +559,9 @@
     <script src="js/items-bar.js"></script>
     <script src="js/items-vices.js"></script>
     <script src="js/items-throwing-weapons.js"></script>
-    <script src="js/items-siege-weapons.js"></script>
     <script src="js/world-player-body.js"></script>
-    <script src="js/world-saloon-bar.js"></script>
-    <script src="js/world-shooting-stall.js"></script>
-    <script src="js/world-targets.js"></script>
     <script src="js/world-menu.js"></script>
     <script src="js/world-town.js"></script>
     <script src="js/world-structures.js"></script>
-    <script src="js/world-saloon-darts.js"></script>
-    <script src="js/world-farm.js"></script>
-    <script src="js/world-stable.js"></script>
   </body>
 </html>
