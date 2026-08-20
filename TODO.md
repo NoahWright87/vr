@@ -145,3 +145,37 @@ fun-per-effort:
   outside the bar, mounted out on the range. Both are built from
   systems that now exist: two-handed operation, a loaded socket, and
   projectiles.
+
+## Multiplayer relay executable
+
+`npm run package:relay:win` (see README's "Multiplayer connection
+relay" section) produces a working but bare-bones
+`dist-exe/vr-signal-relay.exe` via `@yao-pkg/pkg`. Deliberately
+shipped without these so a non-technical person can at least *try*
+it, with the rough edges named rather than silently accepted:
+
+- **Code signing.** The exe is unsigned, so Windows SmartScreen shows
+  an "unrecognized app" warning on first run. Needs a paid Windows
+  code-signing certificate (and, if a Mac build ever happens, an
+  Apple Developer account for notarization) — this is a cost/process
+  commitment, not an engineering task, so it's gated on deciding this
+  is worth recurring money rather than a coding session.
+- **System tray icon instead of a bare console window.** Right now
+  running the exe just opens a terminal-style window printing
+  addresses and staying there. A tray icon showing "N players
+  connected" (or just "relay running") would read as a real app
+  instead of a dev tool — probably an Electron or Tauri wrapper
+  around the same `server/signal-server.js` logic, which is a bigger
+  lift than the relay itself was.
+- **Friendlier address discovery.** `server/signal-server.js` prints
+  every non-internal IPv4 address it finds and makes the human pick
+  the right one — fine for one Wi-Fi adapter, confusing on a machine
+  with a VPN or multiple network interfaces. Could auto-select the
+  most likely one (e.g. prefer `192.168.*`/`10.*` private ranges) or
+  show a QR code of the address, though the QR code idea only helps
+  peers with a normal screen to scan from — it doesn't solve the
+  headset-to-headset case discussed for the WebRTC handshake itself.
+- **Mac/Linux builds.** `pkg`'s `--targets` supports other platforms
+  (e.g. `node22-macos-arm64`, `node22-linux-x64`) — not built only
+  because the ask so far has been a Windows laptop specifically. Same
+  command, different target string, whenever it's needed.

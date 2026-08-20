@@ -7,9 +7,11 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "node --test",
-    "signal": "node server/signal-server.js"
+    "signal": "node server/signal-server.js",
+    "package:relay:win": "pkg server/signal-server.js --targets node22-win-x64 --output dist-exe/vr-signal-relay.exe"
   },
   "devDependencies": {
+    "@yao-pkg/pkg": "^6.22.0",
     "vite": "^8.1.5"
   },
   "dependencies": {
