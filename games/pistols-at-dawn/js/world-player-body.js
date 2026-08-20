@@ -21,8 +21,8 @@
 
       // BODY LENGTH — CYLINDER_HEIGHT is how far the straight pill body
       // runs before the skirt starts. 0.8m is picked so a worn belt
-      // (see BELT/WARDROBE below), riding the waist anchor at
-      // HIP_HEIGHT, lands at roughly that same seam for an average
+      // (see BELT/WARDROBE below), riding the waist anchor about
+      // 0.75m below the headset, lands at roughly that same seam for an average
       // ~1.6-1.7m standing eye height — the belt reading as part of
       // the body rather than floating at some unrelated height.
       var CYLINDER_HEIGHT = 0.8;
@@ -216,6 +216,7 @@
           holsterPosition: { x: 0.11, y: 0, z: 0 },
           heldPosition: { x: -0.1, y: 0, z: 0 },
           grabRadius: 0.35,
+          grabPriority: 30,
           comOffset: { x: 0.11, y: -0.065, z: 0 },
         });
         el.setAttribute('boxy-hat', { felt: felt, band: band });

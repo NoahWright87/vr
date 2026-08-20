@@ -388,10 +388,11 @@
 
       <!-- ============================================================
            BODY ANCHORS
-           Two invisible anchor points that track the player's body: the
-           waist (medium — belt-sized) and a back-center bandolier point
-           (large — shotgun-sized). There's no real body tracking on a
-           Quest, so body-anchor approximates both from the headset:
+           Three invisible anchor points track the player's body: the
+           waist (medium — belt-sized), chest (medium — vest-sized),
+           and a back-center bandolier point (large — shotgun-sized).
+           There's no real body tracking on a Quest, so body-anchor
+           approximates all three from the headset:
            position and yaw (turning left/right) only, deliberately
            ignoring pitch/roll so looking up or tilting your head
            doesn't drag them around.
@@ -404,18 +405,20 @@
            item approaches, with a quick "click" bounce right as it
            enters snap range.
 
-           The waist anchor has anchor-slot's `swap` flag set: bringing
-           a new belt to it replaces whatever belt is already worn
-           (see `belt`) rather than just refusing the newcomer the way
-           a full slot normally would. It's stocked with belt-classic,
+           The waist and chest anchors have anchor-slot's `swap` flag set:
+           bringing new equipment to either replaces whatever is already
+           worn there rather than requiring the old piece to be pulled off.
+           The waist starts stocked with belt-classic,
            which is what actually carries the two hip holsters pistols
            start in now — see STOCK AND PERISHING and `belt`'s own
            comment for where the old standalone hip-left/hip-right
-           anchors went. The back anchor works exactly as it always
+           anchors went. The chest starts with the two-pocket vest and
+           its refilling blade packs. The back anchor works exactly as it always
            has: stocked once at scene load, never refilled, a shotgun
            on your back when you start and a pocket after that.
       ============================================================ -->
       <a-entity id="waist-anchor" class="anchor-slot" body-anchor="side: waist" anchor-slot="size: medium; swap: true" stocked="item: belt-classic"></a-entity>
+      <a-entity id="chest-anchor" class="anchor-slot" body-anchor="side: chest" anchor-slot="size: medium; swap: true; idleHidden: true; indicatorScale: 0.5; revealDistance: 0.2" stocked="item: vest-classic"></a-entity>
       <a-entity id="back-anchor" class="anchor-slot" body-anchor="side: back" anchor-slot="size: large" stocked="item: shotgun"></a-entity>
 
       <!-- ============================================================
@@ -454,7 +457,7 @@
       ============================================================ -->
       <a-entity
         class="grabbable"
-        holsterable="holsterSelector: #head-anchor; itemSize: medium; holsterRotation: 0 0 0; heldRotation: 90 0 0; holsterPosition: 0.11 0 0; heldPosition: -0.1 0 0; grabRadius: 0.35; comOffset: 0.11 -0.065 0"
+        holsterable="holsterSelector: #head-anchor; itemSize: medium; holsterRotation: 0 0 0; heldRotation: 90 0 0; holsterPosition: 0.11 0 0; heldPosition: -0.1 0 0; grabRadius: 0.35; grabPriority: 30; comOffset: 0.11 -0.065 0"
         boxy-hat
       ></a-entity>
 
@@ -506,6 +509,11 @@
       ============================================================ -->
       <a-entity id="range-manager" shooting-range></a-entity>
 
+      <!-- Range-only equipment remains at the origin; teleporting the
+           player rig leaves these stations in their intended location. -->
+      <a-entity id="shooting-stall" shooting-stall position="0 0 -1.15"></a-entity>
+      <a-entity id="siege-battery" siege-battery></a-entity>
+
       <a-entity id="target-gallery"></a-entity>
 
       <!-- ============================================================
@@ -531,14 +539,18 @@
     <script src="js/core-equip.js"></script>
     <script src="js/core-hand-rig.js"></script>
     <script src="js/core-substances.js"></script>
+    <script src="js/core-shot-turntable.js"></script>
     <script src="js/items-guns.js"></script>
     <script src="js/items-bow.js"></script>
     <script src="js/items-explosives.js"></script>
     <script src="js/items-tank.js"></script>
     <script src="js/items-bar.js"></script>
     <script src="js/items-vices.js"></script>
+    <script src="js/items-throwing-weapons.js"></script>
+    <script src="js/items-siege-weapons.js"></script>
     <script src="js/world-player-body.js"></script>
     <script src="js/world-saloon-bar.js"></script>
+    <script src="js/world-shooting-stall.js"></script>
     <script src="js/world-targets.js"></script>
     <script src="js/world-menu.js"></script>
     <script src="js/world-town.js"></script>
