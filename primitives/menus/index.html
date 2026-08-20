@@ -397,7 +397,7 @@
            highlighting two at once and letting a stray glance select the
            wrong item. -->
       <a-entity id="rig" position="0 0 0">
-        <a-camera>
+        <a-camera id="camera">
           <a-entity
             id="gaze-cursor"
             cursor="fuse: false"
@@ -418,6 +418,17 @@
         ></a-entity>
         <a-entity hand-controls="hand: right; handModelStyle: lowPoly"></a-entity>
       </a-entity>
+
+      <!-- Multiplayer connection POC: the other connected peer's aim,
+           broadcast a few times a second over the data channel (see
+           the multiplayer script near the bottom of this file) and
+           drawn here with A-Frame's own built-in "line" component —
+           the same visible-beam mechanism the watch/wall/pedestal
+           menus already use via raycaster's showLine, just driven by
+           network data instead of a local raycast. World-space, not
+           a child of #rig, since it represents where the REMOTE
+           peer's camera is pointing, not the local one. -->
+      <a-entity id="remote-laser" line="start: 0 0 0; end: 0 0 0; color: #fff" visible="false"></a-entity>
            Every clickable row is just an entity with its own
            geometry/material plus the "menu-item" component below —
            that component is the reusable part; the background plane
@@ -1502,6 +1513,21 @@
       var logEl = document.getElementById('mp-log');
 
       var connection = null;
+      var isHost = false;
+
+      // Host always claims the first color for itself and hands the
+      // second one to the one joiner this POC supports — a real
+      // multi-join star would grow this into a list the host doles
+      // out one at a time, but two colors is enough to prove "the
+      // host decides, not each peer for itself."
+      var PALETTE = ['#ff3b30', '#0a84ff'];
+      var remoteColor = '#fff';
+
+      var AIM_INTERVAL_MS = 100;
+      var BEAM_LENGTH = 6;
+      var aimTimer = null;
+      var cameraObj = document.getElementById('camera').object3D;
+      var remoteLaserEl = document.getElementById('remote-laser');
 
       function log (text) {
         var line = document.createElement('div');
@@ -1510,21 +1536,78 @@
         logEl.scrollTop = logEl.scrollHeight;
       }
 
+      function startAimBroadcast () {
+        if (aimTimer) return;
+        var worldPos = new AFRAME.THREE.Vector3();
+        var worldDir = new AFRAME.THREE.Vector3();
+        aimTimer = setInterval(function () {
+          cameraObj.getWorldPosition(worldPos);
+          cameraObj.getWorldDirection(worldDir);
+          connection.send(JSON.stringify({
+            type: 'aim',
+            origin: { x: worldPos.x, y: worldPos.y, z: worldPos.z },
+            direction: { x: worldDir.x, y: worldDir.y, z: worldDir.z },
+          }));
+        }, AIM_INTERVAL_MS);
+      }
+
+      function stopAimBroadcast () {
+        clearInterval(aimTimer);
+        aimTimer = null;
+      }
+
+      function showRemoteAim (origin, direction) {
+        remoteLaserEl.setAttribute('line', {
+          start: origin,
+          end: {
+            x: origin.x + direction.x * BEAM_LENGTH,
+            y: origin.y + direction.y * BEAM_LENGTH,
+            z: origin.z + direction.z * BEAM_LENGTH,
+          },
+          color: remoteColor,
+        });
+        remoteLaserEl.setAttribute('visible', true);
+      }
+
       function onOpen () {
         statusEl.textContent = 'Connected';
         sendPingBtn.hidden = false;
+        if (isHost) {
+          remoteColor = PALETTE[1];
+          connection.send(JSON.stringify({ type: 'welcome', yourColor: PALETTE[1], hostColor: PALETTE[0] }));
+        }
+        startAimBroadcast();
       }
+
       function onMessage (data) {
-        log('recv: ' + data);
+        var message;
+        try {
+          message = JSON.parse(data);
+        } catch (err) {
+          log('recv (unparsed): ' + data);
+          return;
+        }
+        if (message.type === 'welcome') {
+          remoteColor = message.hostColor;
+          log('assigned color ' + message.yourColor + ', host is ' + message.hostColor);
+        } else if (message.type === 'aim') {
+          showRemoteAim(message.origin, message.direction);
+        } else if (message.type === 'ping') {
+          log('recv: ping ' + message.ts);
+        }
       }
+
       function onClose () {
         statusEl.textContent = 'Disconnected';
         sendPingBtn.hidden = true;
+        stopAimBroadcast();
+        remoteLaserEl.setAttribute('visible', false);
       }
 
       hostBtn.addEventListener('click', async function () {
         hostBtn.disabled = true;
         joinBtn.disabled = true;
+        isHost = true;
         connection = createHostConnection({ onOpen: onOpen, onMessage: onMessage, onClose: onClose });
         statusEl.textContent = 'Hosting — generating offer...';
         var offer = await connection.createOffer();
@@ -1541,6 +1624,7 @@
       });
 
       acceptOfferBtn.addEventListener('click', async function () {
+        isHost = false;
         connection = createJoinConnection({ onOpen: onOpen, onMessage: onMessage, onClose: onClose });
         statusEl.textContent = 'Generating answer...';
         var answer = await connection.acceptOffer(remoteOfferEl.value);
@@ -1553,9 +1637,9 @@
       });
 
       sendPingBtn.addEventListener('click', function () {
-        var message = 'ping ' + Date.now();
-        connection.send(message);
-        log('sent: ' + message);
+        var message = { type: 'ping', ts: Date.now() };
+        connection.send(JSON.stringify(message));
+        log('sent: ping ' + message.ts);
       });
     </script>
   </body>

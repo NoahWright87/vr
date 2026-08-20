@@ -8,14 +8,26 @@
 
 var ICE_SERVERS = [];
 
+// Waiting for the full 'complete' state can hang indefinitely on some
+// networks/interfaces (observed in sandboxed environments, but not
+// only there) — a couple of seconds is enough to gather host
+// candidates on a LAN, so proceed with whatever's been found rather
+// than blocking the whole handshake on a state that may never come.
+var ICE_GATHERING_TIMEOUT_MS = 2000;
+
 function waitForIceGatheringComplete (pc) {
   if (pc.iceGatheringState === 'complete') return Promise.resolve();
   return new Promise(function (resolve) {
-    pc.addEventListener('icegatheringstatechange', function onChange () {
-      if (pc.iceGatheringState !== 'complete') return;
+    var timer = setTimeout(finish, ICE_GATHERING_TIMEOUT_MS);
+    function finish () {
+      clearTimeout(timer);
       pc.removeEventListener('icegatheringstatechange', onChange);
       resolve();
-    });
+    }
+    function onChange () {
+      if (pc.iceGatheringState === 'complete') finish();
+    }
+    pc.addEventListener('icegatheringstatechange', onChange);
   });
 }
 
