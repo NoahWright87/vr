@@ -233,9 +233,127 @@
           grid-template-columns: 1fr;
         }
       }
+      #mp-panel {
+        position: fixed;
+        bottom: 0;
+        right: 0;
+        z-index: 5;
+        width: 22rem;
+        max-height: 60vh;
+        overflow-y: auto;
+        box-sizing: border-box;
+        padding: 0.75rem;
+        background: rgba(8, 14, 26, 0.92);
+        color: #dce8ff;
+        font: 0.8rem/1.4 ui-monospace, SFMono-Regular, Consolas, monospace;
+        border-top-left-radius: 0.6rem;
+      }
+      #mp-panel button {
+        appearance: none;
+        border: 1px solid #35507c;
+        background: #15233b;
+        color: #dce8ff;
+        border-radius: 0.4rem;
+        padding: 0.3rem 0.6rem;
+        cursor: pointer;
+        font: inherit;
+        margin: 0.2rem 0.3rem 0.2rem 0;
+      }
+      #mp-panel button:disabled {
+        opacity: 0.5;
+        cursor: default;
+      }
+      #mp-panel label {
+        display: block;
+        margin-top: 0.4rem;
+      }
+      #mp-panel textarea,
+      #mp-panel input[type='text'] {
+        width: 100%;
+        box-sizing: border-box;
+        margin-top: 0.2rem;
+        background: #0a1426;
+        color: #eef4ff;
+        border: 1px solid #35507c;
+        border-radius: 0.4rem;
+        font: inherit;
+      }
+      #mp-panel textarea {
+        min-height: 3.5rem;
+      }
+      #mp-panel input[type='text'] {
+        padding: 0.3rem 0.5rem;
+      }
+      #mp-status {
+        margin: 0.3rem 0;
+        color: #93f0bf;
+      }
+      #mp-relay-section {
+        padding-bottom: 0.5rem;
+        border-bottom: 1px solid #223454;
+      }
+      #mp-room-code-display {
+        display: inline-block;
+        margin-top: 0.3rem;
+        color: #93f0bf;
+      }
+      #mp-join-relay-row {
+        display: flex;
+        gap: 0.3rem;
+        margin-top: 0.4rem;
+      }
+      #mp-join-relay-row input {
+        flex: 1;
+        margin-top: 0;
+      }
+      #mp-log {
+        margin-top: 0.4rem;
+        max-height: 6rem;
+        overflow-y: auto;
+        color: #9fb0d4;
+      }
     </style>
   </head>
   <body>
+    <!-- Multiplayer connection POC — proves two peers can find each
+         other with a manual copy/paste signaling exchange and no
+         server (see common/multiplayer.js). Deliberately plain HTML,
+         not part of the VR scene: this is only here to validate the
+         WebRTC handshake itself before it gets wired into the
+         pedestal menu and an in-VR join flow. -->
+    <div id="mp-panel">
+      <strong>Multiplayer (connection test)</strong>
+      <div id="mp-status">Not connected</div>
+
+      <div id="mp-relay-section">
+        <label>Local relay (optional) — run <code>npm run signal</code> on a laptop, then paste one of its printed ws:// addresses here. Leave blank to fall back to manual copy/paste below.<input id="mp-relay-url" type="text" placeholder="ws://192.168.1.23:8787" /></label>
+        <button id="mp-host-relay-btn" type="button">Host via relay</button>
+        <span id="mp-room-code-display" hidden>Room code: <strong id="mp-room-code-value"></strong></span>
+        <div id="mp-join-relay-row">
+          <input id="mp-room-code-input" type="text" placeholder="Room code" maxlength="4" />
+          <button id="mp-join-relay-btn" type="button">Join via relay</button>
+        </div>
+      </div>
+
+      <div id="mp-role-row">
+        <strong>Manual copy/paste</strong><br />
+        <button id="mp-host-btn" type="button">Host</button>
+        <button id="mp-join-btn" type="button">Join</button>
+      </div>
+      <div id="mp-offer-row" hidden>
+        <label>Offer — copy to the joining peer<textarea id="mp-local-offer" readonly></textarea></label>
+        <label>Answer — paste what the joining peer sends back<textarea id="mp-remote-answer"></textarea></label>
+        <button id="mp-accept-answer-btn" type="button">Accept answer</button>
+      </div>
+      <div id="mp-join-row" hidden>
+        <label>Offer — paste what the host sent you<textarea id="mp-remote-offer"></textarea></label>
+        <button id="mp-accept-offer-btn" type="button">Accept offer</button>
+        <label>Answer — copy back to the host<textarea id="mp-local-answer" readonly></textarea></label>
+      </div>
+      <button id="mp-send-ping-btn" type="button" hidden>Send ping</button>
+      <div id="mp-log"></div>
+    </div>
+
     <div id="editor-screen">
       <div class="editor-shell">
         <div class="editor-topbar">
@@ -315,7 +433,7 @@
            highlighting two at once and letting a stray glance select the
            wrong item. -->
       <a-entity id="rig" position="0 0 0">
-        <a-camera>
+        <a-camera id="camera">
           <a-entity
             id="gaze-cursor"
             cursor="fuse: false"
@@ -336,6 +454,17 @@
         ></a-entity>
         <a-entity hand-controls="hand: right; handModelStyle: lowPoly"></a-entity>
       </a-entity>
+
+      <!-- Multiplayer connection POC: the other connected peer's aim,
+           broadcast a few times a second over the data channel (see
+           the multiplayer script near the bottom of this file) and
+           drawn here with A-Frame's own built-in "line" component —
+           the same visible-beam mechanism the watch/wall/pedestal
+           menus already use via raycaster's showLine, just driven by
+           network data instead of a local raycast. World-space, not
+           a child of #rig, since it represents where the REMOTE
+           peer's camera is pointing, not the local one. -->
+      <a-entity id="remote-laser" line="start: 0 0 0; end: 0 0 0; color: #fff" visible="false"></a-entity>
            Every clickable row is just an entity with its own
            geometry/material plus the "menu-item" component below —
            that component is the reusable part; the background plane
@@ -1401,5 +1530,213 @@
       setInterval(updateAllDisplays, 1000);
     </script>
     </div>
+
+    <script type="module">
+      import { createHostConnection, createJoinConnection } from '../../common/multiplayer.js';
+      import { hostViaRelay, joinViaRelay } from '../../common/signal-relay.js';
+
+      var statusEl = document.getElementById('mp-status');
+      var relayUrlEl = document.getElementById('mp-relay-url');
+      var hostRelayBtn = document.getElementById('mp-host-relay-btn');
+      var joinRelayBtn = document.getElementById('mp-join-relay-btn');
+      var roomCodeInputEl = document.getElementById('mp-room-code-input');
+      var roomCodeDisplayEl = document.getElementById('mp-room-code-display');
+      var roomCodeValueEl = document.getElementById('mp-room-code-value');
+      var hostBtn = document.getElementById('mp-host-btn');
+      var joinBtn = document.getElementById('mp-join-btn');
+      var offerRow = document.getElementById('mp-offer-row');
+      var joinRow = document.getElementById('mp-join-row');
+      var localOfferEl = document.getElementById('mp-local-offer');
+      var remoteAnswerEl = document.getElementById('mp-remote-answer');
+      var acceptAnswerBtn = document.getElementById('mp-accept-answer-btn');
+      var remoteOfferEl = document.getElementById('mp-remote-offer');
+      var acceptOfferBtn = document.getElementById('mp-accept-offer-btn');
+      var localAnswerEl = document.getElementById('mp-local-answer');
+      var sendPingBtn = document.getElementById('mp-send-ping-btn');
+      var logEl = document.getElementById('mp-log');
+
+      var connection = null;
+      var isHost = false;
+
+      // Host always claims the first color for itself and hands the
+      // second one to the one joiner this POC supports — a real
+      // multi-join star would grow this into a list the host doles
+      // out one at a time, but two colors is enough to prove "the
+      // host decides, not each peer for itself."
+      var PALETTE = ['#ff3b30', '#0a84ff'];
+      var remoteColor = '#fff';
+
+      var AIM_INTERVAL_MS = 100;
+      var BEAM_LENGTH = 6;
+      var aimTimer = null;
+      var cameraObj = document.getElementById('camera').object3D;
+      var remoteLaserEl = document.getElementById('remote-laser');
+
+      function log (text) {
+        var line = document.createElement('div');
+        line.textContent = text;
+        logEl.appendChild(line);
+        logEl.scrollTop = logEl.scrollHeight;
+      }
+
+      function startAimBroadcast () {
+        if (aimTimer) return;
+        var worldPos = new AFRAME.THREE.Vector3();
+        var worldDir = new AFRAME.THREE.Vector3();
+        aimTimer = setInterval(function () {
+          cameraObj.getWorldPosition(worldPos);
+          cameraObj.getWorldDirection(worldDir);
+          connection.send(JSON.stringify({
+            type: 'aim',
+            origin: { x: worldPos.x, y: worldPos.y, z: worldPos.z },
+            direction: { x: worldDir.x, y: worldDir.y, z: worldDir.z },
+          }));
+        }, AIM_INTERVAL_MS);
+      }
+
+      function stopAimBroadcast () {
+        clearInterval(aimTimer);
+        aimTimer = null;
+      }
+
+      function showRemoteAim (origin, direction) {
+        remoteLaserEl.setAttribute('line', {
+          start: origin,
+          end: {
+            x: origin.x + direction.x * BEAM_LENGTH,
+            y: origin.y + direction.y * BEAM_LENGTH,
+            z: origin.z + direction.z * BEAM_LENGTH,
+          },
+          color: remoteColor,
+        });
+        remoteLaserEl.setAttribute('visible', true);
+      }
+
+      function onOpen () {
+        statusEl.textContent = 'Connected';
+        sendPingBtn.hidden = false;
+        if (isHost) {
+          remoteColor = PALETTE[1];
+          connection.send(JSON.stringify({ type: 'welcome', yourColor: PALETTE[1], hostColor: PALETTE[0] }));
+        }
+        startAimBroadcast();
+      }
+
+      function onMessage (data) {
+        var message;
+        try {
+          message = JSON.parse(data);
+        } catch (err) {
+          log('recv (unparsed): ' + data);
+          return;
+        }
+        if (message.type === 'welcome') {
+          remoteColor = message.hostColor;
+          log('assigned color ' + message.yourColor + ', host is ' + message.hostColor);
+        } else if (message.type === 'aim') {
+          showRemoteAim(message.origin, message.direction);
+        } else if (message.type === 'ping') {
+          log('recv: ping ' + message.ts);
+        }
+      }
+
+      function onClose () {
+        statusEl.textContent = 'Disconnected';
+        sendPingBtn.hidden = true;
+        stopAimBroadcast();
+        remoteLaserEl.setAttribute('visible', false);
+      }
+
+      hostRelayBtn.addEventListener('click', function () {
+        if (!relayUrlEl.value) {
+          statusEl.textContent = 'Enter a relay address first.';
+          return;
+        }
+        hostRelayBtn.disabled = true;
+        joinRelayBtn.disabled = true;
+        hostBtn.disabled = true;
+        joinBtn.disabled = true;
+        isHost = true;
+        connection = createHostConnection({ onOpen: onOpen, onMessage: onMessage, onClose: onClose });
+        statusEl.textContent = 'Connecting to relay...';
+        hostViaRelay(relayUrlEl.value, connection, {
+          onRoomCode: function (code) {
+            roomCodeValueEl.textContent = code;
+            roomCodeDisplayEl.hidden = false;
+            statusEl.textContent = 'Waiting for a joining peer (room ' + code + ')';
+          },
+          onHandshakeComplete: function () {
+            statusEl.textContent = 'Handshake complete, waiting for the connection to open...';
+          },
+          onError: function (message) {
+            statusEl.textContent = message;
+          },
+        });
+      });
+
+      joinRelayBtn.addEventListener('click', function () {
+        if (!relayUrlEl.value || !roomCodeInputEl.value) {
+          statusEl.textContent = 'Enter a relay address and room code first.';
+          return;
+        }
+        hostRelayBtn.disabled = true;
+        joinRelayBtn.disabled = true;
+        hostBtn.disabled = true;
+        joinBtn.disabled = true;
+        isHost = false;
+        connection = createJoinConnection({ onOpen: onOpen, onMessage: onMessage, onClose: onClose });
+        statusEl.textContent = 'Connecting to relay...';
+        joinViaRelay(relayUrlEl.value, roomCodeInputEl.value.toUpperCase(), connection, {
+          onHandshakeComplete: function () {
+            statusEl.textContent = 'Handshake complete, waiting for the connection to open...';
+          },
+          onError: function (message) {
+            statusEl.textContent = message;
+          },
+        });
+      });
+
+      hostBtn.addEventListener('click', async function () {
+        hostBtn.disabled = true;
+        joinBtn.disabled = true;
+        hostRelayBtn.disabled = true;
+        joinRelayBtn.disabled = true;
+        isHost = true;
+        connection = createHostConnection({ onOpen: onOpen, onMessage: onMessage, onClose: onClose });
+        statusEl.textContent = 'Hosting — generating offer...';
+        var offer = await connection.createOffer();
+        localOfferEl.value = offer;
+        offerRow.hidden = false;
+        statusEl.textContent = 'Waiting for a joining peer';
+      });
+
+      joinBtn.addEventListener('click', function () {
+        hostBtn.disabled = true;
+        joinBtn.disabled = true;
+        hostRelayBtn.disabled = true;
+        joinRelayBtn.disabled = true;
+        joinRow.hidden = false;
+        statusEl.textContent = "Paste the host's offer below";
+      });
+
+      acceptOfferBtn.addEventListener('click', async function () {
+        isHost = false;
+        connection = createJoinConnection({ onOpen: onOpen, onMessage: onMessage, onClose: onClose });
+        statusEl.textContent = 'Generating answer...';
+        var answer = await connection.acceptOffer(remoteOfferEl.value);
+        localAnswerEl.value = answer;
+        statusEl.textContent = 'Waiting for the host to accept';
+      });
+
+      acceptAnswerBtn.addEventListener('click', async function () {
+        await connection.acceptAnswer(remoteAnswerEl.value);
+      });
+
+      sendPingBtn.addEventListener('click', function () {
+        var message = { type: 'ping', ts: Date.now() };
+        connection.send(JSON.stringify(message));
+        log('sent: ping ' + message.ts);
+      });
+    </script>
   </body>
 </html>

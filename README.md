@@ -198,3 +198,60 @@ Once this repo is on Netlify (or GitHub Pages in the meantime), just open the de
 4. Pull either trigger at any time for a quick reset.
 5. Press any face button (A/B on the right controller, X/Y on the left) to open the menu — it spawns a couple feet in front of you, facing you, and your other hand gets a laser pointer. Aim it at a button and pull that hand's trigger to click: switch tabs (PUNCH / FOES / AIM / REACH / SPLAT / FEEL / DEBUG / MORE), adjust speed/gravity/cube count/behavior/lock-on/hit-assist/reach calibration/splatter/comfort-vignette/haptic-buzz/detection thresholds, Resume, or select **Exit VR** to leave the session. Press a face button again to close it.
 6. You should feel a controller pulse on a punch that connects, plus a light buzz in both hands while zooming, and see the edges of your view darken during fast movement — all under the FEEL tab if you want to turn any of it down (or up).
+
+## Multiplayer connection relay (experimental)
+
+The menu showcase (`primitives/menus/`) has an experimental panel for
+testing peer-to-peer multiplayer over the local network — see
+`common/multiplayer.js`. Connecting two peers needs a one-time
+handshake (a WebRTC offer/answer); the showcase panel can do this two
+ways:
+
+- **Manual copy/paste** — always available, no setup. One peer clicks
+  Host and copies a text blob to the other, who pastes it, then sends
+  a reply blob back. Works, but the blob is too long to type by hand —
+  fine between two browser tabs on one computer, painful between two
+  separate devices.
+- **Local relay** — run the signaling relay below on any computer on
+  the same Wi-Fi, and the handshake happens automatically behind a
+  short 4-character room code instead.
+
+**Running the relay:**
+
+```
+npm run signal
+```
+
+This prints one or more `ws://<ip>:8787` addresses — paste one into
+the "Local relay" field in the showcase panel on each peer. Everyone
+needs to be on the same local network as whatever machine runs this;
+it does not work over the open internet. The relay only ever sees the
+one-time handshake — actual gameplay traffic goes directly
+peer-to-peer once two peers connect.
+
+**Prebuilt Windows executable**, so people without Node.js installed
+can run the relay too — a standalone ~58MB binary (bundles its own
+Node runtime via [`@yao-pkg/pkg`](https://github.com/yao-pkg/pkg))
+that does the same thing as `npm run signal`. Two ways to get it:
+
+- **GitHub Actions (no local build needed)**: runs automatically as a
+  check on any PR that touches the relay — open the PR's checks,
+  find the "Build relay exe" run, and download the
+  `vr-signal-relay-windows` artifact (kept 30 days). It builds
+  natively on a Windows runner and actually launches the result to
+  confirm it starts up correctly before attaching it. Also
+  manually triggerable from the Actions tab's "Run workflow" button
+  once this workflow file exists on the default branch.
+- **Locally**: `npm run package:relay:win` produces
+  `dist-exe/vr-signal-relay.exe` directly. The first build on a fresh
+  machine downloads ~130MB of base Node binaries from GitHub; later
+  builds reuse the local cache.
+
+Either way: double-click it (or run it from a terminal to see the
+printed addresses) and leave the window open while people connect.
+
+This `.exe` is **unsigned** — Windows SmartScreen will likely show an
+"unrecognized app" warning on first run (click "More info" → "Run
+anyway"). Proper code signing, a system tray icon instead of a bare
+console window, and Mac/Linux builds are all deliberately deferred —
+see `TODO.md`.

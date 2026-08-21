@@ -94,3 +94,72 @@ fun-per-effort:
   outside the bar, mounted out on the range. Both are built from
   systems that now exist: two-handed operation, a loaded socket, and
   projectiles.
+
+## Multiplayer relay executable
+
+`npm run package:relay:win` (see README's "Multiplayer connection
+relay" section) produces a working but bare-bones
+`dist-exe/vr-signal-relay.exe` via `@yao-pkg/pkg`. Deliberately
+shipped without these so a non-technical person can at least *try*
+it, with the rough edges named rather than silently accepted:
+
+- **Code signing.** The exe is unsigned, so Windows SmartScreen shows
+  an "unrecognized app" warning on first run. Needs a paid Windows
+  code-signing certificate (and, if a Mac build ever happens, an
+  Apple Developer account for notarization) — this is a cost/process
+  commitment, not an engineering task, so it's gated on deciding this
+  is worth recurring money rather than a coding session.
+- **System tray icon instead of a bare console window.** Right now
+  running the exe just opens a terminal-style window printing
+  addresses and staying there. A tray icon showing "N players
+  connected" (or just "relay running") would read as a real app
+  instead of a dev tool — probably an Electron or Tauri wrapper
+  around the same `server/signal-server.js` logic, which is a bigger
+  lift than the relay itself was.
+- **Friendlier address discovery.** `server/signal-server.js` prints
+  every non-internal IPv4 address it finds and makes the human pick
+  the right one — fine for one Wi-Fi adapter, confusing on a machine
+  with a VPN or multiple network interfaces. Could auto-select the
+  most likely one (e.g. prefer `192.168.*`/`10.*` private ranges) or
+  show a QR code of the address, though the QR code idea only helps
+  peers with a normal screen to scan from — it doesn't solve the
+  headset-to-headset case discussed for the WebRTC handshake itself.
+- **Mac/Linux builds.** `pkg`'s `--targets` supports other platforms
+  (e.g. `node22-macos-arm64`, `node22-linux-x64`) — not built only
+  because the ask so far has been a Windows laptop specifically. Same
+  command, different target string, whenever it's needed.
+
+## Playing over the internet, not just LAN
+
+Everything built so far (`common/multiplayer.js`, the signaling
+relay) is deliberately LAN-only, and not just because the relay
+happens to run on a home laptop — `common/multiplayer.js` sets
+`iceServers: []`, so peers only ever gather local host ICE candidates
+and can't find each other across two different networks at all.
+Decided against doing this now: it trades "no server, no hosting
+costs" (the explicit starting premise of this whole feature) for real
+recurring infrastructure, so it should be a deliberate choice, not
+something added piecemeal. If it's ever wanted, it's three layers,
+and they only pay off bundled together — doing just one leaves
+multiplayer exactly as LAN-only as today:
+
+- **A publicly reachable relay.** Deploy `server/signal-server.js`
+  somewhere with a real domain and TLS (`wss://`, not `ws://` — a
+  page served over `https://` can't open a plain `ws://` connection).
+  Cheapest is a small always-on host (a few dollars a month, or a
+  free tier on something like Render/Railway/Fly.io). No code changes
+  to the relay itself, since it already listens on all interfaces.
+- **STUN**, added to `iceServers` in `common/multiplayer.js`, so each
+  peer can learn its own public IP:port as seen from outside its home
+  router (that's the one thing missing today that keeps this
+  LAN-only at the WebRTC layer, independent of the relay). Free
+  public STUN servers exist, or self-host `coturn`. On its own, with
+  no public relay, this changes nothing — the relay is what lets two
+  peers find each other to exchange addresses in the first place.
+- **TURN**, for the fraction of real-world NAT setups (symmetric NAT,
+  restrictive carrier/corporate NAT, some double-NAT routers) where
+  even STUN can't establish a direct path. Unlike STUN, a TURN server
+  actually relays the live game traffic, so it's an ongoing bandwidth
+  cost, not a one-time setup — pay a TURN provider or self-host
+  `coturn` on a VPS with bandwidth headroom. This is the piece that
+  most changes "zero cost" into "real hosting bill."
