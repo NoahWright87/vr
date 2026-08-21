@@ -7,7 +7,9 @@ Deployed as a static site (planned: `vr.noahwright.dev` via Netlify).
 ## Structure
 
 ```
-/index.html                   landing page linking to every prototype and primitive
+/index.html                   React entry point (mounts src/App.jsx) — the only non-VR page
+/src/App.jsx                  landing page content: linking to every prototype and primitive
+/src/theme.js                 color tokens fed to @noahwright/design's theme
 /games/<name>/index.html      one folder per prototype
 /primitives/<name>/index.html one folder per reusable interaction showcase
 /common/menus.js              shared menu rows, pages, chrome, and projection
@@ -16,7 +18,9 @@ Deployed as a static site (planned: `vr.noahwright.dev` via Netlify).
 /vite.config.js               Vite entries and runtime-asset copying
 ```
 
-To add a new prototype: create `games/<name>/index.html`, add it to the Vite inputs in `vite.config.js`, add a link from the root `index.html`, and import only the shared modules it uses. `watch-menu.js` imports its menu dependency; locomotion remains independent.
+Every prototype/primitive page is still vanilla A-Frame with no build-time framework, per the project's usual approach. The one exception is the root landing page: it's a small React app using [`@noahwright/design`](https://github.com/NoahWright87/design) for shared branding across sites, since it's the one page that isn't a VR scene.
+
+To add a new prototype: create `games/<name>/index.html`, add it to the Vite inputs in `vite.config.js`, add a card to `src/App.jsx`, and import only the shared modules it uses. `watch-menu.js` imports its menu dependency; locomotion remains independent.
 
 ## Development
 

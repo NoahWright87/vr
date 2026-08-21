@@ -3,7 +3,8 @@
       // The generic hold/holster/dangle/throw/catch contract every
       // grabbable item plugs into (holsterable, anchor-slot), and the
       // two things worn on the body that carry their own slots
-      // (body-anchor, belt). Split out of game.js — see DESIGN.md's
+      // (body-anchor, belt; vests build on the same contracts in
+      // items-throwing-weapons.js). Split out of game.js — see DESIGN.md's
       // "File structure" section. GRAVITY, GROUND_REST_Y, and the
       // shared ballistics helpers (computeThrowVelocity and friends)
       // stay in game.js because they're genuinely used outside this
@@ -11,10 +12,12 @@
       // ==============================================================
 
       var GRAB_RADIUS = 0.15; // meters — how close a hand must be to pick something up
-      var HIP_HEIGHT = 0.9; // meters off the ground
+      var HIP_HEAD_DROP = 0.75; // headset-to-body offsets keep worn gear attached while standing, crouching, or sitting
       var HIP_SIDE_OFFSET = 0.18; // meters, left/right from body centerline
-      var BACK_HEIGHT = 1.3; // meters off the ground — the bandolier's anchor sits higher up the torso than the hips
+      var BACK_HEAD_DROP = 0.35;
       var BACK_DEPTH_OFFSET = 0.3; // meters behind the body centerline — the headset sits at the FRONT of your head, so a small offset puts the bandolier inside your chest and makes the shotgun nearly impossible to reach
+      var CHEST_HEAD_DROP = 0.41;
+      var CHEST_DEPTH_OFFSET = -0.18; // local -Z is forward: reachable without putting the vest inside the ghost torso
       var BELT_TUBE_RADIUS = 0.012;
       var BELT_COLOR = '#4a3220'; // matches the hip holster leather
       var BELT_BUCKLE_COLOR = '#c9962c'; // matches other brass trim (e.g. boxy-sniper's trigger)
@@ -47,14 +50,10 @@
       // Generous catch detection for anything falling/flying (a
       // dropped or thrown holsterable prop — this doesn't know or care
       // which one, it just checks `.hand` elements' public hand-rig
-      // state). A hand can catch by gripping (any grip currently held, not
-      // just a fresh press) within THROW_CATCH_RADIUS, or by resting a
-      // finger on the trigger within that same radius — the two modes
-      // the caller uses to decide "snap into hand" vs. "land on the
-      // finger and dangle." Skips any hand with no room left. isWeapon
-      // additionally skips any hand that already holds a firearm — see
-      // hand-rig.hasWeapon — so a thrown/dropped second pistol sails
-      // past a fist already holding one instead of joining it.
+      // state). An EMPTY hand can catch by gripping within
+      // THROW_CATCH_RADIUS, or by resting a finger on the trigger in
+      // that same radius. A busy hand never passively grows a stack;
+      // stacking is reserved for hand-rig's explicit quick re-grip.
       // ==============================================================
       function findCatchingHand(worldPos, radius, isWeapon) {
         var hands = document.querySelectorAll('.hand');
@@ -67,6 +66,7 @@
           var handRig = handEl.components['hand-rig'];
           if (!handRig) continue;
           if (handRig.isFull()) continue;
+          if (handRig.heldObjects.length || handRig.danglingObjects.length || handRig.supportObjects.length) continue;
           if (isWeapon && handRig.hasWeapon()) continue;
 
           var mode = handRig.gripHeld ? 'grip' : handRig.fingerOnTrigger ? 'trigger' : null;
@@ -117,8 +117,8 @@
       // holsterable.tryHolsterElse/findNearestSlot), not a passive
       // basket that scoops up anything that flies near it.
       // ==============================================================
-      function findCatchingSlot(worldPos, itemSize) {
-        var itemRank = SLOT_SIZE_RANK[itemSize];
+      function findCatchingSlot(worldPos, holsterable) {
+        var itemRank = SLOT_SIZE_RANK[holsterable.data.itemSize];
         var slots = document.querySelectorAll('.anchor-slot');
         var slotPos = new THREE.Vector3();
         var best = null;
@@ -127,7 +127,7 @@
         for (var i = 0; i < slots.length; i++) {
           var slotEl = slots[i];
           var slotComp = slotEl.components['anchor-slot'];
-          if (!slotComp || slotComp.isFull()) continue;
+          if (!slotComp || !slotComp.canAccept(holsterable)) continue;
 
           var slotRank = SLOT_SIZE_RANK[slotComp.data.size];
           if (slotRank < itemRank) continue;
@@ -144,6 +144,11 @@
         }
 
         return best;
+      }
+
+      function socketLoadUnits(holsterable) {
+        if (holsterable.data.loadUnits > 0) return holsterable.data.loadUnits;
+        return { large: 105, medium: 35, small: 21 }[holsterable.data.itemSize] || 21;
       }
 
       // ==============================================================
@@ -163,8 +168,8 @@
       // ==============================================================
       // COMPONENT: body-anchor
       // Drives an invisible entity to sit at roughly a fixed spot on
-      // the player's body, following the headset's horizontal position
-      // and yaw only (deliberately ignoring pitch/roll, so looking up
+      // the player's body, following the headset's position and yaw
+      // (deliberately ignoring pitch/roll, so looking up
       // or tilting your head doesn't drag it around) — there's no real
       // body tracking on a Quest, so this is an approximation for both
       // spots it's used for: the waist and the back-center bandolier
@@ -184,7 +189,7 @@
       // ==============================================================
       registerComponent('body-anchor', {
         schema: {
-          side: { type: 'string', default: 'waist' }, // 'waist' | 'back'
+          side: { type: 'string', default: 'waist' }, // 'waist' | 'back' | 'chest'
         },
 
         init: function () {
@@ -196,10 +201,13 @@
 
           if (this.data.side === 'back') {
             this.localOffset = new THREE.Vector3(0, 0, BACK_DEPTH_OFFSET); // local +Z is behind the player
-            this.height = BACK_HEIGHT;
+            this.headDrop = BACK_HEAD_DROP;
+          } else if (this.data.side === 'chest') {
+            this.localOffset = new THREE.Vector3(0, 0, CHEST_DEPTH_OFFSET);
+            this.headDrop = CHEST_HEAD_DROP;
           } else {
             this.localOffset = new THREE.Vector3(0, 0, 0);
-            this.height = HIP_HEIGHT;
+            this.headDrop = HIP_HEAD_DROP;
           }
 
           this.buildProps();
@@ -217,7 +225,7 @@
 
           this.el.object3D.position.set(
             this.camPos.x + this.offsetVec.x,
-            this.height,
+            Math.max(this.camPos.y - this.headDrop, 0.3),
             this.camPos.z + this.offsetVec.z
           );
           this.el.object3D.rotation.set(0, yaw, 0);
@@ -370,6 +378,7 @@
         schema: {
           size: { type: 'string', default: 'small' }, // 'small' | 'medium' | 'large'
           capacity: { type: 'number', default: 1 },
+          capacityUnits: { type: 'number', default: 0 }, // optional weighted capacity; cannon uses 105 so large/medium/small/extra-small consume 105/35/21/15
           fanSpread: { type: 'number', default: 0.045 }, // meters between stacked occupants
           fanAxis: { type: 'string', default: 'x' }, // which of the slot's own axes they spread along. A row of cigars in your teeth goes across (x); arrows on a bowstring go up it (y)
           fanYaw: { type: 'number', default: 0 }, // degrees of splay per step — only meaningful for things with a long axis, like cigars or barrels
@@ -381,6 +390,7 @@
 
         init: function () {
           this.occupants = [];
+          this.accepting = true; // machinery can temporarily close a socket without dismantling it (see cannon hatch)
           this.wasInRange = false;
           this.clickElapsed = null; // ms into the click bounce, or null when idle
 
@@ -399,7 +409,24 @@
         },
 
         isFull: function () {
-          return this.occupants.length >= this.data.capacity;
+          if (this.occupants.length >= this.data.capacity) return true;
+          return this.data.capacityUnits > 0 && this.usedUnits() >= this.data.capacityUnits;
+        },
+
+        usedUnits: function () {
+          return this.occupants.reduce(function (total, occupant) {
+            return total + socketLoadUnits(occupant);
+          }, 0);
+        },
+
+        canAccept: function (holsterable) {
+          if (!this.accepting) return false;
+          if (!holsterable) return false;
+          if (this.occupants.indexOf(holsterable) !== -1) return true;
+          if (this.data.swap) return true;
+          if (this.occupants.length >= this.data.capacity) return false;
+          if (!this.data.capacityUnits) return true;
+          return this.usedUnits() + socketLoadUnits(holsterable) <= this.data.capacityUnits;
         },
 
         // Called by holsterable whenever this slot's contents change.
@@ -415,6 +442,12 @@
         },
 
         tick: function (time, dt) {
+          if (!this.accepting) {
+            this.sphere.setAttribute('visible', false);
+            this.wasInRange = false;
+            this.clickElapsed = null;
+            return;
+          }
           // A swap slot stays "live" even while full — the indicator
           // should still glow as a replacement approaches, the same
           // invitation an empty slot gives.
@@ -502,7 +535,7 @@
           this.el.object3D.getWorldPosition(this._slotPos);
 
           for (var i = 0; i < HELD_ITEMS.length; i++) {
-            if (HELD_ITEMS[i].rank > slotRank) continue;
+            if (HELD_ITEMS[i].rank > slotRank || !this.canAccept(HELD_ITEMS[i].holsterable)) continue;
             var d = HELD_ITEMS[i].pos.distanceTo(this._slotPos);
             if (d < best) best = d;
           }
@@ -593,6 +626,7 @@
           heldPosition: { type: 'vec3', default: { x: 0, y: 0, z: 0 } },
           heldRotation: { type: 'vec3', default: { x: 0, y: 0, z: 0 } },
           grabRadius: { type: 'number', default: GRAB_RADIUS },
+          grabPriority: { type: 'number', default: 0 }, // lower wins before distance; worn equipment opts into larger values so its contents are drawn first
           // Most props are grabbed by their one natural handle, so the
           // grab test is a sphere around the origin. Long thin ones are
           // not: an arrow's origin is at its nock, and being unable to
@@ -604,6 +638,8 @@
           comOffset: { type: 'vec3', default: { x: 0, y: 0, z: 0 } }, // center of mass, relative to the entity origin
           maxThrowSpeed: { type: 'number', default: OVERHAND_MAX_DEFAULT_SPEED }, // how hard this particular object can be thrown, whatever your arm does
           gravityScale: { type: 'number', default: 1 }, // multiplies gravity while falling — under 1 keeps a thrown object up longer, which is what makes shooting bottles out of the air possible
+          impactDamage: { type: 'number', default: 1 }, // published on projectile `shot` events; current steel targets only care that they were hit, future damageables can care how hard
+          loadUnits: { type: 'number', default: 0 }, // weighted socket footprint; ordinary slots ignore it
           supportGrip: { type: 'vec3', default: { x: 0, y: 0, z: 0 } }, // local position of a second place to hold this, if any
           supportRadius: { type: 'number', default: 0 }, // 0 disables the second grip entirely
           supportAims: { type: 'boolean', default: true }, // does the second hand steer this? A shotgun forend does — the barrel follows the line between your hands. A bowstring does NOT: the bow hand alone aims it, and the string hand only says how far it's drawn
@@ -625,12 +661,9 @@
           this.slotIndex = 0;
           this.slotCount = 1;
 
-          // Composed on top of the held pose every frame by firearm,
-          // which writes its recoil kick here rather than fighting
-          // over the same object3D. Unsteady hands are NOT applied
-          // here any more — they belong to the hand (see
-          // hand-rig.updateGrip), and this object inherits them by
-          // being parented to it.
+          // Kept for non-firearm pose effects. Firearm recoil belongs
+          // to the hand now (see hand-rig.updateGrip), so the fist and
+          // gun kick as one instead of the gun floating in its palm.
           this.extraPitchDeg = 0;
           this._heldElapsed = 0;
 
@@ -661,9 +694,15 @@
           this._gripWorld = new THREE.Vector3();
           this._supportWorld = new THREE.Vector3();
           this._aimUp = new THREE.Vector3();
+          this._supportUp = new THREE.Vector3();
+          this._aimForward = new THREE.Vector3();
           this._aimMatrix = new THREE.Matrix4();
           this._aimQuat = new THREE.Quaternion();
           this._parentQuat = new THREE.Quaternion();
+          this._supportQuat = new THREE.Quaternion();
+          this._twoHandTargetQuat = new THREE.Quaternion();
+          this._twoHandQuat = new THREE.Quaternion();
+          this._twoHandSeeded = false;
           this._grabA = new THREE.Vector3();
           this._grabB = new THREE.Vector3();
           this._grabAxis = new THREE.Vector3();
@@ -738,7 +777,7 @@
         applyHeldPose: function (time, dtSeconds) {
           this._heldElapsed += dtSeconds * 1000;
           if (this._poseBlendElapsed < SNAP_BLEND_DUR_MS) return;
-          if (this.supportHand && this.data.supportAims) return this.applyTwoHandedPose();
+          if (this.supportHand && this.data.supportAims) return this.applyTwoHandedPose(dtSeconds);
 
           var d = this.data;
           this.el.object3D.position.set(
@@ -780,32 +819,51 @@
         // wander the way one on a single wrist does, and the effect
         // falls out of the geometry rather than from any damping.
         //
-        // Roll comes from the near hand, so twisting your grip still
-        // rolls the gun. Only the near hand can fire it (see
-        // hand-rig.onTriggerDown) — the support hand is holding a
-        // forend, not a trigger.
-        applyTwoHandedPose: function () {
+        // The hand-to-hand line supplies pitch and yaw. Roll uses the
+        // average "up" of both grip poses, projected perpendicular to
+        // that line, so one noisy controller cannot whip a long rifle
+        // around its barrel. The final quaternion is lightly smoothed
+        // to absorb tracking chatter without making aim feel gummy.
+        applyTwoHandedPose: function (dtSeconds) {
           var d = this.data;
           this.el.object3D.position.set(d.heldPosition.x, d.heldPosition.y, d.heldPosition.z);
 
           var parent = this.el.object3D.parent;
           if (!parent) return;
+          var supportGrip = gripObjectOf(this.supportHand);
+          if (!supportGrip) return;
 
           parent.getWorldPosition(this._gripWorld);
-          this.supportHand.object3D.getWorldPosition(this._supportWorld);
+          supportGrip.getWorldPosition(this._supportWorld);
           if (this._gripWorld.distanceToSquared(this._supportWorld) < 0.0004) return;
 
-          // Matrix4.lookAt builds a rotation whose -Z points from eye
-          // to target, and the object's own -Z is its barrel, so this
-          // aims the gun straight down the line between your hands.
           this._aimUp.set(0, 1, 0).applyQuaternion(parent.getWorldQuaternion(this._parentQuat));
+          this._supportUp.set(0, 1, 0).applyQuaternion(supportGrip.getWorldQuaternion(this._supportQuat));
+          this._aimUp.add(this._supportUp);
+          this._aimForward.copy(this._supportWorld).sub(this._gripWorld).normalize();
+          this._aimUp.addScaledVector(this._aimForward, -this._aimUp.dot(this._aimForward));
+          if (this._aimUp.lengthSq() < 0.0001) {
+            this._aimUp.set(0, 1, 0).addScaledVector(this._aimForward, -this._aimForward.y);
+            if (this._aimUp.lengthSq() < 0.0001) {
+              this._aimUp.set(1, 0, 0).addScaledVector(this._aimForward, -this._aimForward.x);
+            }
+          }
+          this._aimUp.normalize();
+
+          // Matrix4.lookAt builds a rotation whose -Z points from eye
+          // to target, matching the weapons' barrel axis.
           this._aimMatrix.lookAt(this._gripWorld, this._supportWorld, this._aimUp);
           this._aimQuat.setFromRotationMatrix(this._aimMatrix);
 
-          // Into the parent's frame, since that's where local
-          // rotations are expressed.
           parent.getWorldQuaternion(this._parentQuat);
-          this.el.object3D.quaternion.copy(this._parentQuat.invert()).multiply(this._aimQuat);
+          this._twoHandTargetQuat.copy(this._parentQuat.invert()).multiply(this._aimQuat);
+          if (!this._twoHandSeeded) {
+            this._twoHandQuat.copy(this._twoHandTargetQuat);
+            this._twoHandSeeded = true;
+          } else {
+            this._twoHandQuat.slerp(this._twoHandTargetQuat, 1 - Math.exp(-18 * dtSeconds));
+          }
+          this.el.object3D.quaternion.copy(this._twoHandQuat);
 
           if (this.extraPitchDeg) this.el.object3D.rotateX((this.extraPitchDeg * Math.PI) / 180);
         },
@@ -848,6 +906,7 @@
 
         grabSupport: function (handEl) {
           this.supportHand = handEl;
+          this._twoHandSeeded = false;
         },
 
         // Announced rather than acted on, like everything else here:
@@ -861,6 +920,7 @@
           // this object is concerned.
           var draw = this.supportDraw();
           this.supportHand = null;
+          this._twoHandSeeded = false;
           this.el.emit('support-released', { draw: draw }, false);
         },
 
@@ -869,7 +929,7 @@
         supportDraw: function () {
           if (!this.supportHand || !this.el.object3D.parent) return 0;
           this.el.object3D.parent.getWorldPosition(this._gripWorld);
-          this.supportHand.object3D.getWorldPosition(this._supportWorld);
+          gripObjectOf(this.supportHand).getWorldPosition(this._supportWorld);
           return this._gripWorld.distanceTo(this._supportWorld);
         },
 
@@ -1099,6 +1159,9 @@
         // it — a spinning object thrown should keep spinning, just as
         // hard, not reset to a slower default.
         throwWithVelocity: function (velocity) {
+          var releaseHand = this.hand;
+          var releaseRig = releaseHand && releaseHand.components['hand-rig'];
+          var handVelocity = releaseRig ? releaseRig.velocity.clone() : null;
           this.state = 'falling';
           this.hand = null;
           this.releaseSupport();
@@ -1119,6 +1182,10 @@
           if (this.angularVelocity.length() < THROW_SPIN_RATE) {
             this.angularVelocity.set(THROW_SPIN_RATE, 0, 0);
           }
+          this.el.emit('thrown', {
+            handVelocity: handVelocity,
+            assistedVelocity: this.fallVelocity.clone(),
+          }, false);
         },
 
         // Grip-catch: snaps rigidly into handEl, but blends smoothly
@@ -1234,7 +1301,7 @@
             return true;
           }
 
-          var slotEl = findCatchingSlot(this._worldPos, this.data.itemSize);
+          var slotEl = findCatchingSlot(this._worldPos, this);
           if (slotEl) {
             this.catchIntoSlot(slotEl);
             return true;
@@ -1267,7 +1334,7 @@
             var slotEl = slots[i];
             var slotComp = slotEl.components['anchor-slot'];
             if (!slotComp) continue;
-            if (slotComp.isFull() && slotComp.occupants.indexOf(this) === -1 && !slotComp.data.swap) continue;
+            if (!slotComp.canAccept(this)) continue;
 
             var slotRank = SLOT_SIZE_RANK[slotComp.data.size];
             if (slotRank < itemRank) continue;
@@ -1358,6 +1425,14 @@
           }
 
           this.checkImpact(dt);
+          // Impact companions such as arrows and throwing blades can
+          // end flight synchronously (and may reparent themselves to
+          // what they struck). Do not then interpret their new local Y
+          // as a second, ground-level landing in this same frame.
+          if (this.state !== 'falling') return;
+
+          var ballistic = this.el.components['ballistic-projectile'];
+          if (ballistic && ballistic.updateFlight(this, dt)) return;
 
           if (this.el.object3D.position.y <= GROUND_REST_Y) {
             var impactSpeed = this.fallVelocity.length();
@@ -1390,6 +1465,8 @@
         // shelf would smash something.
         // ==========================================================
         checkImpact: function (dt) {
+          var piercing = this.el.components['piercing-projectile'];
+          if (piercing && piercing.checkImpact(this, dt)) return;
           if (this.impactCooldown > 0) {
             this.impactCooldown -= dt * 1000;
             return;
@@ -1408,8 +1485,18 @@
           if (!hit) return;
 
           this.impactCooldown = IMPACT_COOLDOWN_MS;
-          hit.el.emit('shot', { point: hit.point.clone(), direction: this._impactDir.clone() }, false);
-          this.el.emit('impact', { point: hit.point.clone(), speed: speed, hitEl: hit.el }, false);
+          hit.el.emit('shot', {
+            point: hit.point.clone(),
+            direction: this._impactDir.clone(),
+            damage: this.data.impactDamage,
+          }, false);
+          this.el.emit('impact', {
+            point: hit.point.clone(),
+            direction: this._impactDir.clone(),
+            speed: speed,
+            damage: this.data.impactDamage,
+            hitEl: hit.el,
+          }, false);
 
           // Whatever it hit took most of the energy out of it. If it
           // was something that ends on contact, its own impact handler
@@ -1453,6 +1540,7 @@
           holsterSelector: '#' + slotId,
           itemSize: 'medium',
           grabRadius: 0.22,
+          grabPriority: 30,
         });
         el.setAttribute('boxy-belt', { color: color, buckleColor: buckleColor });
         el.setAttribute('belt', { stockHips: !!stockHips });
