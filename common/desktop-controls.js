@@ -39,7 +39,6 @@ AFRAME.registerComponent('desktop-controls', {
     camera: { type: 'selector' },
     leftHand: { type: 'selector' },
     rightHand: { type: 'selector' },
-    mouseSensitivity: { default: 0.0022 },
   },
 
   init: function () {
@@ -190,10 +189,14 @@ AFRAME.registerComponent('desktop-controls', {
 
   onMouseMove: function (evt) {
     if (this.mode === 'normal' || xrIsPresenting(this.sceneEl)) return;
-    this.cursorNdc.x += evt.movementX * this.data.mouseSensitivity;
-    this.cursorNdc.y -= evt.movementY * this.data.mouseSensitivity;
-    this.cursorNdc.x = THREE.MathUtils.clamp(this.cursorNdc.x, -0.95, 0.95);
-    this.cursorNdc.y = THREE.MathUtils.clamp(this.cursorNdc.y, -0.95, 0.95);
+    var canvas = this.sceneEl.canvas;
+    if (!canvas) return;
+    var bounds = canvas.getBoundingClientRect();
+    if (!bounds.width || !bounds.height) return;
+    this.cursorNdc.set(
+      THREE.MathUtils.clamp(((evt.clientX - bounds.left) / bounds.width) * 2 - 1, -0.99, 0.99),
+      THREE.MathUtils.clamp(-(((evt.clientY - bounds.top) / bounds.height) * 2 - 1), -0.99, 0.99)
+    );
   },
 
   onMouseDown: function (evt) {

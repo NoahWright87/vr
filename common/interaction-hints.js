@@ -535,6 +535,8 @@ AFRAME.registerComponent('semantic-hand', {
       (model.animations || []).forEach(function (clip) {
         self.actions[clip.name] = self.mixer.clipAction(clip);
       });
+      self.indexFingerBase = model.getObjectByName('F1b');
+      self.indexFingerTip = model.getObjectByName('F1c');
       self.playPose(self.desktopPose);
     });
 
@@ -544,6 +546,12 @@ AFRAME.registerComponent('semantic-hand', {
     this._calibrationPosition = new THREE.Vector3();
     this._calibrationQuaternion = new THREE.Quaternion();
     this._handWorldQuaternion = new THREE.Quaternion();
+    this._fingerBaseWorld = new THREE.Vector3();
+    this._fingerJointWorld = new THREE.Vector3();
+    this._fingerTipWorld = new THREE.Vector3();
+    this._fingerDirectionWorld = new THREE.Vector3();
+    this._fingerDirectionLocal = new THREE.Vector3();
+    this._fingertipParentQuaternion = new THREE.Quaternion();
 
     if (watchComponent && watchComponent.fingertipEl) {
       watchComponent.fingertipEl.addEventListener('raycaster-intersection', function (evt) {
@@ -627,9 +635,38 @@ AFRAME.registerComponent('semantic-hand', {
     }
   },
 
+  updateDesktopFingerCalibration: function () {
+    var watch = this.el.components['hand-with-watch'];
+    if (!watch || !watch.fingertipEl || !this.indexFingerBase || !this.indexFingerTip) return false;
+
+    this.visualModel.object3D.updateMatrixWorld(true);
+    this.indexFingerBase.getWorldPosition(this._fingerBaseWorld);
+    this.indexFingerTip.getWorldPosition(this._fingerJointWorld);
+    this._fingerDirectionWorld.copy(this._fingerJointWorld).sub(this._fingerBaseWorld).normalize();
+    // F1c is the final index-finger joint. Extend slightly to the visible
+    // mesh tip so the ray begins where the rendered fingertip actually ends.
+    this._fingerTipWorld.copy(this._fingerJointWorld).addScaledVector(this._fingerDirectionWorld, 0.018);
+
+    this.el.object3D.getWorldQuaternion(this._handWorldQuaternion);
+    this.localFingerDirection.copy(this._fingerDirectionWorld)
+      .applyQuaternion(this._handWorldQuaternion.clone().invert())
+      .normalize();
+    this.localFingertipOffset.copy(this.el.object3D.worldToLocal(this._fingerTipWorld.clone()));
+
+    var fingertipObject = watch.fingertipEl.object3D;
+    var fingertipParent = fingertipObject.parent;
+    fingertipObject.position.copy(fingertipParent.worldToLocal(this._fingerTipWorld.clone()));
+    fingertipParent.getWorldQuaternion(this._fingertipParentQuaternion);
+    this._fingerDirectionLocal.copy(this._fingerDirectionWorld)
+      .applyQuaternion(this._fingertipParentQuaternion.invert())
+      .normalize();
+    watch.fingertipEl.setAttribute('raycaster', 'direction', this._fingerDirectionLocal);
+    return true;
+  },
+
   setPointPose: function (fingertipWorldPosition, worldDirection, pose, snap) {
     var watch = this.el.components['hand-with-watch'];
-    if (watch && watch.fingertipEl) {
+    if (!this.updateDesktopFingerCalibration() && watch && watch.fingertipEl) {
       this.el.object3D.updateMatrixWorld(true);
       watch.fingertipEl.object3D.getWorldPosition(this._calibrationPosition);
       this.localFingertipOffset.copy(this.el.object3D.worldToLocal(this._calibrationPosition.clone()));
@@ -652,6 +689,7 @@ AFRAME.registerComponent('semantic-hand', {
     this.visualModel.object3D.visible = !isXr;
     if (this.mixer) this.mixer.update(Math.min(delta || 0, 50) / 1000);
     if (isXr) return;
+    if (this.desktopPose === 'Point') this.updateDesktopFingerCalibration();
     this.el.object3D.position.lerp(this.desiredPosition, 0.24);
     this.el.object3D.quaternion.slerp(this.desiredQuaternion, 0.24);
   },
