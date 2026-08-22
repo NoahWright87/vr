@@ -20,8 +20,10 @@ export function isWithinSemanticReach(distance, maximumReach, allowance) {
   return distance <= maximumReach + (allowance || 0);
 }
 
-export function shouldShowInteractionHint(mode, selectedForMs, delayMs) {
+export function shouldShowInteractionHint(mode, selectedForMs, delayMs, stationaryForMs, stationaryDelayMs) {
   if (mode === 'never') return false;
-  if (mode === 'always') return true;
-  return selectedForMs >= delayMs;
+  var modeAllowsHint = mode === 'always' || selectedForMs >= delayMs;
+  if (!modeAllowsHint) return false;
+  if (!stationaryDelayMs) return true;
+  return selectedForMs >= stationaryDelayMs && stationaryForMs >= stationaryDelayMs;
 }

@@ -45,6 +45,10 @@ AFRAME.registerComponent('desktop-controls', {
     var self = this;
     this.sceneEl = this.el.sceneEl;
     this.cameraEl = this.data.camera || this.el.querySelector('a-camera') || document.querySelector('a-camera');
+    // a-camera enables A-Frame's own WASD controller by default. Desktop
+    // controls own keyboard intent so both XR and desktop reach the shared
+    // locomotion component exactly once per frame.
+    if (this.cameraEl) this.cameraEl.setAttribute('wasd-controls', 'enabled', false);
     this.hands = {
       left: (this.data.leftHand || document.querySelector('#left-hand')).components['semantic-hand'],
       right: (this.data.rightHand || document.querySelector('#right-hand')).components['semantic-hand'],
@@ -292,13 +296,13 @@ AFRAME.registerComponent('desktop-controls', {
     this.setMode('watch');
     this.ensureMouseLookCapture();
     watch.projectedMenu.openInMode('laser');
-    this.placeWatchHand(true);
-    this.placeWatchPointer(true);
+    this.placeWatchHand();
+    this.placeWatchPointer();
     pointerHand.el.emit('gripdown', null, false);
     var self = this;
     setTimeout(function () {
       if (self.mode !== 'watch' || self.activeWatchHand !== watchHand) return;
-      self.placeWatchPointer(true);
+      self.placeWatchPointer();
     }, 350);
   },
 
@@ -314,16 +318,16 @@ AFRAME.registerComponent('desktop-controls', {
     this.activeMounted = component;
     this.activePointerHand = hand;
     this.trackActiveMenu(component.el);
-    this.mountedPokingUntil = performance.now() + 220;
+    this.mountedPokingUntil = performance.now() + 700;
     this.setMode('mounted');
     this.ensureMouseLookCapture();
-    this.placeMountedPoke(true);
+    this.placeMountedPoke();
     hand.el.emit('gripdown', null, false);
     var self = this;
     setTimeout(function () {
       if (self.activeMounted !== component) return;
       component.open();
-    }, 140);
+    }, 550);
   },
 
   exitInteraction: function (restoreMode) {
@@ -401,13 +405,13 @@ AFRAME.registerComponent('desktop-controls', {
   placeRestHand: function (hand) {
     var sideX = hand.data.hand === 'left' ? -0.24 : 0.24;
     var position = this.cameraOffsetToWorld(new THREE.Vector3(sideX, -0.38, -0.42), false);
-    hand.setWorldTransform(position, this.cameraYawQuaternion(), hand.heldEl ? 'Hold' : 'Open', true);
+    hand.setWorldTransform(position, this.cameraYawQuaternion(), hand.heldEl ? 'Hold' : 'Open');
   },
 
   placeHeldHand: function (hand) {
     var sideX = hand.data.hand === 'left' ? -0.2 : 0.2;
     var position = this.cameraOffsetToWorld(new THREE.Vector3(sideX, -0.25, -0.48), true);
-    hand.setWorldTransform(position, this.cameraYawQuaternion(), 'Hold', true);
+    hand.setWorldTransform(position, this.cameraYawQuaternion(), 'Hold');
   },
 
   placeCandidatePreview: function (candidate) {
@@ -438,7 +442,7 @@ AFRAME.registerComponent('desktop-controls', {
   placeWatchPointer: function (snap) {
     var pointerSideX = this.activePointerHand.data.hand === 'left' ? -0.26 : 0.26;
     var fingertip = this.cameraOffsetToWorld(new THREE.Vector3(pointerSideX, -0.26, -0.43), true);
-    this.activePointerHand.setPointPose(fingertip, this.currentAimDirection(fingertip), 'Point', snap !== false);
+    this.activePointerHand.setPointPose(fingertip, this.currentAimDirection(fingertip), 'Point', snap);
   },
 
   placeMountedPoke: function (snap) {
@@ -451,7 +455,7 @@ AFRAME.registerComponent('desktop-controls', {
   placeMountedPointer: function () {
     var sideX = this.activePointerHand.data.hand === 'left' ? -0.24 : 0.24;
     var fingertip = this.cameraOffsetToWorld(new THREE.Vector3(sideX, -0.25, -0.42), true);
-    this.activePointerHand.setPointPose(fingertip, this.currentAimDirection(fingertip), 'Point', true);
+    this.activePointerHand.setPointPose(fingertip, this.currentAimDirection(fingertip), 'Point');
     var other = this.hands[this.activePointerHand.data.hand === 'left' ? 'right' : 'left'];
     if (other) this.placeRestHand(other);
   },

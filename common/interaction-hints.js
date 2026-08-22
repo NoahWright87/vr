@@ -37,6 +37,11 @@ AFRAME.registerSystem('interaction-hints', {
     this.cameraPosition = new THREE.Vector3();
     this.cameraQuaternion = new THREE.Quaternion();
     this.cameraForward = new THREE.Vector3();
+    this.stillCameraPosition = new THREE.Vector3();
+    this.stillCameraQuaternion = new THREE.Quaternion();
+    this.stillSince = 0;
+    this.stationaryForMs = 0;
+    this.stillnessInitialized = false;
     this.zonePosition = new THREE.Vector3();
     this.shoulderPosition = new THREE.Vector3();
     this.handPosition = new THREE.Vector3();
@@ -187,6 +192,7 @@ AFRAME.registerSystem('interaction-hints', {
         time: time,
         hintMode: this.hintMode,
         hintDelay: this.hintDelay,
+        stationaryForMs: this.stationaryForMs,
       });
     }, this);
     this.activeSelections = next;
@@ -219,9 +225,30 @@ AFRAME.registerSystem('interaction-hints', {
     return true;
   },
 
+  updateCameraStillness: function (cameraEl, time) {
+    cameraEl.object3D.getWorldPosition(this.cameraPosition);
+    cameraEl.object3D.getWorldQuaternion(this.cameraQuaternion);
+    if (!this.stillnessInitialized) {
+      this.stillCameraPosition.copy(this.cameraPosition);
+      this.stillCameraQuaternion.copy(this.cameraQuaternion);
+      this.stillSince = time;
+      this.stillnessInitialized = true;
+    }
+    var movedPosition = this.stillCameraPosition.distanceToSquared(this.cameraPosition) > 0.0001;
+    var quaternionDot = Math.abs(this.stillCameraQuaternion.dot(this.cameraQuaternion));
+    var movedView = 1 - Math.min(1, quaternionDot) > 0.00004;
+    if (movedPosition || movedView) {
+      this.stillCameraPosition.copy(this.cameraPosition);
+      this.stillCameraQuaternion.copy(this.cameraQuaternion);
+      this.stillSince = time;
+    }
+    this.stationaryForMs = Math.max(0, time - this.stillSince);
+  },
+
   tick: function (time) {
     var cameraEl = this.getCameraEl();
     if (!cameraEl || !cameraEl.object3D) return;
+    this.updateCameraStillness(cameraEl, time);
     var isXr = xrIsPresenting(this.sceneEl);
     if (isXr) {
       this.desktopCandidate = null;
@@ -254,6 +281,7 @@ AFRAME.registerComponent('hint-zone', {
     hintLockY: { default: false },
     hintLockZ: { default: false },
     hintScale: { default: 1 },
+    hintFadeDuration: { default: 550 },
     previewStandoff: { default: 0.22 },
     highlightColor: { type: 'color', default: '#8de5ff' },
     highlightOpacity: { default: 0.2 },
@@ -268,6 +296,8 @@ AFRAME.registerComponent('hint-zone', {
     this.selectionToken = '';
     this.dynamicDesktopLabel = null;
     this.dynamicXrLabel = null;
+    this.hintShouldShow = false;
+    this.hintOpacity = 0;
     this.createHintCard();
     this.createHighlight();
     this.hintSystem.registerZone(this);
@@ -361,6 +391,9 @@ AFRAME.registerComponent('hint-zone', {
   },
 
   setLabels: function (desktopLabel, xrLabel) {
+    if (this.dynamicDesktopLabel !== (desktopLabel || null) || this.dynamicXrLabel !== (xrLabel || null)) {
+      this.hintShouldShow = false;
+    }
     this.dynamicDesktopLabel = desktopLabel || null;
     this.dynamicXrLabel = xrLabel || null;
   },
@@ -369,13 +402,15 @@ AFRAME.registerComponent('hint-zone', {
     if (!selected) {
       this.selected = false;
       this.selectionToken = '';
-      this.cardEl.setAttribute('visible', false);
+      this.hintShouldShow = false;
       this.highlightRoot.visible = false;
       this.el.removeAttribute('data-hint-selected');
       return;
     }
 
-    var token = (context.isXr ? 'xr:' : 'desktop:') + (context.hand ? context.hand.data.hand : 'none');
+    var token = (context.isXr ? 'xr:' : 'desktop:') +
+      (context.hand ? context.hand.data.hand : 'none') + ':' +
+      (this.dynamicDesktopLabel || '') + ':' + (this.dynamicXrLabel || '');
     if (!this.selected || this.selectionToken !== token) {
       this.selectedAt = context.time;
       this.selectionToken = token;
@@ -428,8 +463,18 @@ AFRAME.registerComponent('hint-zone', {
   },
 
   updateHintCard: function (context, selectedForMs) {
-    var show = shouldShowInteractionHint(context.hintMode, selectedForMs, context.hintDelay);
-    this.cardEl.setAttribute('visible', show);
+    var grabbable = this.el.components['simple-grabbable'];
+    var stationaryDelay = grabbable && grabbable.state === 'held'
+      ? grabbable.data.dropHintDelay
+      : 0;
+    var show = shouldShowInteractionHint(
+      context.hintMode,
+      selectedForMs,
+      context.hintDelay,
+      context.stationaryForMs,
+      stationaryDelay
+    );
+    this.hintShouldShow = show;
     if (!show) return;
 
     var isXr = context.isXr;
@@ -441,6 +486,34 @@ AFRAME.registerComponent('hint-zone', {
     this.labelTextEl.setAttribute('text', 'value', label || '');
 
     this.updateHintTransform();
+  },
+
+  applyHintOpacity: function () {
+    var opacity = this.hintOpacity;
+    this.cardEl.object3D.traverse(function (object) {
+      if (!object.material) return;
+      var materials = Array.isArray(object.material) ? object.material : [object.material];
+      materials.forEach(function (material) {
+        if (material.userData.interactionHintBaseOpacity === undefined) {
+          material.userData.interactionHintBaseOpacity = material.opacity;
+        }
+        material.transparent = true;
+        material.opacity = material.userData.interactionHintBaseOpacity * opacity;
+      });
+    });
+  },
+
+  updateHintFade: function (delta) {
+    var target = this.hintShouldShow ? 1 : 0;
+    if (target > 0 && !this.cardEl.object3D.visible) this.cardEl.setAttribute('visible', true);
+    var duration = Math.max(1, this.data.hintFadeDuration);
+    var step = Math.min(1, Math.max(0, delta || 0) / duration);
+    if (this.hintOpacity < target) this.hintOpacity = Math.min(target, this.hintOpacity + step);
+    else if (this.hintOpacity > target) this.hintOpacity = Math.max(target, this.hintOpacity - step);
+    this.applyHintOpacity();
+    if (this.hintOpacity <= 0 && target === 0 && this.cardEl.object3D.visible) {
+      this.cardEl.setAttribute('visible', false);
+    }
   },
 
   updateHintTransform: function () {
@@ -480,9 +553,9 @@ AFRAME.registerComponent('hint-zone', {
     this.cardEl.object3D.quaternion.setFromEuler(billboardEuler);
   },
 
-  tick: function () {
-    if (!this.selected) return;
-    this.updateHighlight();
+  tick: function (time, delta) {
+    if (this.selected) this.updateHighlight();
+    this.updateHintFade(delta);
     if (this.cardEl.object3D.visible) this.updateHintTransform();
   },
 
@@ -498,6 +571,8 @@ AFRAME.registerComponent('semantic-hand', {
   schema: {
     hand: { default: 'left', oneOf: ['left', 'right'] },
     maxReach: { default: 1.0 },
+    moveSpeed: { default: 0.9 },
+    turnSpeed: { default: 360 },
   },
 
   init: function () {
@@ -553,6 +628,7 @@ AFRAME.registerComponent('semantic-hand', {
     this._fingerDirectionWorld = new THREE.Vector3();
     this._fingerDirectionLocal = new THREE.Vector3();
     this._fingertipParentQuaternion = new THREE.Quaternion();
+    this._moveDelta = new THREE.Vector3();
 
     if (watchComponent && watchComponent.fingertipEl) {
       watchComponent.fingertipEl.addEventListener('raycaster-intersection', function (evt) {
@@ -691,8 +767,17 @@ AFRAME.registerComponent('semantic-hand', {
     if (this.mixer) this.mixer.update(Math.min(delta || 0, 50) / 1000);
     if (isXr) return;
     if (this.desktopPose === 'Point') this.updateDesktopFingerCalibration();
-    this.el.object3D.position.lerp(this.desiredPosition, 0.24);
-    this.el.object3D.quaternion.slerp(this.desiredQuaternion, 0.24);
+    var dt = Math.min(delta || 0, 50) / 1000;
+    this._moveDelta.copy(this.desiredPosition).sub(this.el.object3D.position);
+    var moveDistance = this._moveDelta.length();
+    var maxMove = this.data.moveSpeed * dt;
+    if (moveDistance <= maxMove || !moveDistance) this.el.object3D.position.copy(this.desiredPosition);
+    else this.el.object3D.position.addScaledVector(this._moveDelta, maxMove / moveDistance);
+
+    var angle = this.el.object3D.quaternion.angleTo(this.desiredQuaternion);
+    var maxAngle = THREE.MathUtils.degToRad(this.data.turnSpeed) * dt;
+    if (angle <= maxAngle || !angle) this.el.object3D.quaternion.copy(this.desiredQuaternion);
+    else this.el.object3D.quaternion.slerp(this.desiredQuaternion, maxAngle / angle);
   },
 
   remove: function () {
@@ -708,6 +793,7 @@ AFRAME.registerComponent('simple-grabbable', {
     heldRotation: { type: 'vec3', default: { x: 0, y: 0, z: 0 } },
     floorY: { default: 0.13 },
     gravity: { default: 9.8 },
+    dropHintDelay: { default: 2500 },
   },
 
   init: function () {

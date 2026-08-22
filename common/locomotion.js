@@ -3,9 +3,7 @@
       moveMode: { default: 'smooth' },
       turnMode: { default: 'snap' },
       speed: { default: 1.5 },
-      // A keyboard key is always fully pressed, unlike an analog XR stick.
-      // Keep sustained WASD movement comfortable at that maximum input.
-      desktopSpeedScale: { default: 0.25 },
+      speedMultiplier: { default: 1 },
       snapAngle: { default: 30 },
       teleportDistance: { default: 2.8 },
       comfortVignette: { default: true },
@@ -32,9 +30,11 @@
       this._teleportAimY = 0;
       this._teleportAimMag = 0;
       this._teleportHand = 'left';
+      this.onMenuOptionChange = this.onMenuOptionChange.bind(this);
 
       var self = this;
       var sceneEl = this.el.sceneEl;
+      sceneEl.addEventListener('menu-option-change', this.onMenuOptionChange);
       sceneEl.addEventListener('loaded', function () {
         var leftEl = document.querySelector('#left-hand');
         var rightEl = document.querySelector('#right-hand');
@@ -74,6 +74,18 @@
 
     setTurnMode: function (mode) {
       this.data.turnMode = mode;
+    },
+
+    setSpeedMultiplier: function (multiplier) {
+      var next = Number(multiplier);
+      if (!Number.isFinite(next) || next <= 0) return;
+      this.data.speedMultiplier = next;
+      this.el.setAttribute('data-move-speed-multiplier', String(next));
+    },
+
+    onMenuOptionChange: function (evt) {
+      if (!evt.detail || evt.detail.key !== 'move-speed') return;
+      this.setSpeedMultiplier(evt.detail.value);
     },
 
     setVignette: function (enabled) {
@@ -202,22 +214,21 @@
 
     // Input-source-neutral movement core. XR thumbsticks and desktop WASD
     // both express a local x/z intent and arrive here.
-    applyMoveVector: function (moveX, moveY, deltaMs, speedScale) {
+    applyMoveVector: function (moveX, moveY, deltaMs) {
       if (!this.cameraEl) return;
 
       var direction = new AFRAME.THREE.Vector3(moveX, 0, moveY);
       var cameraQuat = new AFRAME.THREE.Quaternion();
       this.cameraEl.object3D.getWorldQuaternion(cameraQuat);
       var worldMove = direction.applyQuaternion(cameraQuat).setY(0);
-      var inputSpeedScale = speedScale === undefined ? 1 : speedScale;
-      worldMove.normalize().multiplyScalar(this.data.speed * inputSpeedScale * (deltaMs / 1000));
+      worldMove.normalize().multiplyScalar(this.data.speed * this.data.speedMultiplier * (deltaMs / 1000));
       this.rigEl.object3D.position.add(worldMove);
     },
 
     applyDesktopMove: function (moveX, moveY, deltaMs) {
       var amount = Math.hypot(moveX, moveY);
       if (!amount) return;
-      this.applyMoveVector(moveX / amount, moveY / amount, deltaMs, this.data.desktopSpeedScale);
+      this.applyMoveVector(moveX / amount, moveY / amount, deltaMs);
     },
 
     applySmoothTurn: function (deltaMs) {
@@ -304,5 +315,9 @@
         var ly = this.leftAxes[3] !== undefined ? this.leftAxes[3] : this.leftAxes[1] || 0;
         this.vignette.setAttribute('visible', !!this.data.comfortVignette && this.data.moveMode === 'smooth' && Math.hypot(lx, ly) > 0.12);
       }
+    },
+
+    remove: function () {
+      this.el.sceneEl.removeEventListener('menu-option-change', this.onMenuOptionChange);
     },
   });

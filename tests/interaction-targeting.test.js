@@ -34,3 +34,11 @@ test('hint visibility supports always, delayed, and never policies', () => {
   assert.equal(shouldShowInteractionHint('delayed', 900, 900), true);
   assert.equal(shouldShowInteractionHint('never', 5000, 900), false);
 });
+
+test('a stillness-gated hint waits after the action and after player movement', () => {
+  assert.equal(shouldShowInteractionHint('always', 2499, 900, 5000, 2500), false);
+  assert.equal(shouldShowInteractionHint('always', 5000, 900, 2499, 2500), false);
+  assert.equal(shouldShowInteractionHint('always', 2500, 900, 2500, 2500), true);
+  assert.equal(shouldShowInteractionHint('delayed', 2500, 900, 2500, 2500), true);
+  assert.equal(shouldShowInteractionHint('never', 5000, 900, 5000, 2500), false);
+});
