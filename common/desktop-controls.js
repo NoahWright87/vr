@@ -58,7 +58,7 @@ AFRAME.registerComponent('desktop-controls', {
     this.activePointerHand = null;
     this.activeWatchHand = null;
     this.activeMenuEl = null;
-    this.previousCanvasCursor = null;
+    this.cursorStyleEl = null;
     this.cursorNdc = new THREE.Vector2(0, 0);
     this.mountedPokingUntil = 0;
     this._worldPosition = new THREE.Vector3();
@@ -251,13 +251,12 @@ AFRAME.registerComponent('desktop-controls', {
   setMenuCursorHidden: function (hidden) {
     var canvas = this.sceneEl.canvas;
     if (!canvas) return;
-    if (hidden) {
-      if (this.previousCanvasCursor === null) this.previousCanvasCursor = canvas.style.cursor;
-      canvas.style.cursor = 'none';
-    } else if (this.previousCanvasCursor !== null) {
-      canvas.style.cursor = this.previousCanvasCursor;
-      this.previousCanvasCursor = null;
+    if (hidden && !this.cursorStyleEl) {
+      this.cursorStyleEl = document.createElement('style');
+      this.cursorStyleEl.textContent = 'canvas.desktop-menu-aiming { cursor: none !important; }';
+      document.head.appendChild(this.cursorStyleEl);
     }
+    canvas.classList.toggle('desktop-menu-aiming', hidden);
   },
 
   ensureMouseLookCapture: function () {
@@ -507,5 +506,6 @@ AFRAME.registerComponent('desktop-controls', {
     this.sceneEl.removeEventListener('mounted-interaction-request', this.onMountedRequest);
     this.sceneEl.removeEventListener('menu-option-change', this.onPreferenceChange);
     this.sceneEl.removeEventListener('watch-menu-ready', this.onWatchReady);
+    if (this.cursorStyleEl) this.cursorStyleEl.remove();
   },
 });
