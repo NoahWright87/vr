@@ -71,7 +71,6 @@ AFRAME.registerComponent('desktop-controls', {
     this._up = new THREE.Vector3(0, 1, 0);
     this.onKeyDown = this.onKeyDown.bind(this);
     this.onKeyUp = this.onKeyUp.bind(this);
-    this.onMouseMove = this.onMouseMove.bind(this);
     this.onMouseDown = this.onMouseDown.bind(this);
     this.onMountedRequest = this.onMountedRequest.bind(this);
     this.onActiveMenuClosed = this.onActiveMenuClosed.bind(this);
@@ -79,7 +78,6 @@ AFRAME.registerComponent('desktop-controls', {
     this.onWatchReady = this.syncPreferenceControls.bind(this);
     document.addEventListener('keydown', this.onKeyDown, true);
     document.addEventListener('keyup', this.onKeyUp, true);
-    document.addEventListener('mousemove', this.onMouseMove, true);
     document.addEventListener('mousedown', this.onMouseDown, true);
     this.sceneEl.addEventListener('mounted-interaction-request', this.onMountedRequest);
     this.sceneEl.addEventListener('menu-option-change', this.onPreferenceChange);
@@ -189,18 +187,6 @@ AFRAME.registerComponent('desktop-controls', {
     }
   },
 
-  onMouseMove: function (evt) {
-    if (this.mode === 'normal' || xrIsPresenting(this.sceneEl)) return;
-    var canvas = this.sceneEl.canvas;
-    if (!canvas) return;
-    var bounds = canvas.getBoundingClientRect();
-    if (!bounds.width || !bounds.height) return;
-    this.cursorNdc.set(
-      THREE.MathUtils.clamp(((evt.clientX - bounds.left) / bounds.width) * 2 - 1, -0.99, 0.99),
-      THREE.MathUtils.clamp(-(((evt.clientY - bounds.top) / bounds.height) * 2 - 1), -0.99, 0.99)
-    );
-  },
-
   onMouseDown: function (evt) {
     if (evt.button !== 0 || this.mode === 'normal' || !this.activePointerHand || xrIsPresenting(this.sceneEl)) return;
     evt.preventDefault();
@@ -253,10 +239,18 @@ AFRAME.registerComponent('desktop-controls', {
 
   setMode: function (mode) {
     this.mode = mode;
+    this.cursorNdc.set(0, 0);
     this.el.setAttribute('data-desktop-mode', mode);
     this.hintSystem.setTargetingEnabled(mode === 'normal');
-    this.setLookEnabled(mode === 'normal');
+    this.setLookEnabled(true);
     this.setGazeEnabled(mode === 'normal');
+  },
+
+  ensureMouseLookCapture: function () {
+    var canvas = this.sceneEl.canvas;
+    if (!canvas || document.pointerLockElement || !canvas.requestPointerLock) return;
+    var request = canvas.requestPointerLock();
+    if (request && request.catch) request.catch(function () {});
   },
 
   setLookEnabled: function (enabled) {
@@ -283,16 +277,15 @@ AFRAME.registerComponent('desktop-controls', {
     this.activePointerHand = pointerHand;
     this.trackActiveMenu(watch.faceEl);
     this.setMode('watch');
+    this.ensureMouseLookCapture();
     watch.projectedMenu.openInMode('laser');
-    this.placeWatchHands(true);
-    this.seedAimAt(watch.projectedMenu.panelEl);
-    this.placeWatchHands(true);
+    this.placeWatchHand(true);
+    this.placeWatchPointer(true);
     pointerHand.el.emit('gripdown', null, false);
     var self = this;
     setTimeout(function () {
       if (self.mode !== 'watch' || self.activeWatchHand !== watchHand) return;
-      self.seedAimAt(watch.projectedMenu.panelEl);
-      self.placeWatchHands(true);
+      self.placeWatchPointer(true);
     }, 350);
   },
 
@@ -310,19 +303,13 @@ AFRAME.registerComponent('desktop-controls', {
     this.trackActiveMenu(component.el);
     this.mountedPokingUntil = performance.now() + 220;
     this.setMode('mounted');
+    this.ensureMouseLookCapture();
     this.placeMountedPoke(true);
     hand.el.emit('gripdown', null, false);
     var self = this;
     setTimeout(function () {
       if (self.activeMounted !== component) return;
       component.open();
-      var menu = component.el.components['projected-menu'];
-      if (menu) {
-        self.seedAimAt(menu.panelEl);
-        setTimeout(function () {
-          if (self.activeMounted === component) self.seedAimAt(menu.panelEl);
-        }, 300);
-      }
     }, 140);
   },
 
@@ -351,18 +338,6 @@ AFRAME.registerComponent('desktop-controls', {
 
   onActiveMenuClosed: function () {
     if (this.mode !== 'normal') this.exitInteraction();
-  },
-
-  seedAimAt: function (targetEl) {
-    if (!targetEl) return;
-    var firstInteractive = targetEl.querySelector && targetEl.querySelector('.menu-target, .pm-target');
-    if (firstInteractive) targetEl = firstInteractive;
-    targetEl.object3D.getWorldPosition(this._targetPosition);
-    this._targetPosition.project(this.sceneEl.camera);
-    this.cursorNdc.set(
-      THREE.MathUtils.clamp(this._targetPosition.x, -0.95, 0.95),
-      THREE.MathUtils.clamp(this._targetPosition.y, -0.95, 0.95)
-    );
   },
 
   cameraWorldPosition: function () {
@@ -433,12 +408,14 @@ AFRAME.registerComponent('desktop-controls', {
     hand.setPointPose(fingertip, normal.clone().negate(), 'Point');
   },
 
-  placeWatchHands: function (snap) {
+  placeWatchHand: function (snap) {
     var watchSideX = this.activeWatchHand.data.hand === 'left' ? -0.2 : 0.2;
     var watchPosition = this.cameraOffsetToWorld(new THREE.Vector3(watchSideX, -0.08, -0.64), true);
     var watchQuaternion = this.cameraYawQuaternion().multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(-0.35, 0, watchSideX < 0 ? -0.2 : 0.2)));
     this.activeWatchHand.setWorldTransform(watchPosition, watchQuaternion, 'Open', snap);
+  },
 
+  placeWatchPointer: function (snap) {
     var pointerSideX = this.activePointerHand.data.hand === 'left' ? -0.26 : 0.26;
     var fingertip = this.cameraOffsetToWorld(new THREE.Vector3(pointerSideX, -0.26, -0.43), true);
     this.activePointerHand.setPointPose(fingertip, this.currentAimDirection(fingertip), 'Point', snap);
@@ -500,7 +477,7 @@ AFRAME.registerComponent('desktop-controls', {
       this.applyMovement(delta);
       this.updateNormalHands();
     } else if (this.mode === 'watch') {
-      this.placeWatchHands();
+      this.placeWatchPointer();
     } else if (this.mode === 'mounted') {
       if (performance.now() < this.mountedPokingUntil) this.placeMountedPoke();
       else this.placeMountedPointer();
@@ -511,7 +488,6 @@ AFRAME.registerComponent('desktop-controls', {
     this.trackActiveMenu(null);
     document.removeEventListener('keydown', this.onKeyDown, true);
     document.removeEventListener('keyup', this.onKeyUp, true);
-    document.removeEventListener('mousemove', this.onMouseMove, true);
     document.removeEventListener('mousedown', this.onMouseDown, true);
     this.sceneEl.removeEventListener('mounted-interaction-request', this.onMountedRequest);
     this.sceneEl.removeEventListener('menu-option-change', this.onPreferenceChange);
