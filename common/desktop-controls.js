@@ -57,6 +57,7 @@ AFRAME.registerComponent('desktop-controls', {
     this.activeMounted = null;
     this.activePointerHand = null;
     this.activeWatchHand = null;
+    this.activeMenuEl = null;
     this.cursorNdc = new THREE.Vector2(0, 0);
     this.mountedPokingUntil = 0;
     this._worldPosition = new THREE.Vector3();
@@ -73,6 +74,7 @@ AFRAME.registerComponent('desktop-controls', {
     this.onMouseMove = this.onMouseMove.bind(this);
     this.onMouseDown = this.onMouseDown.bind(this);
     this.onMountedRequest = this.onMountedRequest.bind(this);
+    this.onActiveMenuClosed = this.onActiveMenuClosed.bind(this);
     this.onPreferenceChange = this.onPreferenceChange.bind(this);
     this.onWatchReady = this.syncPreferenceControls.bind(this);
     document.addEventListener('keydown', this.onKeyDown, true);
@@ -279,6 +281,7 @@ AFRAME.registerComponent('desktop-controls', {
     if (!watch || !watch.projectedMenu) return;
     this.activeWatchHand = watchHand;
     this.activePointerHand = pointerHand;
+    this.trackActiveMenu(watch.faceEl);
     this.setMode('watch');
     watch.projectedMenu.openInMode('laser');
     this.placeWatchHands(true);
@@ -304,6 +307,7 @@ AFRAME.registerComponent('desktop-controls', {
     }
     this.activeMounted = component;
     this.activePointerHand = hand;
+    this.trackActiveMenu(component.el);
     this.mountedPokingUntil = performance.now() + 220;
     this.setMode('mounted');
     this.placeMountedPoke(true);
@@ -323,6 +327,7 @@ AFRAME.registerComponent('desktop-controls', {
   },
 
   exitInteraction: function (restoreMode) {
+    this.trackActiveMenu(null);
     if (this.activePointerHand) this.activePointerHand.el.emit('gripup', null, false);
     if (this.activeWatchHand) {
       var watch = this.activeWatchHand.el.components['hand-with-watch'];
@@ -335,6 +340,17 @@ AFRAME.registerComponent('desktop-controls', {
     this.mountedPokingUntil = 0;
     this.cursorNdc.set(0, 0);
     if (restoreMode !== false) this.setMode('normal');
+  },
+
+  trackActiveMenu: function (menuEl) {
+    if (this.activeMenuEl === menuEl) return;
+    if (this.activeMenuEl) this.activeMenuEl.removeEventListener('projected-menu-closed', this.onActiveMenuClosed);
+    this.activeMenuEl = menuEl || null;
+    if (this.activeMenuEl) this.activeMenuEl.addEventListener('projected-menu-closed', this.onActiveMenuClosed);
+  },
+
+  onActiveMenuClosed: function () {
+    if (this.mode !== 'normal') this.exitInteraction();
   },
 
   seedAimAt: function (targetEl) {
@@ -492,6 +508,7 @@ AFRAME.registerComponent('desktop-controls', {
   },
 
   remove: function () {
+    this.trackActiveMenu(null);
     document.removeEventListener('keydown', this.onKeyDown, true);
     document.removeEventListener('keyup', this.onKeyUp, true);
     document.removeEventListener('mousemove', this.onMouseMove, true);
