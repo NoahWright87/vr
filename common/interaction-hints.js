@@ -31,6 +31,7 @@ AFRAME.registerSystem('interaction-hints', {
     this.hintDelay = 900;
     this.handedness = 'right';
     this.targetingEnabled = true;
+    this.desktopCrouchOffset = -0.68;
     this.desktopCandidate = null;
     this.activeSelections = new Map();
     this.raycaster = new THREE.Raycaster();
@@ -73,6 +74,10 @@ AFRAME.registerSystem('interaction-hints', {
     this.targetingEnabled = Boolean(enabled);
   },
 
+  setDesktopCrouchOffset: function (offset) {
+    if (Number.isFinite(offset)) this.desktopCrouchOffset = offset;
+  },
+
   getCameraEl: function () {
     return this.sceneEl.camera && this.sceneEl.camera.el
       ? this.sceneEl.camera.el
@@ -83,7 +88,7 @@ AFRAME.registerSystem('interaction-hints', {
     return this.hands[this.handedness] || this.hands.right || this.hands.left || null;
   },
 
-  makeDesktopCandidate: function (zone, cameraEl, shoulderYOffset) {
+  makeDesktopCandidate: function (zone, cameraEl, shoulderYOffset, requiresCrouch) {
     if (!zone.isAvailable('desktop')) return null;
     zone.getWorldPosition(this.zonePosition);
     var toZone = this.zonePosition.clone().sub(this.cameraPosition);
@@ -119,6 +124,7 @@ AFRAME.registerSystem('interaction-hints', {
       priority: zone.data.priority,
       gazeDot: gazeDot,
       distance: reachDistance,
+      requiresCrouch: Boolean(requiresCrouch),
       eligible: true,
     };
   },
@@ -149,7 +155,9 @@ AFRAME.registerSystem('interaction-hints', {
     cameraEl.object3D.getWorldQuaternion(this.cameraQuaternion);
     this.cameraForward.set(0, 0, -1).applyQuaternion(this.cameraQuaternion).normalize();
     var candidates = this.zones.map(function (zone) {
-      return this.makeDesktopCandidate(zone, cameraEl);
+      var candidate = this.makeDesktopCandidate(zone, cameraEl);
+      if (candidate || zone.data.action !== 'grab') return candidate;
+      return this.makeDesktopCandidate(zone, cameraEl, this.desktopCrouchOffset, true);
     }, this);
     return chooseInteractionCandidate(candidates);
   },
@@ -213,7 +221,7 @@ AFRAME.registerSystem('interaction-hints', {
     this.cameraForward.set(0, 0, -1).applyQuaternion(this.cameraQuaternion).normalize();
     var candidates = this.zones.map(function (zone) {
       if (action && zone.data.action !== action) return null;
-      return this.makeDesktopCandidate(zone, cameraEl, shoulderYOffset);
+      return this.makeDesktopCandidate(zone, cameraEl, shoulderYOffset, true);
     }, this);
     return chooseInteractionCandidate(candidates);
   },
@@ -908,6 +916,8 @@ AFRAME.registerComponent('mounted-interaction', {
   schema: {
     action: { default: 'mounted' },
     anchor: { type: 'selector' },
+    radialAnchor: { default: false },
+    interactionDistance: { default: 0.75 },
     normal: { type: 'vec3', default: { x: 0, y: 0, z: 1 } },
     previewStandoff: { default: 0.12 },
   },
@@ -930,13 +940,29 @@ AFRAME.registerComponent('mounted-interaction', {
     return this.el.object3D.getWorldPosition(target);
   },
 
+  getFacingWorldPosition: function (target) {
+    var menu = this.el.components['projected-menu'];
+    if (menu && menu.panelEl) return menu.panelEl.object3D.getWorldPosition(target);
+    return this.getActionWorldPosition(target);
+  },
+
   getWorldNormal: function (target) {
     var quaternion = new THREE.Quaternion();
     this.el.object3D.getWorldQuaternion(quaternion);
     return target.set(this.data.normal.x, this.data.normal.y, this.data.normal.z).applyQuaternion(quaternion).normalize();
   },
 
-  getAnchorWorldPosition: function (target) {
+  getAnchorWorldPosition: function (target, cameraPosition) {
+    if (this.data.radialAnchor && cameraPosition) {
+      this.getActionWorldPosition(target);
+      var outward = cameraPosition.clone().sub(target);
+      outward.y = 0;
+      if (outward.lengthSq() < 0.0001) outward.set(0, 0, 1);
+      outward.normalize().multiplyScalar(this.data.interactionDistance);
+      target.add(outward);
+      target.y = cameraPosition.y;
+      return target;
+    }
     if (!this.data.anchor) return null;
     return this.data.anchor.object3D.getWorldPosition(target);
   },

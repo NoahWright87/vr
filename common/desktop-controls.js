@@ -40,7 +40,9 @@ AFRAME.registerComponent('desktop-controls', {
     leftHand: { type: 'selector' },
     rightHand: { type: 'selector' },
     crouchHeight: { default: 0.92 },
-    crouchSpeed: { default: 1.05 },
+    crouchSpeed: { default: 1.8 },
+    mountedMoveSpeed: { default: 1.8 },
+    mountedTurnSpeed: { default: 200 },
   },
 
   init: function () {
@@ -67,6 +69,8 @@ AFRAME.registerComponent('desktop-controls', {
     this.cursorStyleEl = null;
     this.cursorNdc = new THREE.Vector2(0, 0);
     this.mountedPokingUntil = 0;
+    this.mountedTransition = null;
+    this.mountedOpenTimer = null;
     this._worldPosition = new THREE.Vector3();
     this._worldQuaternion = new THREE.Quaternion();
     this._cameraQuaternion = new THREE.Quaternion();
@@ -81,6 +85,7 @@ AFRAME.registerComponent('desktop-controls', {
     this._cameraRelative = new THREE.Vector3();
     this._cameraEuler = new THREE.Euler();
     this.standingHeight = this.cameraEl.object3D.position.y;
+    this.hintSystem.setDesktopCrouchOffset(this.data.crouchHeight - this.standingHeight);
     this.manualCrouched = false;
     this.autoCrouch = null;
     this._lastCameraYaw = this.getCameraLocalYaw();
@@ -261,14 +266,19 @@ AFRAME.registerComponent('desktop-controls', {
     }
     var grabCandidate = this.hintSystem.getDesktopCandidate('grab');
     if (grabCandidate) {
-      this.activateGrabCandidate(grabCandidate);
+      if (grabCandidate.requiresCrouch && !this.manualCrouched) this.beginAutoCrouch(grabCandidate);
+      else this.activateGrabCandidate(grabCandidate);
       return;
     }
     if (this.manualCrouched) return;
     var shoulderYOffset = this.data.crouchHeight - this.cameraEl.object3D.position.y;
     var crouchCandidate = this.hintSystem.getDesktopCrouchCandidate('grab', shoulderYOffset);
     if (!crouchCandidate) return;
-    this.autoCrouch = { phase: 'down', candidate: crouchCandidate };
+    this.beginAutoCrouch(crouchCandidate);
+  },
+
+  beginAutoCrouch: function (candidate) {
+    this.autoCrouch = { phase: 'down', candidate: candidate };
     this.updateCrouchStateAttribute();
   },
 
@@ -373,29 +383,107 @@ AFRAME.registerComponent('desktop-controls', {
 
   beginMounted: function (component, hand) {
     if (!component || !hand || xrIsPresenting(this.sceneEl)) return;
-    var anchor = component.getAnchorWorldPosition(new THREE.Vector3());
+    this.cameraEl.object3D.getWorldPosition(this._cameraPosition);
+    var anchor = component.getAnchorWorldPosition(new THREE.Vector3(), this._cameraPosition);
+    var targetRigPosition = this.el.object3D.position.clone();
     if (anchor) {
-      this.cameraEl.object3D.getWorldPosition(this._cameraPosition);
-      this.el.object3D.position.x += anchor.x - this._cameraPosition.x;
-      this.el.object3D.position.z += anchor.z - this._cameraPosition.z;
-      this.el.object3D.updateMatrixWorld(true);
+      targetRigPosition.x += anchor.x - this._cameraPosition.x;
+      targetRigPosition.z += anchor.z - this._cameraPosition.z;
     }
+    var facingPosition = component.getFacingWorldPosition(new THREE.Vector3());
+    var targetCameraPosition = this._cameraPosition.clone();
+    if (anchor) {
+      targetCameraPosition.x = anchor.x;
+      targetCameraPosition.z = anchor.z;
+    }
+    var facingDirection = facingPosition.clone().sub(targetCameraPosition);
+    var facingDistance = facingDirection.length();
+    if (facingDistance) facingDirection.divideScalar(facingDistance);
+    var targetWorldYaw = Math.atan2(-facingDirection.x, -facingDirection.z);
+    var targetPitch = Math.asin(THREE.MathUtils.clamp(facingDirection.y, -1, 1));
+    this.el.object3D.getWorldQuaternion(this._worldQuaternion);
+    var rigWorldYaw = this._cameraEuler.setFromQuaternion(this._worldQuaternion, 'YXZ').y;
+    var startYaw = this.getCameraLocalYaw();
+    var startPitch = this.getCameraLocalPitch();
+    var targetYaw = targetWorldYaw - rigWorldYaw;
+    var yawDelta = Math.atan2(Math.sin(targetYaw - startYaw), Math.cos(targetYaw - startYaw));
+    var pitchDelta = targetPitch - startPitch;
+    var moveDistance = this.el.object3D.position.distanceTo(targetRigPosition);
+    var moveDuration = moveDistance / Math.max(0.1, this.data.mountedMoveSpeed);
+    var turnDuration = Math.max(Math.abs(yawDelta), Math.abs(pitchDelta)) /
+      THREE.MathUtils.degToRad(Math.max(1, this.data.mountedTurnSpeed));
+    var duration = THREE.MathUtils.clamp(Math.max(moveDuration, turnDuration) * 1000, 280, 1000);
+
     this.activeMounted = component;
     this.activePointerHand = hand;
     this.trackActiveMenu(component.el);
-    this.mountedPokingUntil = performance.now() + 700;
+    this.mountedPokingUntil = 0;
+    this.mountedTransition = {
+      startedAt: performance.now(),
+      duration: duration,
+      startPosition: this.el.object3D.position.clone(),
+      targetPosition: targetRigPosition,
+      startYaw: startYaw,
+      yawDelta: yawDelta,
+      startPitch: startPitch,
+      pitchDelta: pitchDelta,
+    };
+    this.el.setAttribute('data-mounted-transition', 'moving');
     this.setMode('mounted');
     this.ensureMouseLookCapture();
+  },
+
+  setCameraLocalRotation: function (yaw, pitch) {
+    var look = this.cameraEl && this.cameraEl.components['look-controls'];
+    if (look && look.yawObject) {
+      look.yawObject.rotation.y = yaw;
+      if (look.pitchObject) look.pitchObject.rotation.x = pitch;
+      if (look.updateOrientation) look.updateOrientation();
+    } else {
+      this.cameraEl.object3D.rotation.y = yaw;
+      this.cameraEl.object3D.rotation.x = pitch;
+    }
+    this.cameraEl.object3D.updateMatrixWorld(true);
+  },
+
+  updateMountedTransition: function (now) {
+    var transition = this.mountedTransition;
+    if (!transition) return false;
+    var progress = THREE.MathUtils.clamp((now - transition.startedAt) / transition.duration, 0, 1);
+    var eased = progress * progress * (3 - 2 * progress);
+    this.el.object3D.position.lerpVectors(transition.startPosition, transition.targetPosition, eased);
+    this.setCameraLocalRotation(
+      transition.startYaw + transition.yawDelta * eased,
+      transition.startPitch + transition.pitchDelta * eased
+    );
+    this.el.object3D.updateMatrixWorld(true);
+    if (progress < 1) return true;
+
+    this.mountedTransition = null;
+    this.el.removeAttribute('data-mounted-transition');
+    this.startMountedPoke();
+    return false;
+  },
+
+  startMountedPoke: function () {
+    if (!this.activeMounted || !this.activePointerHand) return;
+    var component = this.activeMounted;
+    this.mountedPokingUntil = performance.now() + 500;
     this.placeMountedPoke();
-    hand.el.emit('gripdown', null, false);
+    this.activePointerHand.el.emit('gripdown', null, false);
     var self = this;
-    setTimeout(function () {
+    this.mountedOpenTimer = setTimeout(function () {
+      self.mountedOpenTimer = null;
       if (self.activeMounted !== component) return;
       component.open();
-    }, 550);
+    }, 400);
   },
 
   exitInteraction: function (restoreMode) {
+    if (this.mountedOpenTimer) clearTimeout(this.mountedOpenTimer);
+    this.mountedOpenTimer = null;
+    this.mountedTransition = null;
+    this.el.removeAttribute('data-mounted-transition');
     this.trackActiveMenu(null);
     if (this.activePointerHand) this.activePointerHand.el.emit('gripup', null, false);
     if (this.activeWatchHand) {
@@ -424,6 +512,10 @@ AFRAME.registerComponent('desktop-controls', {
 
   getCameraLocalYaw: function () {
     return this._cameraEuler.setFromQuaternion(this.cameraEl.object3D.quaternion, 'YXZ').y;
+  },
+
+  getCameraLocalPitch: function () {
+    return this._cameraEuler.setFromQuaternion(this.cameraEl.object3D.quaternion, 'YXZ').x;
   },
 
   handFollowsCameraPose: function (hand) {
@@ -513,7 +605,7 @@ AFRAME.registerComponent('desktop-controls', {
 
   placeRestHand: function (hand) {
     var sideX = hand.data.hand === 'left' ? -0.24 : 0.24;
-    var position = this.cameraOffsetToWorld(new THREE.Vector3(sideX, -0.38, -0.42), false);
+    var position = this.cameraOffsetToWorld(new THREE.Vector3(sideX, -0.38, -0.42), true);
     hand.setWorldTransform(position, this.cameraYawQuaternion(), hand.heldEl ? 'Hold' : 'Open');
   },
 
@@ -622,8 +714,13 @@ AFRAME.registerComponent('desktop-controls', {
     } else if (this.mode === 'watch') {
       this.placeWatchPointer();
     } else if (this.mode === 'mounted') {
-      if (performance.now() < this.mountedPokingUntil) this.placeMountedPoke();
+      if (this.updateMountedTransition(performance.now())) {
+        var zone = this.activeMounted && this.activeMounted.el.components['hint-zone'];
+        if (zone) this.placeCandidatePreview({ hand: this.activePointerHand, zone: zone });
+      } else if (performance.now() < this.mountedPokingUntil) this.placeMountedPoke();
       else this.placeMountedPointer();
+      var other = this.activePointerHand && this.hands[this.activePointerHand.data.hand === 'left' ? 'right' : 'left'];
+      if (other) this.placeRestHand(other);
     }
   },
 
