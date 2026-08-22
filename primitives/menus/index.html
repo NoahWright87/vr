@@ -296,7 +296,7 @@
          watch style.
     ============================================================== -->
     <div id="overlay">
-      <span>Showcase — shared VR mechanics, now testable with either tracked hands or semantic desktop hands. Desktop: click the scene for mouse look, use WASD to move, Tab (or Esc when the browser delivers it) for the watch, E for a highlighted mounted control, and F to grab/drop a highlighted box. While a menu is open, keep looking normally: the pointing hand aims at screen center. E or Esc exits a mounted interaction. In XR, the existing tracked-hand behavior is unchanged. <a href="../../index.html">All prototypes</a><a class="menu-edit-link" href="?edit=1" aria-label="Open menu editor">⚙️</a></span>
+      <span>Showcase — shared VR mechanics, now testable with either tracked hands or semantic desktop hands. Desktop: click the scene for mouse look, use WASD to move, C to crouch, Tab (or Esc when the browser delivers it) for the watch, E for a highlighted mounted control, and F to grab/drop a highlighted box. F automatically crouches and stands when reaching a floor object unless you crouched manually. While a menu is open, keep looking normally: the pointing hand aims at screen center. E or Esc exits a mounted interaction. In XR, the existing tracked-hand behavior is unchanged. <a href="../../index.html">All prototypes</a><a class="menu-edit-link" href="?edit=1" aria-label="Open menu editor">⚙️</a></span>
     </div>
 
     <a-scene>
@@ -712,7 +712,7 @@
               position="0 0.02 0"
             ></a-entity>
 
-            <a-text value="Desktop: WASD move\nTab watch   Esc exit\nE mounted   F grab/drop" align="center" color="#9fb0d4" width="1.55" wrap-count="28" position="0 -0.38 0"></a-text>
+            <a-text value="Desktop: WASD move   C crouch\nTab watch   Esc exit\nE mounted   F grab/drop" align="center" color="#9fb0d4" width="1.55" wrap-count="28" position="0 -0.38 0"></a-text>
           </a-entity>
         </a-entity>
       </template>
@@ -883,10 +883,13 @@
 
       <a-entity id="pedestal" position="-1.1 0 -0.7">
         <a-cylinder radius="0.15" height="0.9" position="0 0.45 0" color="#555"></a-cylinder>
+        <a-entity id="pedestal-interaction-anchor" position="0 0 0.75"></a-entity>
         <a-entity id="pedestal-button"
           geometry="primitive: cylinder; radius: 0.08; height: 0.04"
           material="color: #b33"
           position="0 0.92 0"
+          mounted-interaction="anchor: #pedestal-interaction-anchor; normal: 0 1 0; previewStandoff: 0.12"
+          hint-zone="action: mounted; radius: 0.34; maxReach: 1.0; gazeThreshold: 0.9; priority: 20; desktopKey: E; desktopLabel: Open menu; xrKey: POKE; xrLabel: Open menu; hintOffset: 0 0.3 0; hintScale: 0.68; highlightOpacity: 0.24; highlightScale: 1.06"
         ></a-entity>
       </a-entity>
 

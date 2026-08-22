@@ -83,7 +83,7 @@ AFRAME.registerSystem('interaction-hints', {
     return this.hands[this.handedness] || this.hands.right || this.hands.left || null;
   },
 
-  makeDesktopCandidate: function (zone, cameraEl) {
+  makeDesktopCandidate: function (zone, cameraEl, shoulderYOffset) {
     if (!zone.isAvailable('desktop')) return null;
     zone.getWorldPosition(this.zonePosition);
     var toZone = this.zonePosition.clone().sub(this.cameraPosition);
@@ -99,6 +99,7 @@ AFRAME.registerSystem('interaction-hints', {
     [preferred, alternate].forEach(function (candidateHand) {
       if (!candidateHand) return;
       candidateHand.getShoulderWorldPosition(this.shoulderPosition, cameraEl);
+      this.shoulderPosition.y += shoulderYOffset || 0;
       var distance = this.shoulderPosition.distanceTo(this.zonePosition);
       if (isWithinSemanticReach(distance, Math.min(candidateHand.data.maxReach, zone.data.maxReach), zone.data.radius * 0.2) && distance < reachDistance) {
         hand = candidateHand;
@@ -203,6 +204,20 @@ AFRAME.registerSystem('interaction-hints', {
     return !action || this.desktopCandidate.zone.data.action === action ? this.desktopCandidate : null;
   },
 
+  getDesktopCrouchCandidate: function (action, shoulderYOffset) {
+    if (!this.targetingEnabled) return null;
+    var cameraEl = this.getCameraEl();
+    if (!cameraEl || !cameraEl.object3D) return null;
+    cameraEl.object3D.getWorldPosition(this.cameraPosition);
+    cameraEl.object3D.getWorldQuaternion(this.cameraQuaternion);
+    this.cameraForward.set(0, 0, -1).applyQuaternion(this.cameraQuaternion).normalize();
+    var candidates = this.zones.map(function (zone) {
+      if (action && zone.data.action !== action) return null;
+      return this.makeDesktopCandidate(zone, cameraEl, shoulderYOffset);
+    }, this);
+    return chooseInteractionCandidate(candidates);
+  },
+
   getXrCandidate: function (handEl, action) {
     var hand = handEl && handEl.components['semantic-hand'];
     if (!hand) return null;
@@ -214,10 +229,14 @@ AFRAME.registerSystem('interaction-hints', {
     var candidate = source === 'desktop'
       ? this.getDesktopCandidate(action)
       : this.getXrCandidate(handEl, action);
-    if (!candidate) return false;
+    return this.activateCandidate(candidate, action, handEl, phase, source);
+  },
+
+  activateCandidate: function (candidate, action, handEl, phase, source) {
+    if (!candidate || !candidate.zone || !candidate.zone.isAvailable(source || 'desktop')) return false;
     candidate.zone.el.emit('semantic-action', {
       action: action,
-      handEl: handEl,
+      handEl: handEl || candidate.hand.el,
       phase: phase || 'start',
       source: source || 'xr',
       zone: candidate.zone,
