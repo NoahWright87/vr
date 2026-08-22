@@ -58,6 +58,7 @@ AFRAME.registerComponent('desktop-controls', {
     this.activePointerHand = null;
     this.activeWatchHand = null;
     this.activeMenuEl = null;
+    this.previousCanvasCursor = null;
     this.cursorNdc = new THREE.Vector2(0, 0);
     this.mountedPokingUntil = 0;
     this._worldPosition = new THREE.Vector3();
@@ -244,6 +245,19 @@ AFRAME.registerComponent('desktop-controls', {
     this.hintSystem.setTargetingEnabled(mode === 'normal');
     this.setLookEnabled(true);
     this.setGazeEnabled(mode === 'normal');
+    this.setMenuCursorHidden(mode !== 'normal');
+  },
+
+  setMenuCursorHidden: function (hidden) {
+    var canvas = this.sceneEl.canvas;
+    if (!canvas) return;
+    if (hidden) {
+      if (this.previousCanvasCursor === null) this.previousCanvasCursor = canvas.style.cursor;
+      canvas.style.cursor = 'none';
+    } else if (this.previousCanvasCursor !== null) {
+      canvas.style.cursor = this.previousCanvasCursor;
+      this.previousCanvasCursor = null;
+    }
   },
 
   ensureMouseLookCapture: function () {
@@ -486,6 +500,7 @@ AFRAME.registerComponent('desktop-controls', {
 
   remove: function () {
     this.trackActiveMenu(null);
+    this.setMenuCursorHidden(false);
     document.removeEventListener('keydown', this.onKeyDown, true);
     document.removeEventListener('keyup', this.onKeyUp, true);
     document.removeEventListener('mousedown', this.onMouseDown, true);
