@@ -22,7 +22,8 @@ import './menus.js';
     var settleTimer = null;
     var releaseTimer = null;
     function updateShowLine() {
-      fingertipEl.setAttribute('raycaster', 'showLine', handComp.laserActive && hasIntersection);
+      var isDesktop = !(rawEl.sceneEl.renderer && rawEl.sceneEl.renderer.xr && rawEl.sceneEl.renderer.xr.isPresenting);
+      fingertipEl.setAttribute('raycaster', 'showLine', handComp.laserActive && (hasIntersection || isDesktop));
     }
     function enableLaser() {
       handComp.isPointing = true;
