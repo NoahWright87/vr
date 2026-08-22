@@ -401,24 +401,31 @@ AFRAME.registerComponent('desktop-controls', {
   placeRestHand: function (hand) {
     var sideX = hand.data.hand === 'left' ? -0.24 : 0.24;
     var position = this.cameraOffsetToWorld(new THREE.Vector3(sideX, -0.38, -0.42), false);
-    hand.setWorldTransform(position, this.cameraYawQuaternion(), hand.heldEl ? 'Hold' : 'Open');
+    hand.setWorldTransform(position, this.cameraYawQuaternion(), hand.heldEl ? 'Hold' : 'Open', true);
   },
 
   placeHeldHand: function (hand) {
     var sideX = hand.data.hand === 'left' ? -0.2 : 0.2;
     var position = this.cameraOffsetToWorld(new THREE.Vector3(sideX, -0.25, -0.48), true);
-    hand.setWorldTransform(position, this.cameraYawQuaternion(), 'Hold');
+    hand.setWorldTransform(position, this.cameraYawQuaternion(), 'Hold', true);
   },
 
   placeCandidatePreview: function (candidate) {
     var hand = candidate.hand;
     var target = candidate.zone.getWorldPosition(new THREE.Vector3());
-    var normal = target.clone().sub(this.cameraWorldPosition()).normalize();
     var mounted = candidate.zone.el.components['mounted-interaction'];
-    var standoff = mounted ? mounted.data.previewStandoff : 0.18;
-    if (mounted) mounted.getWorldNormal(normal);
-    var fingertip = target.clone().add(normal.clone().multiplyScalar(standoff));
-    hand.setPointPose(fingertip, normal.clone().negate(), 'Point');
+    var standoff = mounted ? mounted.data.previewStandoff : candidate.zone.data.previewStandoff;
+    var direction;
+    var fingertip;
+    if (mounted) {
+      var outwardNormal = mounted.getWorldNormal(new THREE.Vector3());
+      fingertip = target.clone().add(outwardNormal.clone().multiplyScalar(standoff));
+      direction = outwardNormal.negate();
+    } else {
+      direction = target.clone().sub(this.cameraWorldPosition()).normalize();
+      fingertip = target.clone().addScaledVector(direction, -standoff);
+    }
+    hand.setPointPose(fingertip, direction, 'Point');
   },
 
   placeWatchHand: function (snap) {
@@ -431,7 +438,7 @@ AFRAME.registerComponent('desktop-controls', {
   placeWatchPointer: function (snap) {
     var pointerSideX = this.activePointerHand.data.hand === 'left' ? -0.26 : 0.26;
     var fingertip = this.cameraOffsetToWorld(new THREE.Vector3(pointerSideX, -0.26, -0.43), true);
-    this.activePointerHand.setPointPose(fingertip, this.currentAimDirection(fingertip), 'Point', snap);
+    this.activePointerHand.setPointPose(fingertip, this.currentAimDirection(fingertip), 'Point', snap !== false);
   },
 
   placeMountedPoke: function (snap) {
@@ -444,7 +451,7 @@ AFRAME.registerComponent('desktop-controls', {
   placeMountedPointer: function () {
     var sideX = this.activePointerHand.data.hand === 'left' ? -0.24 : 0.24;
     var fingertip = this.cameraOffsetToWorld(new THREE.Vector3(sideX, -0.25, -0.42), true);
-    this.activePointerHand.setPointPose(fingertip, this.currentAimDirection(fingertip), 'Point');
+    this.activePointerHand.setPointPose(fingertip, this.currentAimDirection(fingertip), 'Point', true);
     var other = this.hands[this.activePointerHand.data.hand === 'left' ? 'right' : 'left'];
     if (other) this.placeRestHand(other);
   },

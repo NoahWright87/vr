@@ -254,6 +254,7 @@ AFRAME.registerComponent('hint-zone', {
     hintLockY: { default: false },
     hintLockZ: { default: false },
     hintScale: { default: 1 },
+    previewStandoff: { default: 0.22 },
     highlightColor: { type: 'color', default: '#8de5ff' },
     highlightOpacity: { default: 0.2 },
     highlightScale: { default: 1.035 },

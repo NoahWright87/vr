@@ -3,7 +3,9 @@
       moveMode: { default: 'smooth' },
       turnMode: { default: 'snap' },
       speed: { default: 1.5 },
-      desktopSpeedScale: { default: 0.5 },
+      // A keyboard key is always fully pressed, unlike an analog XR stick.
+      // Keep sustained WASD movement comfortable at that maximum input.
+      desktopSpeedScale: { default: 0.25 },
       snapAngle: { default: 30 },
       teleportDistance: { default: 2.8 },
       comfortVignette: { default: true },
