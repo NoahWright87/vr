@@ -86,8 +86,10 @@ import './menus.js';
       var self = this;
       var side = this.data.hand === 'left' ? 1 : -1;
       var wrapper = document.createElement('a-entity');
+      wrapper.classList.add('hand-space');
       wrapper.setAttribute('rotation', (el.sceneEl.hasWebXR ? -90 : 0) + ' 0 ' + (side === 1 ? 90 : -90));
       el.appendChild(wrapper);
+      this.wrapperEl = wrapper;
 
       var band = document.createElement('a-entity');
       band.classList.add('watch-band');

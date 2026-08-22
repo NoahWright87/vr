@@ -249,6 +249,14 @@ AFRAME.registerComponent('hint-zone', {
     xrKey: { type: 'string' },
     xrLabel: { type: 'string' },
     hintOffset: { type: 'vec3', default: { x: 0, y: 0.32, z: 0 } },
+    hintOffsetSpace: { default: 'world', oneOf: ['world', 'target'] },
+    hintLockX: { default: false },
+    hintLockY: { default: false },
+    hintLockZ: { default: false },
+    hintScale: { default: 1 },
+    highlightColor: { type: 'color', default: '#8de5ff' },
+    highlightOpacity: { default: 0.2 },
+    highlightScale: { default: 1.035 },
     enabled: { default: true },
   },
 
@@ -309,11 +317,22 @@ AFRAME.registerComponent('hint-zone', {
   },
 
   createHighlight: function () {
-    this.highlightBox = new THREE.Box3();
-    this.highlightHelper = new THREE.Box3Helper(this.highlightBox, 0x8de5ff);
-    this.highlightHelper.visible = false;
-    this.highlightHelper.renderOrder = 1000;
-    this.el.sceneEl.object3D.add(this.highlightHelper);
+    this.highlightRoot = new THREE.Group();
+    this.highlightRoot.visible = false;
+    this.highlightMeshes = [];
+    this.highlightSignature = '';
+    this.highlightMaterial = new THREE.MeshBasicMaterial({
+      color: this.data.highlightColor,
+      opacity: this.data.highlightOpacity,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      polygonOffset: true,
+      polygonOffsetFactor: -1,
+      polygonOffsetUnits: -1,
+      side: THREE.DoubleSide,
+    });
+    this.el.sceneEl.object3D.add(this.highlightRoot);
   },
 
   getHighlightEl: function () {
@@ -350,7 +369,7 @@ AFRAME.registerComponent('hint-zone', {
       this.selected = false;
       this.selectionToken = '';
       this.cardEl.setAttribute('visible', false);
-      this.highlightHelper.visible = false;
+      this.highlightRoot.visible = false;
       this.el.removeAttribute('data-hint-selected');
       return;
     }
@@ -369,8 +388,42 @@ AFRAME.registerComponent('hint-zone', {
   updateHighlight: function () {
     var target = this.getHighlightObject3D();
     if (!target) return;
-    this.highlightBox.setFromObject(target);
-    this.highlightHelper.visible = !this.highlightBox.isEmpty();
+    var sourceMeshes = [];
+    target.traverse(function (object) {
+      if (!object.isMesh || !object.geometry) return;
+      // SDF text is rendered as textured quads. Replacing its material with
+      // the glow material reveals those quads as solid rectangles, so glow
+      // the authored prop meshes and leave labels legible on top.
+      for (var ancestor = object; ancestor && ancestor !== target; ancestor = ancestor.parent) {
+        if (ancestor.el && ancestor.el.tagName === 'A-TEXT') return;
+      }
+      sourceMeshes.push(object);
+    });
+    var signature = sourceMeshes.map(function (mesh) { return mesh.uuid; }).join('|');
+    if (signature !== this.highlightSignature) {
+      while (this.highlightRoot.children.length) this.highlightRoot.remove(this.highlightRoot.children[0]);
+      this.highlightMeshes = sourceMeshes.map(function (source) {
+        var glow = new THREE.Mesh(source.geometry, this.highlightMaterial);
+        glow.matrixAutoUpdate = false;
+        glow.frustumCulled = false;
+        glow.renderOrder = 1000;
+        this.highlightRoot.add(glow);
+        return { source: source, glow: glow };
+      }, this);
+      this.highlightSignature = signature;
+    }
+
+    var scaleMultiplier = Math.max(1, this.data.highlightScale);
+    var position = new THREE.Vector3();
+    var quaternion = new THREE.Quaternion();
+    var scale = new THREE.Vector3();
+    this.highlightMeshes.forEach(function (entry) {
+      entry.source.matrixWorld.decompose(position, quaternion, scale);
+      scale.multiplyScalar(scaleMultiplier);
+      entry.glow.matrix.compose(position, quaternion, scale);
+      entry.glow.visible = visibleInHierarchy(entry.source);
+    });
+    this.highlightRoot.visible = this.highlightMeshes.length > 0;
   },
 
   updateHintCard: function (context, selectedForMs) {
@@ -386,36 +439,57 @@ AFRAME.registerComponent('hint-zone', {
     this.keyTextEl.setAttribute('text', 'value', key || '');
     this.labelTextEl.setAttribute('text', 'value', label || '');
 
-    var position = new THREE.Vector3();
-    this.getHighlightObject3D().getWorldPosition(position);
-    position.x += this.data.hintOffset.x;
-    position.y += this.data.hintOffset.y;
-    position.z += this.data.hintOffset.z;
-    this.cardEl.object3D.position.copy(position);
+    this.updateHintTransform();
+  },
+
+  updateHintTransform: function () {
+    var target = this.getHighlightObject3D();
     var cameraEl = this.hintSystem.getCameraEl();
-    if (cameraEl) {
-      cameraEl.object3D.getWorldPosition(position);
-      this.cardEl.object3D.lookAt(position);
+    if (!target || !cameraEl) return;
+
+    this.cardEl.object3D.scale.setScalar(Math.max(0.1, this.data.hintScale));
+
+    var position = new THREE.Vector3();
+    var targetQuaternion = new THREE.Quaternion();
+    target.getWorldPosition(position);
+    target.getWorldQuaternion(targetQuaternion);
+    var offset = new THREE.Vector3(this.data.hintOffset.x, this.data.hintOffset.y, this.data.hintOffset.z);
+    if (this.data.hintOffsetSpace === 'target') offset.applyQuaternion(targetQuaternion);
+    this.cardEl.object3D.position.copy(position.add(offset));
+
+    var cameraPosition = new THREE.Vector3();
+    cameraEl.object3D.getWorldPosition(cameraPosition);
+    var billboard = new THREE.Object3D();
+    billboard.position.copy(this.cardEl.object3D.position);
+    billboard.lookAt(cameraPosition);
+    if (!this.data.hintLockX && !this.data.hintLockY && !this.data.hintLockZ) {
+      this.cardEl.object3D.quaternion.copy(billboard.quaternion);
+      return;
     }
+    if (this.data.hintLockX && this.data.hintLockY && this.data.hintLockZ) {
+      this.cardEl.object3D.quaternion.copy(targetQuaternion);
+      return;
+    }
+
+    var billboardEuler = new THREE.Euler().setFromQuaternion(billboard.quaternion, 'YXZ');
+    var targetEuler = new THREE.Euler().setFromQuaternion(targetQuaternion, 'YXZ');
+    billboardEuler.x = this.data.hintLockX ? targetEuler.x : billboardEuler.x;
+    billboardEuler.y = this.data.hintLockY ? targetEuler.y : billboardEuler.y;
+    billboardEuler.z = this.data.hintLockZ ? targetEuler.z : billboardEuler.z;
+    this.cardEl.object3D.quaternion.setFromEuler(billboardEuler);
   },
 
   tick: function () {
     if (!this.selected) return;
     this.updateHighlight();
-    var position = new THREE.Vector3();
-    var cameraEl = this.hintSystem.getCameraEl();
-    if (cameraEl && this.cardEl.object3D.visible) {
-      cameraEl.object3D.getWorldPosition(position);
-      this.cardEl.object3D.lookAt(position);
-    }
+    if (this.cardEl.object3D.visible) this.updateHintTransform();
   },
 
   remove: function () {
     this.hintSystem.unregisterZone(this);
     if (this.cardEl.parentNode) this.cardEl.parentNode.removeChild(this.cardEl);
-    this.el.sceneEl.object3D.remove(this.highlightHelper);
-    this.highlightHelper.geometry.dispose();
-    this.highlightHelper.material.dispose();
+    this.el.sceneEl.object3D.remove(this.highlightRoot);
+    this.highlightMaterial.dispose();
   },
 });
 
@@ -442,14 +516,14 @@ AFRAME.registerComponent('semantic-hand', {
     this.gripEl.classList.add('semantic-hand-grip');
     this.el.appendChild(this.gripEl);
 
-    this.visualWrapper = document.createElement('a-entity');
-    this.visualWrapper.classList.add('desktop-hand-visual');
-    this.visualWrapper.setAttribute('rotation', '0 0 ' + (side === 1 ? 90 : -90));
-    this.el.appendChild(this.visualWrapper);
-
     this.visualModel = document.createElement('a-entity');
+    this.visualModel.classList.add('desktop-hand-visual');
     this.visualModel.setAttribute('gltf-model', HAND_MODELS[this.data.hand]);
-    this.visualWrapper.appendChild(this.visualModel);
+    var watchComponent = this.el.components['hand-with-watch'];
+    this.handSpaceEl = watchComponent && watchComponent.wrapperEl
+      ? watchComponent.wrapperEl
+      : this.el;
+    this.handSpaceEl.appendChild(this.visualModel);
     this.visualModel.addEventListener('model-loaded', function (evt) {
       var model = evt.detail.model;
       model.traverse(function (object) {
@@ -464,23 +538,20 @@ AFRAME.registerComponent('semantic-hand', {
       self.playPose(self.desktopPose);
     });
 
-    var watchComponent = this.el.components['hand-with-watch'];
-    var wrapperObject = watchComponent && watchComponent.fingertipEl
-      ? watchComponent.fingertipEl.object3D.parent
-      : null;
-    var wrapperQuat = wrapperObject
-      ? wrapperObject.quaternion.clone()
-      : new THREE.Quaternion().setFromEuler(new THREE.Euler(0, 0, side === 1 ? Math.PI / 2 : -Math.PI / 2));
-    this.localFingerDirection = new THREE.Vector3(side * FINGER_POINT_DIR.x, FINGER_POINT_DIR.y, FINGER_POINT_DIR.z)
-      .applyQuaternion(wrapperQuat).normalize();
-    this.localFingertipOffset = new THREE.Vector3(side * FINGERTIP_OFFSET.x, FINGERTIP_OFFSET.y, FINGERTIP_OFFSET.z)
-      .applyQuaternion(wrapperQuat);
-    if (wrapperObject) this.localFingertipOffset.add(wrapperObject.position);
+    this.rawFingerDirection = new THREE.Vector3(side * FINGER_POINT_DIR.x, FINGER_POINT_DIR.y, FINGER_POINT_DIR.z).normalize();
+    this.localFingerDirection = this.rawFingerDirection.clone();
+    this.localFingertipOffset = new THREE.Vector3(side * FINGERTIP_OFFSET.x, FINGERTIP_OFFSET.y, FINGERTIP_OFFSET.z);
+    this._calibrationPosition = new THREE.Vector3();
+    this._calibrationQuaternion = new THREE.Quaternion();
+    this._handWorldQuaternion = new THREE.Quaternion();
 
     if (watchComponent && watchComponent.fingertipEl) {
       watchComponent.fingertipEl.addEventListener('raycaster-intersection', function (evt) {
         var hit = evt.detail.els && evt.detail.els[0];
-        self.el.setAttribute('data-ray-target', hit ? (hit.getAttribute('menu-item') || hit.id || 'target') : 'target');
+        var menuItem = hit && hit.getAttribute('menu-item');
+        self.el.setAttribute('data-ray-target', hit
+          ? ((menuItem && (menuItem.value || menuItem.label)) || hit.id || 'target')
+          : 'target');
       });
       watchComponent.fingertipEl.addEventListener('raycaster-intersection-cleared', function () {
         self.el.removeAttribute('data-ray-target');
@@ -557,6 +628,18 @@ AFRAME.registerComponent('semantic-hand', {
   },
 
   setPointPose: function (fingertipWorldPosition, worldDirection, pose, snap) {
+    var watch = this.el.components['hand-with-watch'];
+    if (watch && watch.fingertipEl) {
+      this.el.object3D.updateMatrixWorld(true);
+      watch.fingertipEl.object3D.getWorldPosition(this._calibrationPosition);
+      this.localFingertipOffset.copy(this.el.object3D.worldToLocal(this._calibrationPosition.clone()));
+      watch.fingertipEl.object3D.getWorldQuaternion(this._calibrationQuaternion);
+      this.el.object3D.getWorldQuaternion(this._handWorldQuaternion);
+      this.localFingerDirection.copy(this.rawFingerDirection)
+        .applyQuaternion(this._calibrationQuaternion)
+        .applyQuaternion(this._handWorldQuaternion.invert())
+        .normalize();
+    }
     var direction = worldDirection.clone().normalize();
     var worldQuaternion = new THREE.Quaternion().setFromUnitVectors(this.localFingerDirection, direction);
     var offset = this.localFingertipOffset.clone().applyQuaternion(worldQuaternion);
@@ -566,7 +649,7 @@ AFRAME.registerComponent('semantic-hand', {
 
   tick: function (time, delta) {
     var isXr = xrIsPresenting(this.el.sceneEl);
-    this.visualWrapper.object3D.visible = !isXr;
+    this.visualModel.object3D.visible = !isXr;
     if (this.mixer) this.mixer.update(Math.min(delta || 0, 50) / 1000);
     if (isXr) return;
     this.el.object3D.position.lerp(this.desiredPosition, 0.24);

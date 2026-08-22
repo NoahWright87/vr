@@ -200,9 +200,12 @@ AFRAME.registerComponent('desktop-controls', {
     if (evt.button !== 0 || this.mode === 'normal' || !this.activePointerHand || xrIsPresenting(this.sceneEl)) return;
     evt.preventDefault();
     var handEl = this.activePointerHand.el;
-    if (this.clickDesktopMenuTarget()) return;
-    handEl.emit('triggerdown', null, false);
-    requestAnimationFrame(function () { handEl.emit('triggerup', null, false); });
+    if (handEl.hasAttribute('data-ray-target')) {
+      handEl.emit('triggerdown', null, false);
+      requestAnimationFrame(function () { handEl.emit('triggerup', null, false); });
+      return;
+    }
+    this.clickDesktopMenuTarget();
   },
 
   clickDesktopMenuTarget: function () {
@@ -443,6 +446,15 @@ AFRAME.registerComponent('desktop-controls', {
     return null;
   },
 
+  closeUnrequestedDesktopWatches: function () {
+    if (this.mode === 'watch') return;
+    ['left', 'right'].forEach(function (side) {
+      var hand = this.hands[side];
+      var watch = hand && hand.el.components['hand-with-watch'];
+      if (watch && watch.projectedMenu && watch.projectedMenu.active) watch.projectedMenu.close();
+    }, this);
+  },
+
   updateNormalHands: function () {
     var candidate = this.hintSystem.desktopCandidate;
     ['left', 'right'].forEach(function (side) {
@@ -464,6 +476,7 @@ AFRAME.registerComponent('desktop-controls', {
 
   tick: function (time, delta) {
     if (xrIsPresenting(this.sceneEl)) return;
+    this.closeUnrequestedDesktopWatches();
     if (this.mode === 'normal') {
       this.applyMovement(delta);
       this.updateNormalHands();
