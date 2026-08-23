@@ -34,10 +34,12 @@
       this._teleportAimMag = 0;
       this._teleportHand = 'left';
       this.onMenuOptionChange = this.onMenuOptionChange.bind(this);
+      this.onSemanticMove = this.onSemanticMove.bind(this);
 
       var self = this;
       var sceneEl = this.el.sceneEl;
       sceneEl.addEventListener('menu-option-change', this.onMenuOptionChange);
+      this.el.addEventListener('semantic-move', this.onSemanticMove);
       sceneEl.addEventListener('loaded', function () {
         var leftEl = document.querySelector('#left-hand');
         var rightEl = document.querySelector('#right-hand');
@@ -234,6 +236,11 @@
       this.applyMoveVector(moveX / amount, moveY / amount, deltaMs);
     },
 
+    onSemanticMove: function (evt) {
+      if (!evt.detail || evt.detail.source !== 'desktop') return;
+      this.applyDesktopMove(evt.detail.x || 0, evt.detail.z || 0, evt.detail.deltaMs || 0);
+    },
+
     applySmoothTurn: function (deltaMs) {
       var turnX = this.rightAxes[2] !== undefined ? this.rightAxes[2] : this.rightAxes[0] || 0;
       if (Math.abs(turnX) < this.data.turnDeadzone) return;
@@ -322,5 +329,6 @@
 
     remove: function () {
       this.el.sceneEl.removeEventListener('menu-option-change', this.onMenuOptionChange);
+      this.el.removeEventListener('semantic-move', this.onSemanticMove);
     },
   });

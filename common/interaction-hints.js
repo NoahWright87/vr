@@ -602,6 +602,7 @@ AFRAME.registerComponent('semantic-hand', {
     maxReach: { default: 1.0 },
     moveSpeed: { default: 0.9 },
     turnSpeed: { default: 360 },
+    desktopScale: { default: 1 },
   },
 
   init: function () {
@@ -615,6 +616,7 @@ AFRAME.registerComponent('semantic-hand', {
     this.mixer = null;
     this.actions = {};
     this.currentAction = null;
+    this.activeMotion = null;
     this.hintSystem = this.el.sceneEl.systems['interaction-hints'];
 
     this.gripEl = document.createElement('a-entity');
@@ -624,6 +626,7 @@ AFRAME.registerComponent('semantic-hand', {
     this.visualModel = document.createElement('a-entity');
     this.visualModel.classList.add('desktop-hand-visual');
     this.visualModel.setAttribute('gltf-model', HAND_MODELS[this.data.hand]);
+    this.visualModel.object3D.scale.setScalar(this.data.desktopScale);
     var watchComponent = this.el.components['hand-with-watch'];
     this.handSpaceEl = watchComponent && watchComponent.wrapperEl
       ? watchComponent.wrapperEl
@@ -741,6 +744,74 @@ AFRAME.registerComponent('semantic-hand', {
     }
   },
 
+  // Runs a short, semantic hand gesture through real hand transforms. The
+  // gameplay system still observes an ordinary moving hand; desktop input
+  // never has to manufacture a controller or bypass collision/gesture code.
+  runWorldMotion: function (keyframes, detail) {
+    if (!keyframes || !keyframes.length) return;
+    var parent = this.el.object3D.parent;
+    parent.updateMatrixWorld(true);
+    var parentQuaternion = new THREE.Quaternion();
+    parent.getWorldQuaternion(parentQuaternion);
+    parentQuaternion.invert();
+    var frames = keyframes.map(function (frame) {
+      return {
+        position: parent.worldToLocal(frame.position.clone()),
+        quaternion: parentQuaternion.clone().multiply(frame.quaternion),
+        pose: frame.pose || 'Hold',
+        duration: Math.max(1, frame.duration || 1),
+      };
+    });
+    this.activeMotion = {
+      frames: frames,
+      index: 0,
+      elapsed: 0,
+      startPosition: this.el.object3D.position.clone(),
+      startQuaternion: this.el.object3D.quaternion.clone(),
+      detail: detail || {},
+    };
+    this.playPose(frames[0].pose);
+  },
+
+  cancelMotion: function () {
+    this.activeMotion = null;
+    this.desiredPosition.copy(this.el.object3D.position);
+    this.desiredQuaternion.copy(this.el.object3D.quaternion);
+  },
+
+  updateMotion: function (delta) {
+    var motion = this.activeMotion;
+    if (!motion) return false;
+    var remaining = Math.max(0, delta || 0);
+    while (motion && remaining >= 0) {
+      var frame = motion.frames[motion.index];
+      var available = Math.max(0, frame.duration - motion.elapsed);
+      var consumed = Math.min(remaining, available);
+      motion.elapsed += consumed;
+      remaining -= consumed;
+      var progress = Math.min(1, motion.elapsed / frame.duration);
+      var eased = progress * progress * (3 - 2 * progress);
+      this.el.object3D.position.lerpVectors(motion.startPosition, frame.position, eased);
+      this.el.object3D.quaternion.copy(motion.startQuaternion).slerp(frame.quaternion, eased);
+      if (progress < 1) break;
+
+      motion.index += 1;
+      if (motion.index >= motion.frames.length) {
+        this.desiredPosition.copy(this.el.object3D.position);
+        this.desiredQuaternion.copy(this.el.object3D.quaternion);
+        this.activeMotion = null;
+        this.el.emit('semantic-hand-motion-complete', motion.detail, false);
+        return true;
+      }
+      motion.startPosition.copy(this.el.object3D.position);
+      motion.startQuaternion.copy(this.el.object3D.quaternion);
+      motion.elapsed = 0;
+      this.playPose(motion.frames[motion.index].pose);
+      if (!remaining) break;
+    }
+    return true;
+  },
+
   updateDesktopFingerCalibration: function () {
     var watch = this.el.components['hand-with-watch'];
     if (!watch || !watch.fingertipEl || !this.indexFingerBase || !this.indexFingerTip) return false;
@@ -796,6 +867,7 @@ AFRAME.registerComponent('semantic-hand', {
     if (this.mixer) this.mixer.update(Math.min(delta || 0, 50) / 1000);
     if (isXr) return;
     if (this.desktopPose === 'Point') this.updateDesktopFingerCalibration();
+    if (this.updateMotion(Math.min(delta || 0, 50))) return;
     var dt = Math.min(delta || 0, 50) / 1000;
     this._moveDelta.copy(this.desiredPosition).sub(this.el.object3D.position);
     var moveDistance = this._moveDelta.length();

@@ -51,23 +51,17 @@
     </style>
   </head>
   <body>
-    <!-- Flat HTML overlay: desktop/browser testing convenience only,
-         invisible in the headset. Real punch/locomotion physics can't be
-         exercised with a mouse, so the "Simulate" buttons call the exact
-         same code path a real controller punch would (see bottom script) —
-         that's how this whole prototype got sanity-checked before ever
-         touching a headset. -->
+    <!-- Flat HTML overlay: desktop/browser instructions only. Mouse input
+         drives the shared hand entities through the real punch tracker. -->
     <div id="overlay">
       <p>
-        Punch Pop — your fists are the controller. Punch to move, punch cubes to pop them.
+        Punch Pop — VR: your fists are the controller. Desktop: WASD + mouse look;
+        hold/release left click for a jab or right click for an uppercut.
         <strong>Clear ~2x2m of real space before trying this in a headset.</strong>
         <a href="../../index.html">All prototypes</a>
       </p>
       <div id="debug-controls">
         <button id="menu-button-html">Menu</button>
-        <button id="sim-punch">Simulate punch (forward)</button>
-        <button id="sim-up">Simulate punch (up-ish)</button>
-        <button id="sim-down">Simulate punch (down-ish)</button>
         <button id="reset-button-html">Reset (desktop)</button>
       </div>
     </div>
@@ -119,7 +113,15 @@
            relative to that new spot. This is what lets "punch = move":
            punch-locomotion translates #rig itself, never the camera.
       ============================================================ -->
-      <a-entity id="rig" position="0 0 0" punch-locomotion>
+      <a-entity
+        id="rig"
+        position="0 0 0"
+        punch-locomotion
+        desktop-movement-input
+        desktop-action-input="primaryAction: jab; secondaryAction: uppercut; leftHand: #leftHand; rightHand: #rightHand; dominantHand: right; alternateHands: true; chargeMs: 900; minimumStrength: 0.35"
+        desktop-hand-presence="camera: #head; leftHand: #leftHand; rightHand: #rightHand; forward: 0.2; down: 0.13; spread: 0.2"
+        semantic-punch-controls="camera: #head; leftHand: #leftHand; rightHand: #rightHand"
+      >
         <a-camera id="head" wasd-controls="enabled: false" punch-tracker>
           <a-text
             id="hud-text"
@@ -248,11 +250,12 @@
         <a-entity
           id="leftHand"
           oculus-touch-controls="hand: left; model: false"
+          semantic-hand="hand: left; moveSpeed: 1.8; turnSpeed: 540; desktopScale: 0.32"
           punch-tracker="edgeDetect: true"
           raycaster="objects: .menu-target; far: 5; enabled: false"
           cursor="fuse: false; downEvents: triggerdown; upEvents: triggerup"
         >
-          <a-sphere radius="0.06" color="#EF476F" shader="flat"></a-sphere>
+          <a-sphere radius="0.06" color="#EF476F" shader="flat" control-mode-visibility="modes: xr"></a-sphere>
           <!-- depth starts at 1 (unit length); laser-beam scales/repositions
                it every frame to stop exactly at whatever it's pointed at,
                instead of a fixed length that visibly pokes out the far
@@ -271,11 +274,12 @@
         <a-entity
           id="rightHand"
           oculus-touch-controls="hand: right; model: false"
+          semantic-hand="hand: right; moveSpeed: 1.8; turnSpeed: 540; desktopScale: 0.32"
           punch-tracker="edgeDetect: true"
           raycaster="objects: .menu-target; far: 5; enabled: false"
           cursor="fuse: false; downEvents: triggerdown; upEvents: triggerup"
         >
-          <a-sphere radius="0.06" color="#118AB2" shader="flat"></a-sphere>
+          <a-sphere radius="0.06" color="#118AB2" shader="flat" control-mode-visibility="modes: xr"></a-sphere>
           <a-box
             class="menu-laser"
             width="0.006"
@@ -313,6 +317,7 @@
       <a-entity world-menu-system></a-entity>
     </a-scene>
 
+    <script type="module" src="../../common/semantic-punch.js"></script>
     <script>
       // ==============================================================
       // Small shared helpers
@@ -1113,6 +1118,7 @@
           baseLockRange: { type: 'number', default: 2.0 }, // meters
           lockRangeFactor: { type: 'number', default: 0.15 },
           maxSpeed: { type: 'number', default: 14 },
+          desktopMoveSpeed: { type: 'number', default: 1.5 },
           gravity: { type: 'number', default: 5.5 },
           groundStopTau: { type: 'number', default: 0.12 },
           airDragTau: { type: 'number', default: 1.0 },
@@ -1158,7 +1164,23 @@
           this.calibPhaseEndTime = 0;
 
           this.onPunch = this.onPunch.bind(this);
+          this.onSemanticMove = this.onSemanticMove.bind(this);
           this.el.addEventListener('punch', this.onPunch);
+          this.el.addEventListener('semantic-move', this.onSemanticMove);
+        },
+
+        onSemanticMove: function (evt) {
+          if (!evt.detail || evt.detail.source !== 'desktop' || menuOpen || this.calibrating) return;
+          var direction = new THREE.Vector3(evt.detail.x || 0, 0, evt.detail.z || 0);
+          if (direction.lengthSq() < 0.0001) return;
+          var cameraQuaternion = new THREE.Quaternion();
+          this.head.object3D.getWorldQuaternion(cameraQuaternion);
+          direction.applyQuaternion(cameraQuaternion);
+          direction.y = 0;
+          direction.normalize().multiplyScalar(this.data.desktopMoveSpeed * (evt.detail.deltaMs / 1000));
+          this.el.object3D.position.add(direction);
+          this.el.object3D.position.x = clamp(this.el.object3D.position.x, -this.data.bounds, this.data.bounds);
+          this.el.object3D.position.z = clamp(this.el.object3D.position.z, -this.data.bounds, this.data.bounds);
         },
 
         // No more hard look-cone gate ("BLOCKED") — the old one existed
@@ -3040,6 +3062,7 @@
         open: function (laserHandEl) {
           this.isOpen = true;
           menuOpen = true;
+          this.el.sceneEl.setAttribute('data-world-menu-open', 'true');
           this.laserHand = laserHandEl;
 
           this.positionInFrontOfPlayer();
@@ -3055,6 +3078,7 @@
         close: function () {
           this.isOpen = false;
           menuOpen = false;
+          this.el.sceneEl.setAttribute('data-world-menu-open', 'false');
 
           this.panel.setAttribute('visible', false);
           if (this.laserHand) this.setLaser(this.laserHand, false);
@@ -3239,7 +3263,7 @@
       });
 
       // ==============================================================
-      // Room textures + desktop simulate buttons
+      // Room textures
       // ==============================================================
       document.querySelector('a-scene').addEventListener('loaded', function () {
         applyCheckerTexture(document.querySelector('#floor'), '#3a4468', '#2c3454', 10, 10);
@@ -3251,39 +3275,6 @@
         applyVignetteTexture(document.querySelector('#vignette'));
       });
 
-      // Desktop-only simulate buttons: no mouse can produce a real
-      // controller-velocity swing, so these call punch-locomotion's
-      // exact onPunch() path directly with a synthetic direction, axis,
-      // and swing stats (a plausible "solid, committed punch"). This is
-      // how the movement physics (gravity, drag, lock-on, hit-assist)
-      // got sanity-checked in a plain browser before ever touching a
-      // headset.
-      function simulatePunch(direction, maxSpeed, handTravelDist, headTravelDist, axis) {
-        var rig = document.querySelector('#rig');
-        var locomotion = rig && rig.components['punch-locomotion'];
-        if (locomotion) {
-          locomotion.onPunch({
-            target: null,
-            detail: {
-              direction: direction,
-              maxSpeed: maxSpeed,
-              handTravelDist: handTravelDist,
-              headTravelDist: headTravelDist,
-              extensionAxis: axis || 'forward',
-              fullyExtended: true,
-            },
-          });
-        }
-      }
-      document.querySelector('#sim-punch').addEventListener('click', function () {
-        simulatePunch(new THREE.Vector3(0, 0, -1), 3.5, 0.5, 0.1, 'forward');
-      });
-      document.querySelector('#sim-up').addEventListener('click', function () {
-        simulatePunch(new THREE.Vector3(0, 0.65, -0.75).normalize(), 3.5, 0.5, 0.1, 'overhead');
-      });
-      document.querySelector('#sim-down').addEventListener('click', function () {
-        simulatePunch(new THREE.Vector3(0, -0.65, -0.75).normalize(), 3.5, 0.5, 0.1, 'forward');
-      });
     </script>
   </body>
 </html>

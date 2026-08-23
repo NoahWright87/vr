@@ -62,7 +62,7 @@
     <!-- Flat HTML overlay: just for desktop/browser testing convenience.
          Inside the headset you'll use the in-scene "RESET" cube instead. -->
     <div id="overlay">
-      <span>Cube Pop — point a controller at a cube and pull the trigger. <a href="../../index.html">All prototypes</a></span>
+      <span>Cube Pop — VR: point and trigger. Desktop: WASD, mouse look, click to pop. <a href="../../index.html">All prototypes</a></span>
       <button id="reset-button-html">Reset (desktop)</button>
     </div>
 
@@ -104,7 +104,13 @@
            controller lasers instead, and the reticle just sits inertly
            in the middle of your view.
       ============================================================ -->
-      <a-camera>
+      <a-entity
+        id="cube-rig"
+        locomotion-demo="speed: 1.5"
+        desktop-movement-input
+        desktop-hand-presence="camera: #cube-camera; leftHand: #left-hand; rightHand: #right-hand"
+      >
+      <a-camera id="cube-camera" wasd-controls="enabled: false">
         <a-text
           id="hud-text"
           value="Popped: 0 / 5"
@@ -138,15 +144,20 @@
              same event names laser-controls used under the hood).
       ============================================================ -->
       <a-entity
+        id="left-hand"
         hand-controls="hand: left"
+        semantic-hand="hand: left; desktopScale: 0.55"
         cursor="fuse: false; downEvents: triggerdown; upEvents: triggerup"
         raycaster="objects: .cube-target, .reset-target; far: 10; showLine: true"
       ></a-entity>
       <a-entity
+        id="right-hand"
         hand-controls="hand: right"
+        semantic-hand="hand: right; desktopScale: 0.55"
         cursor="fuse: false; downEvents: triggerdown; upEvents: triggerup"
         raycaster="objects: .cube-target, .reset-target; far: 10; showLine: true"
       ></a-entity>
+      </a-entity>
 
       <!-- ============================================================
            GAME MANAGER
@@ -188,6 +199,8 @@
       </a-entity>
     </a-scene>
 
+    <script type="module" src="../../common/locomotion.js"></script>
+    <script type="module" src="../../common/desktop-input.js"></script>
     <script>
       // ==============================================================
       // COMPONENT: poppable
