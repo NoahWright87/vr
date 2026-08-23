@@ -26,6 +26,10 @@ function copyRuntimeAssets() {
           resolve(root, 'games/pistols-at-dawn/assets'),
           resolve(output, 'games/pistols-at-dawn/assets'),
         ),
+        copyDirectory(
+          resolve(root, 'games/pistols-at-dawn/areas'),
+          resolve(output, 'games/pistols-at-dawn/areas'),
+        ),
       ]);
     },
   };

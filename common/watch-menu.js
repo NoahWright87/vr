@@ -1,3 +1,4 @@
+import './control-mode.js';
 import './menus.js';
 
   var WATCH_OFFSET = { x: -0.009, y: -0.006, z: 0.100 };
@@ -22,7 +23,9 @@ import './menus.js';
     var settleTimer = null;
     var releaseTimer = null;
     function updateShowLine() {
-      fingertipEl.setAttribute('raycaster', 'showLine', handComp.laserActive && hasIntersection);
+      var controlMode = rawEl.sceneEl.systems['control-mode'];
+      var isDesktop = controlMode && controlMode.isMode('desktop');
+      fingertipEl.setAttribute('raycaster', 'showLine', handComp.laserActive && (hasIntersection || isDesktop));
     }
     function enableLaser() {
       handComp.isPointing = true;
@@ -86,8 +89,10 @@ import './menus.js';
       var self = this;
       var side = this.data.hand === 'left' ? 1 : -1;
       var wrapper = document.createElement('a-entity');
+      wrapper.classList.add('hand-space');
       wrapper.setAttribute('rotation', (el.sceneEl.hasWebXR ? -90 : 0) + ' 0 ' + (side === 1 ? 90 : -90));
       el.appendChild(wrapper);
+      this.wrapperEl = wrapper;
 
       var band = document.createElement('a-entity');
       band.classList.add('watch-band');
@@ -220,6 +225,10 @@ import './menus.js';
     },
 
     tick: function () {
+      var second = Math.floor(Date.now() / 1000);
+
+      if (second === this.lastDisplaySecond) return;
+      this.lastDisplaySecond = second;
       this.updateDisplay();
     },
   });

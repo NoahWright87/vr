@@ -131,11 +131,11 @@
 
         parts.body.object3D.scale.y = Math.max(solid / parts.fullLength, 0.0001);
         parts.body.object3D.position.set(0, 0, -solid / 2);
-        parts.body.setAttribute('visible', solid > 0.001);
+        parts.body.object3D.visible = solid > 0.001;
 
         parts.ash.object3D.scale.y = Math.max(ashLength / parts.fullLength, 0.0001);
         parts.ash.object3D.position.set(0, 0, -(solid + ashLength / 2));
-        parts.ash.setAttribute('visible', ashLength > 0.001);
+        parts.ash.object3D.visible = ashLength > 0.001;
 
         parts.ember.object3D.position.set(0, 0, -length);
         parts.hitbox.object3D.scale.y = (length + 0.04) / (parts.fullLength + 0.04);
@@ -702,7 +702,7 @@
         },
 
         updateHud: function () {
-          if (!this.hud) return;
+          if (!this.hud || !PLAYER_HUD_VISIBLE) return;
           this.hud.setAttribute(
             'text',
             'value',

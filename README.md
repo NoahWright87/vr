@@ -15,6 +15,9 @@ Deployed as a static site (planned: `vr.noahwright.dev` via Netlify).
 /common/menus.js              shared menu rows, pages, chrome, and projection
 /common/watch-menu.js         shared wrist watch and pointing interaction
 /common/locomotion.js         shared locomotion component
+/common/desktop-controls.js   desktop intent, movement, and interaction modes
+/common/interaction-hints.js  semantic hands, hint zones, mounted/grab primitives
+/common/interaction-targeting.js deterministic input-agnostic target selection
 /vite.config.js               Vite entries and runtime-asset copying
 ```
 
@@ -119,7 +122,9 @@ Tuning knobs not yet exposed in the menu (drag, room size, cube-cube collision r
 
   Guns produce no smoke at the moment of the shot. Instead a barrel remembers how hard it's been worked, and once you stop shooting for a beat, that much smoke curls up out of the muzzle — cheaper than puffing on every trigger pull, and it looks more like a western. Smoke, glass, sparks, beer, fires and puddles all come out of recycled pools (entities are reused from free lists at unit size and scaled, never created and destroyed), which is what keeps a sustained pour or a spreading fire from hitching the frame. You can sweep smoke away by waving a hand through it, or clear it by bringing the muzzle up in front of your face to blow across it. The glug, the cap clink, and breaking glass are synthesized with the Web Audio API rather than shipped as assets, which keeps each prototype a single self-contained file.
 
-  On performance: A-Frame gives you geometry caching (480 meshes in this scene share 80 geometries) and frustum culling for free, but no batching, no instancing, and no material sharing — every mesh here has its own material. The measured problem was neither of those. A-Frame builds `a-cylinder` at 36x18 segments and `a-sphere` at 36x18, about 1300 triangles each, so a scene made of bottle necks and cigars was carrying **276,000 triangles**. Patching the registered primitives' schema defaults once, before the scene initializes, brought that to **27,000** without touching a single creation site. What's left is ~160 draw calls, which is the next thing worth attacking if it ever matters: about 210 of the 480 meshes are the five separate ring discs on each of 37 target faces, and baking a bullseye into one texture would collapse those to 37.
+  On performance: A-Frame gives you geometry caching (480 meshes in the full range share 80 geometries) and frustum culling for free, but no batching, no instancing, and no material sharing — every mesh here has its own material. A-Frame builds `a-cylinder` at 36x18 segments and `a-sphere` at 36x18, about 1300 triangles each, so the original scene was carrying **276,000 triangles**. Patching the registered primitives' schema defaults once brought that to **27,000**. Destinations now live in separate `areas/*.html` fragments: teleport loads one destination's builder scripts/content behind the fade and disposes the previous entity tree, so hidden towns do not keep rendering, ticking, raycasting, or appearing in global interaction scans. In a desktop runtime smoke test, leaving the full range for the farm reduced live A-Frame entities from 439 to 127. The watch clock updates its text once per second rather than once per rendered frame, repeated visibility changes bypass A-Frame's attribute parser, and the HUD can be hidden from the watch menu. What's left in the full range is draw-call pressure: the separate ring discs on target faces are a good future texture/instancing candidate if headset measurements still show GPU pressure.
+
+  Repeated interaction discovery is mutation-indexed: hot paths reuse live element lists for grabbables, shootables, hands, ignition sources, targets, tanks, and brace surfaces instead of repeatedly querying the entire A-Frame DOM. Proximity haptics run at 12.5 Hz while actual grip selection remains immediate. Watch → **Show Performance** enables a low-frequency in-headset readout for FPS, frame time, draw calls, triangles, geometries, and textures. Future GLBs can use `model-prop` to pair the visual model with a simple box/sphere/cylinder hit proxy; detailed model meshes then opt out of gameplay raycasts.
 
   Hit targets are invincible rings on a board that tips over like a steel pop-up target; a whole group resets together once every target in it is down. The gallery spans an arc in front of you: three tiers of stationary targets at increasing distance, a couple of spinning target wheels, a couple of conveyor belts sliding targets in alternating directions, and a row of whack-a-mole-style poppers that surface on a timer. Also has the gaze-reticle fallback for target scoring, though the grab/dangle/holster/throw/slot mechanic itself is VR-only.
 
@@ -142,7 +147,15 @@ Small, reusable interaction building blocks — a design-system for VR, in the S
     - The **wall screen's** is a *sidecar*: a small companion panel (with its own chrome title bar) toggled beside the main one, which never has to hide or get covered — good for stats/detail on whatever's currently showing without interrupting it.
     - The **pedestal's** is a *tutorial overlay*: arrow-and-caption hints drawn on top of the still-visible menu, stepped with any face button (bottom button back, top button forward — A/X and B/Y on real Quest controllers) instead of an on-screen row — the menu underneath is intentionally made inert (`projected-menu`'s `suppressPointing`, for exactly this "covered but still visible" case) while the overlay is up, so a face button steps the tutorial instead of also activating whatever's behind it.
 
-Coming soon: movement (locomotion + turning), vibration/haptics, object manipulation, and spatial audio.
+  - **Desktop semantic hands** — outside XR, click the scene for pointer-locked mouse look and use WASD to move. `Tab` raises the non-dominant watch while the dominant simulated hand points (`Esc` is an alias when the browser does not consume it for pointer-lock); `E` completes a real hand poke on the reachable, highlighted wall menu and locks the player into its authored mounted-interaction anchor; `F` grabs or drops the selected test box through the same semantic hand action used by an XR grip. `E` or `Esc` exits mounted interaction. The watch exposes handedness plus Always/Delayed/Never interaction hints, both persisted locally. Hint zones resolve overlapping candidates once, so the outlined/signposted object and the object an action receives cannot disagree. XR controllers still own the gameplay hand transforms while presenting.
+
+The desktop layer intentionally expresses intent instead of emulating an
+`XRInputSource`: tracked XR input and desktop input converge on the shared
+gameplay-facing hand entities. The V1 box has only a small shared held/falling/
+resting state machine; Pistols at Dawn's larger holster/stack/throw/catch graph
+remains isolated until it can be migrated incrementally.
+
+Coming soon: broader object manipulation, vibration/haptics, and spatial audio.
 
 ## Running locally
 

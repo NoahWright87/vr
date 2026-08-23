@@ -1,8 +1,11 @@
+  import './control-mode.js';
+
   AFRAME.registerComponent('locomotion-demo', {
     schema: {
       moveMode: { default: 'smooth' },
       turnMode: { default: 'snap' },
       speed: { default: 1.5 },
+      speedMultiplier: { default: 1 },
       snapAngle: { default: 30 },
       teleportDistance: { default: 2.8 },
       comfortVignette: { default: true },
@@ -21,6 +24,7 @@
     init: function () {
       this.rigEl = this.el;
       this.cameraEl = this.el.querySelector('a-camera') || document.querySelector('a-camera');
+      this.controlMode = this.el.sceneEl.systems['control-mode'];
       this.turnCooldown = 0;
       this.leftAxes = [0, 0, 0, 0];
       this.rightAxes = [0, 0, 0, 0];
@@ -29,9 +33,13 @@
       this._teleportAimY = 0;
       this._teleportAimMag = 0;
       this._teleportHand = 'left';
+      this.onMenuOptionChange = this.onMenuOptionChange.bind(this);
+      this.onSemanticMove = this.onSemanticMove.bind(this);
 
       var self = this;
       var sceneEl = this.el.sceneEl;
+      sceneEl.addEventListener('menu-option-change', this.onMenuOptionChange);
+      this.el.addEventListener('semantic-move', this.onSemanticMove);
       sceneEl.addEventListener('loaded', function () {
         var leftEl = document.querySelector('#left-hand');
         var rightEl = document.querySelector('#right-hand');
@@ -71,6 +79,18 @@
 
     setTurnMode: function (mode) {
       this.data.turnMode = mode;
+    },
+
+    setSpeedMultiplier: function (multiplier) {
+      var next = Number(multiplier);
+      if (!Number.isFinite(next) || next <= 0) return;
+      this.data.speedMultiplier = next;
+      this.el.setAttribute('data-move-speed-multiplier', String(next));
+    },
+
+    onMenuOptionChange: function (evt) {
+      if (!evt.detail || evt.detail.key !== 'move-speed') return;
+      this.setSpeedMultiplier(evt.detail.value);
     },
 
     setVignette: function (enabled) {
@@ -115,7 +135,7 @@
 
     updateVignetteStyle: function () {
       if (!this.vignette) return;
-      var enabled = !!this.data.comfortVignette && this.data.moveMode === 'smooth';
+      var enabled = this.controlMode.isMode('xr') && !!this.data.comfortVignette && this.data.moveMode === 'smooth';
       var strength = Math.max(0, Math.min(1, this.data.vignetteStrength));
       var softness = Math.max(0.05, Math.min(1, this.data.vignetteSoftness));
       var inset = Math.max(0.25, Math.min(1.2, this.data.vignetteInset));
@@ -194,12 +214,31 @@
       var moveAmount = Math.hypot(moveX, moveY);
       if (moveAmount < this.data.moveDeadzone) return;
 
+      this.applyMoveVector(moveX, moveY, deltaMs);
+    },
+
+    // Input-source-neutral movement core. XR thumbsticks and desktop WASD
+    // both express a local x/z intent and arrive here.
+    applyMoveVector: function (moveX, moveY, deltaMs) {
+      if (!this.cameraEl) return;
+
       var direction = new AFRAME.THREE.Vector3(moveX, 0, moveY);
       var cameraQuat = new AFRAME.THREE.Quaternion();
       this.cameraEl.object3D.getWorldQuaternion(cameraQuat);
       var worldMove = direction.applyQuaternion(cameraQuat).setY(0);
-      worldMove.normalize().multiplyScalar(this.data.speed * (deltaMs / 1000));
+      worldMove.normalize().multiplyScalar(this.data.speed * this.data.speedMultiplier * (deltaMs / 1000));
       this.rigEl.object3D.position.add(worldMove);
+    },
+
+    applyDesktopMove: function (moveX, moveY, deltaMs) {
+      var amount = Math.hypot(moveX, moveY);
+      if (!amount) return;
+      this.applyMoveVector(moveX / amount, moveY / amount, deltaMs);
+    },
+
+    onSemanticMove: function (evt) {
+      if (!evt.detail) return;
+      this.applyDesktopMove(evt.detail.x || 0, evt.detail.z || 0, evt.detail.deltaMs || 0);
     },
 
     applySmoothTurn: function (deltaMs) {
@@ -284,7 +323,12 @@
       if (this.vignette) {
         var lx = this.leftAxes[2] !== undefined ? this.leftAxes[2] : this.leftAxes[0] || 0;
         var ly = this.leftAxes[3] !== undefined ? this.leftAxes[3] : this.leftAxes[1] || 0;
-        this.vignette.setAttribute('visible', !!this.data.comfortVignette && this.data.moveMode === 'smooth' && Math.hypot(lx, ly) > 0.12);
+        this.vignette.setAttribute('visible', this.controlMode.isMode('xr') && !!this.data.comfortVignette && this.data.moveMode === 'smooth' && Math.hypot(lx, ly) > 0.12);
       }
+    },
+
+    remove: function () {
+      this.el.sceneEl.removeEventListener('menu-option-change', this.onMenuOptionChange);
+      this.el.removeEventListener('semantic-move', this.onSemanticMove);
     },
   });

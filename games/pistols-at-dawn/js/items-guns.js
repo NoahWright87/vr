@@ -490,7 +490,7 @@
 
         updatePreview: function () {
           var point = this.bladeWorldPosition();
-          var shotguns = document.querySelectorAll('[cuttable-shotgun]');
+          var shotguns = sceneElements('[cuttable-shotgun]');
           var best = null;
           var bestCandidate = null;
           for (var i = 0; i < shotguns.length; i++) {
@@ -874,22 +874,22 @@
 
           var supportGrip = gripObjectOf(supportHand);
           supportGrip.getWorldPosition(this._supportPosition);
-          var surfaces = document.querySelectorAll('[gun-brace-surface]');
+          var surfaces = sceneElements('[gun-brace-surface]');
           var nearest = null;
-          var nearestDistance = Infinity;
+          var nearestDistanceSq = Infinity;
           for (var i = 0; i < surfaces.length; i++) {
             var surface = surfaces[i].components['gun-brace-surface'];
             if (!surface) continue;
             surface.nearestPoint(this._supportPosition, this._braceCandidate);
-            var distance = this._braceCandidate.distanceTo(this._supportPosition);
-            if (distance < nearestDistance) {
-              nearestDistance = distance;
+            var distanceSq = this._braceCandidate.distanceToSquared(this._supportPosition);
+            if (distanceSq < nearestDistanceSq) {
+              nearestDistanceSq = distanceSq;
               nearest = surface;
               this._bracePoint.copy(this._braceCandidate);
             }
           }
 
-          this.previewSurface = nearestDistance <= this.bracePreviewDistance ? nearest : null;
+          this.previewSurface = nearestDistanceSq <= this.bracePreviewDistance * this.bracePreviewDistance ? nearest : null;
           if (this.previewSurface) {
             this.setBraceIndicator(this._supportPosition, this._bracePoint, '#ffe066');
           } else {
@@ -1230,7 +1230,7 @@
 
           this.lensMesh.getWorldPosition(this._lens);
           this.cameraEl.object3D.getWorldPosition(this._eye);
-          var awake = this._lens.distanceTo(this._eye) < this.data.wake;
+          var awake = this._lens.distanceToSquared(this._eye) < this.data.wake * this.data.wake;
 
           if (awake !== this.awake) {
             this.awake = awake;
