@@ -163,3 +163,22 @@ multiplayer exactly as LAN-only as today:
   cost, not a one-time setup — pay a TURN provider or self-host
   `coturn` on a VPS with bandwidth headroom. This is the piece that
   most changes "zero cost" into "real hosting bill."
+
+Two client-side changes fall out of this once a public relay actually
+exists, neither of which is done yet:
+
+- **The "Local relay" address field goes away.** With a fixed public
+  relay, its `wss://` address becomes a hardcoded constant in the
+  client instead of something typed into `#mp-relay-url` — a room
+  code becomes the only thing anyone ever enters. Today's manual
+  copy/paste path can probably retire at the same time, since it only
+  exists as a no-relay fallback.
+- **Auto-host (`primitives/menus/index.html`'s `tryAutoHostViaLocalRelay`)
+  stops making sense and should be removed, not left in place
+  alongside the new address.** It exists specifically to answer "is a
+  relay running on THIS machine" by probing `ws://localhost:8787` —
+  a question that only means something when the relay is something
+  someone launches locally. A permanent public relay has no
+  "machine it's running on" from the player's side, so that whole
+  detection path becomes dead code once this lands, not an
+  enhancement to build on.
