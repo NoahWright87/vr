@@ -9,12 +9,14 @@
       var PROXIMITY_HAPTIC_INTENSITY = 0.15; // 0-1, deliberately light ("slight buzz", not a jolt)
       var PROXIMITY_HAPTIC_PULSE_MS = 60; // re-issued every tick while in range, so this just needs to outlast one frame
       var REGRIP_WINDOW_MS = 400; // release and re-squeeze inside this and you keep what you were holding — see hand-rig.reclaimStash
+      var RECOIL_MAX_POSITION = 0.18; // meters; automatic fire can kick hard, but never detach the hand from the arm
+      var RECOIL_MAX_ROTATION = 0.7; // radians, about 40 degrees on any local axis
       // ==============================================================
       // gripObjectOf
       // Where an object held by this hand should actually hang. Not
       // the hand entity itself: hand-rig keeps a child "grip" that
-      // carries the drink sway, the cigar tremor and the drunk aim
-      // drift (see hand-rig.updateGrip), so that a wobbling hand takes
+      // carries drink sway, cigar tremor, drunk aim drift and recoil
+      // (see hand-rig.updateGrip), so that an offset hand takes
       // whatever it's holding along with it instead of the object
       // swimming inside a steady fist.
       // ==============================================================
@@ -34,31 +36,19 @@
       // which is naturally a no-op while holding anything that isn't
       // a gun.
       //
-      // A hand holds up to HAND_CAPACITY things at once rather than
-      // one, which is where a lot of the ridiculousness comes from:
-      // grip again with a full-ish hand and you pick up another
-      // thing. An armful of bottles all launch together on one throw.
-      // None of that is special-cased anywhere — items just get
-      // fanned out (see holsterable.applyHandPose) and every operation
-      // loops.
-      //
-      // One exception: a hand never holds more than one firearm (see
-      // hasWeapon, and findCatchingHand's own use of it). Stacking
-      // guns the same way as everything else meant firing one trigger
-      // pull out of a fistful of pistols, and once a hand had several
-      // it was hard to get any one of them back out — no way to drop
-      // just one, no way for the other hand to pull one away. Simplest
-      // fix that doesn't touch the general stacking model: gate the
-      // few places something joins heldObjects, same as HAND_CAPACITY
-      // already does. See TODO.md for the fuller rework this is
-      // standing in for.
+      // A hand can stack up to HAND_CAPACITY props, but only through
+      // the deliberate quick re-grip gesture: release and squeeze
+      // again inside REGRIP_WINDOW_MS. A continuously closed hand no
+      // longer absorbs nearby catches or repeated gripdown events.
+      // Weapons are exclusive — a hand containing one cannot add a
+      // prop, and a hand containing props cannot add a weapon.
       //
       // It also owns where your hand actually IS, which is not the
       // same thing as where the controller is once you've been
       // drinking. Everything held hangs off a child "grip" entity
       // rather than off this one, and updateGrip below moves that grip
-      // around with the drink sway, the cigar tremor, and the drunk
-      // aim drift. That's why those effects had to live here rather
+      // around with drink sway, cigar tremor, drunk aim drift and gun
+      // recoil. That's why those effects live here rather
       // than in holsterable: a wobble applied per-object made the gun
       // swim inside a perfectly steady fist. Applied to the grip, the
       // hand and everything in it move together, which is what being
@@ -87,6 +77,7 @@
           this.fingerOnTrigger = false; // capacitive touch, not a pull — see triggertouchstart/end below
           this.gripHeld = false; // true for the whole time the grip is squeezed, not just the initial press
           this.triggerHeld = false; // and the same for the trigger, which a bowstring and a hose nozzle both need
+          this.activeGripInteraction = null; // fixed machinery handles are gripped without joining the carry stack
 
           this.velocity = new THREE.Vector3();
           this._prevPos = new THREE.Vector3();
@@ -104,6 +95,14 @@
           this._handWorld = new THREE.Vector3();
           this._drift = new THREE.Vector3();
           this._handQuat = new THREE.Quaternion();
+          this.recoilPosition = new THREE.Vector3(); // independent from vice effects so all offsets stack
+          this.recoilRotation = new THREE.Vector3();
+          this._recoilScratchPosition = new THREE.Vector3();
+          this._recoilScratchRotation = new THREE.Vector3();
+          this.gripAnchorWorld = new THREE.Vector3(); // a scenery brace pins the grip child here while its trigger is held
+          this.gripAnchored = false;
+          this._gripAnchorLocal = new THREE.Vector3();
+          this.recoilReturnRate = 8;
           this._ghostSeeded = false;
           this._visualBase = null; // the cosmetic hand mesh's own resting transform, captured once
 
@@ -170,20 +169,62 @@
         updateGrip: function (time, dtSeconds) {
           var w = viceWobble(this._wobbleSeed, time, this._wobble);
           this.updateGhostHand(dtSeconds);
+          this.updateRecoil(dtSeconds);
 
           var grip = this.gripEl.object3D;
           grip.position.set(
-            this._drift.x * DRIFT_POSITION_GAIN,
-            this._drift.y * DRIFT_POSITION_GAIN,
-            this._drift.z * DRIFT_POSITION_GAIN
+            this._drift.x * DRIFT_POSITION_GAIN + this.recoilPosition.x,
+            this._drift.y * DRIFT_POSITION_GAIN + this.recoilPosition.y,
+            this._drift.z * DRIFT_POSITION_GAIN + this.recoilPosition.z
           );
+          if (this.gripAnchored) {
+            this._gripAnchorLocal.copy(this.gripAnchorWorld);
+            this.el.object3D.worldToLocal(this._gripAnchorLocal);
+            grip.position.copy(this._gripAnchorLocal);
+          }
           grip.rotation.set(
-            ((w.x - this._drift.y * DRIFT_ROTATION_GAIN) * Math.PI) / 180,
-            ((w.y + this._drift.x * DRIFT_ROTATION_GAIN) * Math.PI) / 180,
-            (w.z * Math.PI) / 180
+            ((w.x - this._drift.y * DRIFT_ROTATION_GAIN) * Math.PI) / 180 + this.recoilRotation.x,
+            ((w.y + this._drift.x * DRIFT_ROTATION_GAIN) * Math.PI) / 180 + this.recoilRotation.y,
+            (w.z * Math.PI) / 180 + this.recoilRotation.z
           );
 
           this.applyToVisual(grip);
+        },
+
+        setGripAnchor: function (worldPoint) {
+          this.gripAnchorWorld.copy(worldPoint);
+          this.gripAnchored = true;
+        },
+
+        clearGripAnchor: function () {
+          this.gripAnchored = false;
+        },
+
+        // Firearms calculate kick in world space from the barrel and
+        // player stance. Convert it into this tracked hand's frame,
+        // accumulate it, and let it settle independently of vice
+        // drift. worldRotation is a small axis-angle vector whose
+        // magnitude is radians.
+        addRecoilImpulse: function (worldPosition, worldRotation, returnRate) {
+          this.el.object3D.getWorldQuaternion(this._handQuat).invert();
+          this.recoilPosition.add(this._recoilScratchPosition.copy(worldPosition).applyQuaternion(this._handQuat));
+          this.recoilRotation.add(this._recoilScratchRotation.copy(worldRotation).applyQuaternion(this._handQuat));
+
+          if (this.recoilPosition.lengthSq() > RECOIL_MAX_POSITION * RECOIL_MAX_POSITION) {
+            this.recoilPosition.setLength(RECOIL_MAX_POSITION);
+          }
+          this.recoilRotation.x = Math.max(-RECOIL_MAX_ROTATION, Math.min(RECOIL_MAX_ROTATION, this.recoilRotation.x));
+          this.recoilRotation.y = Math.max(-RECOIL_MAX_ROTATION, Math.min(RECOIL_MAX_ROTATION, this.recoilRotation.y));
+          this.recoilRotation.z = Math.max(-RECOIL_MAX_ROTATION, Math.min(RECOIL_MAX_ROTATION, this.recoilRotation.z));
+          this.recoilReturnRate = Math.max(returnRate || 8, 0.1);
+        },
+
+        updateRecoil: function (dtSeconds) {
+          var remaining = Math.exp(-this.recoilReturnRate * dtSeconds);
+          this.recoilPosition.multiplyScalar(remaining);
+          this.recoilRotation.multiplyScalar(remaining);
+          if (this.recoilPosition.lengthSq() < 0.00000001) this.recoilPosition.set(0, 0, 0);
+          if (this.recoilRotation.lengthSq() < 0.00000001) this.recoilRotation.set(0, 0, 0);
         },
 
         updateGhostHand: function (dtSeconds) {
@@ -251,16 +292,35 @@
           return this.heldObjects.length >= HAND_CAPACITY;
         },
 
-        // Whether this hand already has a firearm among heldObjects —
-        // the one-weapon-per-hand exception to the general stacking
-        // rule. Checked wherever something is about to join
-        // heldObjects (onGripDown, reclaimStash) or wherever
-        // findCatchingHand is deciding whether this hand is a legal
-        // catch for an incoming firearm.
+        isWeaponObject: function (objEl) {
+          var components = objEl && objEl.components;
+          return !!(components && (
+            components.firearm ||
+            components.bow ||
+            components.launcher ||
+            components.nozzle
+          ));
+        },
+
+        // Whether this hand already has a weapon among heldObjects.
+        // Guns, bow, launcher and tank nozzle all occupy the hand by
+        // themselves; throwable explosives remain deliberately
+        // stackable props.
         hasWeapon: function () {
+          var self = this;
           return this.heldObjects.some(function (objEl) {
-            return !!objEl.components.firearm;
+            return self.isWeaponObject(objEl);
           });
+        },
+
+        // The invariant at the boundary where something joins a
+        // rigidly held stack. Non-weapons may stack with non-weapons;
+        // a weapon always occupies the hand by itself.
+        canAddToHeld: function (objEl) {
+          if (!objEl || this.isFull()) return false;
+          if (!this.heldObjects.length) return true;
+          if (this.hasWeapon()) return false;
+          return !this.isWeaponObject(objEl);
         },
 
         // Public "this hand now holds that" used both by this
@@ -339,11 +399,24 @@
         // to take it back.
         onGripDown: function () {
           this.gripHeld = true;
-          this.reclaimStash();
+          if (!this.heldObjects.length && !this.supportObjects.length) {
+            var interaction = this.findGripInteraction();
+            if (interaction) {
+              this.activeGripInteraction = interaction;
+              interaction.grab(this.el);
+              return;
+            }
+          }
+          var deliberateRegrip = this.reclaimStash();
+          if (this.hasWeapon()) return;
+          // Already holding something without having just performed
+          // the release/re-press gesture: this is a duplicate input,
+          // not permission to grow the stack.
+          if (this.heldObjects.length && !deliberateRegrip) return;
           if (this.isFull()) return;
 
           var obj = this.findGrabbableObject();
-          if (obj && !(obj.components.firearm && this.hasWeapon())) {
+          if (obj && this.canAddToHeld(obj)) {
             obj.components.holsterable.grab(this.el);
             this.take(obj);
             return;
@@ -353,7 +426,7 @@
           // won't take — see hasWeapon), but maybe something in your
           // OTHER hand offers a second place to hold it — a shotgun
           // forend.
-          this.takeSupport('grip');
+          if (!this.heldObjects.length) this.takeSupport('grip');
         },
 
         // Shared by both buttons; which one an object answers to is the
@@ -382,6 +455,11 @@
         // their slots while the rest hit the floor.
         onGripUp: function () {
           this.gripHeld = false;
+
+          if (this.activeGripInteraction) {
+            this.activeGripInteraction.release(this.el);
+            this.activeGripInteraction = null;
+          }
 
           this.dropSupport('grip');
 
@@ -417,17 +495,24 @@
         // Take back everything from the last release, if it was recent
         // enough and nothing else has claimed it in the meantime.
         reclaimStash: function () {
-          if (!this.stash || !this.stash.length) return;
+          if (!this.stash || !this.stash.length) return false;
 
           if (performance.now() - this.stashTime > REGRIP_WINDOW_MS) {
             this.stash = [];
-            return;
+            return false;
           }
 
           var self = this;
-          this.stash.forEach(function (obj) {
-            if (self.isFull()) return;
-            if (obj.components.firearm && self.hasWeapon()) return;
+          var weapon = this.stash.find(function (obj) {
+            return self.isWeaponObject(obj);
+          });
+          // A stale mixed stash can exist after upgrading from the old
+          // behavior. Prefer reclaiming its weapon alone instead of
+          // recreating the invalid gun-plus-props stack.
+          var candidates = weapon ? [weapon] : this.stash;
+          var reclaimed = false;
+          candidates.forEach(function (obj) {
+            if (!self.canAddToHeld(obj)) return;
             var holsterable = obj.components.holsterable;
             if (!holsterable) return;
             // Somebody else picked it up, or it broke, in the
@@ -439,8 +524,10 @@
 
             holsterable.grab(self.el);
             self.take(obj);
+            reclaimed = true;
           });
           this.stash = [];
+          return reclaimed;
         },
 
         // An actual pull (past the digital press threshold), not just
@@ -451,6 +538,22 @@
         // forend is on a forend, not a trigger.
         onTriggerDown: function () {
           this.triggerHeld = true;
+
+          if (this.activeGripInteraction) {
+            this.activeGripInteraction.onTriggerUse();
+            return;
+          }
+
+          // The trigger on a hand already holding a support grip is a
+          // separate control from the gun's firing trigger. Firearms
+          // use it to clamp that hand to nearby scenery; bows and any
+          // other support object simply ignore the generic dispatch.
+          if (this.supportObjects.length) {
+            this.supportObjects.forEach(function (objEl) {
+              useHeldObject(objEl, 'onSupportTriggerUse');
+            });
+            return;
+          }
 
           // A bowstring is drawn with the finger that would shoot,
           // which is both how a bow works and what keeps GRIP free to
@@ -497,6 +600,9 @@
         // pickup from something lying right there.
         onTriggerUp: function () {
           this.triggerHeld = false;
+          this.supportObjects.forEach(function (objEl) {
+            useHeldObject(objEl, 'onSupportTriggerEnd');
+          });
           this.dropSupport('trigger');
         },
 
@@ -542,6 +648,7 @@
           var self = this;
           var nearest = null;
           var nearestDist = Infinity;
+          var nearestPriority = Infinity;
           var objPos = new THREE.Vector3();
 
           objects.forEach(function (objEl) {
@@ -555,13 +662,34 @@
             if (!eligible) return;
 
             var d = holsterable.grabDistanceTo(handPos);
-            if (d < holsterable.data.grabRadius && d < nearestDist) {
+            var priority = holsterable.data.grabPriority || 0;
+            if (d < holsterable.data.grabRadius &&
+                (priority < nearestPriority || (priority === nearestPriority && d < nearestDist))) {
               nearest = objEl;
               nearestDist = d;
+              nearestPriority = priority;
             }
           });
 
           return nearest;
+        },
+
+        findGripInteraction: function () {
+          var handPos = new THREE.Vector3();
+          this.el.object3D.getWorldPosition(handPos);
+          var handles = document.querySelectorAll('.grip-interactable');
+          var best = null;
+          var bestDist = Infinity;
+          for (var i = 0; i < handles.length; i++) {
+            var control = handles[i].components['siege-control'];
+            if (!control || !control.canGrab(this.el)) continue;
+            var d = control.grabDistance(handPos);
+            if (d < control.data.grabRadius && d < bestDist) {
+              best = control;
+              bestDist = d;
+            }
+          }
+          return best;
         },
       });
 
@@ -590,7 +718,12 @@
 
         tick: function () {
           var handRig = this.el.components['hand-rig'];
-          if (handRig && handRig.isFull()) return;
+          if (handRig && (
+            handRig.isFull() ||
+            handRig.heldObjects.length ||
+            handRig.danglingObjects.length ||
+            handRig.supportObjects.length
+          )) return;
 
           var trackedControls = this.el.components['tracked-controls'];
           var gamepad = trackedControls && trackedControls.controller;

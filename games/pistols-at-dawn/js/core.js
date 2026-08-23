@@ -1785,10 +1785,11 @@
             var holsterable = items[i].components.holsterable;
             if (!holsterable || holsterable.state !== 'held') continue;
 
-            if (!this._heldPool[count]) this._heldPool[count] = { rank: 0, pos: new THREE.Vector3() };
+            if (!this._heldPool[count]) this._heldPool[count] = { rank: 0, pos: new THREE.Vector3(), holsterable: null };
             var entry = this._heldPool[count];
             items[i].object3D.getWorldPosition(entry.pos);
             entry.rank = SLOT_SIZE_RANK[holsterable.data.itemSize];
+            entry.holsterable = holsterable;
             HELD_ITEMS.push(entry);
             count++;
           }
