@@ -8,6 +8,8 @@
     <script>window.AFRAME_CDN_ROOT = '../../vendor/aframe-1.6.0/';</script>
     <script src="../../vendor/aframe-1.6.0/aframe-v1.6.0.min.js"></script>
     <script type="module" src="../../common/watch-menu.js"></script>
+    <script type="module" src="../../common/locomotion.js"></script>
+    <script type="module" src="../../common/desktop-controls.js"></script>
 
     <style>
       body {
@@ -68,7 +70,7 @@
   </head>
   <body>
     <div id="overlay">
-      <span>Pistols at Dawn — grab, draw, throw, and combine anything you can reach. Go find out what breaks. <a href="../../index.html">All prototypes</a></span>
+      <span>Pistols at Dawn — WASD/mouse to move and look, E to use nearby doors, Tab for Watch. Gamepad: sticks + X to interact. <a href="../../index.html">All prototypes</a></span>
     </div>
     <div id="teleport-buttons">
       <div class="teleport-label">Teleport</div>
@@ -261,7 +263,16 @@
            rig's movement for free regardless of where it sits in the
            hierarchy.
       ============================================================ -->
-      <a-entity id="player-rig" teleport-hub data-area-persistent>
+      <a-entity
+        id="player-rig"
+        teleport-hub
+        locomotion-demo
+        semantic-look-controls="camera: #head-camera"
+        gamepad-input="leftHand: #left-hand; rightHand: #right-hand"
+        touch-controls="leftHand: #left-hand; rightHand: #right-hand; primaryAction: none; interactAction: interact; interactLabel: INTERACT; grabAction: none; watchAction: watch; watchLabel: WATCH; crouchAction: none"
+        desktop-controls="camera: #head-camera; leftHand: #left-hand; rightHand: #right-hand"
+        data-area-persistent
+      >
         <a-camera id="head-camera">
           <a-entity id="player-hud">
             <a-text
@@ -413,10 +424,10 @@
              exactly like it would from a top-level hand — the wrap
              doesn't change that path, just adds a stop along it.
         ============================================================ -->
-        <a-entity class="hand" oculus-touch-controls="hand: left; model: false" hand-rig="visual: #hand-visual-left" proximity-haptics hand-with-watch="hand: left"></a-entity>
+        <a-entity id="left-hand" class="hand" oculus-touch-controls="hand: left; model: false" hand-rig="visual: #hand-visual-left" semantic-hand="hand: left; maxReach: 1" proximity-haptics hand-with-watch="hand: left"></a-entity>
         <a-entity id="hand-visual-left" hand-controls="hand: left; handModelStyle: lowPoly; color: #3a3a3a"></a-entity>
 
-        <a-entity class="hand" oculus-touch-controls="hand: right; model: false" hand-rig="visual: #hand-visual-right" proximity-haptics hand-with-watch="hand: right"></a-entity>
+        <a-entity id="right-hand" class="hand" oculus-touch-controls="hand: right; model: false" hand-rig="visual: #hand-visual-right" semantic-hand="hand: right; maxReach: 1" proximity-haptics hand-with-watch="hand: right"></a-entity>
         <a-entity id="hand-visual-right" hand-controls="hand: right; handModelStyle: lowPoly; color: #3a3a3a"></a-entity>
       </a-entity>
       <!-- end #player-rig -->

@@ -104,6 +104,11 @@
             this.switchTo('ghost-town').then(function () {
               var rig = document.querySelector('#player-rig');
               var hub = rig && rig.components['teleport-hub'];
+              var location = findTownLocation('ghost-town');
+              if (rig && location) {
+                rig.object3D.position.set(location.position.x, location.position.y, location.position.z);
+                rig.object3D.rotation.set(0, (location.rotationY * Math.PI) / 180, 0);
+              }
               this.setLoading(false);
               if (hub) hub.fadeTo(0, TELEPORT_FADE_IN_MS, function () {});
             }.bind(this)).catch(function (error) {
@@ -377,5 +382,32 @@
             dur: dur,
             easing: 'linear',
           });
+        },
+      });
+
+      // A town door owns just one action: once an interaction hint selects
+      // it, use the same fade-and-area-switch route as Watch teleport. The
+      // hint system is input-source neutral, so keyboard E, gamepad X, and
+      // the touch-screen INTERACT button all arrive here as one event.
+      registerComponent('town-door', {
+        schema: {
+          destination: { default: 'saloon' },
+        },
+
+        init: function () {
+          this.onSemanticAction = this.onSemanticAction.bind(this);
+          this.el.addEventListener('semantic-action', this.onSemanticAction);
+        },
+
+        onSemanticAction: function (evt) {
+          var detail = evt.detail || {};
+          if (detail.action !== 'mounted' || detail.phase !== 'start') return;
+          var rig = document.querySelector('#player-rig');
+          var hub = rig && rig.components['teleport-hub'];
+          if (hub) hub.teleportTo(this.data.destination);
+        },
+
+        remove: function () {
+          this.el.removeEventListener('semantic-action', this.onSemanticAction);
         },
       });

@@ -43,7 +43,22 @@
 
 <!-- South-to-north building rows. These are solid visual blockouts only;
      the varied silhouette gives future individual destinations a clear home. -->
-<a-box class="ghost-town-building" width="4.6" height="3.4" depth="5.2" color="#87513a" position="-9 1.7 12"></a-box>
+<!-- The first west-side blockout is the Saloon. Its front is toward the
+     street (+X); the door uses the shared semantic hint path rather than
+     becoming a one-off desktop click target. -->
+<a-box class="ghost-town-building ghost-town-saloon" width="4.6" height="3.4" depth="5.2" color="#87513a" position="-9 1.7 12"></a-box>
+<a-text value="SALOON" align="center" color="#f0dfba" width="3.3" position="-6.68 2.8 12" rotation="0 90 0"></a-text>
+<a-box
+  id="ghost-town-saloon-door"
+  class="ghost-town-door"
+  width="0.16"
+  height="2.15"
+  depth="1.45"
+  color="#4d3020"
+  position="-6.66 1.075 12"
+  town-door="destination: saloon"
+  hint-zone="action: mounted; radius: 0.42; maxReach: 1; gazeThreshold: 0.88; priority: 30; desktopKey: E; desktopLabel: Enter Saloon; gamepadKey: X; gamepadLabel: Enter Saloon; touchKey: TAP; touchLabel: Enter Saloon; xrKey: POKE; xrLabel: Enter Saloon; hintOffset: 0 0.32 0.16; hintOffsetSpace: target; hintLockX: true; hintLockY: true; hintLockZ: true; hintScale: 0.68; highlightOpacity: 0.24; highlightScale: 1.045"
+></a-box>
 <a-box class="ghost-town-building" width="5.3" height="4.6" depth="4.6" color="#6f6250" position="-9 2.3 6"></a-box>
 <a-box class="ghost-town-building" width="4.2" height="3.8" depth="5" color="#9b6841" position="-9 1.9 0"></a-box>
 <a-box class="ghost-town-building" width="5.6" height="4.1" depth="4.4" color="#77705c" position="-9 2.05 -6"></a-box>

@@ -20,12 +20,27 @@ test('destinations are lazy fragments instead of simultaneous scene entities', (
 test('Ghost Town is the startup hub with its two welcome gateways and ten building blockouts', () => {
   assert.match(loader, /this\.switchTo\('ghost-town'\)/);
   assert.match(loader, /id: 'ghost-town', label: 'Ghost Town', position: \{ x: 0, y: 0, z: 24 \}/);
+  assert.match(loader, /rig\.object3D\.position\.set\(location\.position\.x, location\.position\.y, location\.position\.z\)/);
   assert.match(page, /menu-item="value: teleport-ghost-town; label: Ghost Town"/);
   assert.equal((ghostTown.match(/class="ghost-town-welcome-gateway/g) || []).length, 2);
   assert.equal((ghostTown.match(/Welcome to Ghost Town!/g) || []).length, 2);
   assert.match(ghostTown, /class="ghost-town-welcome-gateway" position="0 0 20">/);
   assert.match(ghostTown, /class="ghost-town-welcome-gateway" position="0 0 -20" rotation="0 180 0">/);
   assert.equal((ghostTown.match(/class="ghost-town-building/g) || []).length, 10);
+});
+
+test('the Saloon door uses the shared semantic controls to enter the Saloon', () => {
+  assert.match(page, /src="\.\.\/\.\.\/common\/locomotion\.js"/);
+  assert.match(page, /src="\.\.\/\.\.\/common\/desktop-controls\.js"/);
+  assert.match(page, /gamepad-input="leftHand: #left-hand; rightHand: #right-hand"/);
+  assert.match(page, /touch-controls="leftHand: #left-hand; rightHand: #right-hand/);
+  assert.match(page, /desktop-controls="camera: #head-camera; leftHand: #left-hand; rightHand: #right-hand"/);
+  assert.match(ghostTown, /class="ghost-town-building ghost-town-saloon"/);
+  assert.match(ghostTown, /id="ghost-town-saloon-door"/);
+  assert.match(ghostTown, /town-door="destination: saloon"/);
+  assert.match(ghostTown, /desktopKey: E; desktopLabel: Enter Saloon/);
+  assert.match(loader, /registerComponent\('town-door'/);
+  assert.match(loader, /hub\.teleportTo\(this\.data\.destination\)/);
 });
 
 test('destination builders are absent from the eager script list', () => {
