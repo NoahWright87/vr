@@ -26,6 +26,9 @@
         {
           id: 'ghost-town', label: 'Ghost Town', position: { x: 0, y: 0, z: 24 }, rotationY: 0,
           fragment: 'areas/ghost-town.html',
+          arrivals: {
+            'saloon-entrance': { position: { x: -5.7, y: 0, z: 12 }, rotationY: 90 },
+          },
         },
         {
           id: 'range', label: 'The Range', position: { x: 0, y: 0, z: 0 }, rotationY: 0,
@@ -34,7 +37,7 @@
         },
         {
           id: 'saloon', label: 'The Saloon', position: { x: 0, y: 0, z: -60 }, rotationY: 0,
-          fragment: 'areas/saloon.html', scripts: ['js/world-saloon-darts.js'],
+          fragment: 'areas/saloon.html', scripts: ['js/world-saloon-darts.js', 'js/world-saloon-interior.js'],
         },
         {
           id: 'farm', label: 'The Farm', position: { x: 0, y: 0, z: 60 }, rotationY: 0,
@@ -324,7 +327,7 @@
           });
         },
 
-        teleportTo: function (id) {
+        teleportTo: function (id, arrival) {
           if (this.fading) return; // one jump at a time
 
           var loc = null;
@@ -343,8 +346,10 @@
           var el = this.el;
           this.fadeTo(1, TELEPORT_FADE_OUT_MS, function () {
             areaManager.switchTo(id).then(function () {
-              el.object3D.position.set(loc.position.x, loc.position.y, loc.position.z);
-              el.object3D.rotation.set(0, (loc.rotationY * Math.PI) / 180, 0);
+              var destination = (arrival && arrival.position) || loc.position;
+              var rotationY = arrival && Number.isFinite(arrival.rotationY) ? arrival.rotationY : loc.rotationY;
+              el.object3D.position.set(destination.x, destination.y, destination.z);
+              el.object3D.rotation.set(0, (rotationY * Math.PI) / 180, 0);
 
               this.fadeTo(0, TELEPORT_FADE_IN_MS, function () {
                 this.fading = false;
@@ -392,6 +397,7 @@
       registerComponent('town-door', {
         schema: {
           destination: { default: 'saloon' },
+          arrival: { default: '' },
         },
 
         init: function () {
@@ -404,7 +410,9 @@
           if (detail.action !== 'mounted' || detail.phase !== 'start') return;
           var rig = document.querySelector('#player-rig');
           var hub = rig && rig.components['teleport-hub'];
-          if (hub) hub.teleportTo(this.data.destination);
+          var location = findTownLocation(this.data.destination);
+          var arrival = location && location.arrivals && location.arrivals[this.data.arrival];
+          if (hub) hub.teleportTo(this.data.destination, arrival);
         },
 
         remove: function () {

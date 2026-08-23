@@ -6,6 +6,7 @@ const page = readFileSync(new URL('../games/pistols-at-dawn/index.html', import.
 const loader = readFileSync(new URL('../games/pistols-at-dawn/js/world-town.js', import.meta.url), 'utf8');
 const menu = readFileSync(new URL('../games/pistols-at-dawn/js/world-menu.js', import.meta.url), 'utf8');
 const ghostTown = readFileSync(new URL('../games/pistols-at-dawn/areas/ghost-town.html', import.meta.url), 'utf8');
+const saloonInterior = readFileSync(new URL('../games/pistols-at-dawn/js/world-saloon-interior.js', import.meta.url), 'utf8');
 
 test('destinations are lazy fragments instead of simultaneous scene entities', () => {
   for (const id of ['ghost-town', 'range', 'saloon', 'farm', 'stable']) {
@@ -40,7 +41,22 @@ test('the Saloon door uses the shared semantic controls to enter the Saloon', ()
   assert.match(ghostTown, /town-door="destination: saloon"/);
   assert.match(ghostTown, /desktopKey: E; desktopLabel: Enter Saloon/);
   assert.match(loader, /registerComponent\('town-door'/);
-  assert.match(loader, /hub\.teleportTo\(this\.data\.destination\)/);
+  assert.match(loader, /hub\.teleportTo\(this\.data\.destination, arrival\)/);
+});
+
+test('the expanded Saloon has a shared interior, return door, and dart lanes', () => {
+  const saloon = readFileSync(new URL('../games/pistols-at-dawn/areas/saloon.html', import.meta.url), 'utf8');
+  assert.match(saloon, /saloon-interior/);
+  assert.match(loader, /js\/world-saloon-interior\.js/);
+  assert.match(loader, /'saloon-entrance': \{ position: \{ x: -5\.7, y: 0, z: 12 \}, rotationY: 90 \}/);
+  assert.match(loader, /teleportTo: function \(id, arrival\)/);
+  assert.match(loader, /location\.arrivals\[this\.data\.arrival\]/);
+  assert.match(saloonInterior, /SALOON_WIDTH = 16/);
+  assert.match(saloonInterior, /addBottle/);
+  assert.match(saloonInterior, /buildTables/);
+  assert.match(saloonInterior, /buildPianoNook/);
+  assert.match(saloonInterior, /id', 'saloon-exit-door'/);
+  assert.match(saloonInterior, /destination: ghost-town; arrival: saloon-entrance/);
 });
 
 test('destination builders are absent from the eager script list', () => {
