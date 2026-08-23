@@ -24,6 +24,10 @@
       // your actual head is turned inside the headset.
       var TOWN_LOCATIONS = [
         {
+          id: 'ghost-town', label: 'Ghost Town', position: { x: 0, y: 0, z: 24 }, rotationY: 0,
+          fragment: 'areas/ghost-town.html',
+        },
+        {
           id: 'range', label: 'The Range', position: { x: 0, y: 0, z: 0 }, rotationY: 0,
           fragment: 'areas/range.html',
           scripts: ['js/items-siege-weapons.js', 'js/world-saloon-bar.js', 'js/world-shooting-stall.js', 'js/world-targets.js'],
@@ -96,8 +100,8 @@
           this.observeOwnership();
 
           var start = function () {
-            this.setLoading(true, 'Loading The Range...');
-            this.switchTo('range').then(function () {
+            this.setLoading(true, 'Loading Ghost Town...');
+            this.switchTo('ghost-town').then(function () {
               var rig = document.querySelector('#player-rig');
               var hub = rig && rig.components['teleport-hub'];
               this.setLoading(false);
