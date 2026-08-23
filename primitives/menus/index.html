@@ -465,6 +465,14 @@
            a child of #rig, since it represents where the REMOTE
            peer's camera is pointing, not the local one. -->
       <a-entity id="remote-laser" line="start: 0 0 0; end: 0 0 0; color: #fff" visible="false"></a-entity>
+
+      <!-- A laser alone is easy to miss (e.g. pointed straight at you,
+           it foreshortens to a dot) — a small sphere at the remote
+           peer's actual head position is a much harder miss, and
+           costs nothing extra to compute: it's positioned from the
+           same "aim" broadcast the laser already uses (origin is the
+           remote camera's world position), no new network message. -->
+      <a-entity id="remote-body" geometry="primitive: sphere; radius: 0.12" material="color: #fff" visible="false"></a-entity>
            Every clickable row is just an entity with its own
            geometry/material plus the "menu-item" component below —
            that component is the reusable part; the background plane
@@ -1571,6 +1579,7 @@
       var aimTimer = null;
       var cameraObj = document.getElementById('camera').object3D;
       var remoteLaserEl = document.getElementById('remote-laser');
+      var remoteBodyEl = document.getElementById('remote-body');
 
       function log (text) {
         var line = document.createElement('div');
@@ -1610,6 +1619,10 @@
           color: remoteColor,
         });
         remoteLaserEl.setAttribute('visible', true);
+
+        remoteBodyEl.setAttribute('position', origin);
+        remoteBodyEl.setAttribute('material', 'color', remoteColor);
+        remoteBodyEl.setAttribute('visible', true);
       }
 
       function onOpen () {
@@ -1645,6 +1658,7 @@
         sendPingBtn.hidden = true;
         stopAimBroadcast();
         remoteLaserEl.setAttribute('visible', false);
+        remoteBodyEl.setAttribute('visible', false);
       }
 
       hostRelayBtn.addEventListener('click', function () {
@@ -1737,6 +1751,50 @@
         connection.send(JSON.stringify(message));
         log('sent: ping ' + message.ts);
       });
+
+      // If a relay happens to be running on THIS machine (npm run
+      // signal / the packaged exe, both default to this port), host
+      // automatically instead of making the person on the relay's
+      // own laptop find and type an address. This only ever succeeds
+      // for a tab on the same machine as the relay — a joining peer
+      // on a different device (a headset, say) has nothing listening
+      // on ITS OWN localhost, so the probe below just fails quietly
+      // there and leaves the manual controls alone. Reuses the same
+      // "Host via relay" button rather than duplicating its flow;
+      // clicking a still-enabled button is a no-op if the person
+      // already started hosting/joining manually before this
+      // resolves. Deliberately re-enables the relay Join control
+      // right after, rather than leaving it locked out along with
+      // everything else the way a real manual host click does — two
+      // people testing on one machine (both of which "detect" the
+      // same local relay) still need a way for one of them to
+      // override the guess and join the other's room instead.
+      var DEFAULT_RELAY_PORT = 8787;
+      (function tryAutoHostViaLocalRelay () {
+        var localRelayUrl = 'ws://localhost:' + DEFAULT_RELAY_PORT;
+        var probe = new WebSocket(localRelayUrl);
+        var settled = false;
+        var timer = setTimeout(function () {
+          if (settled) return;
+          settled = true;
+          probe.close();
+        }, 1000);
+        probe.addEventListener('open', function () {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          probe.close();
+          if (hostRelayBtn.disabled) return;
+          relayUrlEl.value = localRelayUrl;
+          statusEl.textContent = 'Local relay detected — hosting automatically...';
+          hostRelayBtn.click();
+          joinRelayBtn.disabled = false;
+        });
+        probe.addEventListener('error', function () {
+          settled = true;
+          clearTimeout(timer);
+        });
+      })();
     </script>
   </body>
 </html>

@@ -223,10 +223,16 @@ npm run signal
 ```
 
 This prints one or more `ws://<ip>:8787` addresses — paste one into
-the "Local relay" field in the showcase panel on each peer. Everyone
-needs to be on the same local network as whatever machine runs this;
-it does not work over the open internet. The relay only ever sees the
-one-time handshake — actual gameplay traffic goes directly
+the "Local relay" field in the showcase panel on each peer. **Except
+on the machine actually running the relay**: that page detects it
+automatically (it probes `ws://localhost:8787` on load) and starts
+hosting on its own, room code and all, with nothing to type — the
+person running the relay is almost always the one meant to host,
+since headsets/other devices won't have anything listening on their
+own localhost. Everyone needs to be on the same local network as
+whatever machine runs this; it does not work over the open internet.
+The relay only ever sees the one-time handshake — actual gameplay
+traffic goes directly
 peer-to-peer once two peers connect.
 
 **Prebuilt Windows executable**, so people without Node.js installed
