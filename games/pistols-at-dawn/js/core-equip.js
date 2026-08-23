@@ -56,7 +56,7 @@
       // stacking is reserved for hand-rig's explicit quick re-grip.
       // ==============================================================
       function findCatchingHand(worldPos, radius, isWeapon) {
-        var hands = document.querySelectorAll('.hand');
+        var hands = sceneElements('.hand');
         var handPos = new THREE.Vector3();
         var best = null;
         var bestDist = radius;
@@ -119,7 +119,7 @@
       // ==============================================================
       function findCatchingSlot(worldPos, holsterable) {
         var itemRank = SLOT_SIZE_RANK[holsterable.data.itemSize];
-        var slots = document.querySelectorAll('.anchor-slot');
+        var slots = sceneElements('.anchor-slot');
         var slotPos = new THREE.Vector3();
         var best = null;
         var bestDist = Infinity;
@@ -397,6 +397,7 @@
           this.sphere = document.createElement('a-sphere');
           this._shownRadius = SLOT_SPHERE_BASE_RADIUS[this.data.size] * this.data.indicatorScale;
           this._shownOpacity = 0.35;
+          this._sphereVisible = true;
           this.sphere.setAttribute('radius', this._shownRadius);
           this.sphere.setAttribute(
             'material',
@@ -443,7 +444,7 @@
 
         tick: function (time, dt) {
           if (!this.accepting) {
-            this.sphere.setAttribute('visible', false);
+            this.setIndicatorVisible(false);
             this.wasInRange = false;
             this.clickElapsed = null;
             return;
@@ -452,9 +453,21 @@
           // should still glow as a replacement approaches, the same
           // invitation an empty slot gives.
           if (this.isFull() && !this.data.swap) {
-            this.sphere.setAttribute('visible', false);
+            this.setIndicatorVisible(false);
             this.wasInRange = false;
             this.clickElapsed = null;
+            return;
+          }
+
+          // Most sockets spend most frames with no item in either hand. Keep
+          // their static idle appearance without repeating distance/math work
+          // until world-systems reports an actually held candidate.
+          if (!HELD_ITEMS.length && this.clickElapsed === null) {
+            this.setIndicatorVisible(!this.data.idleHidden);
+            this.wasInRange = false;
+            if (!this.data.idleHidden) {
+              this.setIndicator(SLOT_SPHERE_BASE_RADIUS[this.data.size] * this.data.indicatorScale, 0.25);
+            }
             return;
           }
 
@@ -470,11 +483,11 @@
           // tighter, reveal distance.
           var revealDist = this.data.revealDistance || approachRadius;
           if (this.data.idleHidden && nearestDist > revealDist && this.clickElapsed === null) {
-            this.sphere.setAttribute('visible', false);
+            this.setIndicatorVisible(false);
             this.wasInRange = false;
             return;
           }
-          this.sphere.setAttribute('visible', true);
+          this.setIndicatorVisible(true);
 
           var baseR = SLOT_SPHERE_BASE_RADIUS[this.data.size];
           var maxR = SLOT_SPHERE_MAX_RADIUS[this.data.size];
@@ -519,6 +532,12 @@
             this._shownOpacity = opacity;
             this.sphere.setAttribute('material', 'opacity', opacity);
           }
+        },
+
+        setIndicatorVisible: function (visible) {
+          if (visible === this._sphereVisible) return;
+          this._sphereVisible = visible;
+          this.sphere.object3D.visible = visible;
         },
 
         // Nearest currently-HELD (actively gripped, not dangling —
@@ -1325,7 +1344,7 @@
         // outright rather than rely on that staying true).
         findNearestSlot: function (worldPos) {
           var itemRank = SLOT_SIZE_RANK[this.data.itemSize];
-          var slots = document.querySelectorAll('.anchor-slot');
+          var slots = sceneElements('.anchor-slot');
           var best = null;
           var bestRank = Infinity;
           var bestDist = Infinity;

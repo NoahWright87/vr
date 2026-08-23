@@ -164,7 +164,7 @@
 
         var manager = document.querySelector('#range-manager');
 
-        var hinges = document.querySelectorAll('[pop-target]');
+        var hinges = sceneElements('[pop-target]');
         for (var i = 0; i < hinges.length; i++) {
           var popTarget = hinges[i].components['pop-target'];
           if (!popTarget || popTarget.fallen) continue;
@@ -174,7 +174,7 @@
           popTarget.fall();
         }
 
-        var breakables = document.querySelectorAll('[breakable]');
+        var breakables = sceneElements('[breakable]');
         for (var b = 0; b < breakables.length; b++) {
           var breakable = breakables[b].components.breakable;
           if (!breakable || breakable.broken || !breakable.data.autoShatter) continue;
@@ -186,7 +186,7 @@
         // And everything loose gets thrown. Note it goes through the
         // ordinary throw path, so a blasted bottle is catchable in
         // mid-air and can be shot out of it like any other.
-        var loose = document.querySelectorAll('.grabbable');
+        var loose = sceneElements('.grabbable');
         for (var g = 0; g < loose.length; g++) {
           var holsterable = loose[g].components.holsterable;
           if (!holsterable) continue;
