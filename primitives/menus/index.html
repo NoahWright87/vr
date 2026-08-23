@@ -417,7 +417,12 @@
       <span>Showcase — shared semantic-hand interactions. Keyboard: WASD/mouse, C/Tab/E/F. Gamepad: sticks + face/shoulder buttons. Mobile: joystick, drag + action buttons. <a href="../../index.html">All prototypes</a><a class="menu-edit-link" href="?edit=1" aria-label="Open menu editor">⚙️</a></span>
     </div>
 
-    <a-scene>
+    <!-- keyboard-shortcuts' enterVR binds "F" to toggle desktop VR
+         fullscreen by default (A-Frame core, not something defined in
+         this repo) — it collides with desktop-controls' own "F" for
+         grab, added above. Disabling just that half leaves Escape
+         still exiting VR normally. -->
+    <a-scene keyboard-shortcuts="enterVR: false">
       <a-light type="ambient" color="#fff" intensity="0.7"></a-light>
       <a-light type="directional" position="2 3 2" intensity="0.7"></a-light>
       <a-sky color="#0d1526"></a-sky>
@@ -1707,10 +1712,19 @@
       function startAimBroadcast (sendFn) {
         if (aimTimer) return;
         var worldPos = new AFRAME.THREE.Vector3();
+        var worldQuat = new AFRAME.THREE.Quaternion();
         var worldDir = new AFRAME.THREE.Vector3();
         aimTimer = setInterval(function () {
           cameraObj.getWorldPosition(worldPos);
-          cameraObj.getWorldDirection(worldDir);
+          cameraObj.getWorldQuaternion(worldQuat);
+          // NOT cameraObj.getWorldDirection() — on this AFRAME/three.js
+          // pairing it came back pointing behind the camera instead of
+          // in front (confirmed by a live multi-headset test: every
+          // laser pointed backwards). common/menus.js's projected-menu
+          // placement already solves "where is the camera facing" the
+          // same way real gameplay code in this repo does: rotate the
+          // camera's own local -Z by its world orientation.
+          worldDir.set(0, 0, -1).applyQuaternion(worldQuat);
           sendFn(JSON.stringify({
             type: 'aim',
             origin: { x: worldPos.x, y: worldPos.y, z: worldPos.z },
