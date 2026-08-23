@@ -1,4 +1,4 @@
-import './control-mode.js';
+import './input-router.js';
 import {
   chooseInteractionCandidate,
   isWithinSemanticReach,
@@ -199,6 +199,7 @@ AFRAME.registerSystem('interaction-hints', {
     next.forEach(function (selection, zone) {
       zone.setSelected(true, {
         isXr: isXr,
+        inputFamily: isXr ? 'xr' : this.el.sceneEl.systems['input-router'].getActiveFamily(),
         hand: selection.hand,
         time: time,
         hintMode: this.hintMode,
@@ -236,9 +237,9 @@ AFRAME.registerSystem('interaction-hints', {
   },
 
   activateForHand: function (action, handEl, phase, source) {
-    var candidate = source === 'desktop'
-      ? this.getDesktopCandidate(action)
-      : this.getXrCandidate(handEl, action);
+    var candidate = source === 'xr'
+      ? this.getXrCandidate(handEl, action)
+      : this.getDesktopCandidate(action);
     return this.activateCandidate(candidate, action, handEl, phase, source);
   },
 
@@ -302,6 +303,10 @@ AFRAME.registerComponent('hint-zone', {
     highlight: { type: 'selector' },
     desktopKey: { type: 'string' },
     desktopLabel: { type: 'string' },
+    gamepadKey: { type: 'string' },
+    gamepadLabel: { type: 'string' },
+    touchKey: { type: 'string' },
+    touchLabel: { type: 'string' },
     xrKey: { type: 'string' },
     xrLabel: { type: 'string' },
     hintOffset: { type: 'vec3', default: { x: 0, y: 0.32, z: 0 } },
@@ -437,7 +442,7 @@ AFRAME.registerComponent('hint-zone', {
       return;
     }
 
-    var token = (context.isXr ? 'xr:' : 'desktop:') +
+    var token = (context.inputFamily || (context.isXr ? 'xr' : 'keyboard')) + ':' +
       (context.hand ? context.hand.data.hand : 'none') + ':' +
       (this.dynamicDesktopLabel || '') + ':' + (this.dynamicXrLabel || '');
     if (!this.selected || this.selectionToken !== token) {
@@ -507,10 +512,20 @@ AFRAME.registerComponent('hint-zone', {
     if (!show) return;
 
     var isXr = context.isXr;
-    var key = isXr ? this.data.xrKey : this.data.desktopKey;
+    var family = context.inputFamily || (isXr ? 'xr' : 'keyboard');
+    var gamepadDefaults = { mounted: 'X', grab: 'RB' };
+    var key = isXr
+      ? this.data.xrKey
+      : (family === 'gamepad'
+        ? (this.data.gamepadKey || gamepadDefaults[this.data.action] || 'A')
+        : (family === 'touch' ? (this.data.touchKey || 'TAP') : this.data.desktopKey));
     var label = isXr
       ? (this.dynamicXrLabel || this.data.xrLabel)
-      : (this.dynamicDesktopLabel || this.data.desktopLabel);
+      : (family === 'gamepad'
+        ? (this.dynamicDesktopLabel || this.data.gamepadLabel || this.data.desktopLabel)
+        : (family === 'touch'
+          ? (this.dynamicDesktopLabel || this.data.touchLabel || this.data.desktopLabel)
+          : (this.dynamicDesktopLabel || this.data.desktopLabel)));
     this.keyTextEl.setAttribute('text', 'value', key || '');
     this.labelTextEl.setAttribute('text', 'value', label || '');
 

@@ -55,8 +55,8 @@
          drives the shared hand entities through the real punch tracker. -->
     <div id="overlay">
       <p>
-        Punch Pop — VR: your fists are the controller. Desktop: WASD + mouse look;
-        hold/release left click for a jab or right click for an uppercut.
+        Punch Pop — VR: punch naturally. Keyboard: WASD + mouse, hold/release clicks.
+        Gamepad: sticks + triggers. Mobile: joystick, drag + punch buttons.
         <strong>Clear ~2x2m of real space before trying this in a headset.</strong>
         <a href="../../index.html">All prototypes</a>
       </p>
@@ -121,6 +121,10 @@
         desktop-action-input="primaryAction: jab; secondaryAction: uppercut; leftHand: #leftHand; rightHand: #rightHand; dominantHand: right; alternateHands: true; chargeMs: 900; minimumStrength: 0.35"
         desktop-hand-presence="camera: #head; leftHand: #leftHand; rightHand: #rightHand; forward: 0.2; down: 0.13; spread: 0.2"
         semantic-punch-controls="camera: #head; leftHand: #leftHand; rightHand: #rightHand"
+        semantic-look-controls="camera: #head"
+        gamepad-input="leftHand: #leftHand; rightHand: #rightHand; primaryAction: jab; secondaryAction: uppercut; interactAction: activate; grabAction: none; watchAction: menu; backAction: back; crouchAction: none"
+        touch-controls="leftHand: #leftHand; rightHand: #rightHand; primaryAction: jab; primaryLabel: JAB; secondaryAction: uppercut; secondaryLabel: UPPERCUT; interactAction: activate; interactLabel: USE; watchAction: menu; watchLabel: MENU"
+        semantic-gaze-action="cursor: #gaze-cursor; action: activate"
       >
         <a-camera id="head" wasd-controls="enabled: false" punch-tracker>
           <a-text
@@ -1170,7 +1174,7 @@
         },
 
         onSemanticMove: function (evt) {
-          if (!evt.detail || evt.detail.source !== 'desktop' || menuOpen || this.calibrating) return;
+          if (!evt.detail || menuOpen || this.calibrating) return;
           var direction = new THREE.Vector3(evt.detail.x || 0, 0, evt.detail.z || 0);
           if (direction.lengthSq() < 0.0001) return;
           var cameraQuaternion = new THREE.Quaternion();
@@ -3041,6 +3045,14 @@
           // (widened below) as its pointer.
           this.toggleDesktop = this.toggleDesktop.bind(this);
           document.querySelector('#menu-button-html').addEventListener('click', this.toggleDesktop);
+          this.onSemanticInput = this.onSemanticInput.bind(this);
+          this.el.sceneEl.addEventListener('semantic-action-intent', this.onSemanticInput);
+        },
+
+        onSemanticInput: function (evt) {
+          if (!evt.detail || evt.detail.phase !== 'perform') return;
+          if (evt.detail.action === 'menu') this.toggleDesktop();
+          else if (evt.detail.action === 'back' && this.isOpen) this.close();
         },
 
         onMenuButton: function (evt) {

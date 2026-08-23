@@ -1,4 +1,4 @@
-import './control-mode.js';
+import './input-router.js';
 import './interaction-hints.js';
 
 var THREE = AFRAME.THREE;
@@ -100,6 +100,7 @@ AFRAME.registerComponent('desktop-controls', {
     this.onPreferenceChange = this.onPreferenceChange.bind(this);
     this.onWatchReady = this.syncPreferenceControls.bind(this);
     this.onControlModeChanged = this.handleControlModeChanged.bind(this);
+    this.onSemanticAction = this.onSemanticAction.bind(this);
     document.addEventListener('keydown', this.onKeyDown, true);
     document.addEventListener('keyup', this.onKeyUp, true);
     document.addEventListener('mousedown', this.onMouseDown, true);
@@ -107,6 +108,7 @@ AFRAME.registerComponent('desktop-controls', {
     this.sceneEl.addEventListener('menu-option-change', this.onPreferenceChange);
     this.sceneEl.addEventListener('watch-menu-ready', this.onWatchReady);
     this.sceneEl.addEventListener('control-mode-changed', this.onControlModeChanged);
+    this.el.addEventListener('semantic-action-intent', this.onSemanticAction);
 
     this.setMode('normal');
     this.updateCrouchStateAttribute();
@@ -201,13 +203,43 @@ AFRAME.registerComponent('desktop-controls', {
   onMouseDown: function (evt) {
     if (evt.button !== 0 || this.mode === 'normal' || !this.activePointerHand || xrIsPresenting(this.sceneEl)) return;
     evt.preventDefault();
+    this.activateMenuSelection();
+  },
+
+  activateMenuSelection: function () {
+    if (this.mode === 'normal' || !this.activePointerHand || xrIsPresenting(this.sceneEl)) return false;
     var handEl = this.activePointerHand.el;
     if (handEl.hasAttribute('data-ray-target')) {
       handEl.emit('triggerdown', null, false);
       requestAnimationFrame(function () { handEl.emit('triggerup', null, false); });
-      return;
+      return true;
     }
-    this.clickDesktopMenuTarget();
+    return this.clickDesktopMenuTarget();
+  },
+
+  onSemanticAction: function (evt) {
+    var detail = evt.detail || {};
+    if (detail.phase !== 'perform' || xrIsPresenting(this.sceneEl)) return;
+    var source = detail.source || 'desktop';
+    if (detail.action === 'watch') {
+      if (this.mode === 'watch') this.exitInteraction();
+      else if (this.mode === 'normal') this.openWatch();
+    } else if (detail.action === 'back') {
+      if (this.mode !== 'normal') this.exitInteraction();
+    } else if (detail.action === 'interact') {
+      if (this.mode === 'mounted') {
+        this.exitInteraction();
+      } else if (this.mode === 'normal') {
+        var mountedCandidate = this.hintSystem.getDesktopCandidate('mounted');
+        if (mountedCandidate) this.hintSystem.activateForHand('mounted', mountedCandidate.hand.el, 'start', source);
+      }
+    } else if (detail.action === 'grab') {
+      this.handleGrabKey(source);
+    } else if (detail.action === 'crouch') {
+      if (this.mode === 'normal') this.toggleManualCrouch();
+    } else if (detail.action === 'activate') {
+      this.activateMenuSelection();
+    }
   },
 
   clickDesktopMenuTarget: function () {
@@ -244,7 +276,7 @@ AFRAME.registerComponent('desktop-controls', {
   },
 
   onMountedRequest: function (evt) {
-    if (evt.detail.source !== 'desktop' || this.mode !== 'normal') return;
+    if (xrIsPresenting(this.sceneEl) || this.mode !== 'normal') return;
     this.beginMounted(evt.detail.component, evt.detail.handEl.components['semantic-hand']);
   },
 
@@ -263,7 +295,7 @@ AFRAME.registerComponent('desktop-controls', {
     else this.setMode('normal');
   },
 
-  handleGrabKey: function () {
+  handleGrabKey: function (source) {
     if (this.mode !== 'normal' || this.autoCrouch) return;
     var heldHand = this.findHeldHand();
     if (heldHand) {
@@ -273,26 +305,26 @@ AFRAME.registerComponent('desktop-controls', {
     }
     var grabCandidate = this.hintSystem.getDesktopCandidate('grab');
     if (grabCandidate) {
-      if (grabCandidate.requiresCrouch && !this.manualCrouched) this.beginAutoCrouch(grabCandidate);
-      else this.activateGrabCandidate(grabCandidate);
+      if (grabCandidate.requiresCrouch && !this.manualCrouched) this.beginAutoCrouch(grabCandidate, source);
+      else this.activateGrabCandidate(grabCandidate, source);
       return;
     }
     if (this.manualCrouched) return;
     var shoulderYOffset = this.data.crouchHeight - this.cameraEl.object3D.position.y;
     var crouchCandidate = this.hintSystem.getDesktopCrouchCandidate('grab', shoulderYOffset);
     if (!crouchCandidate) return;
-    this.beginAutoCrouch(crouchCandidate);
+    this.beginAutoCrouch(crouchCandidate, source);
   },
 
-  beginAutoCrouch: function (candidate) {
-    this.autoCrouch = { phase: 'down', candidate: candidate };
+  beginAutoCrouch: function (candidate, source) {
+    this.autoCrouch = { phase: 'down', candidate: candidate, source: source || 'desktop' };
     this.updateCrouchStateAttribute();
   },
 
-  activateGrabCandidate: function (candidate) {
+  activateGrabCandidate: function (candidate, source) {
     if (!candidate || !candidate.hand) return false;
     candidate.hand.playPose('Hold');
-    return this.hintSystem.activateCandidate(candidate, 'grab', candidate.hand.el, 'start', 'desktop');
+    return this.hintSystem.activateCandidate(candidate, 'grab', candidate.hand.el, 'start', source || 'desktop');
   },
 
   toggleManualCrouch: function () {
@@ -325,7 +357,7 @@ AFRAME.registerComponent('desktop-controls', {
     if (!this.autoCrouch || Math.abs(this.cameraEl.object3D.position.y - targetHeight) > 0.0001) return;
     if (this.autoCrouch.phase === 'down') {
       var candidate = this.autoCrouch.candidate;
-      this.activateGrabCandidate(candidate);
+      this.activateGrabCandidate(candidate, this.autoCrouch.source);
       this.autoCrouch.phase = 'up';
       this.updateCrouchStateAttribute();
     } else {
@@ -745,6 +777,7 @@ AFRAME.registerComponent('desktop-controls', {
     this.sceneEl.removeEventListener('menu-option-change', this.onPreferenceChange);
     this.sceneEl.removeEventListener('watch-menu-ready', this.onWatchReady);
     this.sceneEl.removeEventListener('control-mode-changed', this.onControlModeChanged);
+    this.el.removeEventListener('semantic-action-intent', this.onSemanticAction);
     if (this.cursorStyleEl) this.cursorStyleEl.remove();
   },
 });

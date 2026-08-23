@@ -296,7 +296,7 @@
          watch style.
     ============================================================== -->
     <div id="overlay">
-      <span>Showcase — shared VR interaction primitives with desktop semantic hands. Desktop: WASD, mouse look, C crouch, Tab watch, E interact, F grab/drop. <a href="../../index.html">All prototypes</a><a class="menu-edit-link" href="?edit=1" aria-label="Open menu editor">⚙️</a></span>
+      <span>Showcase — shared semantic-hand interactions. Keyboard: WASD/mouse, C/Tab/E/F. Gamepad: sticks + face/shoulder buttons. Mobile: joystick, drag + action buttons. <a href="../../index.html">All prototypes</a><a class="menu-edit-link" href="?edit=1" aria-label="Open menu editor">⚙️</a></span>
     </div>
 
     <a-scene>
@@ -314,8 +314,14 @@
            hovering one item while a controller laser hovered another,
            highlighting two at once and letting a stray glance select the
            wrong item. -->
-      <a-entity id="rig" position="0 0 0">
-        <a-camera look-controls="pointerLockEnabled: true" wasd-controls="enabled: false">
+      <a-entity
+        id="rig"
+        position="0 0 0"
+        semantic-look-controls="camera: #showcase-camera"
+        gamepad-input="leftHand: #left-hand; rightHand: #right-hand; primaryAction: activate; secondaryAction: activate"
+        touch-controls="leftHand: #left-hand; rightHand: #right-hand; primaryAction: activate; primaryLabel: USE; secondaryAction: none; interactAction: interact; interactLabel: INTERACT; grabAction: grab; grabLabel: GRAB; watchAction: watch; watchLabel: WATCH; crouchAction: crouch; crouchLabel: CROUCH"
+      >
+        <a-camera id="showcase-camera" look-controls="pointerLockEnabled: true" wasd-controls="enabled: false">
           <a-entity
             id="gaze-cursor"
             control-mode-visibility="modes: desktop"
@@ -721,8 +727,10 @@
               position="0 0.02 0"
             ></a-entity>
 
-            <a-text control-mode-visibility="modes: desktop" value="Desktop: WASD move   C crouch\nTab watch   Esc exit\nE mounted   F grab/drop" align="center" color="#9fb0d4" width="1.55" wrap-count="28" position="0 -0.38 0"></a-text>
-            <a-text control-mode-visibility="modes: xr" value="VR: move and turn with sticks\nRaise your wrist for the watch\nPoint, grip, poke, or trigger" align="center" color="#9fb0d4" width="1.55" wrap-count="28" position="0 -0.38 0"></a-text>
+            <a-text input-family-visibility="families: keyboard" value="Keyboard: WASD move   C crouch\nTab watch   Esc exit\nE mounted   F grab/drop" align="center" color="#9fb0d4" width="1.55" wrap-count="28" position="0 -0.38 0"></a-text>
+            <a-text input-family-visibility="families: gamepad" value="Gamepad: sticks move/look\nY/Start watch   B exit\nX mounted   LB grab/drop" align="center" color="#9fb0d4" width="1.55" wrap-count="28" position="0 -0.38 0"></a-text>
+            <a-text input-family-visibility="families: touch" value="Mobile: joystick + drag to look\nUse the labeled action buttons\nTap an action, hands do the motion" align="center" color="#9fb0d4" width="1.55" wrap-count="28" position="0 -0.38 0"></a-text>
+            <a-text input-family-visibility="families: xr" value="VR: move and turn with sticks\nRaise your wrist for the watch\nPoint, grip, poke, or trigger" align="center" color="#9fb0d4" width="1.55" wrap-count="28" position="0 -0.38 0"></a-text>
           </a-entity>
         </a-entity>
       </template>

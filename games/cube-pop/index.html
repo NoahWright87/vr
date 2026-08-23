@@ -62,7 +62,7 @@
     <!-- Flat HTML overlay: just for desktop/browser testing convenience.
          Inside the headset you'll use the in-scene "RESET" cube instead. -->
     <div id="overlay">
-      <span>Cube Pop — VR: point and trigger. Desktop: WASD, mouse look, click to pop. <a href="../../index.html">All prototypes</a></span>
+      <span>Cube Pop — VR: point + trigger. Keyboard: WASD, mouse + click. Gamepad: sticks + A/RT. Mobile: joystick, drag + POP. <a href="../../index.html">All prototypes</a></span>
       <button id="reset-button-html">Reset (desktop)</button>
     </div>
 
@@ -109,6 +109,10 @@
         locomotion-demo="speed: 1.5"
         desktop-movement-input
         desktop-hand-presence="camera: #cube-camera; leftHand: #left-hand; rightHand: #right-hand"
+        semantic-look-controls="camera: #cube-camera"
+        gamepad-input="leftHand: #left-hand; rightHand: #right-hand; primaryAction: activate; secondaryAction: none; interactAction: none; grabAction: none; watchAction: none; backAction: none; crouchAction: none; alternateHands: false"
+        touch-controls="leftHand: #left-hand; rightHand: #right-hand; primaryAction: activate; primaryLabel: POP; secondaryAction: none"
+        semantic-gaze-action="cursor: #cube-gaze-cursor; action: activate"
       >
       <a-camera id="cube-camera" wasd-controls="enabled: false">
         <a-text
@@ -120,6 +124,7 @@
           position="0 -0.35 -1"
         ></a-text>
         <a-entity
+          id="cube-gaze-cursor"
           cursor="fuse: false"
           position="0 0 -1"
           geometry="primitive: ring; radiusInner: 0.005; radiusOuter: 0.008"

@@ -1,14 +1,14 @@
-import './control-mode.js';
+import './input-router.js';
 import './interaction-hints.js';
 import { chargedActionStrength } from './desktop-action-utils.js';
 
 export { chargedActionStrength } from './desktop-action-utils.js';
 
 // Architectural direction: eventually every practical shared VR interaction
-// should also be usable and testable on a laptop. VR commands hands physically;
-// desktop input expresses intent and lets shared semantic hands perform the
-// corresponding motion. New games should consume the intent events below
-// instead of branching their gameplay rules on an XR-versus-desktop check.
+// should also be usable and testable without a headset. VR commands hands
+// physically; keyboard, gamepad, and touch input express intent and let shared
+// semantic hands perform the corresponding motion. New games should consume
+// intent events instead of branching gameplay rules on a device check.
 
 function registerDesktopInputComponents() {
   if (typeof AFRAME === 'undefined') return;
@@ -130,7 +130,7 @@ function registerDesktopInputComponents() {
         heldMs: heldMs,
         strength: chargedActionStrength(heldMs, this.data.chargeMs, this.data.minimumStrength),
         source: 'desktop',
-      }, false);
+      }, true);
     },
 
     onMouseDown: function (evt) {

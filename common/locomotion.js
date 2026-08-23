@@ -237,7 +237,7 @@
     },
 
     onSemanticMove: function (evt) {
-      if (!evt.detail || evt.detail.source !== 'desktop') return;
+      if (!evt.detail) return;
       this.applyDesktopMove(evt.detail.x || 0, evt.detail.z || 0, evt.detail.deltaMs || 0);
     },
 
