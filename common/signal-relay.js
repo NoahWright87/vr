@@ -1,11 +1,16 @@
 // Thin client for the local signaling relay (server/signal-server.js)
-// — moves the offer/answer text automatically over a plain
-// WebSocket instead of a human copy/pasting it. This never touches
-// game traffic; it only exists to complete the handshake that
-// common/multiplayer.js's createHostConnection/createJoinConnection
-// already do the real WebRTC work for.
+// — moves offer/answer text automatically over a plain WebSocket
+// instead of a human copy/pasting it. This never touches game
+// traffic; it only exists to complete the handshake that
+// common/multiplayer.js's connection helpers already do the real
+// WebRTC work for.
 
-export function hostViaRelay (relayUrl, connection, callbacks) {
+// One host session, any number of joiners: the relay assigns each
+// joiner a peerId and tells the host about it (message.peerId below);
+// the host creates a fresh RTCPeerConnection for THAT joiner via
+// session.createOfferForJoiner and sends its offer back tagged with
+// the same peerId, so the relay knows which joiner to forward it to.
+export function hostSessionViaRelay (relayUrl, session, callbacks) {
   callbacks = callbacks || {};
   var ws = new WebSocket(relayUrl);
 
@@ -17,11 +22,11 @@ export function hostViaRelay (relayUrl, connection, callbacks) {
     var message = JSON.parse(evt.data);
     if (message.type === 'hosting') {
       if (callbacks.onRoomCode) callbacks.onRoomCode(message.code);
-      var offer = await connection.createOffer();
-      ws.send(JSON.stringify({ type: 'offer', sdp: offer }));
+    } else if (message.type === 'joiner-joined') {
+      var offer = await session.createOfferForJoiner(message.peerId);
+      ws.send(JSON.stringify({ type: 'offer', peerId: message.peerId, sdp: offer }));
     } else if (message.type === 'answer') {
-      await connection.acceptAnswer(message.sdp);
-      if (callbacks.onHandshakeComplete) callbacks.onHandshakeComplete();
+      await session.acceptAnswerFromJoiner(message.peerId, message.sdp);
     }
   });
 

@@ -203,18 +203,22 @@ Once this repo is on Netlify (or GitHub Pages in the meantime), just open the de
 
 The menu showcase (`primitives/menus/`) has an experimental panel for
 testing peer-to-peer multiplayer over the local network — see
-`common/multiplayer.js`. Connecting two peers needs a one-time
-handshake (a WebRTC offer/answer); the showcase panel can do this two
+`common/multiplayer.js`. Connecting needs a one-time handshake (a
+WebRTC offer/answer) per peer; the showcase panel can do this two
 ways:
 
-- **Manual copy/paste** — always available, no setup. One peer clicks
-  Host and copies a text blob to the other, who pastes it, then sends
-  a reply blob back. Works, but the blob is too long to type by hand —
-  fine between two browser tabs on one computer, painful between two
-  separate devices.
+- **Manual copy/paste** — always available, no setup, but strictly
+  1:1: one peer clicks Host and copies a text blob to the other, who
+  pastes it, then sends a reply blob back. Works, but the blob is too
+  long to type by hand — fine between two browser tabs on one
+  computer, painful between two separate devices, and there's no
+  version of this for a third person to join.
 - **Local relay** — run the signaling relay below on any computer on
   the same Wi-Fi, and the handshake happens automatically behind a
-  short 4-character room code instead.
+  short 4-character room code instead. Supports any number of
+  joiners: the host holds a separate connection to each one (a
+  "star"), and relays each joiner's position to every other joiner —
+  they never connect directly to each other.
 
 **Running the relay:**
 
@@ -232,8 +236,8 @@ since headsets/other devices won't have anything listening on their
 own localhost. Everyone needs to be on the same local network as
 whatever machine runs this; it does not work over the open internet.
 The relay only ever sees the one-time handshake — actual gameplay
-traffic goes directly
-peer-to-peer once two peers connect.
+traffic goes directly peer-to-peer between each joiner and the host
+once connected (never joiner-to-joiner directly).
 
 **Prebuilt Windows executable**, so people without Node.js installed
 can run the relay too — a standalone ~58MB binary (bundles its own

@@ -105,3 +105,62 @@ export function createJoinConnection (callbacks) {
 
   return connection;
 }
+
+// A star-topology host: a separate RTCPeerConnection per joiner, so
+// more than one person can connect at once. Joiners never connect to
+// each other — only ever to this session — so anything a joiner
+// needs to know about another joiner has to be relayed through here
+// (see the peer-aim handling in primitives/menus/index.html for the
+// actual relay). createHostConnection above stays as it was and
+// keeps being used by the manual copy/paste fallback, which only
+// ever supports one joiner and isn't worth the same treatment.
+export function createHostSession (callbacks) {
+  callbacks = callbacks || {};
+  var peers = new Map(); // peerId -> { pc, channel }
+
+  function wirePeerChannel (peerId, pc, channel) {
+    var closed = false;
+    function fireClose () {
+      if (closed) return;
+      closed = true;
+      peers.delete(peerId);
+      if (callbacks.onPeerClose) callbacks.onPeerClose(peerId);
+    }
+    channel.addEventListener('open', function () { if (callbacks.onPeerOpen) callbacks.onPeerOpen(peerId); });
+    channel.addEventListener('message', function (evt) { if (callbacks.onPeerMessage) callbacks.onPeerMessage(peerId, evt.data); });
+    channel.addEventListener('close', fireClose);
+    pc.addEventListener('connectionstatechange', function () {
+      if (pc.connectionState === 'failed' || pc.connectionState === 'closed') fireClose();
+    });
+  }
+
+  return {
+    createOfferForJoiner: async function (peerId) {
+      var pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+      var channel = pc.createDataChannel('game');
+      peers.set(peerId, { pc: pc, channel: channel });
+      wirePeerChannel(peerId, pc, channel);
+      var offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      await waitForIceGatheringComplete(pc);
+      return encodeDescription(pc.localDescription);
+    },
+    acceptAnswerFromJoiner: async function (peerId, answerText) {
+      var peer = peers.get(peerId);
+      if (!peer) return;
+      await peer.pc.setRemoteDescription(decodeDescription(answerText));
+    },
+    send: function (peerId, message) {
+      var peer = peers.get(peerId);
+      if (peer && peer.channel.readyState === 'open') peer.channel.send(message);
+    },
+    // exceptPeerId lets the host re-broadcast one peer's own update
+    // to everyone else without echoing it straight back to them.
+    broadcast: function (message, exceptPeerId) {
+      peers.forEach(function (peer, peerId) {
+        if (peerId === exceptPeerId) return;
+        if (peer.channel.readyState === 'open') peer.channel.send(message);
+      });
+    },
+  };
+}

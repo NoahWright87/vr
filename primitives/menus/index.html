@@ -455,24 +455,21 @@
         <a-entity hand-controls="hand: right; handModelStyle: lowPoly"></a-entity>
       </a-entity>
 
-      <!-- Multiplayer connection POC: the other connected peer's aim,
-           broadcast a few times a second over the data channel (see
-           the multiplayer script near the bottom of this file) and
-           drawn here with A-Frame's own built-in "line" component —
+      <!-- Multiplayer connection POC: every OTHER connected peer's
+           aim, broadcast a few times a second over its data channel
+           (see the multiplayer script near the bottom of this file)
+           and drawn with A-Frame's own built-in "line" component —
            the same visible-beam mechanism the watch/wall/pedestal
            menus already use via raycaster's showLine, just driven by
-           network data instead of a local raycast. World-space, not
-           a child of #rig, since it represents where the REMOTE
-           peer's camera is pointing, not the local one. -->
-      <a-entity id="remote-laser" line="start: 0 0 0; end: 0 0 0; color: #fff" visible="false"></a-entity>
-
-      <!-- A laser alone is easy to miss (e.g. pointed straight at you,
-           it foreshortens to a dot) — a small sphere at the remote
-           peer's actual head position is a much harder miss, and
-           costs nothing extra to compute: it's positioned from the
-           same "aim" broadcast the laser already uses (origin is the
-           remote camera's world position), no new network message. -->
-      <a-entity id="remote-body" geometry="primitive: sphere; radius: 0.12" material="color: #fff" visible="false"></a-entity>
+           network data instead of a local raycast — plus a small
+           sphere at their head position, since a beam pointed
+           straight at you foreshortens to a near-invisible dot. One
+           pair of entities per remote peer, created/removed on the
+           fly by getOrCreateRemotePeer()/removeRemotePeer() in that
+           script (there can be more than one now that hosting
+           supports several joiners), so nothing is declared here
+           statically. World-space, not a child of #rig, since these
+           represent where OTHER people's cameras are pointing. -->
            Every clickable row is just an entity with its own
            geometry/material plus the "menu-item" component below —
            that component is the reusable part; the background plane
@@ -1540,8 +1537,8 @@
     </div>
 
     <script type="module">
-      import { createHostConnection, createJoinConnection } from '../../common/multiplayer.js';
-      import { hostViaRelay, joinViaRelay } from '../../common/signal-relay.js';
+      import { createHostConnection, createJoinConnection, createHostSession } from '../../common/multiplayer.js';
+      import { hostSessionViaRelay, joinViaRelay } from '../../common/signal-relay.js';
 
       var statusEl = document.getElementById('mp-status');
       var relayUrlEl = document.getElementById('mp-relay-url');
@@ -1562,24 +1559,31 @@
       var localAnswerEl = document.getElementById('mp-local-answer');
       var sendPingBtn = document.getElementById('mp-send-ping-btn');
       var logEl = document.getElementById('mp-log');
+      var sceneEl = document.querySelector('a-scene');
 
+      // "connection" (single) is used by BOTH the manual copy/paste
+      // fallback (still 1:1 only, always has been) and the relay
+      // Join role (a joiner only ever has one connection: to the
+      // host). "hostSession" (many) is only used by the relay Host
+      // role, which now supports multiple joiners at once — see
+      // createHostSession's comment in common/multiplayer.js for why
+      // that one needed a genuinely different shape.
       var connection = null;
+      var hostSession = null;
       var isHost = false;
+      var sendMessage = null; // whichever of the two sends the ping button/aim broadcast should use right now
 
-      // Host always claims the first color for itself and hands the
-      // second one to the one joiner this POC supports — a real
-      // multi-join star would grow this into a list the host doles
-      // out one at a time, but two colors is enough to prove "the
-      // host decides, not each peer for itself."
-      var PALETTE = ['#ff3b30', '#0a84ff'];
-      var remoteColor = '#fff';
+      // Host claims the first color for itself; each joiner gets the
+      // next one in line as it connects, assigned by the host rather
+      // than picked by each peer itself. Six is plenty for a POC —
+      // a genuinely large room would want smarter reuse instead of
+      // just wrapping around via modulo once these run out.
+      var PALETTE = ['#ff3b30', '#0a84ff', '#34c759', '#ffcc00', '#af52de', '#5ac8fa'];
 
       var AIM_INTERVAL_MS = 100;
       var BEAM_LENGTH = 6;
       var aimTimer = null;
       var cameraObj = document.getElementById('camera').object3D;
-      var remoteLaserEl = document.getElementById('remote-laser');
-      var remoteBodyEl = document.getElementById('remote-body');
 
       function log (text) {
         var line = document.createElement('div');
@@ -1588,14 +1592,22 @@
         logEl.scrollTop = logEl.scrollHeight;
       }
 
-      function startAimBroadcast () {
+      function parseMessage (data) {
+        try {
+          return JSON.parse(data);
+        } catch (err) {
+          return null;
+        }
+      }
+
+      function startAimBroadcast (sendFn) {
         if (aimTimer) return;
         var worldPos = new AFRAME.THREE.Vector3();
         var worldDir = new AFRAME.THREE.Vector3();
         aimTimer = setInterval(function () {
           cameraObj.getWorldPosition(worldPos);
           cameraObj.getWorldDirection(worldDir);
-          connection.send(JSON.stringify({
+          sendFn(JSON.stringify({
             type: 'aim',
             origin: { x: worldPos.x, y: worldPos.y, z: worldPos.z },
             direction: { x: worldDir.x, y: worldDir.y, z: worldDir.z },
@@ -1608,57 +1620,190 @@
         aimTimer = null;
       }
 
-      function showRemoteAim (origin, direction) {
-        remoteLaserEl.setAttribute('line', {
+      // One laser + body sphere per OTHER connected peer, created on
+      // demand and torn down when that peer disconnects — there can
+      // be more than one now. peerId is whatever key the caller wants
+      // to use for that peer: the relay's own 'peer-N' ids on the
+      // host side, or the fixed strings 'host'/'manual-peer' on a
+      // joiner/manual peer's side, where there's only ever one
+      // "other" connection to represent.
+      var remotePeers = new Map(); // peerId -> { laserEl, bodyEl }
+
+      function getOrCreateRemotePeer (peerId) {
+        var existing = remotePeers.get(peerId);
+        if (existing) return existing;
+        var laserEl = document.createElement('a-entity');
+        laserEl.className = 'remote-peer-laser';
+        laserEl.setAttribute('line', 'start: 0 0 0; end: 0 0 0; color: #fff');
+        laserEl.setAttribute('visible', false);
+        var bodyEl = document.createElement('a-entity');
+        bodyEl.className = 'remote-peer-body';
+        bodyEl.setAttribute('geometry', 'primitive: sphere; radius: 0.12');
+        bodyEl.setAttribute('material', 'color: #fff');
+        bodyEl.setAttribute('visible', false);
+        sceneEl.appendChild(laserEl);
+        sceneEl.appendChild(bodyEl);
+        var entry = { laserEl: laserEl, bodyEl: bodyEl };
+        remotePeers.set(peerId, entry);
+        return entry;
+      }
+
+      function showRemotePeerAim (peerId, color, origin, direction) {
+        var entry = getOrCreateRemotePeer(peerId);
+        entry.laserEl.setAttribute('line', {
           start: origin,
           end: {
             x: origin.x + direction.x * BEAM_LENGTH,
             y: origin.y + direction.y * BEAM_LENGTH,
             z: origin.z + direction.z * BEAM_LENGTH,
           },
-          color: remoteColor,
+          color: color,
         });
-        remoteLaserEl.setAttribute('visible', true);
-
-        remoteBodyEl.setAttribute('position', origin);
-        remoteBodyEl.setAttribute('material', 'color', remoteColor);
-        remoteBodyEl.setAttribute('visible', true);
+        entry.laserEl.setAttribute('visible', true);
+        entry.bodyEl.setAttribute('position', origin);
+        entry.bodyEl.setAttribute('material', 'color', color);
+        entry.bodyEl.setAttribute('visible', true);
       }
 
-      function onOpen () {
+      function removeRemotePeer (peerId) {
+        var entry = remotePeers.get(peerId);
+        if (!entry) return;
+        entry.laserEl.parentNode.removeChild(entry.laserEl);
+        entry.bodyEl.parentNode.removeChild(entry.bodyEl);
+        remotePeers.delete(peerId);
+      }
+
+      function removeAllRemotePeers () {
+        Array.from(remotePeers.keys()).forEach(removeRemotePeer);
+      }
+
+      // --- Manual copy/paste role (createHostConnection/
+      // createJoinConnection) — unchanged from before: still 1:1
+      // only, always was. Uses the fixed key 'manual-peer' since
+      // there's only ever the one other person.
+      var manualRemoteColor = '#fff';
+
+      function manualOnOpen () {
         statusEl.textContent = 'Connected';
         sendPingBtn.hidden = false;
         if (isHost) {
-          remoteColor = PALETTE[1];
+          manualRemoteColor = PALETTE[1];
           connection.send(JSON.stringify({ type: 'welcome', yourColor: PALETTE[1], hostColor: PALETTE[0] }));
         }
-        startAimBroadcast();
+        sendMessage = function (msg) { connection.send(msg); };
+        startAimBroadcast(sendMessage);
       }
 
-      function onMessage (data) {
-        var message;
-        try {
-          message = JSON.parse(data);
-        } catch (err) {
-          log('recv (unparsed): ' + data);
-          return;
-        }
+      function manualOnMessage (data) {
+        var message = parseMessage(data);
+        if (!message) { log('recv (unparsed): ' + data); return; }
         if (message.type === 'welcome') {
-          remoteColor = message.hostColor;
+          manualRemoteColor = message.hostColor;
           log('assigned color ' + message.yourColor + ', host is ' + message.hostColor);
         } else if (message.type === 'aim') {
-          showRemoteAim(message.origin, message.direction);
+          showRemotePeerAim('manual-peer', manualRemoteColor, message.origin, message.direction);
         } else if (message.type === 'ping') {
           log('recv: ping ' + message.ts);
         }
       }
 
-      function onClose () {
+      function manualOnClose () {
         statusEl.textContent = 'Disconnected';
         sendPingBtn.hidden = true;
         stopAimBroadcast();
-        remoteLaserEl.setAttribute('visible', false);
-        remoteBodyEl.setAttribute('visible', false);
+        removeRemotePeer('manual-peer');
+      }
+
+      // --- Relay Join role (createJoinConnection) — a joiner still
+      // only ever has the one connection, to the host. What's new is
+      // it can now receive TWO kinds of aim update: 'aim' (the
+      // host's own, straight over the direct channel — rendered
+      // under the fixed key 'host') and 'peer-aim' (another joiner's,
+      // relayed and tagged by the host, rendered under that joiner's
+      // real peerId).
+      var joinHostColor = '#fff';
+
+      function joinOnOpen () {
+        statusEl.textContent = 'Connected';
+        sendPingBtn.hidden = false;
+        sendMessage = function (msg) { connection.send(msg); };
+        startAimBroadcast(sendMessage);
+      }
+
+      function joinOnMessage (data) {
+        var message = parseMessage(data);
+        if (!message) { log('recv (unparsed): ' + data); return; }
+        if (message.type === 'welcome') {
+          joinHostColor = message.hostColor;
+          log('assigned color ' + message.yourColor + ', host is ' + message.hostColor);
+        } else if (message.type === 'aim') {
+          showRemotePeerAim('host', joinHostColor, message.origin, message.direction);
+        } else if (message.type === 'peer-aim') {
+          showRemotePeerAim(message.peerId, message.color, message.origin, message.direction);
+        } else if (message.type === 'ping') {
+          log('recv: ping ' + message.ts);
+        }
+      }
+
+      function joinOnClose () {
+        statusEl.textContent = 'Disconnected';
+        sendPingBtn.hidden = true;
+        stopAimBroadcast();
+        removeAllRemotePeers();
+      }
+
+      // --- Relay Host role (createHostSession) — the star: a
+      // separate RTCPeerConnection per joiner. Each joiner only ever
+      // talks directly to the host, so when one reports its own aim,
+      // the host both renders it locally AND re-broadcasts it to
+      // every OTHER joiner (tagged as 'peer-aim' with that joiner's
+      // id and assigned color) so they can see each other too.
+      var peerColors = new Map(); // peerId -> assigned color
+      var nextColorIndex = 1; // PALETTE[0] is reserved for the host itself
+      var connectedPeerCount = 0;
+      var currentRoomCode = '';
+
+      function updateHostStatus () {
+        statusEl.textContent = 'Room ' + currentRoomCode + ' — ' + connectedPeerCount + ' player(s) connected';
+      }
+
+      function hostOnPeerOpen (peerId) {
+        sendPingBtn.hidden = false;
+        var color = PALETTE[nextColorIndex % PALETTE.length];
+        nextColorIndex++;
+        peerColors.set(peerId, color);
+        hostSession.send(peerId, JSON.stringify({ type: 'welcome', yourColor: color, hostColor: PALETTE[0] }));
+        log(peerId + ' connected (' + color + ')');
+        connectedPeerCount++;
+        updateHostStatus();
+        sendMessage = function (msg) { hostSession.broadcast(msg); };
+        startAimBroadcast(sendMessage);
+      }
+
+      function hostOnPeerMessage (peerId, data) {
+        var message = parseMessage(data);
+        if (!message) { log('recv (unparsed) from ' + peerId + ': ' + data); return; }
+        if (message.type === 'aim') {
+          var color = peerColors.get(peerId) || '#fff';
+          showRemotePeerAim(peerId, color, message.origin, message.direction);
+          hostSession.broadcast(JSON.stringify({
+            type: 'peer-aim',
+            peerId: peerId,
+            color: color,
+            origin: message.origin,
+            direction: message.direction,
+          }), peerId);
+        } else if (message.type === 'ping') {
+          log('recv: ping ' + message.ts + ' from ' + peerId);
+        }
+      }
+
+      function hostOnPeerClose (peerId) {
+        removeRemotePeer(peerId);
+        peerColors.delete(peerId);
+        connectedPeerCount = Math.max(0, connectedPeerCount - 1);
+        updateHostStatus();
+        log(peerId + ' disconnected');
       }
 
       hostRelayBtn.addEventListener('click', function () {
@@ -1671,16 +1816,14 @@
         hostBtn.disabled = true;
         joinBtn.disabled = true;
         isHost = true;
-        connection = createHostConnection({ onOpen: onOpen, onMessage: onMessage, onClose: onClose });
+        hostSession = createHostSession({ onPeerOpen: hostOnPeerOpen, onPeerMessage: hostOnPeerMessage, onPeerClose: hostOnPeerClose });
         statusEl.textContent = 'Connecting to relay...';
-        hostViaRelay(relayUrlEl.value, connection, {
+        hostSessionViaRelay(relayUrlEl.value, hostSession, {
           onRoomCode: function (code) {
+            currentRoomCode = code;
             roomCodeValueEl.textContent = code;
             roomCodeDisplayEl.hidden = false;
-            statusEl.textContent = 'Waiting for a joining peer (room ' + code + ')';
-          },
-          onHandshakeComplete: function () {
-            statusEl.textContent = 'Handshake complete, waiting for the connection to open...';
+            updateHostStatus();
           },
           onError: function (message) {
             statusEl.textContent = message;
@@ -1698,7 +1841,7 @@
         hostBtn.disabled = true;
         joinBtn.disabled = true;
         isHost = false;
-        connection = createJoinConnection({ onOpen: onOpen, onMessage: onMessage, onClose: onClose });
+        connection = createJoinConnection({ onOpen: joinOnOpen, onMessage: joinOnMessage, onClose: joinOnClose });
         statusEl.textContent = 'Connecting to relay...';
         joinViaRelay(relayUrlEl.value, roomCodeInputEl.value.toUpperCase(), connection, {
           onHandshakeComplete: function () {
@@ -1716,7 +1859,7 @@
         hostRelayBtn.disabled = true;
         joinRelayBtn.disabled = true;
         isHost = true;
-        connection = createHostConnection({ onOpen: onOpen, onMessage: onMessage, onClose: onClose });
+        connection = createHostConnection({ onOpen: manualOnOpen, onMessage: manualOnMessage, onClose: manualOnClose });
         statusEl.textContent = 'Hosting — generating offer...';
         var offer = await connection.createOffer();
         localOfferEl.value = offer;
@@ -1735,7 +1878,7 @@
 
       acceptOfferBtn.addEventListener('click', async function () {
         isHost = false;
-        connection = createJoinConnection({ onOpen: onOpen, onMessage: onMessage, onClose: onClose });
+        connection = createJoinConnection({ onOpen: manualOnOpen, onMessage: manualOnMessage, onClose: manualOnClose });
         statusEl.textContent = 'Generating answer...';
         var answer = await connection.acceptOffer(remoteOfferEl.value);
         localAnswerEl.value = answer;
@@ -1748,7 +1891,7 @@
 
       sendPingBtn.addEventListener('click', function () {
         var message = { type: 'ping', ts: Date.now() };
-        connection.send(JSON.stringify(message));
+        if (sendMessage) sendMessage(JSON.stringify(message));
         log('sent: ping ' + message.ts);
       });
 
