@@ -1,3 +1,5 @@
+  import './control-mode.js';
+
   AFRAME.registerComponent('locomotion-demo', {
     schema: {
       moveMode: { default: 'smooth' },
@@ -22,6 +24,7 @@
     init: function () {
       this.rigEl = this.el;
       this.cameraEl = this.el.querySelector('a-camera') || document.querySelector('a-camera');
+      this.controlMode = this.el.sceneEl.systems['control-mode'];
       this.turnCooldown = 0;
       this.leftAxes = [0, 0, 0, 0];
       this.rightAxes = [0, 0, 0, 0];
@@ -130,7 +133,7 @@
 
     updateVignetteStyle: function () {
       if (!this.vignette) return;
-      var enabled = !!this.data.comfortVignette && this.data.moveMode === 'smooth';
+      var enabled = this.controlMode.isMode('xr') && !!this.data.comfortVignette && this.data.moveMode === 'smooth';
       var strength = Math.max(0, Math.min(1, this.data.vignetteStrength));
       var softness = Math.max(0.05, Math.min(1, this.data.vignetteSoftness));
       var inset = Math.max(0.25, Math.min(1.2, this.data.vignetteInset));
@@ -313,7 +316,7 @@
       if (this.vignette) {
         var lx = this.leftAxes[2] !== undefined ? this.leftAxes[2] : this.leftAxes[0] || 0;
         var ly = this.leftAxes[3] !== undefined ? this.leftAxes[3] : this.leftAxes[1] || 0;
-        this.vignette.setAttribute('visible', !!this.data.comfortVignette && this.data.moveMode === 'smooth' && Math.hypot(lx, ly) > 0.12);
+        this.vignette.setAttribute('visible', this.controlMode.isMode('xr') && !!this.data.comfortVignette && this.data.moveMode === 'smooth' && Math.hypot(lx, ly) > 0.12);
       }
     },
 

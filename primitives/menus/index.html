@@ -318,6 +318,7 @@
         <a-camera look-controls="pointerLockEnabled: true" wasd-controls="enabled: false">
           <a-entity
             id="gaze-cursor"
+            control-mode-visibility="modes: desktop"
             cursor="fuse: false"
             position="0 0 -1"
             geometry="primitive: ring; radiusInner: 0.005; radiusOuter: 0.008"
@@ -330,20 +331,20 @@
           hand-with-watch="hand: left"
           semantic-hand="hand: left; maxReach: 1.0"
         ></a-entity>
-        <a-entity id="tracked-hand-visual-left" hand-controls="hand: left; handModelStyle: lowPoly"></a-entity>
+        <a-entity id="tracked-hand-visual-left" control-mode-visibility="modes: xr" hand-controls="hand: left; handModelStyle: lowPoly"></a-entity>
 
         <a-entity id="right-hand" position="0.2 1.35 -0.4"
           hand-with-watch="hand: right"
           semantic-hand="hand: right; maxReach: 1.0"
         ></a-entity>
-        <a-entity id="tracked-hand-visual-right" hand-controls="hand: right; handModelStyle: lowPoly"></a-entity>
+        <a-entity id="tracked-hand-visual-right" control-mode-visibility="modes: xr" hand-controls="hand: right; handModelStyle: lowPoly"></a-entity>
       </a-entity>
            Every clickable row is just an entity with its own
            geometry/material plus the "menu-item" component below —
            that component is the reusable part; the background plane
            and title here are just this demo's dressing.
       ============================================================ -->
-      <a-entity id="menu-panel" menu-feedback position="0 1.8 -2.5">
+      <a-entity id="menu-panel" menu-feedback control-mode-layout="startY: 0.58; spacing: 0.36" position="0 1.8 -2.5">
         <a-plane
           width="1.9"
           height="3.2"
@@ -400,6 +401,7 @@
 
         <a-entity
           class="menu-target"
+          control-mode-visibility="modes: xr"
           geometry="primitive: plane; width: 1.6; height: 0.26"
           material="color: #182238"
           menu-item="value: comfort-toggle; label: Toggle vignette"
@@ -440,6 +442,7 @@
 
         <a-entity
           class="menu-target"
+          control-mode-visibility="modes: xr"
           geometry="primitive: plane; width: 1.6; height: 0.26"
           material="color: #182238"
           menu-item="value: drift-medium; label: Drift medium"
@@ -513,7 +516,7 @@
            with "help-prev"/"help-next". -->
       <template id="watch-menu-template">
         <a-entity class="watch-menu-panel" visible="false">
-          <a-entity class="watch-menu-main" data-menu-page="main">
+          <a-entity class="watch-menu-main" data-menu-page="main" control-mode-layout="startY: 0.38; spacing: 0.26">
             <a-plane width="1.2" height="3.25" color="#101827" position="0 -0.64 -0.01"></a-plane>
 
             <!-- Chrome slot's title starts empty — hand-with-watch
@@ -531,6 +534,7 @@
             </a-entity>
 
             <a-entity class="pm-target"
+              control-mode-visibility="modes: xr"
               geometry="primitive: plane; width: 0.92; height: 0.18"
               material="color: #182238"
               menu-item="value: move-teleport; label: Teleport"
@@ -549,6 +553,7 @@
             </a-entity>
 
             <a-entity class="pm-target"
+              control-mode-visibility="modes: xr"
               geometry="primitive: plane; width: 0.92; height: 0.18"
               material="color: #182238"
               menu-item="value: turn-snap; label: Snap turn"
@@ -558,6 +563,7 @@
             </a-entity>
 
             <a-entity class="pm-target"
+              control-mode-visibility="modes: xr"
               geometry="primitive: plane; width: 0.92; height: 0.18"
               material="color: #182238"
               menu-item="value: turn-smooth; label: Smooth turn"
@@ -567,6 +573,7 @@
             </a-entity>
 
             <a-entity class="pm-target"
+              control-mode-visibility="modes: xr"
               geometry="primitive: plane; width: 0.92; height: 0.18"
               material="color: #182238"
               menu-item="value: comfort-toggle; label: Vignette"
@@ -576,6 +583,7 @@
             </a-entity>
 
             <a-entity class="pm-target"
+              control-mode-visibility="modes: xr"
               geometry="primitive: plane; width: 0.92; height: 0.18"
               material="color: #182238"
               menu-item="value: page-controls; label: Drift settings"
@@ -603,6 +611,7 @@
             </a-entity>
 
             <a-entity class="pm-target"
+              control-mode-visibility="modes: xr"
               geometry="primitive: plane; width: 0.92; height: 0.18"
               material="color: #182238"
               menu-item="value: haptics; label: Haptics Test"
@@ -712,7 +721,8 @@
               position="0 0.02 0"
             ></a-entity>
 
-            <a-text value="Desktop: WASD move   C crouch\nTab watch   Esc exit\nE mounted   F grab/drop" align="center" color="#9fb0d4" width="1.55" wrap-count="28" position="0 -0.38 0"></a-text>
+            <a-text control-mode-visibility="modes: desktop" value="Desktop: WASD move   C crouch\nTab watch   Esc exit\nE mounted   F grab/drop" align="center" color="#9fb0d4" width="1.55" wrap-count="28" position="0 -0.38 0"></a-text>
+            <a-text control-mode-visibility="modes: xr" value="VR: move and turn with sticks\nRaise your wrist for the watch\nPoint, grip, poke, or trigger" align="center" color="#9fb0d4" width="1.55" wrap-count="28" position="0 -0.38 0"></a-text>
           </a-entity>
         </a-entity>
       </template>

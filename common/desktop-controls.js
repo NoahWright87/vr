@@ -1,10 +1,12 @@
+import './control-mode.js';
 import './interaction-hints.js';
 
 var THREE = AFRAME.THREE;
 var PREFERENCES_KEY = 'vr-showcase-player-preferences-v1';
 
 function xrIsPresenting(sceneEl) {
-  return Boolean(sceneEl && sceneEl.renderer && sceneEl.renderer.xr && sceneEl.renderer.xr.isPresenting);
+  var controlMode = sceneEl && sceneEl.systems && sceneEl.systems['control-mode'];
+  return Boolean(controlMode && controlMode.isMode('xr'));
 }
 
 function visibleInHierarchy(object3D) {
@@ -97,14 +99,14 @@ AFRAME.registerComponent('desktop-controls', {
     this.onActiveMenuClosed = this.onActiveMenuClosed.bind(this);
     this.onPreferenceChange = this.onPreferenceChange.bind(this);
     this.onWatchReady = this.syncPreferenceControls.bind(this);
+    this.onControlModeChanged = this.handleControlModeChanged.bind(this);
     document.addEventListener('keydown', this.onKeyDown, true);
     document.addEventListener('keyup', this.onKeyUp, true);
     document.addEventListener('mousedown', this.onMouseDown, true);
     this.sceneEl.addEventListener('mounted-interaction-request', this.onMountedRequest);
     this.sceneEl.addEventListener('menu-option-change', this.onPreferenceChange);
     this.sceneEl.addEventListener('watch-menu-ready', this.onWatchReady);
-    this.sceneEl.addEventListener('enter-vr', function () { self.exitInteraction(false); });
-    this.sceneEl.addEventListener('exit-vr', function () { self.setMode('normal'); });
+    this.sceneEl.addEventListener('control-mode-changed', this.onControlModeChanged);
 
     this.setMode('normal');
     this.updateCrouchStateAttribute();
@@ -254,6 +256,11 @@ AFRAME.registerComponent('desktop-controls', {
     this.setLookEnabled(true);
     this.setGazeEnabled(mode === 'normal');
     this.setMenuCursorHidden(mode !== 'normal');
+  },
+
+  handleControlModeChanged: function (evt) {
+    if (evt.detail.mode === 'xr') this.exitInteraction(false);
+    else this.setMode('normal');
   },
 
   handleGrabKey: function () {
@@ -737,6 +744,7 @@ AFRAME.registerComponent('desktop-controls', {
     this.sceneEl.removeEventListener('mounted-interaction-request', this.onMountedRequest);
     this.sceneEl.removeEventListener('menu-option-change', this.onPreferenceChange);
     this.sceneEl.removeEventListener('watch-menu-ready', this.onWatchReady);
+    this.sceneEl.removeEventListener('control-mode-changed', this.onControlModeChanged);
     if (this.cursorStyleEl) this.cursorStyleEl.remove();
   },
 });

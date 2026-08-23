@@ -1,3 +1,4 @@
+import './control-mode.js';
 import {
   chooseInteractionCandidate,
   isWithinSemanticReach,
@@ -13,7 +14,8 @@ var FINGERTIP_OFFSET = { x: 0.038, y: 0.026, z: -0.089 };
 var FINGER_POINT_DIR = { x: 0.0649, y: 0.0816, z: -0.9946 };
 
 function xrIsPresenting(sceneEl) {
-  return Boolean(sceneEl && sceneEl.renderer && sceneEl.renderer.xr && sceneEl.renderer.xr.isPresenting);
+  var controlMode = sceneEl && sceneEl.systems && sceneEl.systems['control-mode'];
+  return Boolean(controlMode && controlMode.isMode('xr'));
 }
 
 function visibleInHierarchy(object3D) {

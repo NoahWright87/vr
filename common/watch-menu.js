@@ -1,3 +1,4 @@
+import './control-mode.js';
 import './menus.js';
 
   var WATCH_OFFSET = { x: -0.009, y: -0.006, z: 0.100 };
@@ -22,7 +23,8 @@ import './menus.js';
     var settleTimer = null;
     var releaseTimer = null;
     function updateShowLine() {
-      var isDesktop = !(rawEl.sceneEl.renderer && rawEl.sceneEl.renderer.xr && rawEl.sceneEl.renderer.xr.isPresenting);
+      var controlMode = rawEl.sceneEl.systems['control-mode'];
+      var isDesktop = controlMode && controlMode.isMode('desktop');
       fingertipEl.setAttribute('raycaster', 'showLine', handComp.laserActive && (hasIntersection || isDesktop));
     }
     function enableLaser() {
