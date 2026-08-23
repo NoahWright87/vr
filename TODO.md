@@ -4,6 +4,34 @@ Things deliberately deferred, with enough context to pick them up cold.
 Ideas that aren't committed to yet live in DESIGN.md or in conversation;
 this is only for work that has been decided on and postponed.
 
+## Desktop semantic hands
+
+- **Carry the shared hand-intent path through every practical VR mechanic.**
+  The Showcase now proves the first slice: desktop WASD/mouse input drives
+  simulated gameplay-facing hands for a watch, a mounted menu, and a simple
+  grab/drop box, while tracked controllers continue to drive those hands in
+  XR. The larger objective is: **we eventually want all shared VR
+  interactions to be usable — and therefore testable — on a normal laptop
+  with mouse and keyboard whenever practical.** VR commands the hands
+  physically; desktop commands the hands semantically. Next candidates
+  include weapons, holsters, throwing/catching, two-handed props, mounted
+  weapons, cannon loading/aiming, hand-cranked guns, and other machinery.
+
+- **Migrate Pistols at Dawn onto the shared semantic hand/object contracts.**
+  V1 deliberately did not lift its `hand-rig`/`holsterable` graph into the
+  Showcase: that graph also owns stacks, holsters, dangling, catches,
+  throwing, support grips, vice wobble, recoil, and physics. Extract the
+  useful state transitions behind a shared interface incrementally, then
+  make Pistols consume that interface rather than maintaining a second input
+  path. Do not make the Showcase depend on Pistols' legacy globals.
+
+- **Replace text-only XR action labels with real controller/hand glyphs.**
+  A-Frame's bundled SDF font does not reliably contain color emoji such as
+  `👉`, `🖐️`, or `✊`, so the first hint-zone pass uses `POKE` and `GRIP`.
+  Add small vendored vector/mesh glyphs (including alternating open/closed
+  hand frames where useful) without making hint zones care which headset or
+  controller supplied the action.
+
 ## Liquids
 
 - **Dissipation rates per surface.** Right now a puddle dries at a rate

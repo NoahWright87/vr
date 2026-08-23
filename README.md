@@ -15,6 +15,9 @@ Deployed as a static site (planned: `vr.noahwright.dev` via Netlify).
 /common/menus.js              shared menu rows, pages, chrome, and projection
 /common/watch-menu.js         shared wrist watch and pointing interaction
 /common/locomotion.js         shared locomotion component
+/common/desktop-controls.js   desktop intent, movement, and interaction modes
+/common/interaction-hints.js  semantic hands, hint zones, mounted/grab primitives
+/common/interaction-targeting.js deterministic input-agnostic target selection
 /vite.config.js               Vite entries and runtime-asset copying
 ```
 
@@ -142,7 +145,15 @@ Small, reusable interaction building blocks — a design-system for VR, in the S
     - The **wall screen's** is a *sidecar*: a small companion panel (with its own chrome title bar) toggled beside the main one, which never has to hide or get covered — good for stats/detail on whatever's currently showing without interrupting it.
     - The **pedestal's** is a *tutorial overlay*: arrow-and-caption hints drawn on top of the still-visible menu, stepped with any face button (bottom button back, top button forward — A/X and B/Y on real Quest controllers) instead of an on-screen row — the menu underneath is intentionally made inert (`projected-menu`'s `suppressPointing`, for exactly this "covered but still visible" case) while the overlay is up, so a face button steps the tutorial instead of also activating whatever's behind it.
 
-Coming soon: movement (locomotion + turning), vibration/haptics, object manipulation, and spatial audio.
+  - **Desktop semantic hands** — outside XR, click the scene for pointer-locked mouse look and use WASD to move. `Tab` raises the non-dominant watch while the dominant simulated hand points (`Esc` is an alias when the browser does not consume it for pointer-lock); `E` completes a real hand poke on the reachable, highlighted wall menu and locks the player into its authored mounted-interaction anchor; `F` grabs or drops the selected test box through the same semantic hand action used by an XR grip. `E` or `Esc` exits mounted interaction. The watch exposes handedness plus Always/Delayed/Never interaction hints, both persisted locally. Hint zones resolve overlapping candidates once, so the outlined/signposted object and the object an action receives cannot disagree. XR controllers still own the gameplay hand transforms while presenting.
+
+The desktop layer intentionally expresses intent instead of emulating an
+`XRInputSource`: tracked XR input and desktop input converge on the shared
+gameplay-facing hand entities. The V1 box has only a small shared held/falling/
+resting state machine; Pistols at Dawn's larger holster/stack/throw/catch graph
+remains isolated until it can be migrated incrementally.
+
+Coming soon: broader object manipulation, vibration/haptics, and spatial audio.
 
 ## Running locally
 
