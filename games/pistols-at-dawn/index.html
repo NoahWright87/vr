@@ -229,6 +229,12 @@
 
     <a-scene pistols-watch-menu area-manager scene-index>
       <a-sky color="#7d6b8f" data-area-persistent></a-sky>
+      <!-- Area fragments may add their own lamps, but these outdoor lights
+           live for the whole session. Without a persistent baseline the
+           Saloon's lamps can replace A-Frame's implicit default lights and
+           leave Ghost Town black after the Saloon fragment is removed. -->
+      <a-entity data-area-persistent light="type: ambient; color: #d8d0c0; intensity: 0.48"></a-entity>
+      <a-entity data-area-persistent light="type: directional; color: #fff3d6; intensity: 0.75" position="-3 7 4"></a-entity>
 
       <!-- ============================================================
            PLAYER RIG + DESKTOP/PHONE FALLBACK
