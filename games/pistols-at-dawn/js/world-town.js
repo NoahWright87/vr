@@ -30,7 +30,9 @@
             'saloon-entrance': { position: { x: -5.7, y: 0, z: 12 }, rotationY: 90 },
             'sheriff-entrance': { position: { x: -5.45, y: 0, z: 6 }, rotationY: 90 },
             'store-entrance': { position: { x: 6.1, y: 0, z: 6 }, rotationY: -90 },
+            'bank-entrance': { position: { x: -6.3, y: 0, z: 0 }, rotationY: 90 },
           },
+          scripts: ['js/world-ghost-town-stalls.js'],
         },
         {
           id: 'range', label: 'The Range', position: { x: 0, y: 0, z: 0 }, rotationY: 0,
@@ -48,6 +50,10 @@
         {
           id: 'general-store', label: 'General Store', position: { x: 0, y: 0, z: -120 }, rotationY: 0,
           fragment: 'areas/general-store.html', scripts: ['js/world-hub-interiors.js'],
+        },
+        {
+          id: 'bank', label: 'The Bank', position: { x: -120, y: 0, z: 0 }, rotationY: 0,
+          fragment: 'areas/bank.html', scripts: ['js/world-hub-interiors.js'],
         },
         {
           id: 'farm', label: 'The Farm', position: { x: 0, y: 0, z: 60 }, rotationY: 0,

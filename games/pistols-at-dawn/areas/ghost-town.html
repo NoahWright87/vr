@@ -62,7 +62,9 @@
 <a-box class="ghost-town-building ghost-town-sheriff" width="5.3" height="4.6" depth="4.6" color="#6f6250" position="-9 2.3 6"></a-box>
 <a-text value="SHERIFF" align="center" color="#f0dfba" width="3" position="-6.33 3.75 6" rotation="0 90 0"></a-text>
 <a-box id="ghost-town-sheriff-door" class="ghost-town-door" width="0.16" height="2.15" depth="1.35" color="#493526" position="-6.32 1.075 6" town-door="destination: sheriff-office" hint-zone="action: mounted; radius: 0.42; maxReach: 1; gazeThreshold: 0.88; priority: 30; desktopKey: E; desktopLabel: Enter Sheriff; gamepadKey: X; gamepadLabel: Enter Sheriff; touchKey: TAP; touchLabel: Enter Sheriff; xrKey: POKE; xrLabel: Enter Sheriff"></a-box>
-<a-box class="ghost-town-building" width="4.2" height="3.8" depth="5" color="#9b6841" position="-9 1.9 0"></a-box>
+<a-box class="ghost-town-building ghost-town-bank" width="4.2" height="3.8" depth="5" color="#6d5847" position="-9 1.9 0"></a-box>
+<a-text value="BANK" align="center" color="#f0dfba" width="3" position="-6.88 2.95 0" rotation="0 90 0"></a-text>
+<a-box id="ghost-town-bank-door" class="ghost-town-door" width="0.16" height="2.15" depth="1.35" color="#4d3020" position="-6.88 1.075 0" town-door="destination: bank" hint-zone="action: mounted; radius: 0.42; maxReach: 1; gazeThreshold: 0.88; priority: 30; desktopKey: E; desktopLabel: Enter Bank; gamepadKey: X; gamepadLabel: Enter Bank; touchKey: TAP; touchLabel: Enter Bank; xrKey: POKE; xrLabel: Enter Bank"></a-box>
 <a-box class="ghost-town-building" width="5.6" height="4.1" depth="4.4" color="#77705c" position="-9 2.05 -6"></a-box>
 <a-box class="ghost-town-building" width="4.8" height="3.2" depth="5.4" color="#82563f" position="-9 1.6 -12"></a-box>
 
@@ -72,4 +74,6 @@
 <a-box id="ghost-town-store-door" class="ghost-town-door" width="0.16" height="2.15" depth="1.35" color="#4d3020" position="6.78 1.075 6" town-door="destination: general-store" hint-zone="action: mounted; radius: 0.42; maxReach: 1; gazeThreshold: 0.88; priority: 30; desktopKey: E; desktopLabel: Enter Store; gamepadKey: X; gamepadLabel: Enter Store; touchKey: TAP; touchLabel: Enter Store; xrKey: POKE; xrLabel: Enter Store"></a-box>
 <a-box class="ghost-town-building" width="5.5" height="4.8" depth="4.5" color="#665b4d" position="9 2.4 0"></a-box>
 <a-box class="ghost-town-building" width="4.7" height="3.7" depth="5.1" color="#a16b45" position="9 1.85 -6"></a-box>
-<a-box class="ghost-town-building" width="5.2" height="4" depth="4.7" color="#735740" position="9 2 -12"></a-box>
+<!-- The final east-side lot is deliberately open to the road: a small row
+     of covered stalls makes the hub feel lived-in without another interior. -->
+<a-entity class="ghost-town-horse-stalls" ghost-town-stalls position="9 0 -12" rotation="0 -90 0"></a-entity>

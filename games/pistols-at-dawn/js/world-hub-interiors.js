@@ -48,3 +48,17 @@
         hubBox(this.el, 5.8, .12, 1.3, { x: 0, y: 1.12, z: .85 }, '#9a7040');
         hubExit(this.el, 'store-entrance');
       }});
+      registerComponent('bank-interior', { init: function () {
+        var loc = findTownLocation('bank'); hubRoom(this.el, loc, 12, 10, 'THE BANK');
+        // A long tellers' counter, brass rail, and a heavy rear vault make
+        // this modest room immediately legible even before bank gameplay.
+        hubBox(this.el, 9.6, 1.2, .8, { x: 0, y: .6, z: -1.1 }, '#6b4326');
+        hubBox(this.el, 9.9, .1, 1, { x: 0, y: 1.23, z: -1.1 }, '#9a7040');
+        for (var i = -4; i <= 4; i += 2) {
+          var rail = document.createElement('a-cylinder'); rail.setAttribute('radius', '.06'); rail.setAttribute('height', '1.05'); rail.setAttribute('color', '#c69b43'); rail.setAttribute('position', { x: i, y: 1.75, z: -.55 }); this.el.appendChild(rail);
+        }
+        hubBox(this.el, 3.1, 3, .35, { x: 3.7, y: 1.5, z: -4.75 }, '#59606a');
+        var vault = document.createElement('a-cylinder'); vault.setAttribute('radius', '1.05'); vault.setAttribute('height', '.28'); vault.setAttribute('rotation', '90 0 0'); vault.setAttribute('color', '#838b95'); vault.setAttribute('position', '3.7 1.55 -4.55'); this.el.appendChild(vault);
+        var wheel = document.createElement('a-torus'); wheel.setAttribute('radius', '.42'); wheel.setAttribute('radius-tubular', '.06'); wheel.setAttribute('color', '#d0b45c'); wheel.setAttribute('position', '3.7 1.55 -4.37'); this.el.appendChild(wheel);
+        hubExit(this.el, 'bank-entrance');
+      }});
