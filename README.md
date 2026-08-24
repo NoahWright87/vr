@@ -325,6 +325,24 @@ for this.
     Objects only, not your whole account). Add it as a secret at
     **repo Settings → Secrets and variables → Actions → New repository
     secret**, named `CLOUDFLARE_API_TOKEN`.
+  - If your Cloudflare login has access to more than one account (most
+    personal accounts don't), wrangler may also need a
+    `CLOUDFLARE_ACCOUNT_ID` secret to know which one to deploy into —
+    only add this if a deploy fails asking for it. Find it on any
+    domain's Overview page in the dashboard, in the right sidebar.
+
+**PR previews**: any PR touching `worker/**` (or the shared
+`common/multiplayer.js`/`server/signal-rooms.js`) automatically gets
+its own live preview Worker — `preview-signal-hub.yml` deploys
+`vr-signal-relay-pr-<number>` (its own Durable Object namespace,
+isolated from production) and comments the `wss://` address on the
+PR. `cleanup-signal-hub-preview.yml` deletes it again when the PR
+closes, merged or not, so these don't pile up on the account. This
+isn't Cloudflare's built-in "preview URL" feature
+(`wrangler versions upload`) — that's explicitly unsupported for
+Workers using Durable Objects, which this one does — so it's a real
+second Worker instead of a lightweight preview version, on the same
+free plan as production.
 
 **Testing locally without deploying**: `npm run relay:hosted:dev`
 runs the same Worker code against Cloudflare's local simulator
