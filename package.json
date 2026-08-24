@@ -8,12 +8,15 @@
     "preview": "vite preview",
     "test": "node --test",
     "signal": "node server/signal-server.js",
-    "package:relay:win": "pkg server/signal-server.js --targets node22-win-x64 --output dist-exe/vr-signal-relay.exe"
+    "package:relay:win": "pkg server/signal-server.js --targets node22-win-x64 --output dist-exe/vr-signal-relay.exe",
+    "relay:hosted:dev": "wrangler dev --config worker/wrangler.toml",
+    "relay:hosted:deploy": "wrangler deploy --config worker/wrangler.toml"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^6.1.0",
     "@yao-pkg/pkg": "^6.22.0",
-    "vite": "^8.1.5"
+    "vite": "^8.1.5",
+    "wrangler": "^4.125.0"
   },
   "dependencies": {
     "@noahwright/design": "^1.1.1",

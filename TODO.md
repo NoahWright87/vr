@@ -159,46 +159,36 @@ it, with the rough edges named rather than silently accepted:
 
 ## Playing over the internet, not just LAN
 
-Everything built so far (`common/multiplayer.js`, the signaling
-relay) is deliberately LAN-only, and not just because the relay
-happens to run on a home laptop — `common/multiplayer.js` sets
-`iceServers: []`, so peers only ever gather local host ICE candidates
-and can't find each other across two different networks at all.
-Decided against doing this now: it trades "no server, no hosting
-costs" (the explicit starting premise of this whole feature) for real
-recurring infrastructure, so it should be a deliberate choice, not
-something added piecemeal. If it's ever wanted, it's three layers,
-and they only pay off bundled together — doing just one leaves
-multiplayer exactly as LAN-only as today:
+Two of the three layers below are now done — a publicly reachable
+relay (`worker/`, a Cloudflare Worker + Durable Object port of
+`server/signal-server.js`; see README.md's "Hosted relay (Cloudflare
+Workers)" section for account setup and deploying it) and STUN
+(`common/multiplayer.js`'s `iceServers` now points at
+`stun.cloudflare.com`, free and accountless). TURN is still
+deliberately deferred:
 
-- **A publicly reachable relay.** Deploy `server/signal-server.js`
-  somewhere with a real domain and TLS (`wss://`, not `ws://` — a
-  page served over `https://` can't open a plain `ws://` connection).
-  Cheapest is a small always-on host (a few dollars a month, or a
-  free tier on something like Render/Railway/Fly.io). No code changes
-  to the relay itself, since it already listens on all interfaces.
-- **STUN**, added to `iceServers` in `common/multiplayer.js`, so each
-  peer can learn its own public IP:port as seen from outside its home
-  router (that's the one thing missing today that keeps this
-  LAN-only at the WebRTC layer, independent of the relay). Free
-  public STUN servers exist, or self-host `coturn`. On its own, with
-  no public relay, this changes nothing — the relay is what lets two
-  peers find each other to exchange addresses in the first place.
 - **TURN**, for the fraction of real-world NAT setups (symmetric NAT,
   restrictive carrier/corporate NAT, some double-NAT routers) where
   even STUN can't establish a direct path. Unlike STUN, a TURN server
   actually relays the live game traffic, so it's an ongoing bandwidth
-  cost, not a one-time setup — pay a TURN provider or self-host
-  `coturn` on a VPS with bandwidth headroom. This is the piece that
-  most changes "zero cost" into "real hosting bill."
+  cost, not a one-time setup — pay a TURN provider (Cloudflare has one,
+  `turn.cloudflare.com`, at $0.05/GB — no longer the free/accountless
+  story the rest of this relies on) or self-host `coturn` on a VPS
+  with bandwidth headroom. This is the piece that most changes "zero
+  cost" into "real hosting bill," and also the one place a
+  misconfigured relay could be abused by a stranger to relay their own
+  traffic — worth its own deliberate decision once STUN-only actually
+  proves insufficient for real playtests, not added speculatively.
 
-Two client-side changes fall out of this once a public relay actually
-exists, neither of which is done yet:
+Two client-side changes fall out of this once a fixed public relay
+address is actually settled on (i.e. once you've deployed one and are
+comfortable relying on it rather than treating it as one option among
+several), neither of which is done yet:
 
-- **The "Local relay" address field goes away.** With a fixed public
-  relay, its `wss://` address becomes a hardcoded constant in the
-  client instead of something typed into `#mp-relay-url` — a room
-  code becomes the only thing anyone ever enters. Today's manual
+- **The "Relay" address field goes away.** With a fixed public relay,
+  its `wss://` address becomes a hardcoded constant in the client
+  instead of something typed into `#mp-relay-url` — a room code
+  becomes the only thing anyone ever enters. Today's manual
   copy/paste path can probably retire at the same time, since it only
   exists as a no-relay fallback.
 - **Auto-host (`primitives/menus/index.html`'s `tryAutoHostViaLocalRelay`)

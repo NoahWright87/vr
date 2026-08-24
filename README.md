@@ -215,10 +215,9 @@ Once this repo is on Netlify (or GitHub Pages in the meantime), just open the de
 ## Multiplayer connection relay (experimental)
 
 The menu showcase (`primitives/menus/`) has an experimental panel for
-testing peer-to-peer multiplayer over the local network — see
-`common/multiplayer.js`. Connecting needs a one-time handshake (a
-WebRTC offer/answer) per peer; the showcase panel can do this two
-ways:
+testing peer-to-peer multiplayer — see `common/multiplayer.js`.
+Connecting needs a one-time handshake (a WebRTC offer/answer) per
+peer; the showcase panel can do this three ways:
 
 - **Manual copy/paste** — always available, no setup, but strictly
   1:1: one peer clicks Host and copies a text blob to the other, who
@@ -231,7 +230,11 @@ ways:
   short 4-character room code instead. Supports any number of
   joiners: the host holds a separate connection to each one (a
   "star"), and relays each joiner's position to every other joiner —
-  they never connect directly to each other.
+  they never connect directly to each other. Same local-network-only
+  reach as manual copy/paste, just less tedious.
+- **Hosted relay** — the same room-code flow, but the relay runs on
+  the internet instead of someone's laptop, so it works between two
+  separate networks (see "Hosted relay (Cloudflare Workers)" below).
 
 **Running the relay:**
 
@@ -278,3 +281,72 @@ This `.exe` is **unsigned** — Windows SmartScreen will likely show an
 anyway"). Proper code signing, a system tray icon instead of a bare
 console window, and Mac/Linux builds are all deliberately deferred —
 see `TODO.md`.
+
+### Hosted relay (Cloudflare Workers)
+
+Both relays above speak the exact same protocol, so **the showcase
+panel doesn't need to know which kind of relay it's talking to** —
+paste a `ws://` address for the local one or a `wss://` address for
+the hosted one into the same "Relay" field. The hosted relay
+(`worker/`) is a Cloudflare Worker + Durable Object that does what
+`server/signal-server.js` does, reachable over the open internet
+instead of only the local network — see `worker/src/signal-hub.js`
+for the room logic (a near line-for-line port of the local relay's)
+and its header comment for why one Durable Object instance is enough
+for this.
+
+**One-time account setup:**
+
+1. Create a free Cloudflare account at
+   [dash.cloudflare.com/sign-up](https://dash.cloudflare.com/sign-up)
+   — no credit card required. Workers stays on the **Free** plan
+   until you explicitly switch to **Workers Paid** in the dashboard;
+   nothing here does that for you, and the free plan has no payment
+   method attached at all, so there's no way for it to bill you by
+   accident.
+2. Log in from your machine: `npx wrangler login` opens a browser tab
+   to authorize the CLI. This is only needed for deploying from your
+   own computer (`npm run relay:hosted:deploy`) — skip it if you're
+   only using the GitHub Actions workflow below.
+
+**Deploying:**
+
+- **From your machine**: `npm run relay:hosted:deploy` (after
+  `wrangler login` above). Prints the `https://vr-signal-relay.<your
+  subdomain>.workers.dev` URL — the relay's `wss://` address is the
+  same host with `wss://` in place of `https://`.
+- **From GitHub Actions** (no local `wrangler login` needed): the
+  "Deploy signal hub" workflow (`.github/workflows/deploy-signal-hub.yml`)
+  runs `npm test` then deploys, triggered manually from the Actions
+  tab. It needs one repo secret:
+  - **`CLOUDFLARE_API_TOKEN`** — in the Cloudflare dashboard, go to
+    **My Profile → API Tokens → Create Token** and use the **"Edit
+    Cloudflare Workers"** template (scopes it to Workers + Durable
+    Objects only, not your whole account). Add it as a secret at
+    **repo Settings → Secrets and variables → Actions → New repository
+    secret**, named `CLOUDFLARE_API_TOKEN`.
+
+**Testing locally without deploying**: `npm run relay:hosted:dev`
+runs the same Worker code against Cloudflare's local simulator
+(`workerd`) on your machine — prints a `ws://localhost:8787`-style
+address you can paste into the showcase panel exactly like the local
+relay, no Cloudflare account needed for this part.
+
+**Cost**: the relay only ever moves a few KB of text per connection
+(the one-time handshake, same as the local relay) — nowhere near the
+free plan's limits (100,000 requests/day) under any realistic amount
+of play. If usage ever did grow enough to matter, the free plan simply
+stops accepting requests rather than charging you; the only way this
+relay can ever cost money is if you deliberately upgrade the
+Cloudflare account to Workers Paid.
+
+**Why the relay alone isn't enough**: `common/multiplayer.js` also now
+points `iceServers` at a free public STUN server
+(`stun.cloudflare.com`, no account needed), which is the other half of
+what it takes for two peers on separate networks to find each
+other — the relay lets them exchange addresses, STUN is what gives
+each side a real address to exchange. TURN — needed for the fraction
+of networks where even STUN can't establish a direct path, and which
+comes with a real ongoing bandwidth cost since it relays actual
+gameplay traffic — is deliberately not part of this yet; see
+`TODO.md`.

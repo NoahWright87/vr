@@ -326,7 +326,7 @@
       <div id="mp-status">Not connected</div>
 
       <div id="mp-relay-section">
-        <label>Local relay (optional) — run <code>npm run signal</code> on a laptop, then paste one of its printed ws:// addresses here. Leave blank to fall back to manual copy/paste below.<input id="mp-relay-url" type="text" placeholder="ws://192.168.1.23:8787" /></label>
+        <label>Relay (optional) — a local one: run <code>npm run signal</code> on a laptop and paste one of its printed ws:// addresses; or a hosted one: paste its wss:// address (see README.md's "Hosted relay" section). Leave blank to fall back to manual copy/paste below.<input id="mp-relay-url" type="text" placeholder="ws://192.168.1.23:8787 or wss://your-relay.workers.dev" /></label>
         <button id="mp-host-relay-btn" type="button">Host via relay</button>
         <span id="mp-room-code-display" hidden>Room code: <strong id="mp-room-code-value"></strong></span>
         <div id="mp-join-relay-row">
