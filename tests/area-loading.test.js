@@ -7,9 +7,10 @@ const loader = readFileSync(new URL('../games/pistols-at-dawn/js/world-town.js',
 const menu = readFileSync(new URL('../games/pistols-at-dawn/js/world-menu.js', import.meta.url), 'utf8');
 const ghostTown = readFileSync(new URL('../games/pistols-at-dawn/areas/ghost-town.html', import.meta.url), 'utf8');
 const saloonInterior = readFileSync(new URL('../games/pistols-at-dawn/js/world-saloon-interior.js', import.meta.url), 'utf8');
+const hubInteriors = readFileSync(new URL('../games/pistols-at-dawn/js/world-hub-interiors.js', import.meta.url), 'utf8');
 
 test('destinations are lazy fragments instead of simultaneous scene entities', () => {
-  for (const id of ['ghost-town', 'range', 'saloon', 'farm', 'stable']) {
+  for (const id of ['ghost-town', 'range', 'saloon', 'farm', 'stable', 'sheriff-office', 'general-store']) {
     assert.match(loader, new RegExp(`fragment: 'areas/${id}\\.html'`));
   }
   assert.match(page, /<a-entity id="area-host" data-area-persistent><\/a-entity>/);
@@ -66,10 +67,35 @@ test('the expanded Saloon has a shared interior, return door, and dart lanes', (
   assert.match(saloonInterior, /destination: ghost-town; arrival: saloon-entrance/);
 });
 
+test('Ghost Town connects to a Sheriff’s Office and stocked General Store', () => {
+  const sheriff = readFileSync(new URL('../games/pistols-at-dawn/areas/sheriff-office.html', import.meta.url), 'utf8');
+  const store = readFileSync(new URL('../games/pistols-at-dawn/areas/general-store.html', import.meta.url), 'utf8');
+  assert.match(loader, /id: 'sheriff-office', label: "Sheriff's Office"/);
+  assert.match(loader, /id: 'general-store', label: 'General Store'/);
+  assert.match(loader, /js\/world-hub-interiors\.js/);
+  assert.match(page, /menu-item="value: teleport-sheriff-office; label: Sheriff's Office"/);
+  assert.match(page, /menu-item="value: teleport-general-store; label: General Store"/);
+  assert.match(ghostTown, /id="ghost-town-sheriff-door"/);
+  assert.match(ghostTown, /town-door="destination: sheriff-office"/);
+  assert.match(ghostTown, /id="ghost-town-store-door"/);
+  assert.match(ghostTown, /town-door="destination: general-store"/);
+  assert.match(sheriff, /sheriff-office/);
+  assert.match(store, /general-store/);
+  assert.match(hubInteriors, /registerComponent\('sheriff-office'/);
+  assert.match(hubInteriors, /registerComponent\('general-store'/);
+  assert.match(hubInteriors, /WANTED\\nDEAD OR ALIVE/);
+  assert.match(hubInteriors, /hubExit\(this\.el, 'sheriff-entrance'\)/);
+  assert.match(hubInteriors, /hubExit\(this\.el, 'store-entrance'\)/);
+  for (const item of ['pistol', 'shotgun', 'tommy', 'bow', 'dynamite', 'launcher', 'rocket']) {
+    assert.match(hubInteriors, new RegExp(`'${item}'`));
+  }
+});
+
 test('destination builders are absent from the eager script list', () => {
   for (const script of [
     'items-siege-weapons', 'world-saloon-bar', 'world-shooting-stall',
     'world-targets', 'world-saloon-darts', 'world-farm', 'world-stable',
+    'world-saloon-interior', 'world-hub-interiors',
   ]) {
     assert.doesNotMatch(page, new RegExp(`<script src="js/${script}\\.js"`));
     assert.match(loader, new RegExp(`js/${script}\\.js`));
