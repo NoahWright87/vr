@@ -11,13 +11,16 @@
         hubBox(el, width, 3.6, .2, { x: 0, y: 1.8, z: -depth / 2 }, '#493020');
         [-1, 1].forEach(function (side) { hubBox(el, .2, 3.6, depth, { x: side * width / 2, y: 1.8, z: 0 }, '#493020'); });
         hubBox(el, width, .16, depth, { x: 0, y: 3.6, z: 0 }, '#2d1d15');
-        var light = document.createElement('a-entity'); light.setAttribute('light', 'type: point; color: #ffd48a; intensity: 1.1; distance: 10'); light.setAttribute('position', '0 3.2 0'); el.appendChild(light);
+        var ambient = document.createElement('a-entity'); ambient.setAttribute('light', 'type: ambient; color: #d9b887; intensity: .42'); el.appendChild(ambient);
+        [-width / 4, width / 4].forEach(function (x) {
+          var light = document.createElement('a-entity'); light.setAttribute('light', 'type: point; color: #ffd48a; intensity: 1.25; distance: 9'); light.setAttribute('position', { x: x, y: 3.15, z: -.5 }); el.appendChild(light);
+        });
         var text = document.createElement('a-text'); text.setAttribute('value', label); text.setAttribute('align', 'center'); text.setAttribute('color', '#efd59d'); text.setAttribute('width', '3'); text.setAttribute('position', { x: 0, y: 3.25, z: -depth / 2 + .12 }); el.appendChild(text);
       }
       function hubExit(el, arrival) {
         var door = hubBox(el, 2.2, 2.25, .14, { x: 0, y: 1.125, z: 3.85 }, '#573722');
         door.setAttribute('town-door', 'destination: ghost-town; arrival: ' + arrival);
-        door.setAttribute('hint-zone', 'action: mounted; radius: .48; maxReach: 1; gazeThreshold: .88; priority: 30; desktopKey: E; desktopLabel: Leave; gamepadKey: X; gamepadLabel: Leave; touchKey: TAP; touchLabel: Leave; xrKey: POKE; xrLabel: Leave');
+        door.setAttribute('hint-zone', 'action: mounted; radius: .8; maxReach: 1.65; gazeThreshold: .78; priority: 30; desktopKey: E; desktopLabel: Leave; gamepadKey: X; gamepadLabel: Leave; touchKey: TAP; touchLabel: Leave; xrKey: POKE; xrLabel: Leave; hintOffset: 0 .42 0; hintScale: .88; highlightOpacity: .3');
       }
       registerComponent('sheriff-office', { init: function () {
         var loc = findTownLocation('sheriff-office'); hubRoom(this.el, loc, 9, 8, "SHERIFF'S OFFICE");

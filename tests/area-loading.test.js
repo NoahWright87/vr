@@ -45,6 +45,7 @@ test('the Saloon door uses the shared semantic controls to enter the Saloon', ()
   assert.match(ghostTown, /id="ghost-town-saloon-door"/);
   assert.match(ghostTown, /town-door="destination: saloon"/);
   assert.match(ghostTown, /desktopKey: E; desktopLabel: Enter Saloon/);
+  assert.match(ghostTown, /radius: 0\.8; maxReach: 1\.65; gazeThreshold: 0\.78/);
   assert.match(loader, /registerComponent\('town-door'/);
   assert.match(loader, /hub\.teleportTo\(this\.data\.destination, arrival\)/);
 });
@@ -88,6 +89,9 @@ test('Ghost Town connects to a Sheriff’s Office and stocked General Store', ()
   assert.match(hubInteriors, /WANTED\\nDEAD OR ALIVE/);
   assert.match(hubInteriors, /hubExit\(this\.el, 'sheriff-entrance'\)/);
   assert.match(hubInteriors, /hubExit\(this\.el, 'store-entrance'\)/);
+  assert.match(hubInteriors, /type: ambient; color: #d9b887; intensity: \.42/);
+  assert.match(hubInteriors, /type: point; color: #ffd48a; intensity: 1\.25; distance: 9/);
+  assert.match(hubInteriors, /radius: \.8; maxReach: 1\.65; gazeThreshold: \.78/);
   for (const item of ['pistol', 'shotgun', 'tommy', 'bow', 'dynamite', 'launcher', 'rocket']) {
     assert.match(hubInteriors, new RegExp(`'${item}'`));
   }
