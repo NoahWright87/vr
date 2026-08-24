@@ -55,6 +55,11 @@ test('the expanded Saloon has a shared interior, return door, and dart lanes', (
   assert.match(saloonInterior, /addBottle/);
   assert.match(saloonInterior, /buildTables/);
   assert.match(saloonInterior, /buildPianoNook/);
+  assert.match(saloonInterior, /buildWindows/);
+  assert.match(saloonInterior, /classList\.add\('saloon-window'\)/);
+  assert.match(saloonInterior, /SALOO?N_WIDTH, 0\.18, SALOON_DEPTH/);
+  assert.match(saloonInterior, /type: ambient; color: #e8cda8; intensity: 0\.58/);
+  assert.match(saloonInterior, /classList\.add\('saloon-lantern'\)/);
   assert.match(saloonInterior, /id', 'saloon-exit-door'/);
   assert.match(saloonInterior, /destination: ghost-town; arrival: saloon-entrance/);
 });

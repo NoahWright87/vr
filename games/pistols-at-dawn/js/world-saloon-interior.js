@@ -20,6 +20,7 @@
           if (origin) this.el.setAttribute('position', origin.position);
           this.slotSerial = 0;
           this.buildRoom();
+          this.buildWindows();
           this.buildBar();
           this.buildTables();
           this.buildPianoNook();
@@ -58,6 +59,35 @@
           this.addBox(6.2, SALOON_HEIGHT, 0.22, { x: -4.9, y: SALOON_HEIGHT / 2, z: halfDepth }, SALOON_WALL);
           this.addBox(6.2, SALOON_HEIGHT, 0.22, { x: 4.9, y: SALOON_HEIGHT / 2, z: halfDepth }, SALOON_WALL);
           this.addBox(3.6, 1.25, 0.22, { x: 0, y: 3.58, z: halfDepth }, SALOON_WALL);
+          this.addBox(SALOON_WIDTH, 0.18, SALOON_DEPTH, { x: 0, y: SALOON_HEIGHT, z: 0 }, '#2d1d15');
+        },
+
+        buildWindows: function () {
+          var self = this;
+          // Bright, double-sided panes make daylight legible even when the
+          // room is seen from an oblique angle; nearby points give that
+          // daylight actual reach across the furniture.
+          [
+            { x: -7.87, z: -3.8, rotation: 90 },
+            { x: -7.87, z: 1.1, rotation: 90 },
+            { x: -7.87, z: 5.2, rotation: 90 },
+            { x: 7.87, z: 4.5, rotation: -90 },
+          ].forEach(function (spot) {
+            var pane = document.createElement('a-plane');
+            pane.classList.add('saloon-window');
+            pane.setAttribute('width', 2.1);
+            pane.setAttribute('height', 1.35);
+            pane.setAttribute('position', { x: spot.x, y: 2.65, z: spot.z });
+            pane.setAttribute('rotation', { x: 0, y: spot.rotation, z: 0 });
+            pane.setAttribute('material', 'color: #c6e6ef; shader: flat; transparent: true; opacity: 0.82; side: double');
+            self.el.appendChild(pane);
+            self.addBox(0.09, 1.55, 2.3, { x: spot.x * 0.997, y: 2.65, z: spot.z }, SALOON_WOOD);
+
+            var windowLight = document.createElement('a-entity');
+            windowLight.setAttribute('position', { x: spot.x * 0.91, y: 2.5, z: spot.z });
+            windowLight.setAttribute('light', 'type: point; color: #b9d9e8; intensity: 0.65; distance: 8; decay: 1.2');
+            self.el.appendChild(windowLight);
+          });
         },
 
         addBottle: function (x, z, color) {
@@ -190,13 +220,21 @@
         },
 
         buildLights: function () {
-          [-3.5, 1, 5].forEach(function (x) {
+          var ambient = document.createElement('a-entity');
+          ambient.setAttribute('light', 'type: ambient; color: #e8cda8; intensity: 0.58');
+          this.el.appendChild(ambient);
+
+          [
+            { x: -4.2, z: -2.8 }, { x: 0.4, z: -2.8 }, { x: 4.5, z: -2.8 },
+            { x: -3.2, z: 3.0 }, { x: 1.4, z: 3.6 }, { x: 5.2, z: 2.8 },
+          ].forEach(function (spot) {
             var fixture = document.createElement('a-cylinder');
+            fixture.classList.add('saloon-lantern');
             fixture.setAttribute('radius', 0.18);
             fixture.setAttribute('height', 0.34);
             fixture.setAttribute('color', SALOON_BRASS);
-            fixture.setAttribute('position', { x: x, y: 3.7, z: 0 });
-            fixture.setAttribute('light', 'type: point; color: #ffd48a; intensity: 0.5; distance: 7');
+            fixture.setAttribute('position', { x: spot.x, y: 3.7, z: spot.z });
+            fixture.setAttribute('light', 'type: point; color: #ffd48a; intensity: 1.15; distance: 9; decay: 1.35');
             this.el.appendChild(fixture);
           }, this);
         },
