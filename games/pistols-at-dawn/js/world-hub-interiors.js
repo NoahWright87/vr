@@ -85,3 +85,24 @@
         var sign = document.createElement('a-text'); sign.setAttribute('value', 'SARSAPARILLA  •  TONICS  •  BANDAGES'); sign.setAttribute('align', 'center'); sign.setAttribute('color', '#ead7a5'); sign.setAttribute('width', '2.4'); sign.setAttribute('position', '0 2.45 -3.87'); this.el.appendChild(sign);
         hubExit(this.el, 'pharmacy-entrance');
       }});
+      registerComponent('post-office-interior', { init: function () {
+        var loc = findTownLocation('post-office'); hubRoom(this.el, loc, 10, 8, 'POST OFFICE');
+        hubBox(this.el, 6.2, 1.05, 1.05, { x: -1.1, y: .525, z: .8 }, '#69472e');
+        for (var i = 0; i < 8; i++) hubBox(this.el, .55, .46, .18, { x: -3.6 + (i % 4) * .75, y: 1.5 + Math.floor(i / 4) * .58, z: -.15 }, '#9a7040');
+        var board = hubBox(this.el, 3.4, 2.1, .12, { x: 2.9, y: 1.75, z: -3.87 }, '#233d4b');
+        var text = document.createElement('a-text'); text.setAttribute('value', 'TOWN TELEGRAPH\nFRIENDS &amp; INVITES\nCOMING SOON'); text.setAttribute('align', 'center'); text.setAttribute('color', '#f0dfba'); text.setAttribute('width', '2.25'); text.setAttribute('position', '2.9 1.75 -3.79'); this.el.appendChild(text);
+        hubExit(this.el, 'post-office-entrance');
+      }});
+      registerComponent('boots-suits-interior', { init: function () {
+        var loc = findTownLocation('boots-suits'); hubRoom(this.el, loc, 10, 8, 'BOOTS & SUITS');
+        for (var side = -1; side <= 1; side += 2) {
+          hubBox(this.el, .2, 2.3, 4.8, { x: side * 4.35, y: 1.15, z: -.6 }, '#5a3926');
+          for (var i = 0; i < 3; i++) {
+            var hat = document.createElement('a-cylinder'); hat.setAttribute('radius', '.28'); hat.setAttribute('height', '.12'); hat.setAttribute('color', i % 2 ? '#4b2d22' : '#b08a4f'); hat.setAttribute('position', { x: side * 4.05, y: 1.15 + i * .58, z: 1.5 - i * 1.5 }); this.el.appendChild(hat);
+          }
+        }
+        hubBox(this.el, 2.1, 2.5, .14, { x: 0, y: 1.5, z: -3.87 }, '#bfd7df');
+        var mirror = document.createElement('a-text'); mirror.setAttribute('value', 'TRY A NEW LOOK\nHATS • BOOTS • VESTS'); mirror.setAttribute('align', 'center'); mirror.setAttribute('color', '#2f4c58'); mirror.setAttribute('width', '2'); mirror.setAttribute('position', '0 1.55 -3.78'); this.el.appendChild(mirror);
+        hubBox(this.el, 4.8, 1.05, 1.1, { x: 0, y: .525, z: .8 }, '#71452d');
+        hubExit(this.el, 'boots-suits-entrance');
+      }});

@@ -32,8 +32,10 @@
             'store-entrance': { position: { x: 6.1, y: 0, z: 6 }, rotationY: -90 },
             'bank-entrance': { position: { x: -6.3, y: 0, z: 0 }, rotationY: 90 },
             'pharmacy-entrance': { position: { x: -6.25, y: 0, z: -12 }, rotationY: 90 },
+            'post-office-entrance': { position: { x: -5.85, y: 0, z: -6 }, rotationY: 90 },
+            'boots-suits-entrance': { position: { x: 6.05, y: 0, z: -6 }, rotationY: -90 },
           },
-          scripts: ['js/world-ghost-town-stalls.js', 'js/world-targets.js', 'js/world-ghost-town-gallery.js'],
+          scripts: ['js/world-ghost-town-stalls.js', 'js/world-targets.js', 'js/world-ghost-town-gallery.js', 'js/world-ghost-town-carriage.js'],
         },
         {
           id: 'range', label: 'The Range', position: { x: 0, y: 0, z: 0 }, rotationY: 0,
@@ -59,6 +61,14 @@
         {
           id: 'pharmacy', label: 'The Pharmacy', position: { x: 0, y: 0, z: 120 }, rotationY: 0,
           fragment: 'areas/pharmacy.html', scripts: ['js/world-hub-interiors.js'],
+        },
+        {
+          id: 'post-office', label: 'Post Office', position: { x: 180, y: 0, z: 0 }, rotationY: 0,
+          fragment: 'areas/post-office.html', scripts: ['js/world-hub-interiors.js'],
+        },
+        {
+          id: 'boots-suits', label: 'Boots & Suits', position: { x: 0, y: 0, z: -180 }, rotationY: 0,
+          fragment: 'areas/boots-suits.html', scripts: ['js/world-hub-interiors.js'],
         },
         {
           id: 'farm', label: 'The Farm', position: { x: 0, y: 0, z: 60 }, rotationY: 0,

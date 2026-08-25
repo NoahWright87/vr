@@ -10,7 +10,7 @@ const saloonInterior = readFileSync(new URL('../games/pistols-at-dawn/js/world-s
 const hubInteriors = readFileSync(new URL('../games/pistols-at-dawn/js/world-hub-interiors.js', import.meta.url), 'utf8');
 
 test('destinations are lazy fragments instead of simultaneous scene entities', () => {
-  for (const id of ['ghost-town', 'range', 'saloon', 'farm', 'stable', 'sheriff-office', 'general-store', 'bank', 'pharmacy']) {
+  for (const id of ['ghost-town', 'range', 'saloon', 'farm', 'stable', 'sheriff-office', 'general-store', 'bank', 'pharmacy', 'post-office', 'boots-suits']) {
     assert.match(loader, new RegExp(`fragment: 'areas/${id}\\.html'`));
   }
   assert.match(page, /<a-entity id="area-host" data-area-persistent><\/a-entity>/);
@@ -36,6 +36,8 @@ test('Ghost Town is the startup hub with its two welcome gateways, nine building
   assert.match(loader, /js\/world-ghost-town-gallery\.js/);
   assert.match(loader, /fragment: 'areas\/ghost-town\.html',[\s\S]*?js\/world-targets\.js/);
   assert.match(loader, /js\/world-ghost-town-stalls\.js/);
+  assert.match(ghostTown, /class="ghost-town-building ghost-town-carriage-tickets" carriage-ticket-stall/);
+  assert.match(loader, /js\/world-ghost-town-carriage\.js/);
 });
 
 test('the Saloon door uses the shared semantic controls to enter the Saloon', () => {
@@ -124,11 +126,38 @@ test('the Pharmacy brings elixirs, soda, and medical supplies to Ghost Town', ()
   assert.match(hubInteriors, /hubExit\(this\.el, 'pharmacy-entrance'\)/);
 });
 
+test('the Post Office and Boots & Suits fill the final town building slots', () => {
+  const postOffice = readFileSync(new URL('../games/pistols-at-dawn/areas/post-office.html', import.meta.url), 'utf8');
+  const bootsSuits = readFileSync(new URL('../games/pistols-at-dawn/areas/boots-suits.html', import.meta.url), 'utf8');
+  assert.match(loader, /id: 'post-office', label: 'Post Office'/);
+  assert.match(loader, /id: 'boots-suits', label: 'Boots & Suits'/);
+  assert.match(page, /menu-item="value: teleport-post-office; label: Post Office"/);
+  assert.match(page, /menu-item="value: teleport-boots-suits; label: Boots &amp; Suits"/);
+  assert.match(ghostTown, /town-door="destination: post-office"/);
+  assert.match(ghostTown, /town-door="destination: boots-suits"/);
+  assert.match(postOffice, /post-office-interior/);
+  assert.match(bootsSuits, /boots-suits-interior/);
+  assert.match(hubInteriors, /registerComponent\('post-office-interior'/);
+  assert.match(hubInteriors, /registerComponent\('boots-suits-interior'/);
+  assert.match(hubInteriors, /FRIENDS &amp; INVITES/);
+  assert.match(hubInteriors, /HATS • BOOTS • VESTS/);
+});
+
+test('Carriage Tickets use the projected menu to reach out-of-town destinations', () => {
+  const carriage = readFileSync(new URL('../games/pistols-at-dawn/js/world-ghost-town-carriage.js', import.meta.url), 'utf8');
+  assert.match(carriage, /registerComponent\('carriage-ticket-stall'/);
+  assert.match(carriage, /projected-menu/);
+  assert.match(carriage, /laserScale: 1; offset: 0 \.45 0/);
+  assert.match(carriage, /radius: 1\.6; maxReach: 1\.65; gazeThreshold: \.72/);
+  for (const id of ['range', 'farm', 'stable']) assert.match(carriage, new RegExp(`carriage-${id}`));
+  assert.match(carriage, /hub\.teleportTo\(value\.slice\('carriage-'\.length\)\)/);
+});
+
 test('destination builders are absent from the eager script list', () => {
   for (const script of [
     'items-siege-weapons', 'world-saloon-bar', 'world-shooting-stall',
     'world-targets', 'world-saloon-darts', 'world-farm', 'world-stable',
-    'world-saloon-interior', 'world-hub-interiors', 'world-ghost-town-stalls', 'world-ghost-town-gallery',
+    'world-saloon-interior', 'world-hub-interiors', 'world-ghost-town-stalls', 'world-ghost-town-gallery', 'world-ghost-town-carriage',
   ]) {
     assert.doesNotMatch(page, new RegExp(`<script src="js/${script}\\.js"`));
     assert.match(loader, new RegExp(`js/${script}\\.js`));
