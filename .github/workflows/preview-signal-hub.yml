@@ -25,6 +25,13 @@ on:
 jobs:
   preview:
     runs-on: ubuntu-latest
+    # The default GITHUB_TOKEN is read-only for pull requests/issues
+    # unless a workflow explicitly asks for more — needed here since
+    # the last step comments the preview URL onto the PR.
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
     steps:
       - uses: actions/checkout@v4
 
