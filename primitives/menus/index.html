@@ -233,9 +233,127 @@
           grid-template-columns: 1fr;
         }
       }
+      #mp-panel {
+        position: fixed;
+        bottom: 0;
+        right: 0;
+        z-index: 5;
+        width: 22rem;
+        max-height: 60vh;
+        overflow-y: auto;
+        box-sizing: border-box;
+        padding: 0.75rem;
+        background: rgba(8, 14, 26, 0.92);
+        color: #dce8ff;
+        font: 0.8rem/1.4 ui-monospace, SFMono-Regular, Consolas, monospace;
+        border-top-left-radius: 0.6rem;
+      }
+      #mp-panel button {
+        appearance: none;
+        border: 1px solid #35507c;
+        background: #15233b;
+        color: #dce8ff;
+        border-radius: 0.4rem;
+        padding: 0.3rem 0.6rem;
+        cursor: pointer;
+        font: inherit;
+        margin: 0.2rem 0.3rem 0.2rem 0;
+      }
+      #mp-panel button:disabled {
+        opacity: 0.5;
+        cursor: default;
+      }
+      #mp-panel label {
+        display: block;
+        margin-top: 0.4rem;
+      }
+      #mp-panel textarea,
+      #mp-panel input[type='text'] {
+        width: 100%;
+        box-sizing: border-box;
+        margin-top: 0.2rem;
+        background: #0a1426;
+        color: #eef4ff;
+        border: 1px solid #35507c;
+        border-radius: 0.4rem;
+        font: inherit;
+      }
+      #mp-panel textarea {
+        min-height: 3.5rem;
+      }
+      #mp-panel input[type='text'] {
+        padding: 0.3rem 0.5rem;
+      }
+      #mp-status {
+        margin: 0.3rem 0;
+        color: #93f0bf;
+      }
+      #mp-relay-section {
+        padding-bottom: 0.5rem;
+        border-bottom: 1px solid #223454;
+      }
+      #mp-room-code-display {
+        display: inline-block;
+        margin-top: 0.3rem;
+        color: #93f0bf;
+      }
+      #mp-join-relay-row {
+        display: flex;
+        gap: 0.3rem;
+        margin-top: 0.4rem;
+      }
+      #mp-join-relay-row input {
+        flex: 1;
+        margin-top: 0;
+      }
+      #mp-log {
+        margin-top: 0.4rem;
+        max-height: 6rem;
+        overflow-y: auto;
+        color: #9fb0d4;
+      }
     </style>
   </head>
   <body>
+    <!-- Multiplayer connection POC — proves two peers can find each
+         other with a manual copy/paste signaling exchange and no
+         server (see common/multiplayer.js). Deliberately plain HTML,
+         not part of the VR scene: this is only here to validate the
+         WebRTC handshake itself before it gets wired into the
+         pedestal menu and an in-VR join flow. -->
+    <div id="mp-panel">
+      <strong>Multiplayer (connection test)</strong>
+      <div id="mp-status">Not connected</div>
+
+      <div id="mp-relay-section">
+        <label>Local relay (optional) — run <code>npm run signal</code> on a laptop, then paste one of its printed ws:// addresses here. Leave blank to fall back to manual copy/paste below.<input id="mp-relay-url" type="text" placeholder="ws://192.168.1.23:8787" /></label>
+        <button id="mp-host-relay-btn" type="button">Host via relay</button>
+        <span id="mp-room-code-display" hidden>Room code: <strong id="mp-room-code-value"></strong></span>
+        <div id="mp-join-relay-row">
+          <input id="mp-room-code-input" type="text" placeholder="Room code" maxlength="4" />
+          <button id="mp-join-relay-btn" type="button">Join via relay</button>
+        </div>
+      </div>
+
+      <div id="mp-role-row">
+        <strong>Manual copy/paste</strong><br />
+        <button id="mp-host-btn" type="button">Host</button>
+        <button id="mp-join-btn" type="button">Join</button>
+      </div>
+      <div id="mp-offer-row" hidden>
+        <label>Offer — copy to the joining peer<textarea id="mp-local-offer" readonly></textarea></label>
+        <label>Answer — paste what the joining peer sends back<textarea id="mp-remote-answer"></textarea></label>
+        <button id="mp-accept-answer-btn" type="button">Accept answer</button>
+      </div>
+      <div id="mp-join-row" hidden>
+        <label>Offer — paste what the host sent you<textarea id="mp-remote-offer"></textarea></label>
+        <button id="mp-accept-offer-btn" type="button">Accept offer</button>
+        <label>Answer — copy back to the host<textarea id="mp-local-answer" readonly></textarea></label>
+      </div>
+      <button id="mp-send-ping-btn" type="button" hidden>Send ping</button>
+      <div id="mp-log"></div>
+    </div>
+
     <div id="editor-screen">
       <div class="editor-shell">
         <div class="editor-topbar">
@@ -299,7 +417,12 @@
       <span>Showcase — shared semantic-hand interactions. Keyboard: WASD/mouse, C/Tab/E/F. Gamepad: sticks + face/shoulder buttons. Mobile: joystick, drag + action buttons. <a href="../../index.html">All prototypes</a><a class="menu-edit-link" href="?edit=1" aria-label="Open menu editor">⚙️</a></span>
     </div>
 
-    <a-scene>
+    <!-- keyboard-shortcuts' enterVR binds "F" to toggle desktop VR
+         fullscreen by default (A-Frame core, not something defined in
+         this repo) — it collides with desktop-controls' own "F" for
+         grab, added above. Disabling just that half leaves Escape
+         still exiting VR normally. -->
+    <a-scene keyboard-shortcuts="enterVR: false">
       <a-light type="ambient" color="#fff" intensity="0.7"></a-light>
       <a-light type="directional" position="2 3 2" intensity="0.7"></a-light>
       <a-sky color="#0d1526"></a-sky>
@@ -345,6 +468,22 @@
         ></a-entity>
         <a-entity id="tracked-hand-visual-right" control-mode-visibility="modes: xr" hand-controls="hand: right; handModelStyle: lowPoly"></a-entity>
       </a-entity>
+
+      <!-- Multiplayer connection POC: every OTHER connected peer's
+           aim, broadcast a few times a second over its data channel
+           (see the multiplayer script near the bottom of this file)
+           and drawn with A-Frame's own built-in "line" component —
+           the same visible-beam mechanism the watch/wall/pedestal
+           menus already use via raycaster's showLine, just driven by
+           network data instead of a local raycast — plus a small
+           sphere at their head position, since a beam pointed
+           straight at you foreshortens to a near-invisible dot. One
+           pair of entities per remote peer, created/removed on the
+           fly by getOrCreateRemotePeer()/removeRemotePeer() in that
+           script (there can be more than one now that hosting
+           supports several joiners), so nothing is declared here
+           statically. World-space, not a child of #rig, since these
+           represent where OTHER people's cameras are pointing. -->
            Every clickable row is just an entity with its own
            geometry/material plus the "menu-item" component below —
            that component is the reusable part; the background plane
@@ -1102,15 +1241,25 @@
         });
       }
 
+      // spawn-box/reset-boxes are handled by the multiplayer script
+      // instead (see window.__showcaseOfflineBoxActions below) — when
+      // a session is active those need to go through host authority
+      // rather than always running locally, and that state only
+      // exists in that other module script's scope.
       var menuScene = document.querySelector('a-scene');
       if (menuScene) {
         menuScene.addEventListener('menu-item-select', function (evt) {
           menuScene.setAttribute('data-last-menu-selection', evt.detail.value);
           handleLocomotionSelection(evt.detail.value);
-          if (evt.detail.value === 'spawn-box') spawnShowcaseBox();
-          else if (evt.detail.value === 'reset-boxes') resetShowcaseBoxes();
         });
       }
+
+      // Bridge for the multiplayer script (a separate <script
+      // type="module"> block, so it doesn't share this one's scope):
+      // the original, purely-local box actions, reused as the
+      // offline/no-session fallback and as the mechanical primitive
+      // the host applies locally too.
+      window.__showcaseOfflineBoxActions = { spawn: spawnShowcaseBox, reset: resetShowcaseBoxes };
 
       // Demo 3 of 3 help styles (see #pedestal-tutorial-template): the
       // "bottom" face button on either controller (A on the right, X on
@@ -1505,5 +1654,711 @@
       setInterval(updateAllDisplays, 1000);
     </script>
     </div>
+
+    <script type="module">
+      import { createHostConnection, createJoinConnection, createHostSession } from '../../common/multiplayer.js';
+      import { hostSessionViaRelay, joinViaRelay } from '../../common/signal-relay.js';
+
+      var statusEl = document.getElementById('mp-status');
+      var relayUrlEl = document.getElementById('mp-relay-url');
+      var hostRelayBtn = document.getElementById('mp-host-relay-btn');
+      var joinRelayBtn = document.getElementById('mp-join-relay-btn');
+      var roomCodeInputEl = document.getElementById('mp-room-code-input');
+      var roomCodeDisplayEl = document.getElementById('mp-room-code-display');
+      var roomCodeValueEl = document.getElementById('mp-room-code-value');
+      var hostBtn = document.getElementById('mp-host-btn');
+      var joinBtn = document.getElementById('mp-join-btn');
+      var offerRow = document.getElementById('mp-offer-row');
+      var joinRow = document.getElementById('mp-join-row');
+      var localOfferEl = document.getElementById('mp-local-offer');
+      var remoteAnswerEl = document.getElementById('mp-remote-answer');
+      var acceptAnswerBtn = document.getElementById('mp-accept-answer-btn');
+      var remoteOfferEl = document.getElementById('mp-remote-offer');
+      var acceptOfferBtn = document.getElementById('mp-accept-offer-btn');
+      var localAnswerEl = document.getElementById('mp-local-answer');
+      var sendPingBtn = document.getElementById('mp-send-ping-btn');
+      var logEl = document.getElementById('mp-log');
+      var sceneEl = document.querySelector('a-scene');
+
+      // "connection" (single) is used by BOTH the manual copy/paste
+      // fallback (still 1:1 only, always has been) and the relay
+      // Join role (a joiner only ever has one connection: to the
+      // host). "hostSession" (many) is only used by the relay Host
+      // role, which now supports multiple joiners at once — see
+      // createHostSession's comment in common/multiplayer.js for why
+      // that one needed a genuinely different shape.
+      var connection = null;
+      var hostSession = null;
+      var isHost = false;
+      var sendMessage = null; // whichever of the two sends the ping button/aim broadcast should use right now
+
+      // Host claims the first color for itself; each joiner gets the
+      // next one in line as it connects, assigned by the host rather
+      // than picked by each peer itself. Six is plenty for a POC —
+      // a genuinely large room would want smarter reuse instead of
+      // just wrapping around via modulo once these run out.
+      var PALETTE = ['#ff3b30', '#0a84ff', '#34c759', '#ffcc00', '#af52de', '#5ac8fa'];
+
+      var AIM_INTERVAL_MS = 100;
+      var BEAM_LENGTH = 6;
+      var aimTimer = null;
+      var cameraObj = document.getElementById('showcase-camera').object3D;
+
+      // --- Shared object sync (the showcase's grabbable box(es)) —
+      // relay path only (host session + relay join). The manual
+      // copy/paste fallback still only syncs aim/lasers, same as
+      // before; extending full object sync to a 1:1-only path used
+      // mainly for testing the raw handshake wasn't worth doing.
+      //
+      // boxHolders is HOST-ONLY: the authoritative "who holds what"
+      // (boxId -> 'host' or a joiner's peerId), used to serialize
+      // simultaneous grabs and validate that position/release
+      // messages actually come from whoever's really holding it.
+      // remoteHeldBoxes is kept by EVERY client (host included): "boxes
+      // I know someone ELSE holds right now," used purely to gate my
+      // own local interaction with them (see markBoxRemoteHeld).
+      var boxHolders = new Map();
+      var remoteHeldBoxes = new Set();
+      var spawnedBoxIds = [];
+      var heldBoxId = null; // the one box (if any) I'M currently holding
+      // isHost/sendMessage are also true for the manual copy/paste
+      // host, which has no hostSession and doesn't sync boxes at all
+      // — this is the thing that actually distinguishes "relay
+      // joiner, route box actions through the host" from "manual
+      // path, box actions just stay local like being offline."
+      var boxSyncActive = false;
+
+      function log (text) {
+        var line = document.createElement('div');
+        line.textContent = text;
+        logEl.appendChild(line);
+        logEl.scrollTop = logEl.scrollHeight;
+      }
+
+      function parseMessage (data) {
+        try {
+          return JSON.parse(data);
+        } catch (err) {
+          return null;
+        }
+      }
+
+      function startAimBroadcast (sendFn) {
+        if (aimTimer) return;
+        var worldPos = new AFRAME.THREE.Vector3();
+        var worldQuat = new AFRAME.THREE.Quaternion();
+        var worldDir = new AFRAME.THREE.Vector3();
+        var boxWorldPos = new AFRAME.THREE.Vector3();
+        var boxWorldQuat = new AFRAME.THREE.Quaternion();
+        aimTimer = setInterval(function () {
+          cameraObj.getWorldPosition(worldPos);
+          cameraObj.getWorldQuaternion(worldQuat);
+          // NOT cameraObj.getWorldDirection() — on this AFRAME/three.js
+          // pairing it came back pointing behind the camera instead of
+          // in front (confirmed by a live multi-headset test: every
+          // laser pointed backwards). common/menus.js's projected-menu
+          // placement already solves "where is the camera facing" the
+          // same way real gameplay code in this repo does: rotate the
+          // camera's own local -Z by its world orientation.
+          worldDir.set(0, 0, -1).applyQuaternion(worldQuat);
+          sendFn(JSON.stringify({
+            type: 'aim',
+            origin: { x: worldPos.x, y: worldPos.y, z: worldPos.z },
+            direction: { x: worldDir.x, y: worldDir.y, z: worldDir.z },
+          }));
+
+          // Piggyback the box I'm holding (if any) on the same timer
+          // rather than a second interval — same cadence is plenty
+          // for a held prop, and getWorldPosition/Quaternion already
+          // account for it being re-parented onto my hand.
+          if (heldBoxId) {
+            var boxEl = document.getElementById(heldBoxId);
+            if (boxEl) {
+              boxEl.object3D.getWorldPosition(boxWorldPos);
+              boxEl.object3D.getWorldQuaternion(boxWorldQuat);
+              sendFn(JSON.stringify({
+                type: 'box-position',
+                boxId: heldBoxId,
+                position: { x: boxWorldPos.x, y: boxWorldPos.y, z: boxWorldPos.z },
+                quaternion: { x: boxWorldQuat.x, y: boxWorldQuat.y, z: boxWorldQuat.z, w: boxWorldQuat.w },
+              }));
+            }
+          }
+        }, AIM_INTERVAL_MS);
+      }
+
+      function stopAimBroadcast () {
+        clearInterval(aimTimer);
+        aimTimer = null;
+      }
+
+      // --- Box networking primitives — used by every role (host,
+      // joiner, and the host's own local application of its own
+      // decisions). Deliberately built as plain functions operating
+      // on the box's own existing simple-grabbable state machine
+      // (common/interaction-hints.js) rather than a parallel one:
+      // "remote held" is just forcing state to 'held' without ever
+      // calling the real grab() (which would try to attach it to a
+      // local hand), and "remote released" hands off to the box's
+      // own real falling physics, which every client already runs
+      // identically given the same starting point and constants.
+
+      function boxSpawnPosition (index) {
+        // Mirrors window.__showcaseOfflineBoxActions's own layout
+        // formula so networked and offline spawns land in the same
+        // grid — see the original spawnShowcaseBox in this page's
+        // other <script> block.
+        return {
+          x: 2.38 + (index % 3) * 0.28,
+          y: 0.77 + Math.floor(index / 6) * 0.28,
+          z: -1.68 - (Math.floor(index / 3) % 2) * 0.28,
+        };
+      }
+
+      function wireBoxNetworking (boxEl) {
+        boxEl.addEventListener('simple-grabbed', function () { onLocalBoxGrabbed(boxEl.id); });
+        boxEl.addEventListener('simple-released', function () { onLocalBoxReleased(boxEl.id); });
+      }
+
+      function applyBoxSpawn (boxId, position) {
+        if (document.getElementById(boxId)) return; // already applied locally
+        var source = document.querySelector('#showcase-grab-box');
+        if (!source) return;
+        var clone = source.cloneNode(true);
+        clone.removeAttribute('id');
+        clone.removeAttribute('data-box-number');
+        clone.id = boxId;
+        clone.setAttribute('position', position);
+        document.querySelector('a-scene').appendChild(clone);
+        wireBoxNetworking(clone);
+      }
+
+      function markBoxRemoteHeld (boxId) {
+        var boxEl = document.getElementById(boxId);
+        if (!boxEl) return;
+        var grabbable = boxEl.components['simple-grabbable'];
+        if (grabbable) {
+          grabbable.state = 'held';
+          grabbable.fallVelocity = 0;
+          boxEl.setAttribute('data-grab-state', 'held');
+        }
+        var zone = boxEl.components['hint-zone'];
+        if (zone && zone.setLabels) zone.setLabels(null, null);
+        remoteHeldBoxes.add(boxId);
+      }
+
+      function applyRemoteBoxReleased (boxId, position) {
+        var boxEl = document.getElementById(boxId);
+        if (!boxEl) return;
+        var grabbable = boxEl.components['simple-grabbable'];
+        if (!grabbable) return;
+        boxEl.object3D.position.set(position.x, position.y, position.z);
+        grabbable.state = 'falling';
+        grabbable.fallVelocity = 0;
+        boxEl.setAttribute('data-grab-state', 'falling');
+        remoteHeldBoxes.delete(boxId);
+      }
+
+      function applyRemoteBoxPosition (boxId, position, quaternion) {
+        var boxEl = document.getElementById(boxId);
+        if (!boxEl) return;
+        boxEl.object3D.position.set(position.x, position.y, position.z);
+        if (quaternion) boxEl.object3D.quaternion.set(quaternion.x, quaternion.y, quaternion.z, quaternion.w);
+      }
+
+      function forceLocalBoxRelease (boxId) {
+        var boxEl = document.getElementById(boxId);
+        if (!boxEl) return;
+        var grabbable = boxEl.components['simple-grabbable'];
+        if (grabbable && grabbable.state === 'held') grabbable.release(grabbable.handEl);
+      }
+
+      // Someone (me!) really did grab a box locally — heldBoxId
+      // tracks it regardless of connection state (harmless if
+      // offline, since the aim timer that reads it never runs then).
+      // Gated on hostSession/boxSyncActive specifically, not
+      // isHost/sendMessage — those are also true for the manual
+      // copy/paste host, which has no hostSession and isn't part of
+      // box sync at all (see boxSyncActive's declaration above).
+      function onLocalBoxGrabbed (boxId) {
+        heldBoxId = boxId;
+        if (hostSession) { acceptBoxGrab(boxId, 'host'); return; }
+        if (boxSyncActive) connection.send(JSON.stringify({ type: 'box-grab-request', boxId: boxId }));
+      }
+
+      function onLocalBoxReleased (boxId) {
+        if (heldBoxId === boxId) heldBoxId = null;
+        if (hostSession) {
+          // Only actually announce it if I (the host) was the
+          // authoritative holder — this also fires harmlessly after
+          // forceLocalBoxRelease corrects a losing grab attempt,
+          // where boxHolders was never mine to begin with.
+          if (boxHolders.get(boxId) !== 'host') return;
+          boxHolders.delete(boxId);
+        } else if (!boxSyncActive) {
+          return;
+        }
+        var boxEl = document.getElementById(boxId);
+        if (!boxEl) return;
+        var pos = boxEl.object3D.position;
+        var payload = JSON.stringify({ type: 'box-released', boxId: boxId, position: { x: pos.x, y: pos.y, z: pos.z } });
+        if (hostSession) hostSession.broadcast(payload);
+        else connection.send(payload);
+      }
+
+      // Host-only: the single place that decides who gets a box,
+      // whether the grab came from the host's own hand or a joiner's
+      // request. Ties (or a joiner reaching for something the host
+      // already secretly won a race for) resolve to whoever this
+      // function heard from first.
+      function acceptBoxGrab (boxId, holderId) {
+        if (boxHolders.has(boxId)) {
+          if (holderId === 'host') forceLocalBoxRelease(boxId);
+          else hostSession.send(holderId, JSON.stringify({ type: 'box-grab-denied', boxId: boxId }));
+          return;
+        }
+        boxHolders.set(boxId, holderId);
+        if (holderId !== 'host') markBoxRemoteHeld(boxId);
+        hostSession.broadcast(JSON.stringify({ type: 'box-grabbed', boxId: boxId, holderId: holderId }), holderId === 'host' ? undefined : holderId);
+      }
+
+      function performHostBoxSpawn () {
+        if (spawnedBoxIds.length >= 7) return; // 1 static + 7 spawned = 8, matching the original single-player cap
+        var index = 1 + spawnedBoxIds.length;
+        var boxId = 'box-' + (spawnedBoxIds.length + 1);
+        var position = boxSpawnPosition(index);
+        spawnedBoxIds.push(boxId);
+        applyBoxSpawn(boxId, position);
+        if (hostSession) hostSession.broadcast(JSON.stringify({ type: 'box-spawn', boxId: boxId, position: position }));
+      }
+
+      function performHostBoxReset () {
+        window.__showcaseOfflineBoxActions.reset();
+        remoteHeldBoxes.clear();
+        boxHolders.clear();
+        if (hostSession) hostSession.broadcast(JSON.stringify({ type: 'box-reset-all' }));
+      }
+
+      // A departing joiner's held box(es) would otherwise stay
+      // "remote held" forever, since no box-released message is
+      // coming — release them back to the room, from wherever the
+      // host last saw them.
+      function releaseHeldBoxesFor (peerId) {
+        boxHolders.forEach(function (holderId, boxId) {
+          if (holderId !== peerId) return;
+          boxHolders.delete(boxId);
+          var boxEl = document.getElementById(boxId);
+          var pos = boxEl ? boxEl.object3D.position : { x: 0, y: 0, z: 0 };
+          var position = { x: pos.x, y: pos.y, z: pos.z };
+          applyRemoteBoxReleased(boxId, position);
+          hostSession.broadcast(JSON.stringify({ type: 'box-released', boxId: boxId, position: position }));
+        });
+      }
+
+      // Losing the connection entirely (not just one peer among
+      // several) leaves anything I thought was remote-held stuck in
+      // that state forever with no one left to un-stick it — free it
+      // all up locally instead.
+      function releaseAllRemoteHeldBoxesLocally () {
+        remoteHeldBoxes.forEach(function (boxId) {
+          var boxEl = document.getElementById(boxId);
+          var grabbable = boxEl && boxEl.components['simple-grabbable'];
+          if (grabbable) grabbable.resetToSpawn();
+        });
+        remoteHeldBoxes.clear();
+      }
+
+      // One laser + body sphere per OTHER connected peer, created on
+      // demand and torn down when that peer disconnects — there can
+      // be more than one now. peerId is whatever key the caller wants
+      // to use for that peer: the relay's own 'peer-N' ids on the
+      // host side, or the fixed strings 'host'/'manual-peer' on a
+      // joiner/manual peer's side, where there's only ever one
+      // "other" connection to represent.
+      var remotePeers = new Map(); // peerId -> { laserEl, bodyEl }
+
+      function getOrCreateRemotePeer (peerId) {
+        var existing = remotePeers.get(peerId);
+        if (existing) return existing;
+        var laserEl = document.createElement('a-entity');
+        laserEl.className = 'remote-peer-laser';
+        laserEl.setAttribute('line', 'start: 0 0 0; end: 0 0 0; color: #fff');
+        laserEl.setAttribute('visible', false);
+        var bodyEl = document.createElement('a-entity');
+        bodyEl.className = 'remote-peer-body';
+        bodyEl.setAttribute('geometry', 'primitive: sphere; radius: 0.12');
+        bodyEl.setAttribute('material', 'color: #fff');
+        bodyEl.setAttribute('visible', false);
+        sceneEl.appendChild(laserEl);
+        sceneEl.appendChild(bodyEl);
+        var entry = { laserEl: laserEl, bodyEl: bodyEl };
+        remotePeers.set(peerId, entry);
+        return entry;
+      }
+
+      function showRemotePeerAim (peerId, color, origin, direction) {
+        var entry = getOrCreateRemotePeer(peerId);
+        entry.laserEl.setAttribute('line', {
+          start: origin,
+          end: {
+            x: origin.x + direction.x * BEAM_LENGTH,
+            y: origin.y + direction.y * BEAM_LENGTH,
+            z: origin.z + direction.z * BEAM_LENGTH,
+          },
+          color: color,
+        });
+        entry.laserEl.setAttribute('visible', true);
+        entry.bodyEl.setAttribute('position', origin);
+        entry.bodyEl.setAttribute('material', 'color', color);
+        entry.bodyEl.setAttribute('visible', true);
+      }
+
+      function removeRemotePeer (peerId) {
+        var entry = remotePeers.get(peerId);
+        if (!entry) return;
+        entry.laserEl.parentNode.removeChild(entry.laserEl);
+        entry.bodyEl.parentNode.removeChild(entry.bodyEl);
+        remotePeers.delete(peerId);
+      }
+
+      function removeAllRemotePeers () {
+        Array.from(remotePeers.keys()).forEach(removeRemotePeer);
+      }
+
+      // --- Manual copy/paste role (createHostConnection/
+      // createJoinConnection) — unchanged from before: still 1:1
+      // only, always was. Uses the fixed key 'manual-peer' since
+      // there's only ever the one other person.
+      var manualRemoteColor = '#fff';
+
+      function manualOnOpen () {
+        statusEl.textContent = 'Connected';
+        sendPingBtn.hidden = false;
+        if (isHost) {
+          manualRemoteColor = PALETTE[1];
+          connection.send(JSON.stringify({ type: 'welcome', yourColor: PALETTE[1], hostColor: PALETTE[0] }));
+        }
+        sendMessage = function (msg) { connection.send(msg); };
+        startAimBroadcast(sendMessage);
+      }
+
+      function manualOnMessage (data) {
+        var message = parseMessage(data);
+        if (!message) { log('recv (unparsed): ' + data); return; }
+        if (message.type === 'welcome') {
+          manualRemoteColor = message.hostColor;
+          log('assigned color ' + message.yourColor + ', host is ' + message.hostColor);
+        } else if (message.type === 'aim') {
+          showRemotePeerAim('manual-peer', manualRemoteColor, message.origin, message.direction);
+        } else if (message.type === 'ping') {
+          log('recv: ping ' + message.ts);
+        }
+      }
+
+      function manualOnClose () {
+        statusEl.textContent = 'Disconnected';
+        sendPingBtn.hidden = true;
+        stopAimBroadcast();
+        removeRemotePeer('manual-peer');
+      }
+
+      // --- Relay Join role (createJoinConnection) — a joiner still
+      // only ever has the one connection, to the host. What's new is
+      // it can now receive TWO kinds of aim update: 'aim' (the
+      // host's own, straight over the direct channel — rendered
+      // under the fixed key 'host') and 'peer-aim' (another joiner's,
+      // relayed and tagged by the host, rendered under that joiner's
+      // real peerId).
+      var joinHostColor = '#fff';
+
+      function joinOnOpen () {
+        statusEl.textContent = 'Connected';
+        sendPingBtn.hidden = false;
+        boxSyncActive = true;
+        sendMessage = function (msg) { connection.send(msg); };
+        startAimBroadcast(sendMessage);
+      }
+
+      function joinOnMessage (data) {
+        var message = parseMessage(data);
+        if (!message) { log('recv (unparsed): ' + data); return; }
+        if (message.type === 'welcome') {
+          joinHostColor = message.hostColor;
+          log('assigned color ' + message.yourColor + ', host is ' + message.hostColor);
+        } else if (message.type === 'aim') {
+          showRemotePeerAim('host', joinHostColor, message.origin, message.direction);
+        } else if (message.type === 'peer-aim') {
+          showRemotePeerAim(message.peerId, message.color, message.origin, message.direction);
+        } else if (message.type === 'ping') {
+          log('recv: ping ' + message.ts);
+        } else if (message.type === 'box-grabbed') {
+          markBoxRemoteHeld(message.boxId);
+        } else if (message.type === 'box-grab-denied') {
+          forceLocalBoxRelease(message.boxId);
+        } else if (message.type === 'box-released') {
+          applyRemoteBoxReleased(message.boxId, message.position);
+        } else if (message.type === 'box-position') {
+          applyRemoteBoxPosition(message.boxId, message.position, message.quaternion);
+        } else if (message.type === 'box-spawn') {
+          applyBoxSpawn(message.boxId, message.position);
+        } else if (message.type === 'box-reset-all') {
+          window.__showcaseOfflineBoxActions.reset();
+          remoteHeldBoxes.clear();
+        }
+      }
+
+      function joinOnClose () {
+        statusEl.textContent = 'Disconnected';
+        sendPingBtn.hidden = true;
+        boxSyncActive = false;
+        stopAimBroadcast();
+        removeAllRemotePeers();
+        releaseAllRemoteHeldBoxesLocally();
+      }
+
+      // --- Relay Host role (createHostSession) — the star: a
+      // separate RTCPeerConnection per joiner. Each joiner only ever
+      // talks directly to the host, so when one reports its own aim,
+      // the host both renders it locally AND re-broadcasts it to
+      // every OTHER joiner (tagged as 'peer-aim' with that joiner's
+      // id and assigned color) so they can see each other too.
+      var peerColors = new Map(); // peerId -> assigned color
+      var nextColorIndex = 1; // PALETTE[0] is reserved for the host itself
+      var connectedPeerCount = 0;
+      var currentRoomCode = '';
+
+      function updateHostStatus () {
+        statusEl.textContent = 'Room ' + currentRoomCode + ' — ' + connectedPeerCount + ' player(s) connected';
+      }
+
+      function hostOnPeerOpen (peerId) {
+        sendPingBtn.hidden = false;
+        var color = PALETTE[nextColorIndex % PALETTE.length];
+        nextColorIndex++;
+        peerColors.set(peerId, color);
+        hostSession.send(peerId, JSON.stringify({ type: 'welcome', yourColor: color, hostColor: PALETTE[0] }));
+        log(peerId + ' connected (' + color + ')');
+        connectedPeerCount++;
+        updateHostStatus();
+        sendMessage = function (msg) { hostSession.broadcast(msg); };
+        startAimBroadcast(sendMessage);
+      }
+
+      function hostOnPeerMessage (peerId, data) {
+        var message = parseMessage(data);
+        if (!message) { log('recv (unparsed) from ' + peerId + ': ' + data); return; }
+        if (message.type === 'aim') {
+          var color = peerColors.get(peerId) || '#fff';
+          showRemotePeerAim(peerId, color, message.origin, message.direction);
+          hostSession.broadcast(JSON.stringify({
+            type: 'peer-aim',
+            peerId: peerId,
+            color: color,
+            origin: message.origin,
+            direction: message.direction,
+          }), peerId);
+        } else if (message.type === 'ping') {
+          log('recv: ping ' + message.ts + ' from ' + peerId);
+        } else if (message.type === 'box-position') {
+          if (boxHolders.get(message.boxId) !== peerId) return; // stale/invalid - not the recorded holder
+          applyRemoteBoxPosition(message.boxId, message.position, message.quaternion);
+          hostSession.broadcast(data, peerId);
+        } else if (message.type === 'box-released') {
+          if (boxHolders.get(message.boxId) !== peerId) return;
+          boxHolders.delete(message.boxId);
+          applyRemoteBoxReleased(message.boxId, message.position);
+          hostSession.broadcast(data, peerId);
+        } else if (message.type === 'box-grab-request') {
+          acceptBoxGrab(message.boxId, peerId);
+        } else if (message.type === 'box-spawn-request') {
+          performHostBoxSpawn();
+        } else if (message.type === 'box-reset-request') {
+          performHostBoxReset();
+        }
+      }
+
+      function hostOnPeerClose (peerId) {
+        removeRemotePeer(peerId);
+        peerColors.delete(peerId);
+        releaseHeldBoxesFor(peerId);
+        connectedPeerCount = Math.max(0, connectedPeerCount - 1);
+        updateHostStatus();
+        log(peerId + ' disconnected');
+      }
+
+      hostRelayBtn.addEventListener('click', function () {
+        if (!relayUrlEl.value) {
+          statusEl.textContent = 'Enter a relay address first.';
+          return;
+        }
+        hostRelayBtn.disabled = true;
+        joinRelayBtn.disabled = true;
+        hostBtn.disabled = true;
+        joinBtn.disabled = true;
+        isHost = true;
+        hostSession = createHostSession({ onPeerOpen: hostOnPeerOpen, onPeerMessage: hostOnPeerMessage, onPeerClose: hostOnPeerClose });
+        statusEl.textContent = 'Connecting to relay...';
+        hostSessionViaRelay(relayUrlEl.value, hostSession, {
+          onRoomCode: function (code) {
+            currentRoomCode = code;
+            roomCodeValueEl.textContent = code;
+            roomCodeDisplayEl.hidden = false;
+            updateHostStatus();
+          },
+          onError: function (message) {
+            statusEl.textContent = message;
+          },
+        });
+      });
+
+      joinRelayBtn.addEventListener('click', function () {
+        if (!relayUrlEl.value || !roomCodeInputEl.value) {
+          statusEl.textContent = 'Enter a relay address and room code first.';
+          return;
+        }
+        hostRelayBtn.disabled = true;
+        joinRelayBtn.disabled = true;
+        hostBtn.disabled = true;
+        joinBtn.disabled = true;
+        isHost = false;
+        // Abandon any session from auto-host having already fired on
+        // this same tab (the "two people testing on one machine"
+        // case the auto-host override exists for) — otherwise
+        // hostSession stays truthy from that stale attempt even
+        // though this tab is now actually a joiner, and every
+        // hostSession-gated box-sync decision below silently treats
+        // it as still being the host.
+        hostSession = null;
+        boxHolders.clear();
+        peerColors.clear();
+        nextColorIndex = 1;
+        spawnedBoxIds = [];
+        connectedPeerCount = 0;
+        connection = createJoinConnection({ onOpen: joinOnOpen, onMessage: joinOnMessage, onClose: joinOnClose });
+        statusEl.textContent = 'Connecting to relay...';
+        joinViaRelay(relayUrlEl.value, roomCodeInputEl.value.toUpperCase(), connection, {
+          onHandshakeComplete: function () {
+            statusEl.textContent = 'Handshake complete, waiting for the connection to open...';
+          },
+          onError: function (message) {
+            statusEl.textContent = message;
+          },
+        });
+      });
+
+      hostBtn.addEventListener('click', async function () {
+        hostBtn.disabled = true;
+        joinBtn.disabled = true;
+        hostRelayBtn.disabled = true;
+        joinRelayBtn.disabled = true;
+        isHost = true;
+        connection = createHostConnection({ onOpen: manualOnOpen, onMessage: manualOnMessage, onClose: manualOnClose });
+        statusEl.textContent = 'Hosting — generating offer...';
+        var offer = await connection.createOffer();
+        localOfferEl.value = offer;
+        offerRow.hidden = false;
+        statusEl.textContent = 'Waiting for a joining peer';
+      });
+
+      joinBtn.addEventListener('click', function () {
+        hostBtn.disabled = true;
+        joinBtn.disabled = true;
+        hostRelayBtn.disabled = true;
+        joinRelayBtn.disabled = true;
+        joinRow.hidden = false;
+        statusEl.textContent = "Paste the host's offer below";
+      });
+
+      acceptOfferBtn.addEventListener('click', async function () {
+        isHost = false;
+        connection = createJoinConnection({ onOpen: manualOnOpen, onMessage: manualOnMessage, onClose: manualOnClose });
+        statusEl.textContent = 'Generating answer...';
+        var answer = await connection.acceptOffer(remoteOfferEl.value);
+        localAnswerEl.value = answer;
+        statusEl.textContent = 'Waiting for the host to accept';
+      });
+
+      acceptAnswerBtn.addEventListener('click', async function () {
+        await connection.acceptAnswer(remoteAnswerEl.value);
+      });
+
+      sendPingBtn.addEventListener('click', function () {
+        var message = { type: 'ping', ts: Date.now() };
+        if (sendMessage) sendMessage(JSON.stringify(message));
+        log('sent: ping ' + message.ts);
+      });
+
+      // The original static box needs the same grab/release wiring
+      // as anything spawned later.
+      var staticBoxEl = document.getElementById('showcase-grab-box');
+      if (staticBoxEl) wireBoxNetworking(staticBoxEl);
+
+      // spawn-box/reset-boxes now live here rather than the other
+      // <script> block, since only this one has the state needed to
+      // decide where an action goes — see window.__showcaseOfflineBoxActions's
+      // declaration for why. hostSession/boxSyncActive, not
+      // isHost/sendMessage: the manual copy/paste host is also
+      // isHost with sendMessage set, but has no hostSession and
+      // isn't part of box sync, so it falls through to the same
+      // local-only behavior as being fully offline.
+      var boxMenuSceneEl = document.querySelector('a-scene');
+      if (boxMenuSceneEl) {
+        boxMenuSceneEl.addEventListener('menu-item-select', function (evt) {
+          if (evt.detail.value === 'spawn-box') {
+            if (hostSession) performHostBoxSpawn();
+            else if (boxSyncActive) connection.send(JSON.stringify({ type: 'box-spawn-request' }));
+            else window.__showcaseOfflineBoxActions.spawn();
+          } else if (evt.detail.value === 'reset-boxes') {
+            if (hostSession) performHostBoxReset();
+            else if (boxSyncActive) connection.send(JSON.stringify({ type: 'box-reset-request' }));
+            else window.__showcaseOfflineBoxActions.reset();
+          }
+        });
+      }
+
+      // If a relay happens to be running on THIS machine (npm run
+      // signal / the packaged exe, both default to this port), host
+      // automatically instead of making the person on the relay's
+      // own laptop find and type an address. This only ever succeeds
+      // for a tab on the same machine as the relay — a joining peer
+      // on a different device (a headset, say) has nothing listening
+      // on ITS OWN localhost, so the probe below just fails quietly
+      // there and leaves the manual controls alone. Reuses the same
+      // "Host via relay" button rather than duplicating its flow;
+      // clicking a still-enabled button is a no-op if the person
+      // already started hosting/joining manually before this
+      // resolves. Deliberately re-enables the relay Join control
+      // right after, rather than leaving it locked out along with
+      // everything else the way a real manual host click does — two
+      // people testing on one machine (both of which "detect" the
+      // same local relay) still need a way for one of them to
+      // override the guess and join the other's room instead.
+      var DEFAULT_RELAY_PORT = 8787;
+      (function tryAutoHostViaLocalRelay () {
+        var localRelayUrl = 'ws://localhost:' + DEFAULT_RELAY_PORT;
+        var probe = new WebSocket(localRelayUrl);
+        var settled = false;
+        var timer = setTimeout(function () {
+          if (settled) return;
+          settled = true;
+          probe.close();
+        }, 1000);
+        probe.addEventListener('open', function () {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          probe.close();
+          if (hostRelayBtn.disabled) return;
+          relayUrlEl.value = localRelayUrl;
+          statusEl.textContent = 'Local relay detected — hosting automatically...';
+          hostRelayBtn.click();
+          joinRelayBtn.disabled = false;
+        });
+        probe.addEventListener('error', function () {
+          settled = true;
+          clearTimeout(timer);
+        });
+      })();
+    </script>
   </body>
 </html>
