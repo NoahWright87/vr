@@ -43,6 +43,7 @@ AFRAME.registerComponent('desktop-controls', {
     rightHand: { type: 'selector' },
     crouchHeight: { default: 0.92 },
     crouchSpeed: { default: 1.8 },
+    sprintEnabled: { default: false },
     mountedMoveSpeed: { default: 1.8 },
     mountedTurnSpeed: { default: 200 },
   },
@@ -164,7 +165,7 @@ AFRAME.registerComponent('desktop-controls', {
 
   onKeyDown: function (evt) {
     if (!this.shouldHandleKeyboard(evt)) return;
-    if (['KeyW', 'KeyA', 'KeyS', 'KeyD'].indexOf(evt.code) !== -1) {
+    if (['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ShiftLeft', 'ShiftRight'].indexOf(evt.code) !== -1) {
       this.keys[evt.code] = true;
       evt.preventDefault();
       return;
@@ -198,7 +199,7 @@ AFRAME.registerComponent('desktop-controls', {
   },
 
   onKeyUp: function (evt) {
-    if (['KeyW', 'KeyA', 'KeyS', 'KeyD'].indexOf(evt.code) !== -1) {
+    if (['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ShiftLeft', 'ShiftRight'].indexOf(evt.code) !== -1) {
       this.keys[evt.code] = false;
       evt.preventDefault();
     }
@@ -865,7 +866,8 @@ AFRAME.registerComponent('desktop-controls', {
     var z = (this.keys.KeyS ? 1 : 0) - (this.keys.KeyW ? 1 : 0);
     if (!x && !z) return;
     var locomotion = this.el.components['locomotion-demo'];
-    if (locomotion && locomotion.applyDesktopMove) locomotion.applyDesktopMove(x, z, delta);
+    var sprint = this.data.sprintEnabled && Boolean(this.keys.ShiftLeft || this.keys.ShiftRight);
+    if (locomotion && locomotion.applyDesktopMove) locomotion.applyDesktopMove(x, z, delta, sprint);
   },
 
   tick: function (time, delta) {

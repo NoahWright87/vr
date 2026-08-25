@@ -28,14 +28,24 @@ if (typeof AFRAME !== 'undefined') {
   AFRAME.registerSystem('control-mode', {
     init: function () {
       this.mode = null;
-      this.onEnterXr = this.setMode.bind(this, 'xr');
+      // A-Frame emits enter-vr for both a real XR session and ordinary
+      // browser fullscreen. Only the renderer's active XR session should
+      // disable keyboard/gamepad desktop controls.
+      this.onEnterXr = this.syncModeFromRenderer.bind(this);
       this.onExitXr = this.setMode.bind(this, 'desktop');
       this.sceneEl.addEventListener('enter-vr', this.onEnterXr);
       this.sceneEl.addEventListener('exit-vr', this.onExitXr);
 
-      var renderer = this.sceneEl.renderer;
-      var initiallyPresenting = Boolean(renderer && renderer.xr && renderer.xr.isPresenting);
-      this.setMode(initiallyPresenting ? 'xr' : 'desktop');
+      this.syncModeFromRenderer();
+    },
+
+    syncModeFromRenderer: function () {
+      var self = this;
+      requestAnimationFrame(function () {
+        var renderer = self.sceneEl.renderer;
+        var presenting = Boolean(renderer && renderer.xr && renderer.xr.isPresenting);
+        self.setMode(presenting ? 'xr' : 'desktop');
+      });
     },
 
     setMode: function (mode) {

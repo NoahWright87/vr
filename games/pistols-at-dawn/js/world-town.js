@@ -24,13 +24,56 @@
       // your actual head is turned inside the headset.
       var TOWN_LOCATIONS = [
         {
+          id: 'ghost-town', label: 'Ghost Town', position: { x: 0, y: 0, z: 24 }, rotationY: 0,
+          fragment: 'areas/ghost-town.html',
+          arrivals: {
+            'saloon-entrance': { position: { x: -5.7, y: 0, z: 12 }, rotationY: 90 },
+            'sheriff-entrance': { position: { x: -5.45, y: 0, z: 6 }, rotationY: 90 },
+            'store-entrance': { position: { x: 6.1, y: 0, z: 6 }, rotationY: -90 },
+            'bank-entrance': { position: { x: -6.3, y: 0, z: 0 }, rotationY: 90 },
+            'pharmacy-entrance': { position: { x: -6.25, y: 0, z: -12 }, rotationY: 90 },
+            'post-office-entrance': { position: { x: -5.85, y: 0, z: -6 }, rotationY: 90 },
+            'boots-suits-entrance': { position: { x: 6.05, y: 0, z: -6 }, rotationY: -90 },
+            'shooting-gallery-entrance': { position: { x: 6.25, y: 0, z: 0 }, rotationY: -90 },
+          },
+          scripts: ['js/world-ghost-town-stalls.js', 'js/world-targets.js', 'js/world-ghost-town-gallery.js', 'js/world-ghost-town-carriage.js'],
+        },
+        {
           id: 'range', label: 'The Range', position: { x: 0, y: 0, z: 0 }, rotationY: 0,
           fragment: 'areas/range.html',
           scripts: ['js/items-siege-weapons.js', 'js/world-saloon-bar.js', 'js/world-shooting-stall.js', 'js/world-targets.js'],
         },
         {
           id: 'saloon', label: 'The Saloon', position: { x: 0, y: 0, z: -60 }, rotationY: 0,
-          fragment: 'areas/saloon.html', scripts: ['js/world-saloon-darts.js'],
+          fragment: 'areas/saloon.html', scripts: ['js/world-saloon-darts.js', 'js/world-saloon-interior.js'],
+        },
+        {
+          id: 'sheriff-office', label: "Sheriff's Office", position: { x: 60, y: 0, z: 0 }, rotationY: 0,
+          fragment: 'areas/sheriff-office.html', scripts: ['js/world-hub-interiors.js'],
+        },
+        {
+          id: 'general-store', label: 'General Store', position: { x: 0, y: 0, z: -120 }, rotationY: 0,
+          fragment: 'areas/general-store.html', scripts: ['js/world-hub-interiors.js'],
+        },
+        {
+          id: 'bank', label: 'The Bank', position: { x: -120, y: 0, z: 0 }, rotationY: 0,
+          fragment: 'areas/bank.html', scripts: ['js/world-hub-interiors.js'],
+        },
+        {
+          id: 'pharmacy', label: 'The Pharmacy', position: { x: 0, y: 0, z: 120 }, rotationY: 0,
+          fragment: 'areas/pharmacy.html', scripts: ['js/world-hub-interiors.js'],
+        },
+        {
+          id: 'post-office', label: 'Post Office', position: { x: 180, y: 0, z: 0 }, rotationY: 0,
+          fragment: 'areas/post-office.html', scripts: ['js/world-hub-interiors.js'],
+        },
+        {
+          id: 'boots-suits', label: 'Boots & Suits', position: { x: 0, y: 0, z: -180 }, rotationY: 0,
+          fragment: 'areas/boots-suits.html', scripts: ['js/world-hub-interiors.js'],
+        },
+        {
+          id: 'shooting-gallery', label: 'Shooting Gallery', position: { x: -180, y: 0, z: 0 }, rotationY: 0,
+          fragment: 'areas/shooting-gallery.html', scripts: ['js/world-targets.js', 'js/world-ghost-town-gallery.js'],
         },
         {
           id: 'farm', label: 'The Farm', position: { x: 0, y: 0, z: 60 }, rotationY: 0,
@@ -96,10 +139,15 @@
           this.observeOwnership();
 
           var start = function () {
-            this.setLoading(true, 'Loading The Range...');
-            this.switchTo('range').then(function () {
+            this.setLoading(true, 'Loading Ghost Town...');
+            this.switchTo('ghost-town').then(function () {
               var rig = document.querySelector('#player-rig');
               var hub = rig && rig.components['teleport-hub'];
+              var location = findTownLocation('ghost-town');
+              if (rig && location) {
+                rig.object3D.position.set(location.position.x, location.position.y, location.position.z);
+                rig.object3D.rotation.set(0, (location.rotationY * Math.PI) / 180, 0);
+              }
               this.setLoading(false);
               if (hub) hub.fadeTo(0, TELEPORT_FADE_IN_MS, function () {});
             }.bind(this)).catch(function (error) {
@@ -315,7 +363,7 @@
           });
         },
 
-        teleportTo: function (id) {
+        teleportTo: function (id, arrival) {
           if (this.fading) return; // one jump at a time
 
           var loc = null;
@@ -334,8 +382,10 @@
           var el = this.el;
           this.fadeTo(1, TELEPORT_FADE_OUT_MS, function () {
             areaManager.switchTo(id).then(function () {
-              el.object3D.position.set(loc.position.x, loc.position.y, loc.position.z);
-              el.object3D.rotation.set(0, (loc.rotationY * Math.PI) / 180, 0);
+              var destination = (arrival && arrival.position) || loc.position;
+              var rotationY = arrival && Number.isFinite(arrival.rotationY) ? arrival.rotationY : loc.rotationY;
+              el.object3D.position.set(destination.x, destination.y, destination.z);
+              el.object3D.rotation.set(0, (rotationY * Math.PI) / 180, 0);
 
               this.fadeTo(0, TELEPORT_FADE_IN_MS, function () {
                 this.fading = false;
@@ -373,5 +423,35 @@
             dur: dur,
             easing: 'linear',
           });
+        },
+      });
+
+      // A town door owns just one action: once an interaction hint selects
+      // it, use the same fade-and-area-switch route as Watch teleport. The
+      // hint system is input-source neutral, so keyboard E, gamepad X, and
+      // the touch-screen INTERACT button all arrive here as one event.
+      registerComponent('town-door', {
+        schema: {
+          destination: { default: 'saloon' },
+          arrival: { default: '' },
+        },
+
+        init: function () {
+          this.onSemanticAction = this.onSemanticAction.bind(this);
+          this.el.addEventListener('semantic-action', this.onSemanticAction);
+        },
+
+        onSemanticAction: function (evt) {
+          var detail = evt.detail || {};
+          if (detail.action !== 'mounted' || detail.phase !== 'start') return;
+          var rig = document.querySelector('#player-rig');
+          var hub = rig && rig.components['teleport-hub'];
+          var location = findTownLocation(this.data.destination);
+          var arrival = location && location.arrivals && location.arrivals[this.data.arrival];
+          if (hub) hub.teleportTo(this.data.destination, arrival);
+        },
+
+        remove: function () {
+          this.el.removeEventListener('semantic-action', this.onSemanticAction);
         },
       });

@@ -8,6 +8,8 @@
     <script>window.AFRAME_CDN_ROOT = '../../vendor/aframe-1.6.0/';</script>
     <script src="../../vendor/aframe-1.6.0/aframe-v1.6.0.min.js"></script>
     <script type="module" src="../../common/watch-menu.js"></script>
+    <script type="module" src="../../common/locomotion.js"></script>
+    <script type="module" src="../../common/desktop-controls.js"></script>
 
     <style>
       body {
@@ -68,7 +70,7 @@
   </head>
   <body>
     <div id="overlay">
-      <span>Pistols at Dawn — grab, draw, throw, and combine anything you can reach. Go find out what breaks. <a href="../../index.html">All prototypes</a></span>
+      <span>Pistols at Dawn — WASD/mouse to move and look; hold Shift to run. E uses nearby doors; Tab opens Watch. Gamepad: sticks + click left stick to run, X to interact. <a href="../../index.html">All prototypes</a></span>
     </div>
     <div id="teleport-buttons">
       <div class="teleport-label">Teleport</div>
@@ -165,14 +167,23 @@
              own menu-item-select listener matches on, so a location added
              there only needs a matching row added here, nothing in JS. -->
         <a-entity data-menu-page="teleport" visible="false">
-          <a-plane width="1" height="1.8" color="#101827" position="0 0.05 -0.01"></a-plane>
-          <a-entity class="menu-chrome-slot" data-title="TELEPORT" data-help="false" data-close="true" data-width="1" data-bar-y="0.86"></a-entity>
+          <a-plane width="1" height="4.38" color="#101827" position="0 0 -0.01"></a-plane>
+          <a-entity class="menu-chrome-slot" data-title="TELEPORT" data-help="false" data-close="true" data-width="1" data-bar-y="1.99"></a-entity>
+          <a-entity
+            class="pm-target"
+            geometry="primitive: plane; width: 0.78; height: 0.2"
+            material="color: #182238"
+            menu-item="value: teleport-ghost-town; label: Ghost Town"
+            position="0 1.55 0"
+          >
+            <a-text value="Ghost Town" align="center" color="#eee" width="2.4" position="0 0 0.01"></a-text>
+          </a-entity>
           <a-entity
             class="pm-target"
             geometry="primitive: plane; width: 0.78; height: 0.2"
             material="color: #182238"
             menu-item="value: teleport-range; label: The Range"
-            position="0 0.58 0"
+            position="0 1.29 0"
           >
             <a-text value="The Range" align="center" color="#eee" width="2.4" position="0 0 0.01"></a-text>
           </a-entity>
@@ -181,7 +192,7 @@
             geometry="primitive: plane; width: 0.78; height: 0.2"
             material="color: #182238"
             menu-item="value: teleport-saloon; label: The Saloon"
-            position="0 0.32 0"
+            position="0 1.03 0"
           >
             <a-text value="The Saloon" align="center" color="#eee" width="2.4" position="0 0 0.01"></a-text>
           </a-entity>
@@ -189,8 +200,71 @@
             class="pm-target"
             geometry="primitive: plane; width: 0.78; height: 0.2"
             material="color: #182238"
+            menu-item="value: teleport-sheriff-office; label: Sheriff's Office"
+            position="0 0.77 0"
+          >
+            <a-text value="Sheriff's Office" align="center" color="#eee" width="2.4" position="0 0 0.01"></a-text>
+          </a-entity>
+          <a-entity
+            class="pm-target"
+            geometry="primitive: plane; width: 0.78; height: 0.2"
+            material="color: #182238"
+            menu-item="value: teleport-general-store; label: General Store"
+            position="0 0.51 0"
+          >
+            <a-text value="General Store" align="center" color="#eee" width="2.4" position="0 0 0.01"></a-text>
+          </a-entity>
+          <a-entity
+            class="pm-target"
+            geometry="primitive: plane; width: 0.78; height: 0.2"
+            material="color: #182238"
+            menu-item="value: teleport-bank; label: The Bank"
+            position="0 0.25 0"
+          >
+            <a-text value="The Bank" align="center" color="#eee" width="2.4" position="0 0 0.01"></a-text>
+          </a-entity>
+          <a-entity
+            class="pm-target"
+            geometry="primitive: plane; width: 0.78; height: 0.2"
+            material="color: #182238"
+            menu-item="value: teleport-pharmacy; label: The Pharmacy"
+            position="0 -0.01 0"
+          >
+            <a-text value="The Pharmacy" align="center" color="#eee" width="2.4" position="0 0 0.01"></a-text>
+          </a-entity>
+          <a-entity
+            class="pm-target"
+            geometry="primitive: plane; width: 0.78; height: 0.2"
+            material="color: #182238"
+            menu-item="value: teleport-post-office; label: Post Office"
+            position="0 -0.27 0"
+          >
+            <a-text value="Post Office" align="center" color="#eee" width="2.4" position="0 0 0.01"></a-text>
+          </a-entity>
+          <a-entity
+            class="pm-target"
+            geometry="primitive: plane; width: 0.78; height: 0.2"
+            material="color: #182238"
+            menu-item="value: teleport-boots-suits; label: Boots &amp; Suits"
+            position="0 -0.53 0"
+          >
+            <a-text value="Boots &amp; Suits" align="center" color="#eee" width="2.4" position="0 0 0.01"></a-text>
+          </a-entity>
+          <a-entity
+            class="pm-target"
+            geometry="primitive: plane; width: 0.78; height: 0.2"
+            material="color: #182238"
+            menu-item="value: teleport-shooting-gallery; label: Shooting Gallery"
+            position="0 -0.79 0"
+          >
+            <a-text value="Shooting Gallery" align="center" color="#eee" width="2.4" position="0 0 0.01"></a-text>
+          </a-entity>
+          <a-entity
+            class="pm-target"
+            geometry="primitive: plane; width: 0.78; height: 0.2"
+            material="color: #182238"
             menu-item="value: teleport-farm; label: The Farm"
-            position="0 0.06 0"
+            position="0 -1.05 0"
           >
             <a-text value="The Farm" align="center" color="#eee" width="2.4" position="0 0 0.01"></a-text>
           </a-entity>
@@ -199,7 +273,7 @@
             geometry="primitive: plane; width: 0.78; height: 0.2"
             material="color: #182238"
             menu-item="value: teleport-stable; label: The Stable"
-            position="0 -0.2 0"
+            position="0 -1.31 0"
           >
             <a-text value="The Stable" align="center" color="#eee" width="2.4" position="0 0 0.01"></a-text>
           </a-entity>
@@ -208,7 +282,7 @@
             geometry="primitive: plane; width: 0.78; height: 0.2"
             material="color: #182238"
             menu-item="value: page-main; label: Back"
-            position="0 -0.5 0"
+            position="0 -1.69 0"
           >
             <a-text value="&lt; Back" align="center" color="#aaa" width="2.4" position="0 0 0.01"></a-text>
           </a-entity>
@@ -218,6 +292,12 @@
 
     <a-scene pistols-watch-menu area-manager scene-index>
       <a-sky color="#7d6b8f" data-area-persistent></a-sky>
+      <!-- Area fragments may add their own lamps, but these outdoor lights
+           live for the whole session. Without a persistent baseline the
+           Saloon's lamps can replace A-Frame's implicit default lights and
+           leave Ghost Town black after the Saloon fragment is removed. -->
+      <a-entity data-area-persistent light="type: ambient; color: #d8d0c0; intensity: 0.48"></a-entity>
+      <a-entity data-area-persistent light="type: directional; color: #fff3d6; intensity: 0.75" position="-3 7 4"></a-entity>
 
       <!-- ============================================================
            PLAYER RIG + DESKTOP/PHONE FALLBACK
@@ -252,7 +332,16 @@
            rig's movement for free regardless of where it sits in the
            hierarchy.
       ============================================================ -->
-      <a-entity id="player-rig" teleport-hub data-area-persistent>
+      <a-entity
+        id="player-rig"
+        teleport-hub
+        locomotion-demo="speed: 3; sprintMultiplier: 1.5"
+        semantic-look-controls="camera: #head-camera"
+        gamepad-input="leftHand: #left-hand; rightHand: #right-hand; sprintAction: sprint"
+        touch-controls="leftHand: #left-hand; rightHand: #right-hand; primaryAction: none; interactAction: interact; interactLabel: INTERACT; grabAction: none; watchAction: watch; watchLabel: WATCH; crouchAction: none"
+        desktop-controls="camera: #head-camera; leftHand: #left-hand; rightHand: #right-hand; sprintEnabled: true"
+        data-area-persistent
+      >
         <a-camera id="head-camera">
           <a-entity id="player-hud">
             <a-text
@@ -404,10 +493,10 @@
              exactly like it would from a top-level hand — the wrap
              doesn't change that path, just adds a stop along it.
         ============================================================ -->
-        <a-entity class="hand" oculus-touch-controls="hand: left; model: false" hand-rig="visual: #hand-visual-left" proximity-haptics hand-with-watch="hand: left"></a-entity>
+        <a-entity id="left-hand" class="hand" oculus-touch-controls="hand: left; model: false" hand-rig="visual: #hand-visual-left" semantic-hand="hand: left; maxReach: 1" proximity-haptics hand-with-watch="hand: left"></a-entity>
         <a-entity id="hand-visual-left" hand-controls="hand: left; handModelStyle: lowPoly; color: #3a3a3a"></a-entity>
 
-        <a-entity class="hand" oculus-touch-controls="hand: right; model: false" hand-rig="visual: #hand-visual-right" proximity-haptics hand-with-watch="hand: right"></a-entity>
+        <a-entity id="right-hand" class="hand" oculus-touch-controls="hand: right; model: false" hand-rig="visual: #hand-visual-right" semantic-hand="hand: right; maxReach: 1" proximity-haptics hand-with-watch="hand: right"></a-entity>
         <a-entity id="hand-visual-right" hand-controls="hand: right; handModelStyle: lowPoly; color: #3a3a3a"></a-entity>
       </a-entity>
       <!-- end #player-rig -->
