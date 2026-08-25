@@ -344,6 +344,15 @@ Workers using Durable Objects, which this one does — so it's a real
 second Worker instead of a lightweight preview version, on the same
 free plan as production.
 
+This is separate from, and unrelated to, the site's own Netlify
+deploy previews (the actual `primitives/menus/` page a browser loads)
+— those come from Netlify's own GitHub integration, not anything in
+this repo, and only fire on a real push to a PR's branch (opening or
+retargeting a PR alone doesn't trigger one — push a commit if a
+preview seems to be missing). Testing the hosted relay end-to-end
+needs both: the Netlify preview to load the actual page, and this
+Worker preview's `wss://` address pasted into its "Relay" field.
+
 **Testing locally without deploying**: `npm run relay:hosted:dev`
 runs the same Worker code against Cloudflare's local simulator
 (`workerd`) on your machine — prints a `ws://localhost:8787`-style
