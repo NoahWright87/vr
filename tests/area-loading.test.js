@@ -10,7 +10,7 @@ const saloonInterior = readFileSync(new URL('../games/pistols-at-dawn/js/world-s
 const hubInteriors = readFileSync(new URL('../games/pistols-at-dawn/js/world-hub-interiors.js', import.meta.url), 'utf8');
 
 test('destinations are lazy fragments instead of simultaneous scene entities', () => {
-  for (const id of ['ghost-town', 'range', 'saloon', 'farm', 'stable', 'sheriff-office', 'general-store', 'bank']) {
+  for (const id of ['ghost-town', 'range', 'saloon', 'farm', 'stable', 'sheriff-office', 'general-store', 'bank', 'pharmacy']) {
     assert.match(loader, new RegExp(`fragment: 'areas/${id}\\.html'`));
   }
   assert.match(page, /<a-entity id="area-host" data-area-persistent><\/a-entity>/);
@@ -110,6 +110,18 @@ test('the Bank is a hub interior with a street door and vault', () => {
   assert.match(hubInteriors, /registerComponent\('bank-interior'/);
   assert.match(hubInteriors, /hubExit\(this\.el, 'bank-entrance'\)/);
   assert.match(hubInteriors, /a-torus/);
+});
+
+test('the Pharmacy brings elixirs, soda, and medical supplies to Ghost Town', () => {
+  const pharmacy = readFileSync(new URL('../games/pistols-at-dawn/areas/pharmacy.html', import.meta.url), 'utf8');
+  assert.match(loader, /id: 'pharmacy', label: 'The Pharmacy'/);
+  assert.match(page, /menu-item="value: teleport-pharmacy; label: The Pharmacy"/);
+  assert.match(ghostTown, /id="ghost-town-pharmacy-door"/);
+  assert.match(ghostTown, /town-door="destination: pharmacy"/);
+  assert.match(pharmacy, /pharmacy-interior/);
+  assert.match(hubInteriors, /registerComponent\('pharmacy-interior'/);
+  assert.match(hubInteriors, /SARSAPARILLA  •  TONICS  •  BANDAGES/);
+  assert.match(hubInteriors, /hubExit\(this\.el, 'pharmacy-entrance'\)/);
 });
 
 test('destination builders are absent from the eager script list', () => {

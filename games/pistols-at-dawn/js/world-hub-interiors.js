@@ -65,3 +65,23 @@
         var wheel = document.createElement('a-torus'); wheel.setAttribute('radius', '.42'); wheel.setAttribute('radius-tubular', '.06'); wheel.setAttribute('color', '#d0b45c'); wheel.setAttribute('position', '3.7 1.55 -4.37'); this.el.appendChild(wheel);
         hubExit(this.el, 'bank-entrance');
       }});
+      registerComponent('pharmacy-interior', { init: function () {
+        var loc = findTownLocation('pharmacy'); hubRoom(this.el, loc, 10, 8, 'ELIXIRS & SODA');
+        // Glass bottles and labelled medicine tins are deliberately inert
+        // scenery today; their clear arrangement leaves obvious hooks for
+        // future soda, tonic, bandage, and medicine item behavior.
+        for (var side = -1; side <= 1; side += 2) {
+          hubBox(this.el, .55, 2.45, 4.8, { x: side * 4.4, y: 1.225, z: -.5 }, '#4c3828');
+          for (var shelf = 0; shelf < 3; shelf++) hubBox(this.el, .78, .1, 4.4, { x: side * 4.08, y: .65 + shelf * .72, z: -.5 }, '#916a3c');
+        }
+        var bottleColors = ['#4b9b9b', '#4b6f9b', '#9b4b65', '#6b9b4b', '#c19a42'];
+        for (var i = 0; i < 10; i++) {
+          var bottle = document.createElement('a-cylinder'); bottle.setAttribute('radius', '.12'); bottle.setAttribute('height', '.46'); bottle.setAttribute('color', bottleColors[i % bottleColors.length]);
+          bottle.setAttribute('position', { x: i % 2 ? 4.08 : -4.08, y: .94 + Math.floor(i / 2) * .72, z: 1.55 - (i % 3) * 1.35 }); this.el.appendChild(bottle);
+        }
+        hubBox(this.el, 5.4, 1.05, 1.1, { x: 0, y: .525, z: .85 }, '#6b4730');
+        hubBox(this.el, 5.65, .1, 1.25, { x: 0, y: 1.08, z: .85 }, '#c2a16a');
+        for (var box = 0; box < 4; box++) hubBox(this.el, .42, .28, .35, { x: -1.2 + box * .8, y: 1.28, z: .85 }, '#e7d9b6');
+        var sign = document.createElement('a-text'); sign.setAttribute('value', 'SARSAPARILLA  •  TONICS  •  BANDAGES'); sign.setAttribute('align', 'center'); sign.setAttribute('color', '#ead7a5'); sign.setAttribute('width', '2.4'); sign.setAttribute('position', '0 2.45 -3.87'); this.el.appendChild(sign);
+        hubExit(this.el, 'pharmacy-entrance');
+      }});
