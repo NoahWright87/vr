@@ -13,6 +13,7 @@
       var SALOON_WOOD = '#6b4429';
       var SALOON_DARK_WOOD = '#392318';
       var SALOON_BRASS = '#a77e36';
+      var SALOON_WOOD_TEXTURE = 'assets/textures/western-wood-planks-v1.png';
 
       registerComponent('saloon-interior', {
         init: function () {
@@ -48,17 +49,25 @@
           floor.setAttribute('height', SALOON_DEPTH);
           floor.setAttribute('position', { x: 0, y: 0.002, z: 0 });
           floor.setAttribute('color', '#76573a');
+          floor.setAttribute('material', { src: SALOON_WOOD_TEXTURE, repeat: '8 8', color: '#ffffff', shader: 'flat' });
           this.el.appendChild(floor);
 
-          this.addBox(SALOON_WIDTH, SALOON_HEIGHT, 0.22, { x: 0, y: SALOON_HEIGHT / 2, z: -halfDepth }, SALOON_WALL);
-          this.addBox(0.22, SALOON_HEIGHT, SALOON_DEPTH, { x: -halfWidth, y: SALOON_HEIGHT / 2, z: 0 }, SALOON_WALL);
-          this.addBox(0.22, SALOON_HEIGHT, SALOON_DEPTH, { x: halfWidth, y: SALOON_HEIGHT / 2, z: 0 }, SALOON_WALL);
+          var roomWalls = [
+            this.addBox(SALOON_WIDTH, SALOON_HEIGHT, 0.22, { x: 0, y: SALOON_HEIGHT / 2, z: -halfDepth }, SALOON_WALL),
+            this.addBox(0.22, SALOON_HEIGHT, SALOON_DEPTH, { x: -halfWidth, y: SALOON_HEIGHT / 2, z: 0 }, SALOON_WALL),
+            this.addBox(0.22, SALOON_HEIGHT, SALOON_DEPTH, { x: halfWidth, y: SALOON_HEIGHT / 2, z: 0 }, SALOON_WALL),
+          ];
 
           // The front wall is split around the exit so it reads as a real
           // doorway while still leaving the interior light and open.
-          this.addBox(6.2, SALOON_HEIGHT, 0.22, { x: -4.9, y: SALOON_HEIGHT / 2, z: halfDepth }, SALOON_WALL);
-          this.addBox(6.2, SALOON_HEIGHT, 0.22, { x: 4.9, y: SALOON_HEIGHT / 2, z: halfDepth }, SALOON_WALL);
-          this.addBox(3.6, 1.25, 0.22, { x: 0, y: 3.58, z: halfDepth }, SALOON_WALL);
+          roomWalls.push(
+            this.addBox(6.2, SALOON_HEIGHT, 0.22, { x: -4.9, y: SALOON_HEIGHT / 2, z: halfDepth }, SALOON_WALL),
+            this.addBox(6.2, SALOON_HEIGHT, 0.22, { x: 4.9, y: SALOON_HEIGHT / 2, z: halfDepth }, SALOON_WALL),
+            this.addBox(3.6, 1.25, 0.22, { x: 0, y: 3.58, z: halfDepth }, SALOON_WALL)
+          );
+          roomWalls.forEach(function (wall) {
+            wall.setAttribute('material', { src: SALOON_WOOD_TEXTURE, repeat: '6 2', color: '#ffffff', shader: 'flat' });
+          });
           this.addBox(SALOON_WIDTH, 0.18, SALOON_DEPTH, { x: 0, y: SALOON_HEIGHT, z: 0 }, '#2d1d15');
         },
 

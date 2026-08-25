@@ -29,6 +29,9 @@
       // The source tile is deliberately small-scale: repeating it here lets
       // the grass stay readable at VR standing distance across the whole yard.
       var FARM_GROUND_TEXTURE_REPEAT = '12 12';
+      var FARM_WOOD_TEXTURE = 'assets/textures/western-wood-planks-v1.png';
+      var FARM_BARN_SIDING_TEXTURE = 'assets/textures/barn-red-siding-v1.png';
+      var FARM_ROOF_TEXTURE = 'assets/textures/weathered-roof-shingles-v1.png';
       var FARM_GROUND_MARGIN = 3; // meters the grass patch extends past the fence on every side, so the fence doesn't look like it's floating at the edge of a color change
 
       // FENCE — plain axis-aligned picket runs. Real picket spacing
@@ -203,6 +206,7 @@
           body.setAttribute('depth', FARM_BARN_DEPTH);
           body.setAttribute('position', { x: 0, y: FARM_BARN_WALL_HEIGHT / 2, z: 0 });
           body.setAttribute('color', FARM_BARN_WALL_COLOR);
+          body.setAttribute('material', { src: FARM_BARN_SIDING_TEXTURE, repeat: '4 2', color: '#ffffff', shader: 'flat' });
           barn.appendChild(body);
 
           // Trim board along the eaves — plain color break, no
@@ -222,6 +226,8 @@
             wallHeight: FARM_BARN_WALL_HEIGHT,
             pitchDeg: FARM_ROOF_PITCH_DEG,
             color: FARM_ROOF_COLOR,
+            texture: FARM_ROOF_TEXTURE,
+            textureRepeat: '4 3',
             thickness: FARM_ROOF_THICKNESS,
             overhang: FARM_ROOF_OVERHANG,
           });
@@ -236,6 +242,7 @@
             door.setAttribute('height', doorHeight);
             door.setAttribute('depth', 0.06);
             door.setAttribute('color', FARM_BARN_DOOR_COLOR);
+            door.setAttribute('material', { src: FARM_WOOD_TEXTURE, repeat: '1 2', color: '#ffffff', shader: 'flat' });
             door.setAttribute('position', { x: (side * doorWidth) / 2, y: doorHeight / 2, z: doorFaceZ });
             barn.appendChild(door);
           });
