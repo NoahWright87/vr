@@ -1,5 +1,8 @@
       // Compact hub interiors: the Sheriff provides a readable jail-and-desk
       // space; the Store exposes existing makers as real, restocking stock.
+      var HUB_WOOD_TEXTURE = 'assets/textures/western-wood-planks-v1.png';
+      var HUB_PLASTER_TEXTURE = 'assets/textures/interior-cream-plaster-v1.png';
+      var HUB_SIGN_TEXTURE = 'assets/textures/signboard-walnut-v1.png';
       function hubBox(parent, w, h, d, pos, color) {
         var el = document.createElement('a-box');
         el.setAttribute('width', w); el.setAttribute('height', h); el.setAttribute('depth', d);
@@ -7,14 +10,16 @@
       }
       function hubRoom(el, loc, width, depth, label) {
         el.setAttribute('position', loc.position);
-        var floor = document.createElement('a-plane'); floor.setAttribute('rotation', '-90 0 0'); floor.setAttribute('width', width); floor.setAttribute('height', depth); floor.setAttribute('color', '#6f5237'); el.appendChild(floor);
-        hubBox(el, width, 3.6, .2, { x: 0, y: 1.8, z: -depth / 2 }, '#493020');
-        [-1, 1].forEach(function (side) { hubBox(el, .2, 3.6, depth, { x: side * width / 2, y: 1.8, z: 0 }, '#493020'); });
-        hubBox(el, width, .16, depth, { x: 0, y: 3.6, z: 0 }, '#2d1d15');
+        var floor = document.createElement('a-plane'); floor.setAttribute('rotation', '-90 0 0'); floor.setAttribute('width', width); floor.setAttribute('height', depth); floor.setAttribute('color', '#6f5237'); floor.setAttribute('material', { src: HUB_WOOD_TEXTURE, repeat: width / 2 + ' ' + depth / 2, color: '#ffffff', shader: 'flat' }); el.appendChild(floor);
+        var walls = [hubBox(el, width, 3.6, .2, { x: 0, y: 1.8, z: -depth / 2 }, '#493020')];
+        [-1, 1].forEach(function (side) { walls.push(hubBox(el, .2, 3.6, depth, { x: side * width / 2, y: 1.8, z: 0 }, '#493020')); });
+        walls.forEach(function (wall) { wall.setAttribute('material', { src: HUB_PLASTER_TEXTURE, repeat: '4 2', color: '#ffffff', shader: 'flat' }); });
+        var ceiling = hubBox(el, width, .16, depth, { x: 0, y: 3.6, z: 0 }, '#2d1d15'); ceiling.setAttribute('material', { src: HUB_WOOD_TEXTURE, repeat: width / 2 + ' ' + depth / 2, color: '#ffffff', shader: 'flat' });
         var ambient = document.createElement('a-entity'); ambient.setAttribute('light', 'type: ambient; color: #d9b887; intensity: .42'); el.appendChild(ambient);
         [-width / 4, width / 4].forEach(function (x) {
           var light = document.createElement('a-entity'); light.setAttribute('light', 'type: point; color: #ffd48a; intensity: 1.25; distance: 9'); light.setAttribute('position', { x: x, y: 3.15, z: -.5 }); el.appendChild(light);
         });
+        var sign = hubBox(el, 3.5, .62, .06, { x: 0, y: 3.25, z: -depth / 2 + .05 }, '#2d1d15'); sign.setAttribute('material', { src: HUB_SIGN_TEXTURE, repeat: '2 1', color: '#ffffff', shader: 'flat' });
         var text = document.createElement('a-text'); text.setAttribute('value', label); text.setAttribute('align', 'center'); text.setAttribute('color', '#efd59d'); text.setAttribute('width', '3'); text.setAttribute('position', { x: 0, y: 3.25, z: -depth / 2 + .12 }); el.appendChild(text);
       }
       function hubExit(el, arrival) {

@@ -99,7 +99,7 @@
           });
         },
 
-        addBottle: function (x, z, color) {
+        addBottle: function (x, z, color, labelVariant) {
           var slotId = 'saloon-beer-slot-' + this.slotSerial++;
           var slot = document.createElement('a-entity');
           slot.setAttribute('id', slotId);
@@ -120,7 +120,7 @@
             gravityScale: 0.6,
             maxThrowSpeed: 15,
           });
-          bottle.setAttribute('boxy-bottle', { glass: color });
+          bottle.setAttribute('boxy-bottle', { glass: color, labelVariant: labelVariant });
           bottle.setAttribute('pourable', '');
           bottle.setAttribute('breakable', { color: color });
           this.el.appendChild(bottle);
@@ -138,11 +138,12 @@
           }, this);
 
           var colors = ['#3f6b3a', '#6b4a1f', '#2f5b6b', '#5a2f3f', '#4a3f6b'];
-          for (var i = 0; i < 9; i++) this.addBottle(6.55, 2.7 - i * 0.72, colors[i % colors.length]);
+          var labels = ['sunset', 'canyon', 'prairie'];
+          for (var i = 0; i < 9; i++) this.addBottle(6.55, 2.7 - i * 0.72, colors[i % colors.length], labels[i % labels.length]);
           for (var row = 0; row < 3; row++) {
             for (var bottle = 0; bottle < 7; bottle++) {
               var shelfBottle = document.createElement('a-entity');
-              shelfBottle.setAttribute('boxy-bottle', { glass: colors[(row + bottle) % colors.length] });
+              shelfBottle.setAttribute('boxy-bottle', { glass: colors[(row + bottle) % colors.length], labelVariant: labels[(row + bottle) % labels.length] });
               shelfBottle.setAttribute('position', { x: 7.3, y: 2.0225 + row * 0.86, z: 2.3 - bottle * 1.05 });
               this.el.appendChild(shelfBottle);
             }
