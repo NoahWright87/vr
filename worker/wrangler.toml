@@ -13,4 +13,8 @@ class_name = "SignalHub"
 
 [[migrations]]
 tag = "v1"
-new_classes = ["SignalHub"]
+# The Workers Free plan only supports SQLite-backed Durable Object
+# storage — new_classes (the older, KV-backed storage) requires
+# Workers Paid. SignalHub doesn't use this.state.storage at all, so
+# this is purely an account-tier requirement, not a behavior change.
+new_sqlite_classes = ["SignalHub"]
