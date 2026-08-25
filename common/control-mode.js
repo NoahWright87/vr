@@ -116,7 +116,12 @@ if (typeof AFRAME !== 'undefined') {
   // the component's authored spacing changes, never once per row per frame.
   AFRAME.registerComponent('control-mode-layout', {
     schema: {
-      rowSelector: { default: '[menu-item],[menu-option]' },
+      // Excludes .menu-chrome-item: a page's close/help/automatic
+      // buttons (see common/menus.js's buildMenuChrome) carry
+      // menu-item too, for the same click handling every row uses,
+      // but belong in the fixed title bar, not this component's
+      // vertical row stack.
+      rowSelector: { default: '[menu-item]:not(.menu-chrome-item),[menu-option]' },
       startY: { default: 0 },
       spacing: { default: 0.26 },
     },

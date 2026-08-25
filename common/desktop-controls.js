@@ -672,16 +672,27 @@ AFRAME.registerComponent('desktop-controls', {
     hand.setPointPose(fingertip, direction, 'Point');
   },
 
+  // Desktop-only (real XR never calls this — see openWatch's early
+  // xrIsPresenting return): brought close to dead-center, roughly
+  // chin height, rather than out at a realistic wrist position. A
+  // real wrist is naturally off to the side because you can look
+  // down at it; a fixed desktop camera can't "look down" the same
+  // way, so keeping it there just means the panel renders off in a
+  // corner instead of where you're actually looking.
   placeWatchHand: function (snap) {
-    var watchSideX = this.activeWatchHand.data.hand === 'left' ? -0.2 : 0.2;
-    var watchPosition = this.cameraOffsetToWorld(new THREE.Vector3(watchSideX, -0.08, -0.64), true);
+    var watchSideX = this.activeWatchHand.data.hand === 'left' ? -0.04 : 0.04;
+    var watchPosition = this.cameraOffsetToWorld(new THREE.Vector3(watchSideX, -0.08, -0.85), true);
     var watchQuaternion = this.cameraYawQuaternion().multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(-0.35, 0, watchSideX < 0 ? -0.2 : 0.2)));
     this.activeWatchHand.setWorldTransform(watchPosition, watchQuaternion, 'Open', snap);
   },
 
+  // Approaches from below and slightly further away than the watch
+  // itself, not closer — the earlier version put the pointer hand
+  // nearer the camera than the panel it's pointing at, so the hand
+  // model itself visually covered part of the menu.
   placeWatchPointer: function (snap) {
-    var pointerSideX = this.activePointerHand.data.hand === 'left' ? -0.26 : 0.26;
-    var fingertip = this.cameraOffsetToWorld(new THREE.Vector3(pointerSideX, -0.26, -0.43), true);
+    var pointerSideX = this.activePointerHand.data.hand === 'left' ? -0.25 : 0.25;
+    var fingertip = this.cameraOffsetToWorld(new THREE.Vector3(pointerSideX, -0.55, -0.85), true);
     this.activePointerHand.setPointPose(fingertip, this.currentAimDirection(fingertip), 'Point', snap);
   },
 
