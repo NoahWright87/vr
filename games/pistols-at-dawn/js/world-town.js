@@ -32,7 +32,7 @@
             'store-entrance': { position: { x: 6.1, y: 0, z: 6 }, rotationY: -90 },
             'bank-entrance': { position: { x: -6.3, y: 0, z: 0 }, rotationY: 90 },
           },
-          scripts: ['js/world-ghost-town-stalls.js'],
+          scripts: ['js/world-ghost-town-stalls.js', 'js/world-targets.js', 'js/world-ghost-town-gallery.js'],
         },
         {
           id: 'range', label: 'The Range', position: { x: 0, y: 0, z: 0 }, rotationY: 0,

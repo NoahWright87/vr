@@ -32,6 +32,9 @@ test('Ghost Town is the startup hub with its two welcome gateways, nine building
   assert.match(ghostTown, /class="ghost-town-welcome-gateway" position="0 0 -20" rotation="0 180 0">/);
   assert.equal((ghostTown.match(/class="ghost-town-building/g) || []).length, 9);
   assert.match(ghostTown, /class="ghost-town-horse-stalls" ghost-town-stalls/);
+  assert.match(ghostTown, /class="ghost-town-building ghost-town-gallery" ghost-town-gallery/);
+  assert.match(loader, /js\/world-ghost-town-gallery\.js/);
+  assert.match(loader, /fragment: 'areas\/ghost-town\.html',[\s\S]*?js\/world-targets\.js/);
   assert.match(loader, /js\/world-ghost-town-stalls\.js/);
 });
 
@@ -113,7 +116,7 @@ test('destination builders are absent from the eager script list', () => {
   for (const script of [
     'items-siege-weapons', 'world-saloon-bar', 'world-shooting-stall',
     'world-targets', 'world-saloon-darts', 'world-farm', 'world-stable',
-    'world-saloon-interior', 'world-hub-interiors', 'world-ghost-town-stalls',
+    'world-saloon-interior', 'world-hub-interiors', 'world-ghost-town-stalls', 'world-ghost-town-gallery',
   ]) {
     assert.doesNotMatch(page, new RegExp(`<script src="js/${script}\\.js"`));
     assert.match(loader, new RegExp(`js/${script}\\.js`));
