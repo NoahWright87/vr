@@ -97,7 +97,7 @@ AFRAME.registerComponent('desktop-controls', {
     this.onKeyDown = this.onKeyDown.bind(this);
     this.onKeyUp = this.onKeyUp.bind(this);
     this.onPointerDown = this.onPointerDown.bind(this);
-    this.onMouseMove = this.onMouseMove.bind(this);
+    this.onSemanticTap = this.onSemanticTap.bind(this);
     this.onMountedRequest = this.onMountedRequest.bind(this);
     this.onActiveMenuClosed = this.onActiveMenuClosed.bind(this);
     this.onPreferenceChange = this.onPreferenceChange.bind(this);
@@ -107,11 +107,11 @@ AFRAME.registerComponent('desktop-controls', {
     document.addEventListener('keydown', this.onKeyDown, true);
     document.addEventListener('keyup', this.onKeyUp, true);
     document.addEventListener('pointerdown', this.onPointerDown, true);
-    document.addEventListener('mousemove', this.onMouseMove, true);
     this.sceneEl.addEventListener('mounted-interaction-request', this.onMountedRequest);
     this.sceneEl.addEventListener('menu-option-change', this.onPreferenceChange);
     this.sceneEl.addEventListener('watch-menu-ready', this.onWatchReady);
     this.sceneEl.addEventListener('control-mode-changed', this.onControlModeChanged);
+    this.sceneEl.addEventListener('semantic-tap', this.onSemanticTap);
     this.el.addEventListener('semantic-action-intent', this.onSemanticAction);
 
     this.ensureCursorStyleEl();
@@ -205,18 +205,14 @@ AFRAME.registerComponent('desktop-controls', {
     }
   },
 
-  // Mouse clicks and touch taps both end up here. A touch tap while the
-  // watch is open carries its own screen point (there's no continuous
-  // hover to have primed cursorNdc first, and no separate "aim, then
-  // press a button" step the way mouse/keyboard has) — set cursorNdc from
-  // the tap itself so the same nearest-target hit test used everywhere
-  // else picks the right thing in one motion, matching a normal touch UI.
+  // Mouse clicks and touch taps landing directly on the canvas both end up
+  // here. Desktop aims with the fixed center reticle (mouse-look turns the
+  // camera to point it — see setMode/openWatch), same as mounted panels;
+  // a touch tap that reaches the canvas directly (nothing else caught it
+  // first) still gets its own screen point, matching onSemanticTap below.
   onPointerDown: function (evt) {
     if (this.mode === 'normal' || !this.activePointerHand || xrIsPresenting(this.sceneEl)) return;
     if (evt.pointerType === 'touch') {
-      // Only the watch's tap-anywhere-to-select needs the tap's own screen
-      // point; mounted panels still use the existing fixed-center-reticle
-      // aim (cursorNdc stays wherever mouse-look last left it).
       if (this.mode === 'watch') {
         if (evt.target !== this.sceneEl.canvas) return;
         this.setCursorNdcFromScreenPoint(evt.clientX, evt.clientY);
@@ -228,10 +224,18 @@ AFRAME.registerComponent('desktop-controls', {
     this.activateMenuSelection();
   },
 
-  onMouseMove: function (evt) {
-    if (this.mode !== 'watch' || xrIsPresenting(this.sceneEl)) return;
-    this.setCursorNdcFromScreenPoint(evt.clientX, evt.clientY);
-    this.updateHoveredMenuTarget();
+  // Mobile's look-drag area (common/input-router.js's touch-controls)
+  // covers most of the screen so the player can still freely look around
+  // to find the menu — the watch no longer locks the view (see openWatch)
+  // — which means it also swallows a plain tap before it ever reaches the
+  // canvas. touch-controls tells short, near-stationary presses apart from
+  // real drags and re-emits those as this scene-level event instead, with
+  // the tap's own screen point, so they still select directly.
+  onSemanticTap: function (evt) {
+    if (this.mode !== 'watch' || !this.activePointerHand || xrIsPresenting(this.sceneEl)) return;
+    var detail = evt.detail || {};
+    this.setCursorNdcFromScreenPoint(detail.clientX, detail.clientY);
+    this.activateMenuSelection();
   },
 
   setCursorNdcFromScreenPoint: function (clientX, clientY) {
@@ -358,11 +362,12 @@ AFRAME.registerComponent('desktop-controls', {
     this.clearHoveredMenuTarget();
     this.el.setAttribute('data-desktop-mode', mode);
     this.hintSystem.setTargetingEnabled(mode === 'normal');
-    // Watch mode locks the view instead of steering it (see openWatch): a
-    // free-roaming mouse cursor selects menu items directly, so there's
-    // nothing left for look-controls to do while it's open. Mounted panels
-    // keep the older look-to-aim scheme.
-    this.setLookEnabled(mode !== 'watch');
+    // The view stays free to look around in every mode, watch included —
+    // it used to lock level while the watch was open, but that leaves the
+    // menu impossible to find if it opened while looking down, with no way
+    // to look back up. Aiming is the fixed-center-reticle scheme every
+    // other mode already used: mouse-look turns the camera to point it.
+    this.setLookEnabled(true);
     this.setGazeEnabled(mode === 'normal');
     this.updateCursorStyle();
     this.sceneEl.emit('desktop-interaction-mode-changed', { mode: mode }, false);
@@ -371,13 +376,7 @@ AFRAME.registerComponent('desktop-controls', {
   updateCursorStyle: function () {
     var canvas = this.sceneEl.canvas;
     if (!canvas) return;
-    // Mounted panels still aim via a fixed center reticle (mouse-look
-    // turns the camera to point it), so the real cursor stays hidden
-    // there. Watch mode aims with the real cursor itself, so it stays
-    // visible — a crosshair, to read as "this is what selects", not a
-    // stray arrow left over from the OS.
-    canvas.classList.toggle('desktop-menu-aiming', this.mode === 'mounted');
-    canvas.classList.toggle('desktop-watch-aiming', this.mode === 'watch');
+    canvas.classList.toggle('desktop-menu-aiming', this.mode !== 'normal');
   },
 
   handleControlModeChanged: function (evt) {
@@ -459,9 +458,7 @@ AFRAME.registerComponent('desktop-controls', {
   ensureCursorStyleEl: function () {
     if (this.cursorStyleEl) return;
     this.cursorStyleEl = document.createElement('style');
-    this.cursorStyleEl.textContent =
-      'canvas.desktop-menu-aiming { cursor: none !important; } ' +
-      'canvas.desktop-watch-aiming { cursor: crosshair !important; }';
+    this.cursorStyleEl.textContent = 'canvas.desktop-menu-aiming { cursor: none !important; }';
     document.head.appendChild(this.cursorStyleEl);
   },
 
@@ -495,16 +492,32 @@ AFRAME.registerComponent('desktop-controls', {
     this.activeWatchHand = watchHand;
     this.activePointerHand = pointerHand;
     this.trackActiveMenu(watch.faceEl);
-    // Level the view and hold it there (setMode pauses look-controls):
-    // with a fixed view, the panel can be parked in a fixed spot in front
-    // of it — up and out of the way of the hand/watch, which sit low —
-    // instead of chasing wherever the player last looked.
-    this.setCameraLocalRotation(this.getCameraLocalYaw(), 0);
-    if (document.exitPointerLock) document.exitPointerLock();
+    this.captureWatchAnchor();
     this.setMode('watch');
+    this.ensureMouseLookCapture();
     watch.projectedMenu.openInMode('laser');
     this.placeWatchHand();
     this.placeWatchPointer();
+  },
+
+  // Captured once, from wherever the player happens to be facing when the
+  // watch opens, rather than tracked continuously off the live camera: the
+  // view stays fully under the player's control while it's open (mouse-look
+  // still aims the fixed center reticle — see setMode/clickDesktopMenuTarget),
+  // so a hand/panel that kept re-anchoring to the live camera direction
+  // would simply drag along with every turn, making it impossible to aim
+  // at anything but whatever was dead ahead at the moment of opening.
+  captureWatchAnchor: function () {
+    var side = this.activeWatchHand.data.hand === 'left' ? -1 : 1;
+    this._watchHandWorldPos = this.cameraOffsetToWorld(new THREE.Vector3(side * 0.16, -0.42, -0.4), false);
+    this._watchHandWorldQuat = this.cameraYawQuaternion().multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(-0.6, 0, side * -0.25)));
+
+    var pointerSide = this.activePointerHand.data.hand === 'left' ? -1 : 1;
+    this._watchPointerFingertip = this.cameraOffsetToWorld(new THREE.Vector3(pointerSide * 0.24, -0.48, -0.42), false);
+    var aimAt = this.cameraOffsetToWorld(new THREE.Vector3(pointerSide * 0.12, -0.15, -1), false);
+    this._watchPointerDirection = aimAt.sub(this._watchPointerFingertip).normalize();
+
+    this._watchPanelWorldPos = this.cameraOffsetToWorld(new THREE.Vector3(0, 0.22, -0.62), false);
   },
 
   beginMounted: function (component, hand) {
@@ -760,43 +773,42 @@ AFRAME.registerComponent('desktop-controls', {
   },
 
   // Desktop-only (real XR never calls this — see openWatch's early
-  // xrIsPresenting return). The view is locked level for the whole time
-  // the watch is open (see openWatch), so unlike every other desktop hand
-  // placement this doesn't need to track where the camera is looking —
-  // it just needs to sit low, out of the way of the panel positionWatchPanel
-  // projects up above it. Selection itself is driven by the real cursor
-  // (see onPointerDown/onMouseMove), not by this hand's aim.
+  // xrIsPresenting return). Applies the position captureWatchAnchor
+  // snapshotted at open time — see that method for why this doesn't
+  // track the live camera the way every other desktop hand placement
+  // does. Called every tick anyway (harmless, since the target is fixed)
+  // to keep reasserting it against anything else that might nudge the
+  // hand's transform.
   placeWatchHand: function (snap) {
-    var side = this.activeWatchHand.data.hand === 'left' ? -1 : 1;
-    var watchPosition = this.cameraOffsetToWorld(new THREE.Vector3(side * 0.16, -0.42, -0.4), false);
-    var watchQuaternion = this.cameraYawQuaternion().multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(-0.6, 0, side * -0.25)));
-    this.activeWatchHand.setWorldTransform(watchPosition, watchQuaternion, 'Open', snap);
+    this.activeWatchHand.setWorldTransform(this._watchHandWorldPos, this._watchHandWorldQuat, 'Open', snap);
   },
 
   // Parked low and slightly forward of the watch hand, pointing generally
   // ahead — a resting "using the watch" pose rather than an aimed one, so
-  // it never has a reason to drift up into the panel above it.
+  // it never has a reason to drift up into the panel above it. Also from
+  // the captureWatchAnchor snapshot, not the live camera.
   placeWatchPointer: function (snap) {
-    var side = this.activePointerHand.data.hand === 'left' ? -1 : 1;
-    var fingertip = this.cameraOffsetToWorld(new THREE.Vector3(side * 0.24, -0.48, -0.42), false);
-    var aimAt = this.cameraOffsetToWorld(new THREE.Vector3(side * 0.12, -0.15, -1), false);
-    this.activePointerHand.setPointPose(fingertip, aimAt.sub(fingertip).normalize(), 'Point', snap);
+    this.activePointerHand.setPointPose(this._watchPointerFingertip, this._watchPointerDirection, 'Point', snap);
   },
 
   // Overrides the panel's normal hand-relative position (set moments
   // earlier this same frame by projected-menu's own tick — see menus.js's
-  // updatePanelPosition) so it renders up and out in front of the locked
-  // view instead of hovering around the watch/hand sitting low below it.
-  // Runs in tock, guaranteed to happen after every entity's tick this
-  // frame, so this always has the final say over where the panel ends up.
+  // updatePanelPosition) so it renders up and out in front of where the
+  // player was facing when the watch opened (captureWatchAnchor) instead
+  // of hovering around the watch/hand sitting low below it. The position
+  // is fixed, but orientation is recomputed from the live camera position
+  // every tick so the panel keeps facing the player through anything that
+  // nudges camera height (e.g. crouch) without needing to move itself —
+  // rotation alone can't drag the panel off-anchor the way tracking full
+  // camera position would.
   positionWatchPanel: function () {
     var watch = this.activeWatchHand && this.activeWatchHand.el.components['hand-with-watch'];
     var pm = watch && watch.projectedMenu;
     var panelObject = pm && pm.panelEl && pm.panelEl.object3D;
     var parent = panelObject && panelObject.parent;
-    if (!parent) return;
+    if (!parent || !this._watchPanelWorldPos) return;
     parent.updateMatrixWorld(true);
-    var worldPosition = this.cameraOffsetToWorld(new THREE.Vector3(0, 0.22, -0.62), false);
+    var worldPosition = this._watchPanelWorldPos;
     var camPos = this.cameraWorldPosition();
 
     // Object3D.lookAt() factors out the target's own parent rotation to
@@ -891,9 +903,14 @@ AFRAME.registerComponent('desktop-controls', {
       // late for rendering (the next tick's own updatePanelPosition — see
       // menus.js's projected-menu — would already have put the panel back
       // at its hand-relative default by the time the following tock ran).
-      // Called after placeWatchHand/placeWatchPointer so the camera-locked
-      // math above has already run this frame too.
+      // Called after placeWatchHand/placeWatchPointer so this frame's hand
+      // placement is already settled.
       this.positionWatchPanel();
+      // The reticle is fixed at screen center, but what it's over changes
+      // every frame as mouse-look turns the camera — unlike the old
+      // mouse-position-driven hover, there's no discrete input event to
+      // hang this off of, so it's checked continuously instead.
+      this.updateHoveredMenuTarget();
     } else if (this.mode === 'mounted') {
       if (this.updateMountedTransition(performance.now())) {
         var zone = this.activeMounted && this.activeMounted.el.components['hint-zone'];
@@ -916,11 +933,11 @@ AFRAME.registerComponent('desktop-controls', {
     document.removeEventListener('keydown', this.onKeyDown, true);
     document.removeEventListener('keyup', this.onKeyUp, true);
     document.removeEventListener('pointerdown', this.onPointerDown, true);
-    document.removeEventListener('mousemove', this.onMouseMove, true);
     this.sceneEl.removeEventListener('mounted-interaction-request', this.onMountedRequest);
     this.sceneEl.removeEventListener('menu-option-change', this.onPreferenceChange);
     this.sceneEl.removeEventListener('watch-menu-ready', this.onWatchReady);
     this.sceneEl.removeEventListener('control-mode-changed', this.onControlModeChanged);
+    this.sceneEl.removeEventListener('semantic-tap', this.onSemanticTap);
     this.el.removeEventListener('semantic-action-intent', this.onSemanticAction);
   },
 });
