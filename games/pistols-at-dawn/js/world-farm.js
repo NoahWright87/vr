@@ -25,6 +25,10 @@
       var FARM_YARD_NORTH_Z = -21; // far fence, 20m deep yard
       var FARM_GATE_WIDTH = 3; // gap in the south fence, centered on x=0
       var FARM_GROUND_COLOR = '#4f7a3d';
+      var FARM_GROUND_TEXTURE = 'assets/textures/farm-grass-ground-v1.png';
+      // The source tile is deliberately small-scale: repeating it here lets
+      // the grass stay readable at VR standing distance across the whole yard.
+      var FARM_GROUND_TEXTURE_REPEAT = '12 12';
       var FARM_GROUND_MARGIN = 3; // meters the grass patch extends past the fence on every side, so the fence doesn't look like it's floating at the edge of a color change
 
       // FENCE — plain axis-aligned picket runs. Real picket spacing
@@ -153,6 +157,11 @@
             z: (FARM_YARD_SOUTH_Z + FARM_YARD_NORTH_Z) / 2,
           });
           ground.setAttribute('color', FARM_GROUND_COLOR);
+          ground.setAttribute('material', {
+            src: FARM_GROUND_TEXTURE,
+            repeat: FARM_GROUND_TEXTURE_REPEAT,
+            shader: 'flat',
+          });
           this.el.appendChild(ground);
         },
 
