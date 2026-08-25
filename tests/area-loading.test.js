@@ -10,7 +10,7 @@ const saloonInterior = readFileSync(new URL('../games/pistols-at-dawn/js/world-s
 const hubInteriors = readFileSync(new URL('../games/pistols-at-dawn/js/world-hub-interiors.js', import.meta.url), 'utf8');
 
 test('destinations are lazy fragments instead of simultaneous scene entities', () => {
-  for (const id of ['ghost-town', 'range', 'saloon', 'farm', 'stable', 'sheriff-office', 'general-store', 'bank', 'pharmacy', 'post-office', 'boots-suits']) {
+  for (const id of ['ghost-town', 'range', 'saloon', 'farm', 'stable', 'sheriff-office', 'general-store', 'bank', 'pharmacy', 'post-office', 'boots-suits', 'shooting-gallery']) {
     assert.match(loader, new RegExp(`fragment: 'areas/${id}\\.html'`));
   }
   assert.match(page, /<a-entity id="area-host" data-area-persistent><\/a-entity>/);
@@ -38,6 +38,21 @@ test('Ghost Town is the startup hub with its two welcome gateways, nine building
   assert.match(loader, /js\/world-ghost-town-stalls\.js/);
   assert.match(ghostTown, /class="ghost-town-building ghost-town-carriage-tickets" carriage-ticket-stall/);
   assert.match(loader, /js\/world-ghost-town-carriage\.js/);
+});
+
+test('the Shooting Gallery facade leads to an intentionally oversized indoor target room', () => {
+  const gallery = readFileSync(new URL('../games/pistols-at-dawn/areas/shooting-gallery.html', import.meta.url), 'utf8');
+  const galleryBuilder = readFileSync(new URL('../games/pistols-at-dawn/js/world-ghost-town-gallery.js', import.meta.url), 'utf8');
+  assert.match(loader, /id: 'shooting-gallery', label: 'Shooting Gallery'/);
+  assert.match(page, /menu-item="value: teleport-shooting-gallery; label: Shooting Gallery"/);
+  assert.match(galleryBuilder, /ghost-town-gallery-door/);
+  assert.match(galleryBuilder, /destination: shooting-gallery/);
+  assert.match(gallery, /shooting-gallery-interior/);
+  assert.match(galleryBuilder, /registerComponent\('shooting-gallery-interior'/);
+  assert.match(galleryBuilder, /target-group', 'count: 5; distance: 12/);
+  assert.match(galleryBuilder, /shooting-gallery-exit-door/);
+  assert.match(galleryBuilder, /destination: ghost-town; arrival: shooting-gallery-entrance/);
+  assert.match(loader, /fragment: 'areas\/shooting-gallery\.html', scripts: \['js\/world-targets\.js', 'js\/world-ghost-town-gallery\.js'\]/);
 });
 
 test('the Saloon door uses the shared semantic controls to enter the Saloon', () => {
