@@ -1,7 +1,7 @@
 // Peer-to-peer connection between two browsers, with the offer/answer
-// SDP exchanged out of band (copy/paste, or the signaling relays in
-// server/signal-server.js and worker/) as an opaque base64 string the
-// caller is responsible for moving from one peer to the other.
+// SDP exchanged out of band (copy/paste, or the signaling relay in
+// worker/) as an opaque base64 string the caller is responsible for
+// moving from one peer to the other.
 //
 // A free public STUN server is enough to let two peers on separate
 // networks find each other — it only tells each side its own
@@ -166,6 +166,16 @@ export function createHostSession (callbacks) {
         if (peerId === exceptPeerId) return;
         if (peer.channel.readyState === 'open') peer.channel.send(message);
       });
+    },
+    // Ends the whole session at once (e.g. the host clicking "End").
+    // Closing each peer's RTCPeerConnection fires the same
+    // connectionstatechange -> fireClose -> onPeerClose path an
+    // individual peer disconnecting on their own already goes
+    // through, so callers get the same per-peer cleanup for free
+    // rather than needing a separate teardown code path.
+    close: function () {
+      peers.forEach(function (peer) { peer.pc.close(); });
+      peers.clear();
     },
   };
 }

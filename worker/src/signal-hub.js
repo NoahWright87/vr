@@ -1,22 +1,21 @@
-// The internet-reachable counterpart to server/signal-server.js — see
-// that file's header comment for the message protocol and star
-// topology this mirrors exactly (host + any number of joiners, each
-// with its own offer/answer exchange, routed by a relay-assigned
-// peerId). This class is a near line-for-line port of that file's
-// connection handling into a Durable Object, so the two should be
-// kept in sync if the protocol ever changes.
+// The signaling relay — see common/signal-relay.js for the browser
+// client this talks to. A star topology: one host, any number of
+// joiners, each with its own offer/answer exchange, routed by a
+// relay-assigned peerId. It never forwards anything beyond that
+// one-time handshake — actual gameplay goes directly peer-to-peer
+// once each exchange completes (see common/multiplayer.js's
+// createHostSession).
 //
 // One Durable Object instance (this class, addressed by the fixed
 // name "hub" — see worker/src/index.js) holds every room the relay
-// currently knows about, in memory, just like the local relay's
-// single Node process holds its `rooms` map. A signaling handshake
-// moves a few KB of text once per connection, so one instance is
-// nowhere near the ceiling this would need to become one Durable
-// Object per room. That split only becomes worth its complexity if
-// this project starts routing ongoing game state (not just the
-// handshake) through Durable Objects — see TODO.md.
+// currently knows about, in memory. A signaling handshake moves a
+// few KB of text once per connection, so one instance is nowhere
+// near the ceiling this would need to become one Durable Object per
+// room. That split only becomes worth its complexity if this project
+// starts routing ongoing game state (not just the handshake) through
+// Durable Objects — see TODO.md.
 
-import { makeRoomCode } from '../../server/signal-rooms.js';
+import { makeRoomCode } from './signal-rooms.js';
 
 export class SignalHub {
   constructor (state) {

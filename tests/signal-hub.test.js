@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { SignalHub } from '../worker/src/signal-hub.js';
-import { ROOM_CODE_CHARS } from '../server/signal-rooms.js';
+import { ROOM_CODE_CHARS } from '../worker/src/signal-rooms.js';
 
 // A minimal stand-in for the Workers-runtime WebSocket that
 // SignalHub#handleSession talks to — just enough of the

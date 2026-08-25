@@ -1,5 +1,4 @@
-# Cloudflare Worker config for the hosted signaling relay — the
-# internet-reachable counterpart to server/signal-server.js. See
+# Cloudflare Worker config for the hosted signaling relay. See
 # worker/src/signal-hub.js for the room logic and README.md for how
 # to deploy this.
 

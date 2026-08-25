@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { makeRoomCode, ROOM_CODE_CHARS } from '../server/signal-rooms.js';
+import { makeRoomCode, ROOM_CODE_CHARS } from '../worker/src/signal-rooms.js';
 
 test('room codes are four characters from the unambiguous alphabet', () => {
   var code = makeRoomCode();

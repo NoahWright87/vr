@@ -212,88 +212,38 @@ Once this repo is on Netlify (or GitHub Pages in the meantime), just open the de
 5. Press any face button (A/B on the right controller, X/Y on the left) to open the menu — it spawns a couple feet in front of you, facing you, and your other hand gets a laser pointer. Aim it at a button and pull that hand's trigger to click: switch tabs (PUNCH / FOES / AIM / REACH / SPLAT / FEEL / DEBUG / MORE), adjust speed/gravity/cube count/behavior/lock-on/hit-assist/reach calibration/splatter/comfort-vignette/haptic-buzz/detection thresholds, Resume, or select **Exit VR** to leave the session. Press a face button again to close it.
 6. You should feel a controller pulse on a punch that connects, plus a light buzz in both hands while zooming, and see the edges of your view darken during fast movement — all under the FEEL tab if you want to turn any of it down (or up).
 
-## Multiplayer connection relay (experimental)
+## Multiplayer
 
-The menu showcase (`primitives/menus/`) has an experimental panel for
-testing peer-to-peer multiplayer — see `common/multiplayer.js`.
-Connecting needs a one-time handshake (a WebRTC offer/answer) per
-peer; the showcase panel can do this three ways:
+`common/multiplayer.js` (WebRTC peer connections) and `worker/`
+(the signaling relay that gets two peers' connections talking to each
+other — see "Hosted relay (Cloudflare Workers)" below) are what
+`primitives/menus/` uses to demonstrate peer-to-peer multiplayer, and
+what the in-VR watch menu's **Multiplayer** page builds on for real
+play: open the watch menu, tap Multiplayer, tap HOST (get a 4-character
+room code, shown beside the watch) or dial in a code with the
+directional selector and tap JOIN. No address to type anywhere — the
+relay's address is baked in at build time (see "Hardcoding the relay
+address" below), so a room code is the only thing anyone ever enters.
+Actual gameplay traffic never touches the relay — it goes directly
+peer-to-peer between each joiner and the host once connected (never
+joiner-to-joiner directly), the relay only ever sees the one-time
+WebRTC handshake.
 
-- **Manual copy/paste** — always available, no setup, but strictly
-  1:1: one peer clicks Host and copies a text blob to the other, who
-  pastes it, then sends a reply blob back. Works, but the blob is too
-  long to type by hand — fine between two browser tabs on one
-  computer, painful between two separate devices, and there's no
-  version of this for a third person to join.
-- **Local relay** — run the signaling relay below on any computer on
-  the same Wi-Fi, and the handshake happens automatically behind a
-  short 4-character room code instead. Supports any number of
-  joiners: the host holds a separate connection to each one (a
-  "star"), and relays each joiner's position to every other joiner —
-  they never connect directly to each other. Same local-network-only
-  reach as manual copy/paste, just less tedious.
-- **Hosted relay** — the same room-code flow, but the relay runs on
-  the internet instead of someone's laptop, so it works between two
-  separate networks (see "Hosted relay (Cloudflare Workers)" below).
-
-**Running the relay:**
-
-```
-npm run signal
-```
-
-This prints one or more `ws://<ip>:8787` addresses — paste one into
-the "Local relay" field in the showcase panel on each peer. **Except
-on the machine actually running the relay**: that page detects it
-automatically (it probes `ws://localhost:8787` on load) and starts
-hosting on its own, room code and all, with nothing to type — the
-person running the relay is almost always the one meant to host,
-since headsets/other devices won't have anything listening on their
-own localhost. Everyone needs to be on the same local network as
-whatever machine runs this; it does not work over the open internet.
-The relay only ever sees the one-time handshake — actual gameplay
-traffic goes directly peer-to-peer between each joiner and the host
-once connected (never joiner-to-joiner directly).
-
-**Prebuilt Windows executable**, so people without Node.js installed
-can run the relay too — a standalone ~58MB binary (bundles its own
-Node runtime via [`@yao-pkg/pkg`](https://github.com/yao-pkg/pkg))
-that does the same thing as `npm run signal`. Two ways to get it:
-
-- **GitHub Actions (no local build needed)**: runs automatically as a
-  check on any PR that touches the relay — open the PR's checks,
-  find the "Build relay exe" run, and download the
-  `vr-signal-relay-windows` artifact (kept 30 days). It builds
-  natively on a Windows runner and actually launches the result to
-  confirm it starts up correctly before attaching it. Also
-  manually triggerable from the Actions tab's "Run workflow" button
-  once this workflow file exists on the default branch.
-- **Locally**: `npm run package:relay:win` produces
-  `dist-exe/vr-signal-relay.exe` directly. The first build on a fresh
-  machine downloads ~130MB of base Node binaries from GitHub; later
-  builds reuse the local cache.
-
-Either way: double-click it (or run it from a terminal to see the
-printed addresses) and leave the window open while people connect.
-
-This `.exe` is **unsigned** — Windows SmartScreen will likely show an
-"unrecognized app" warning on first run (click "More info" → "Run
-anyway"). Proper code signing, a system tray icon instead of a bare
-console window, and Mac/Linux builds are all deliberately deferred —
-see `TODO.md`.
+The menu showcase page (`primitives/menus/`) also still has a plain
+HTML panel exercising the same connection code directly (manual
+copy/paste, and a free-text relay-address field) — useful for testing
+the handshake without a headset, not something a player would see.
+Its relay-address field has nothing to point to by default now that
+there's no locally-run relay to type in; paste a `wrangler dev`
+address there (see "Testing locally without deploying" below) if
+you're testing the Worker itself through that panel.
 
 ### Hosted relay (Cloudflare Workers)
 
-Both relays above speak the exact same protocol, so **the showcase
-panel doesn't need to know which kind of relay it's talking to** —
-paste a `ws://` address for the local one or a `wss://` address for
-the hosted one into the same "Relay" field. The hosted relay
-(`worker/`) is a Cloudflare Worker + Durable Object that does what
-`server/signal-server.js` does, reachable over the open internet
-instead of only the local network — see `worker/src/signal-hub.js`
-for the room logic (a near line-for-line port of the local relay's)
-and its header comment for why one Durable Object instance is enough
-for this.
+The relay (`worker/`) is a Cloudflare Worker + Durable Object,
+reachable over the open internet — see `worker/src/signal-hub.js` for
+the room logic and its header comment for why one Durable Object
+instance is enough for this.
 
 **One-time account setup:**
 
@@ -332,8 +282,8 @@ for this.
     domain's Overview page in the dashboard, in the right sidebar.
 
 **PR previews**: any PR touching `worker/**` (or the shared
-`common/multiplayer.js`/`server/signal-rooms.js`) automatically gets
-its own live preview Worker — `preview-signal-hub.yml` deploys
+`common/multiplayer.js`/`worker/src/signal-rooms.js`) automatically
+gets its own live preview Worker — `preview-signal-hub.yml` deploys
 `vr-signal-relay-pr-<number>` (its own Durable Object namespace,
 isolated from production) and comments the `wss://` address on the
 PR. `cleanup-signal-hub-preview.yml` deletes it again when the PR
@@ -349,23 +299,40 @@ deploy previews (the actual `primitives/menus/` page a browser loads)
 — those come from Netlify's own GitHub integration, not anything in
 this repo, and only fire on a real push to a PR's branch (opening or
 retargeting a PR alone doesn't trigger one — push a commit if a
-preview seems to be missing). Testing the hosted relay end-to-end
-needs both: the Netlify preview to load the actual page, and this
-Worker preview's `wss://` address pasted into its "Relay" field.
+preview seems to be missing). The two previews line up automatically,
+though: see "Hardcoding the relay address" below for why a PR's
+Netlify preview already points at that same PR's Worker preview with
+nothing to paste anywhere.
 
-**Testing locally without deploying**: `npm run relay:hosted:dev`
-runs the same Worker code against Cloudflare's local simulator
-(`workerd`) on your machine — prints a `ws://localhost:8787`-style
-address you can paste into the showcase panel exactly like the local
-relay, no Cloudflare account needed for this part.
+**Hardcoding the relay address**: `vite.config.js` computes the
+relay's `wss://` address at build time from `CONTEXT`/`REVIEW_ID` —
+environment variables Netlify sets automatically on every build, not
+anything configured in this repo — and injects it as a global
+(`__RELAY_URL__`, read via `common/relay-config.js`'s `RELAY_URL`).
+On a `deploy-preview` build, `REVIEW_ID` is the PR number, which lines
+up exactly with `preview-signal-hub.yml`'s `vr-signal-relay-pr-<number>`
+naming — so a PR's Netlify preview is automatically wired to that same
+PR's Worker preview, no manual pasting involved. Any other build
+(production, local `npm run dev`) falls back to the production
+address. An explicit `VITE_RELAY_URL` env var overrides both, for
+pointing a build at something else entirely (e.g. a local
+`wrangler dev` instance — see below).
+
+**Testing locally without deploying**: `npm run relay:hosted:dev` runs
+the same Worker code against Cloudflare's local simulator (`workerd`)
+on your machine — prints a `ws://localhost:8787`-style address, no
+Cloudflare account needed for this part. Paste it into the showcase
+panel's relay-address field to exercise it directly, or run
+`VITE_RELAY_URL=ws://localhost:8787 npm run dev` to point a real dev
+build (including the in-VR watch menu) at it.
 
 **Cost**: the relay only ever moves a few KB of text per connection
-(the one-time handshake, same as the local relay) — nowhere near the
-free plan's limits (100,000 requests/day) under any realistic amount
-of play. If usage ever did grow enough to matter, the free plan simply
-stops accepting requests rather than charging you; the only way this
-relay can ever cost money is if you deliberately upgrade the
-Cloudflare account to Workers Paid.
+(the one-time handshake) — nowhere near the free plan's limits
+(100,000 requests/day) under any realistic amount of play. If usage
+ever did grow enough to matter, the free plan simply stops accepting
+requests rather than charging you; the only way this relay can ever
+cost money is if you deliberately upgrade the Cloudflare account to
+Workers Paid.
 
 **Why the relay alone isn't enough**: `common/multiplayer.js` also now
 points `iceServers` at a free public STUN server

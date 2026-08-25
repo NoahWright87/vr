@@ -1,5 +1,5 @@
-// Thin client for the local signaling relay (server/signal-server.js)
-// — moves offer/answer text automatically over a plain WebSocket
+// Thin client for the signaling relay (worker/src/signal-hub.js) —
+// moves offer/answer text automatically over a plain WebSocket
 // instead of a human copy/pasting it. This never touches game
 // traffic; it only exists to complete the handshake that
 // common/multiplayer.js's connection helpers already do the real

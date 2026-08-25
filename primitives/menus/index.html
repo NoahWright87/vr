@@ -326,7 +326,7 @@
       <div id="mp-status">Not connected</div>
 
       <div id="mp-relay-section">
-        <label>Relay (optional) — a local one: run <code>npm run signal</code> on a laptop and paste one of its printed ws:// addresses; or a hosted one: paste its wss:// address (see README.md's "Hosted relay" section). Leave blank to fall back to manual copy/paste below.<input id="mp-relay-url" type="text" placeholder="ws://192.168.1.23:8787 or wss://your-relay.workers.dev" /></label>
+        <label>Relay (optional) — paste a relay's ws:// or wss:// address here (e.g. run <code>npm run relay:hosted:dev</code> for a local one, or see README.md's "Hosted relay" section for the deployed one). Leave blank to fall back to manual copy/paste below.<input id="mp-relay-url" type="text" placeholder="ws://localhost:8787 or wss://your-relay.workers.dev" /></label>
         <button id="mp-host-relay-btn" type="button">Host via relay</button>
         <span id="mp-room-code-display" hidden>Room code: <strong id="mp-room-code-value"></strong></span>
         <div id="mp-join-relay-row">
@@ -662,7 +662,7 @@
       <template id="watch-menu-template">
         <a-entity class="watch-menu-panel" visible="false">
           <a-entity class="watch-menu-main" data-menu-page="main" control-mode-layout="startY: 0.38; spacing: 0.26">
-            <a-plane width="1.2" height="3.25" color="#101827" position="0 -0.64 -0.01"></a-plane>
+            <a-plane width="1.2" height="3.51" color="#101827" position="0 -0.77 -0.01"></a-plane>
 
             <!-- Chrome slot's title starts empty — hand-with-watch
                  points its live clock at menu-chrome-title instead of a
@@ -772,6 +772,61 @@
               position="0 -2.22 0"
             >
               <a-text class="watch-menu-about-label" value="About" align="center" color="#eee" width="2.6" position="0 0 0.01"></a-text>
+            </a-entity>
+
+            <a-entity class="pm-target"
+              geometry="primitive: plane; width: 0.92; height: 0.18"
+              material="color: #182238"
+              menu-item="value: page-multiplayer; label: Multiplayer"
+              position="0 -2.48 0"
+            >
+              <a-text value="Multiplayer" align="center" color="#eee" width="2.6" position="0 0 0.01"></a-text>
+            </a-entity>
+          </a-entity>
+
+          <a-entity class="watch-menu-multiplayer-view" data-menu-page="multiplayer" visible="false">
+            <a-plane class="watch-menu-multiplayer-bg" width="1.1" height="1.7" color="#101827" position="0 -0.15 -0.01"></a-plane>
+            <a-entity class="menu-chrome-slot" data-title="MULTIPLAYER" data-help="false" data-close="true" data-close-value="multiplayer-close" data-width="1.1" data-bar-y="0.55"></a-entity>
+
+            <!-- Idle state: HOST, the 4-square room-code entry, then
+                 JOIN. Swapped for a single red END button once hosting
+                 or joined — see the multiplayer-panel component below. -->
+            <a-entity class="watch-mp-idle">
+              <a-entity class="pm-target"
+                geometry="primitive: plane; width: 0.92; height: 0.18"
+                material="color: #234d2e"
+                menu-item="value: mp-host; label: Host"
+                position="0 0.36 0"
+              >
+                <a-text value="HOST" align="center" color="#9f9" width="3" position="0 0 0.01"></a-text>
+              </a-entity>
+
+              <a-text value="Room code" align="center" color="#9ad" width="3" position="0 0.13 0.01"></a-text>
+              <a-entity class="watch-mp-room-code-entry" room-code-entry="width: 0.92" position="0 -0.05 0"></a-entity>
+
+              <a-entity class="pm-target"
+                geometry="primitive: plane; width: 0.92; height: 0.18"
+                material="color: #182238"
+                menu-item="value: mp-join; label: Join"
+                position="0 -0.32 0"
+              >
+                <a-text value="JOIN" align="center" color="#eee" width="3" position="0 0 0.01"></a-text>
+              </a-entity>
+            </a-entity>
+
+            <!-- Connected state: hidden until hosting/joined. -->
+            <a-entity class="watch-mp-connected" visible="false">
+              <a-entity class="pm-target"
+                geometry="primitive: plane; width: 0.92; height: 0.18"
+                material="color: #5c2a2a"
+                menu-item="value: mp-end; label: End"
+                position="0 0.36 0"
+              >
+                <a-text value="END" align="center" color="#f66" width="3" position="0 0 0.01"></a-text>
+              </a-entity>
+
+              <a-text value="Players" align="center" color="#9ad" width="3" position="0 0.1 0.01"></a-text>
+              <a-entity class="watch-mp-player-list" position="0 -0.02 0"></a-entity>
             </a-entity>
           </a-entity>
 
@@ -1064,6 +1119,7 @@
     </a-scene>
 
     <script type="module" src="../../common/watch-menu.js"></script>
+    <script type="module" src="../../common/room-code-entry.js"></script>
     <script type="module" src="../../common/locomotion.js"></script>
     <script type="module" src="../../common/desktop-controls.js"></script>
     <script type="module">
@@ -1658,6 +1714,7 @@
     <script type="module">
       import { createHostConnection, createJoinConnection, createHostSession } from '../../common/multiplayer.js';
       import { hostSessionViaRelay, joinViaRelay } from '../../common/signal-relay.js';
+      import { RELAY_URL } from '../../common/relay-config.js';
 
       var statusEl = document.getElementById('mp-status');
       var relayUrlEl = document.getElementById('mp-relay-url');
@@ -2104,6 +2161,16 @@
         } else if (message.type === 'box-reset-all') {
           window.__showcaseOfflineBoxActions.reset();
           remoteHeldBoxes.clear();
+        } else if (message.type === 'roster') {
+          renderPlayerList(message.players);
+        } else if (message.type === 'session-ended') {
+          // The host clicking End closes our RTCPeerConnection too,
+          // but relying on that alone to notify us would mean
+          // waiting on WebRTC's own (slow, sometimes 15-30+ second)
+          // disconnect detection — send this explicitly over the
+          // still-open data channel first instead, right before the
+          // host closes it (see endMultiplayerSession).
+          if (connection && connection.pc) connection.pc.close();
         }
       }
 
@@ -2114,6 +2181,15 @@
         stopAimBroadcast();
         removeAllRemotePeers();
         releaseAllRemoteHeldBoxesLocally();
+        // Whatever caused this (the host ending the session, a
+        // network failure, or our own End button — see
+        // endMultiplayerSession), the joiner-side multiplayer UI
+        // resets the same way every time.
+        connection = null;
+        currentRoomCode = '';
+        roomCodeDisplayEl.hidden = true;
+        renderPlayerList([]);
+        updateMultiplayerUi();
       }
 
       // --- Relay Host role (createHostSession) — the star: a
@@ -2142,6 +2218,7 @@
         updateHostStatus();
         sendMessage = function (msg) { hostSession.broadcast(msg); };
         startAimBroadcast(sendMessage);
+        broadcastRoster();
       }
 
       function hostOnPeerMessage (peerId, data) {
@@ -2184,6 +2261,107 @@
         connectedPeerCount = Math.max(0, connectedPeerCount - 1);
         updateHostStatus();
         log(peerId + ' disconnected');
+        if (hostSession) broadcastRoster();
+      }
+
+      // --- Shared relay connection entry points — used by both the
+      // out-of-game panel's buttons below AND the in-VR watch menu's
+      // HOST/JOIN (see the Multiplayer watch page wiring further
+      // down). Keeping this in one place means the watch menu gets
+      // the exact same box-sync/aim-broadcast machinery as the panel
+      // for free, rather than a second copy of it.
+      var relayWs = null; // the signaling websocket for the current session, if any
+
+      function disableAllConnectButtons () {
+        hostRelayBtn.disabled = true;
+        joinRelayBtn.disabled = true;
+        hostBtn.disabled = true;
+        joinBtn.disabled = true;
+      }
+
+      function beginHostingViaRelay (relayUrl, callbacks) {
+        callbacks = callbacks || {};
+        disableAllConnectButtons();
+        isHost = true;
+        hostSession = createHostSession({ onPeerOpen: hostOnPeerOpen, onPeerMessage: hostOnPeerMessage, onPeerClose: hostOnPeerClose });
+        statusEl.textContent = 'Connecting to relay...';
+        relayWs = hostSessionViaRelay(relayUrl, hostSession, {
+          onRoomCode: function (code) {
+            currentRoomCode = code;
+            roomCodeValueEl.textContent = code;
+            roomCodeDisplayEl.hidden = false;
+            updateHostStatus();
+            updateMultiplayerUi();
+            renderPlayerList(currentRosterPlayers());
+            if (callbacks.onRoomCode) callbacks.onRoomCode(code);
+          },
+          onError: function (message) {
+            statusEl.textContent = message;
+            if (callbacks.onError) callbacks.onError(message);
+          },
+        });
+      }
+
+      function beginJoiningViaRelay (relayUrl, code, callbacks) {
+        callbacks = callbacks || {};
+        disableAllConnectButtons();
+        isHost = false;
+        hostSession = null;
+        boxHolders.clear();
+        peerColors.clear();
+        nextColorIndex = 1;
+        spawnedBoxIds = [];
+        connectedPeerCount = 0;
+        currentRoomCode = code;
+        connection = createJoinConnection({ onOpen: joinOnOpen, onMessage: joinOnMessage, onClose: joinOnClose });
+        statusEl.textContent = 'Connecting to relay...';
+        updateMultiplayerUi();
+        relayWs = joinViaRelay(relayUrl, code, connection, {
+          onHandshakeComplete: function () {
+            statusEl.textContent = 'Handshake complete, waiting for the connection to open...';
+            if (callbacks.onHandshakeComplete) callbacks.onHandshakeComplete();
+          },
+          onError: function (message) {
+            statusEl.textContent = message;
+            if (callbacks.onError) callbacks.onError(message);
+          },
+        });
+      }
+
+      // Tears down whatever's currently connected (hosting or
+      // joined) and returns to idle. Cleans up synchronously rather
+      // than waiting on the async peer-close callbacks this also
+      // triggers — those still fire afterwards but land on
+      // already-empty state, which every one of them already
+      // tolerates as a no-op (same as a peer disconnecting into an
+      // empty room).
+      function endMultiplayerSession () {
+        if (relayWs) { relayWs.close(); relayWs = null; }
+        if (hostSession) {
+          // See joinOnMessage's 'session-ended' handling — sent
+          // ahead of close() so joiners hear about this immediately
+          // over the still-open data channel, rather than waiting on
+          // WebRTC's own (slow, unreliable) disconnect detection.
+          hostSession.broadcast(JSON.stringify({ type: 'session-ended' }));
+          hostSession.close();
+          hostSession = null;
+        } else if (connection && connection.pc) {
+          connection.pc.close();
+        }
+        connection = null;
+        isHost = false;
+        sendMessage = null;
+        stopAimBroadcast();
+        removeAllRemotePeers();
+        releaseAllRemoteHeldBoxesLocally();
+        boxHolders.clear();
+        peerColors.clear();
+        connectedPeerCount = 0;
+        currentRoomCode = '';
+        statusEl.textContent = 'Disconnected';
+        roomCodeDisplayEl.hidden = true;
+        renderPlayerList([]);
+        updateMultiplayerUi();
       }
 
       hostRelayBtn.addEventListener('click', function () {
@@ -2191,24 +2369,7 @@
           statusEl.textContent = 'Enter a relay address first.';
           return;
         }
-        hostRelayBtn.disabled = true;
-        joinRelayBtn.disabled = true;
-        hostBtn.disabled = true;
-        joinBtn.disabled = true;
-        isHost = true;
-        hostSession = createHostSession({ onPeerOpen: hostOnPeerOpen, onPeerMessage: hostOnPeerMessage, onPeerClose: hostOnPeerClose });
-        statusEl.textContent = 'Connecting to relay...';
-        hostSessionViaRelay(relayUrlEl.value, hostSession, {
-          onRoomCode: function (code) {
-            currentRoomCode = code;
-            roomCodeValueEl.textContent = code;
-            roomCodeDisplayEl.hidden = false;
-            updateHostStatus();
-          },
-          onError: function (message) {
-            statusEl.textContent = message;
-          },
-        });
+        beginHostingViaRelay(relayUrlEl.value, {});
       });
 
       joinRelayBtn.addEventListener('click', function () {
@@ -2216,34 +2377,118 @@
           statusEl.textContent = 'Enter a relay address and room code first.';
           return;
         }
-        hostRelayBtn.disabled = true;
-        joinRelayBtn.disabled = true;
-        hostBtn.disabled = true;
-        joinBtn.disabled = true;
-        isHost = false;
-        // Abandon any session from auto-host having already fired on
-        // this same tab (the "two people testing on one machine"
-        // case the auto-host override exists for) — otherwise
-        // hostSession stays truthy from that stale attempt even
-        // though this tab is now actually a joiner, and every
-        // hostSession-gated box-sync decision below silently treats
-        // it as still being the host.
-        hostSession = null;
-        boxHolders.clear();
-        peerColors.clear();
-        nextColorIndex = 1;
-        spawnedBoxIds = [];
-        connectedPeerCount = 0;
-        connection = createJoinConnection({ onOpen: joinOnOpen, onMessage: joinOnMessage, onClose: joinOnClose });
-        statusEl.textContent = 'Connecting to relay...';
-        joinViaRelay(relayUrlEl.value, roomCodeInputEl.value.toUpperCase(), connection, {
-          onHandshakeComplete: function () {
-            statusEl.textContent = 'Handshake complete, waiting for the connection to open...';
-          },
-          onError: function (message) {
-            statusEl.textContent = message;
-          },
+        beginJoiningViaRelay(relayUrlEl.value, roomCodeInputEl.value.toUpperCase(), {});
+      });
+
+      // --- In-VR Multiplayer watch page — HOST/JOIN/END plus a
+      // room-code sidecar and player list, mirrored across both
+      // watches (left and right hand both show the same connection
+      // state, same idea as updateAllDisplays keeping both watches'
+      // clocks in sync).
+      function forEachWatchPanel (fn) {
+        document.querySelectorAll('[hand-with-watch]').forEach(function (el) {
+          var comp = el.components['hand-with-watch'];
+          var panelEl = comp && comp.projectedMenu && comp.projectedMenu.panelEl;
+          if (panelEl) fn(panelEl);
         });
+      }
+
+      function ensureSidecar (panelEl) {
+        var existing = panelEl.querySelector('.watch-mp-sidecar');
+        if (existing) return existing;
+        var sidecar = document.createElement('a-entity');
+        sidecar.classList.add('watch-mp-sidecar');
+        sidecar.setAttribute('visible', false);
+        sidecar.setAttribute('position', '0.75 0.3 0');
+        var background = document.createElement('a-plane');
+        background.setAttribute('width', '0.5');
+        background.setAttribute('height', '0.22');
+        background.setAttribute('material', 'color: #0b1220; shader: flat');
+        sidecar.appendChild(background);
+        var label = document.createElement('a-text');
+        label.setAttribute('value', 'ROOM CODE');
+        label.setAttribute('align', 'center');
+        label.setAttribute('color', '#9ad');
+        label.setAttribute('width', 2.4);
+        label.setAttribute('position', '0 0.05 0.01');
+        sidecar.appendChild(label);
+        var codeText = document.createElement('a-text');
+        codeText.classList.add('watch-mp-sidecar-code');
+        codeText.setAttribute('align', 'center');
+        codeText.setAttribute('color', '#9f9');
+        codeText.setAttribute('width', 4);
+        codeText.setAttribute('position', '0 -0.04 0.01');
+        sidecar.appendChild(codeText);
+        panelEl.appendChild(sidecar);
+        return sidecar;
+      }
+
+      function updateMultiplayerUi () {
+        var connected = Boolean(currentRoomCode);
+        forEachWatchPanel(function (panelEl) {
+          var idle = panelEl.querySelector('.watch-mp-idle');
+          var connectedEl = panelEl.querySelector('.watch-mp-connected');
+          if (idle) idle.setAttribute('visible', !connected);
+          if (connectedEl) connectedEl.setAttribute('visible', connected);
+
+          var sidecar = ensureSidecar(panelEl);
+          var pages = panelEl.components['menu-pages'];
+          var onMultiplayerPage = Boolean(pages && pages.currentPage === 'multiplayer');
+          sidecar.setAttribute('visible', connected && onMultiplayerPage);
+          var codeText = sidecar.querySelector('.watch-mp-sidecar-code');
+          if (codeText) codeText.setAttribute('text', 'value', currentRoomCode);
+        });
+      }
+
+      function renderPlayerList (players) {
+        forEachWatchPanel(function (panelEl) {
+          var container = panelEl.querySelector('.watch-mp-player-list');
+          if (!container) return;
+          while (container.firstChild) container.removeChild(container.firstChild);
+          players.forEach(function (player, index) {
+            var row = document.createElement('a-text');
+            row.setAttribute('value', player.peerId);
+            row.setAttribute('align', 'center');
+            row.setAttribute('color', player.color);
+            row.setAttribute('width', 2.6);
+            row.setAttribute('position', '0 ' + (-index * 0.09) + ' 0.01');
+            container.appendChild(row);
+          });
+        });
+      }
+
+      function currentRosterPlayers () {
+        var players = [{ peerId: 'host', color: PALETTE[0] }];
+        peerColors.forEach(function (color, peerId) { players.push({ peerId: peerId, color: color }); });
+        return players;
+      }
+
+      // Host-only: called whenever the peer set changes so every
+      // connected joiner (who otherwise only ever hears about peers
+      // incidentally, via aim traffic) can render the same list.
+      function broadcastRoster () {
+        var players = currentRosterPlayers();
+        hostSession.broadcast(JSON.stringify({ type: 'roster', players: players }));
+        renderPlayerList(players);
+      }
+
+      sceneEl.addEventListener('menu-item-select', function (evt) {
+        var value = evt.detail.value;
+        if (value === 'mp-host') {
+          beginHostingViaRelay(RELAY_URL, {});
+        } else if (value === 'mp-join') {
+          // Read from whichever watch was actually poked/clicked —
+          // each watch's room-code-entry holds its own independent
+          // dial-in state, since only one is ever being used at a
+          // time in practice.
+          var panelEl = evt.target.closest && evt.target.closest('.watch-menu-panel');
+          var entryEl = panelEl && panelEl.querySelector('.watch-mp-room-code-entry');
+          var entry = entryEl && entryEl.components['room-code-entry'];
+          if (!entry) return;
+          beginJoiningViaRelay(RELAY_URL, entry.getValue(), {});
+        } else if (value === 'mp-end') {
+          endMultiplayerSession();
+        }
       });
 
       hostBtn.addEventListener('click', async function () {
@@ -2316,49 +2561,6 @@
         });
       }
 
-      // If a relay happens to be running on THIS machine (npm run
-      // signal / the packaged exe, both default to this port), host
-      // automatically instead of making the person on the relay's
-      // own laptop find and type an address. This only ever succeeds
-      // for a tab on the same machine as the relay — a joining peer
-      // on a different device (a headset, say) has nothing listening
-      // on ITS OWN localhost, so the probe below just fails quietly
-      // there and leaves the manual controls alone. Reuses the same
-      // "Host via relay" button rather than duplicating its flow;
-      // clicking a still-enabled button is a no-op if the person
-      // already started hosting/joining manually before this
-      // resolves. Deliberately re-enables the relay Join control
-      // right after, rather than leaving it locked out along with
-      // everything else the way a real manual host click does — two
-      // people testing on one machine (both of which "detect" the
-      // same local relay) still need a way for one of them to
-      // override the guess and join the other's room instead.
-      var DEFAULT_RELAY_PORT = 8787;
-      (function tryAutoHostViaLocalRelay () {
-        var localRelayUrl = 'ws://localhost:' + DEFAULT_RELAY_PORT;
-        var probe = new WebSocket(localRelayUrl);
-        var settled = false;
-        var timer = setTimeout(function () {
-          if (settled) return;
-          settled = true;
-          probe.close();
-        }, 1000);
-        probe.addEventListener('open', function () {
-          if (settled) return;
-          settled = true;
-          clearTimeout(timer);
-          probe.close();
-          if (hostRelayBtn.disabled) return;
-          relayUrlEl.value = localRelayUrl;
-          statusEl.textContent = 'Local relay detected — hosting automatically...';
-          hostRelayBtn.click();
-          joinRelayBtn.disabled = false;
-        });
-        probe.addEventListener('error', function () {
-          settled = true;
-          clearTimeout(timer);
-        });
-      })();
     </script>
   </body>
 </html>
