@@ -37,3 +37,8 @@ test('standard gamepad buttons map to semantic actions and triggers remain charg
   assert.equal(bindings[9], 'menu'); // Start / Options
   assert.equal(bindings[10], 'crouch'); // Left stick click
 });
+
+test('a game can reserve left stick click for sprinting', () => {
+  const bindings = createStandardGamepadButtonBindings({ sprint: 'sprint', crouch: 'crouch' });
+  assert.equal(bindings[10], 'sprint');
+});

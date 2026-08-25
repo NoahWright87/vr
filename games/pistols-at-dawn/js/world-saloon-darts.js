@@ -18,10 +18,9 @@
       // resetting the lot once all 3 have.
       // ==============================================================
 
-      // ROOM — floor and three walls (no fourth, no roof: an open-front
-      // stall shed, not a sealed building) built around wherever
-      // TOWN_LOCATIONS says "saloon" lands the player, so the room is
-      // never at risk of drifting away from its own front door.
+      // ROOM — the Saloon's broad interior now owns the floor and walls
+      // (world-saloon-interior.js). These stalls only own the playable
+      // boards, scoreboards, and dart racks inside that shared room.
       //
       // Sized for a real guardian boundary, not a real dart alley: most
       // people playing this on a Quest have something like a 2x2m room-
@@ -30,12 +29,6 @@
       // play area, and the farthest throw (HARD, below) has to still fit
       // inside it. Everything here is picked to that constraint first —
       // see DART_STALLS' own comment for the walking-distance math.
-      var SALOON_ROOM_WIDTH = 5;
-      var SALOON_ROOM_DEPTH = 4; // z spans roughly -1.9 (back wall) to +2.1, floor centered on local z 0.1
-      var SALOON_WALL_HEIGHT = 3.2;
-      var SALOON_BACK_WALL_Z = -1.7;
-      var SALOON_WALL_COLOR = '#4a3220';
-      var SALOON_FLOOR_COLOR = '#5b4633';
 
       // BOARD — mounted just clear of the back wall so it doesn't
       // z-fight with it; local z/height are shared by every stall, only
@@ -43,7 +36,7 @@
       // stall. BOARD_RADIUS (0.24m) is close to a regulation dartboard's
       // own ~0.23m playing radius — everything else here is invented for
       // a low-poly boxy aesthetic, not measured against a real one.
-      var DART_BOARD_LOCAL_Z = -1.4;
+      var DART_BOARD_LOCAL_Z = -6.9;
       var DART_BOARD_HEIGHT = 1.4;
       var DART_RING_Z_STEP = 0.008; // each zone drawn a hair further forward than the last, inner-to-outer — see createDartFace
       var DART_SLOT_HEIGHT = 1.1; // comfortable "reach out and take one" height, not the board's own height
@@ -74,9 +67,9 @@
       // every rack: right in front of MEDIUM's, a half-step from EASY's
       // or HARD's.
       var DART_STALLS = [
-        { id: 'easy', label: 'EASY', distance: 1.0, x: -1.3 },
+        { id: 'easy', label: 'EASY', distance: 1.0, x: -3.4 },
         { id: 'medium', label: 'MEDIUM', distance: 1.4, x: 0 },
-        { id: 'hard', label: 'HARD', distance: 1.8, x: 1.3 },
+        { id: 'hard', label: 'HARD', distance: 1.8, x: 3.4 },
       ];
 
       // ==============================================================
@@ -478,8 +471,6 @@
           var origin = findTownLocation('saloon');
           if (origin) this.el.setAttribute('position', origin.position);
 
-          this.buildRoom();
-
           var el = this.el;
           DART_STALLS.forEach(function (stall) {
             var stallEl = document.createElement('a-entity');
@@ -489,43 +480,4 @@
           });
         },
 
-        buildRoom: function () {
-          // Floor/side walls span forward from the back wall, so their
-          // center is derived from it rather than a second magic number
-          // that could quietly drift out of sync with SALOON_BACK_WALL_Z.
-          var centerZ = SALOON_BACK_WALL_Z + SALOON_ROOM_DEPTH / 2;
-
-          var floor = document.createElement('a-plane');
-          floor.setAttribute('rotation', '-90 0 0');
-          floor.setAttribute('width', SALOON_ROOM_WIDTH);
-          floor.setAttribute('height', SALOON_ROOM_DEPTH);
-          // y: 0.002, not 0 — the range's own ground plane is 160x160 at
-          // the world origin (see index.html's RANGE comment), which
-          // reaches this room's position (world z -60) fine within that.
-          // Coincident coplanar geometry z-fights; a hair of clearance is
-          // cheaper than coordinating with a file this one doesn't (and
-          // shouldn't) know about.
-          floor.setAttribute('position', { x: 0, y: 0.002, z: centerZ });
-          floor.setAttribute('color', SALOON_FLOOR_COLOR);
-          this.el.appendChild(floor);
-
-          var back = document.createElement('a-box');
-          back.setAttribute('width', SALOON_ROOM_WIDTH);
-          back.setAttribute('height', SALOON_WALL_HEIGHT);
-          back.setAttribute('depth', 0.2);
-          back.setAttribute('position', { x: 0, y: SALOON_WALL_HEIGHT / 2, z: SALOON_BACK_WALL_Z });
-          back.setAttribute('color', SALOON_WALL_COLOR);
-          this.el.appendChild(back);
-
-          var el = this.el;
-          [-1, 1].forEach(function (side) {
-            var wall = document.createElement('a-box');
-            wall.setAttribute('width', 0.2);
-            wall.setAttribute('height', SALOON_WALL_HEIGHT);
-            wall.setAttribute('depth', SALOON_ROOM_DEPTH);
-            wall.setAttribute('position', { x: side * (SALOON_ROOM_WIDTH / 2), y: SALOON_WALL_HEIGHT / 2, z: centerZ });
-            wall.setAttribute('color', SALOON_WALL_COLOR);
-            el.appendChild(wall);
-          });
-        },
       });
