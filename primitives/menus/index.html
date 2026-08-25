@@ -523,7 +523,7 @@
       <template id="watch-menu-template">
         <a-entity class="watch-menu-panel" visible="false">
           <a-entity class="watch-menu-main" data-menu-page="main" control-mode-layout="startY: 0.38; spacing: 0.26">
-            <a-plane width="1.2" height="3.25" color="#101827" position="0 -0.64 -0.01"></a-plane>
+            <a-plane width="1.2" height="3.55" color="#101827" position="0 -0.79 -0.01"></a-plane>
 
             <!-- Chrome slot's title starts empty — hand-with-watch
                  points its live clock at menu-chrome-title instead of a
@@ -633,6 +633,77 @@
               position="0 -2.22 0"
             >
               <a-text class="watch-menu-about-label" value="About" align="center" color="#eee" width="2.6" position="0 0 0.01"></a-text>
+            </a-entity>
+
+            <!-- Off by default, zero effect on anything until toggled: see
+                 common/level-editor.js. Turning it on repoints the fingertip
+                 raycaster at editor objects (plus this watch's own panel,
+                 always) instead of real-world menus, then jumps to the
+                 Build page. -->
+            <a-entity class="pm-target"
+              geometry="primitive: plane; width: 0.92; height: 0.18"
+              material="color: #182238"
+              menu-item="value: toggle-build-mode; label: Build Mode"
+              position="0 -2.48 0"
+            >
+              <a-text class="watch-menu-build-mode-label" value="Build Mode: Off" align="center" color="#eee" width="2.2" position="0 0 0.01"></a-text>
+            </a-entity>
+          </a-entity>
+
+          <!-- Level editor: palette (spawn primitives/activator/spawn-point,
+               export) and per-object edit rows. Populated/shown by
+               common/level-editor.js rather than authored per-object, since
+               what's editable depends on which object is selected. -->
+          <a-entity class="watch-menu-build-view" data-menu-page="build" visible="false">
+            <a-plane width="1.2" height="2.7" color="#101827" position="0 -0.5 -0.01"></a-plane>
+            <a-entity class="menu-chrome-slot" data-title="BUILD" data-help="false" data-close="true" data-close-value="build-close" data-width="1.2" data-bar-y="0.75"></a-entity>
+
+            <a-entity class="pm-target" geometry="primitive: plane; width: 0.92; height: 0.18" material="color: #182238" menu-item="value: spawn-primitive-box; label: Spawn box" position="0 0.48 0">
+              <a-text value="Spawn box" align="center" color="#eee" width="2.6" position="0 0 0.01"></a-text>
+            </a-entity>
+            <a-entity class="pm-target" geometry="primitive: plane; width: 0.92; height: 0.18" material="color: #182238" menu-item="value: spawn-primitive-sphere; label: Spawn sphere" position="0 0.26 0">
+              <a-text value="Spawn sphere" align="center" color="#eee" width="2.6" position="0 0 0.01"></a-text>
+            </a-entity>
+            <a-entity class="pm-target" geometry="primitive: plane; width: 0.92; height: 0.18" material="color: #182238" menu-item="value: spawn-primitive-cylinder; label: Spawn cylinder" position="0 0.04 0">
+              <a-text value="Spawn cylinder" align="center" color="#eee" width="2.6" position="0 0 0.01"></a-text>
+            </a-entity>
+            <a-entity class="pm-target" geometry="primitive: plane; width: 0.92; height: 0.18" material="color: #182238" menu-item="value: spawn-primitive-cone; label: Spawn cone" position="0 -0.18 0">
+              <a-text value="Spawn cone" align="center" color="#eee" width="2.6" position="0 0 0.01"></a-text>
+            </a-entity>
+            <a-entity class="pm-target" geometry="primitive: plane; width: 0.92; height: 0.18" material="color: #182238" menu-item="value: spawn-activator; label: Spawn menu activator" position="0 -0.4 0">
+              <a-text value="Spawn menu activator" align="center" color="#eee" width="2.6" position="0 0 0.01"></a-text>
+            </a-entity>
+            <a-entity class="pm-target" geometry="primitive: plane; width: 0.92; height: 0.18" material="color: #182238" menu-item="value: spawn-spawn-point; label: Spawn player start" position="0 -0.62 0">
+              <a-text value="Spawn player start" align="center" color="#eee" width="2.6" position="0 0 0.01"></a-text>
+            </a-entity>
+
+            <a-entity
+              menu-option="key: snap-default; label: Hold-to; values: snap|free; labels: Snap|Free-move; value: snap; width: 0.92; height: 0.18"
+              position="0 -0.9 0"
+            ></a-entity>
+
+            <a-entity class="pm-target" geometry="primitive: plane; width: 0.92; height: 0.18" material="color: #182238" menu-item="value: copy-level; label: Copy level" position="0 -1.12 0">
+              <a-text class="watch-menu-copy-level-label" value="Copy level" align="center" color="#eee" width="2.6" position="0 0 0.01"></a-text>
+            </a-entity>
+          </a-entity>
+
+          <a-entity class="watch-menu-edit-view" data-menu-page="edit" visible="false">
+            <a-plane width="1.2" height="2.05" color="#101827" position="0 -0.4 -0.01"></a-plane>
+            <a-entity class="menu-chrome-slot" data-title="EDIT OBJECT" data-help="false" data-close="true" data-close-value="edit-close" data-width="1.2" data-bar-y="0.65"></a-entity>
+
+            <a-text class="watch-menu-edit-empty" value="Point at (or touch) an editor object, then press a face button to select it." align="center" color="#9fb0d4" width="1.05" wrap-count="24" position="0 0.2 0"></a-text>
+
+            <a-entity class="watch-menu-edit-color" menu-option="key: color; label: Color; values: 0|1|2|3|4|5; labels: Orange|Blue|Green|Pink|Yellow|Purple; value: 0; width: 0.92; height: 0.18" position="0 0.38 0" visible="false"></a-entity>
+            <a-entity class="watch-menu-edit-shape" menu-option="key: shape; label: Shape; values: box|sphere|cylinder|cone; labels: Box|Sphere|Cylinder|Cone; value: box; width: 0.92; height: 0.18" position="0 0.16 0" visible="false"></a-entity>
+            <a-entity class="watch-menu-edit-template" menu-option="key: template; label: Window; values: #wall-screen-menu-template|#pedestal-menu-template; labels: Wall screen|Pedestal; value: #wall-screen-menu-template; width: 0.92; height: 0.18" position="0 -0.06 0" visible="false"></a-entity>
+            <a-entity class="watch-menu-edit-rotation" menu-option="key: rotationMode; label: Facing; values: fixed|yaw|full; labels: Fixed|Upright follow|Full follow; value: fixed; width: 0.92; height: 0.18" position="0 -0.28 0" visible="false"></a-entity>
+            <a-entity class="watch-menu-edit-alwayson" menu-option="key: alwaysOn; label: Always on; values: off|on; labels: Off|On; value: off; width: 0.92; height: 0.18" position="0 -0.5 0" visible="false"></a-entity>
+
+            <a-entity class="watch-menu-edit-addmenu pm-target" geometry="primitive: plane; width: 0.92; height: 0.18" material="color: #182238" menu-item="value: editor-add-menu; label: Add menu" position="0 -0.72 0" visible="false">
+              <a-text value="Add menu" align="center" color="#eee" width="2.6" position="0 0 0.01"></a-text>
+            </a-entity>
+            <a-entity class="watch-menu-edit-delete pm-target" geometry="primitive: plane; width: 0.92; height: 0.18" material="color: #4a1e1e" menu-item="value: editor-delete-selected; label: Delete" position="0 -0.94 0" visible="false">
+              <a-text value="Delete" align="center" color="#f88" width="2.6" position="0 0 0.01"></a-text>
             </a-entity>
           </a-entity>
 
@@ -927,6 +998,7 @@
     <script type="module" src="../../common/watch-menu.js"></script>
     <script type="module" src="../../common/locomotion.js"></script>
     <script type="module" src="../../common/desktop-controls.js"></script>
+    <script type="module" src="../../common/level-editor.js"></script>
     <script type="module">
       import { buildMenuChrome } from '../../common/menus.js';
       var MENU_EDITOR_DEFAULTS = {

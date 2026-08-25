@@ -196,7 +196,7 @@ import './menus.js';
           if (value === 'haptics') self.triggerHaptics();
           if (value === 'about') self.showAbout();
         });
-        el.emit('watch-menu-ready', { panelEl: pm.panelEl, projectedMenu: pm }, true);
+        el.emit('watch-menu-ready', { panelEl: pm.panelEl, projectedMenu: pm, fingertipEl: self.fingertipEl }, true);
       }
       if (face.hasLoaded) finishMenuSetup();
       else face.addEventListener('loaded', finishMenuSetup);
