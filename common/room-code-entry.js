@@ -27,6 +27,7 @@
 import { ROOM_CODE_CHARS } from '../worker/src/signal-rooms.js';
 
 var DIGIT_COUNT = 4;
+var DIGIT_GAP = 0.015;
 var GRID_COLUMNS = 8;
 var GRID_ROWS = Math.ceil(ROOM_CODE_CHARS.length / GRID_COLUMNS);
 
@@ -74,12 +75,11 @@ AFRAME.registerComponent('room-code-entry', {
   },
 
   buildRow: function () {
-    var gap = 0.015;
-    var digitWidth = (this.data.width - gap * (DIGIT_COUNT - 1)) / DIGIT_COUNT;
+    var digitWidth = (this.data.width - DIGIT_GAP * (DIGIT_COUNT - 1)) / DIGIT_COUNT;
     var digitHeight = 0.18;
 
     for (var i = 0; i < DIGIT_COUNT; i++) {
-      var x = -this.data.width / 2 + digitWidth / 2 + i * (digitWidth + gap);
+      var x = -this.data.width / 2 + digitWidth / 2 + i * (digitWidth + DIGIT_GAP);
       var digitEl = this.makeTarget(digitWidth, digitHeight, 'code-digit-' + i, 'Character ' + (i + 1), x, 0);
       this.digitEls.push(this.addText(digitEl, ROOM_CODE_CHARS[this.indices[i]], 2.6, '#eee'));
     }
@@ -113,20 +113,22 @@ AFRAME.registerComponent('room-code-entry', {
     this.closePopup();
     this.el.emit('menu-dismiss-popovers', { except: this.el }, true);
     // A popup is a modal interaction layer, same reasoning as
-    // menu-option's own popup: pull every OTHER target in this
-    // control (and, via bubbling, any sibling control on the page)
-    // out of raycast selection while it's open, so an angled ray
-    // can't select something visually covered by the grid.
-    this.suppressedTargets = Array.prototype.slice.call(this.el.querySelectorAll('.menu-target'));
+    // menu-option's own popup: pull every OTHER target on the page (not
+    // just this control's own digit squares — the HOST/JOIN buttons
+    // below are just as reachable through an angled ray) out of raycast
+    // selection while it's open, so nothing visually covered by the grid
+    // can still be hit.
+    var scope = this.el.closest('[data-menu-page]') || this.el.parentNode;
+    this.suppressedTargets = Array.prototype.slice.call(scope.querySelectorAll('.menu-target'));
     this.suppressedTargets.forEach(function (target) { target.classList.remove('menu-target'); });
 
-    var gap = 0.006;
-    var cellSize = 0.078;
+    var gap = 0.012;
+    var cellSize = 0.1;
     var gridWidth = GRID_COLUMNS * cellSize + (GRID_COLUMNS - 1) * gap;
     var gridHeight = GRID_ROWS * cellSize + (GRID_ROWS - 1) * gap;
 
-    var digitWidth = (this.data.width - gap * (DIGIT_COUNT - 1)) / DIGIT_COUNT;
-    var digitX = -this.data.width / 2 + digitWidth / 2 + digitIndex * (digitWidth + gap);
+    var digitWidth = (this.data.width - DIGIT_GAP * (DIGIT_COUNT - 1)) / DIGIT_COUNT;
+    var digitX = -this.data.width / 2 + digitWidth / 2 + digitIndex * (digitWidth + DIGIT_GAP);
 
     var popup = document.createElement('a-entity');
     popup.classList.add('room-code-popup');

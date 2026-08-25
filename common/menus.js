@@ -602,7 +602,14 @@ import { cycleMenuOptionIndex, parseMenuOptions } from './menu-options.js';
 
     isMenuTargetInteractive: function (item) {
       if (!isVisibleInHierarchy(item.object3D)) return false;
-      var popup = this.panelEl.querySelector('.menu-option-popup');
+      // Any open modal popup layer (menu-option's own list, or
+      // room-code-entry's character grid — common/room-code-entry.js)
+      // suppresses everything outside itself. Both popup types re-fire
+      // menu-targets-changed when they open (so the raycaster picks up
+      // their new cells), which lands here too — this needs to recognize
+      // either class or that refresh silently re-enables whatever the
+      // popup just suppressed.
+      var popup = this.panelEl.querySelector('.menu-option-popup, .room-code-popup');
       return !popup || popup.contains(item);
     },
 

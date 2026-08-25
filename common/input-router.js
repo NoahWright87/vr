@@ -358,9 +358,17 @@ if (typeof AFRAME !== 'undefined') {
       this.lookLast = null;
       this.activeActions = new Map();
       this.nextHand = this.data.dominantHand;
+      this.interactionMode = 'normal';
       this.onFamilyChanged = this.updateVisibility.bind(this);
+      this.onInteractionModeChanged = this.handleInteractionModeChanged.bind(this);
       this.el.sceneEl.addEventListener('input-family-changed', this.onFamilyChanged);
+      this.el.sceneEl.addEventListener('desktop-interaction-mode-changed', this.onInteractionModeChanged);
       this.createUi();
+      this.updateVisibility();
+    },
+
+    handleInteractionModeChanged: function (evt) {
+      this.interactionMode = (evt.detail && evt.detail.mode) || 'normal';
       this.updateVisibility();
     },
 
@@ -517,7 +525,12 @@ if (typeof AFRAME !== 'undefined') {
       if (!this.root) return;
       var flat = !this.el.sceneEl.systems['control-mode'].isMode('xr');
       var family = this.router.getActiveFamily();
-      this.root.style.display = flat && this.router.hasTouch && family === 'touch' ? 'block' : 'none';
+      // The watch panel takes over the whole interaction: it has its own
+      // close button and there's nothing else worth reaching (walking or
+      // grabbing) while looking at it, so the joystick/look-area/action
+      // buttons would just sit on top of it eating every tap for nothing.
+      var watchOpen = this.interactionMode === 'watch';
+      this.root.style.display = flat && this.router.hasTouch && family === 'touch' && !watchOpen ? 'block' : 'none';
     },
 
     tick: function (time, delta) {
