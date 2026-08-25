@@ -70,7 +70,7 @@
   </head>
   <body>
     <div id="overlay">
-      <span>Pistols at Dawn — WASD/mouse to move and look, E to use nearby doors, Tab for Watch. Gamepad: sticks + X to interact. <a href="../../index.html">All prototypes</a></span>
+      <span>Pistols at Dawn — WASD/mouse to move and look; hold Shift to run. E uses nearby doors; Tab opens Watch. Gamepad: sticks + click left stick to run, X to interact. <a href="../../index.html">All prototypes</a></span>
     </div>
     <div id="teleport-buttons">
       <div class="teleport-label">Teleport</div>
@@ -335,9 +335,9 @@
       <a-entity
         id="player-rig"
         teleport-hub
-        locomotion-demo
+        locomotion-demo="speed: 3; sprintMultiplier: 1.5"
         semantic-look-controls="camera: #head-camera"
-        gamepad-input="leftHand: #left-hand; rightHand: #right-hand"
+        gamepad-input="leftHand: #left-hand; rightHand: #right-hand; sprintAction: sprint"
         touch-controls="leftHand: #left-hand; rightHand: #right-hand; primaryAction: none; interactAction: interact; interactLabel: INTERACT; grabAction: none; watchAction: watch; watchLabel: WATCH; crouchAction: none"
         desktop-controls="camera: #head-camera; leftHand: #left-hand; rightHand: #right-hand"
         data-area-persistent

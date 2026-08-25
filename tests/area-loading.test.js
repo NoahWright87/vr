@@ -58,7 +58,7 @@ test('the Shooting Gallery facade leads to an intentionally oversized indoor tar
 test('the Saloon door uses the shared semantic controls to enter the Saloon', () => {
   assert.match(page, /src="\.\.\/\.\.\/common\/locomotion\.js"/);
   assert.match(page, /src="\.\.\/\.\.\/common\/desktop-controls\.js"/);
-  assert.match(page, /gamepad-input="leftHand: #left-hand; rightHand: #right-hand"/);
+  assert.match(page, /gamepad-input="leftHand: #left-hand; rightHand: #right-hand; sprintAction: sprint"/);
   assert.match(page, /touch-controls="leftHand: #left-hand; rightHand: #right-hand/);
   assert.match(page, /desktop-controls="camera: #head-camera; leftHand: #left-hand; rightHand: #right-hand"/);
   assert.match(ghostTown, /class="ghost-town-building ghost-town-saloon"/);

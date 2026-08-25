@@ -66,6 +66,7 @@ function registerDesktopInputComponents() {
       this.el.emit('semantic-move', {
         x: x / length,
         z: z / length,
+        sprint: Boolean(this.keys.ShiftLeft || this.keys.ShiftRight || this.keys.Shift),
         deltaMs: delta,
         source: 'desktop',
       }, false);

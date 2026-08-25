@@ -19,7 +19,7 @@ export function createStandardGamepadButtonBindings(actions) {
     6: actions.secondary,
     7: actions.primary,
     9: actions.watch,
-    10: actions.crouch,
+    10: actions.sprint || actions.crouch,
   };
 }
 
@@ -217,6 +217,7 @@ if (typeof AFRAME !== 'undefined') {
       watchAction: { default: 'watch' },
       backAction: { default: 'back' },
       crouchAction: { default: 'crouch' },
+      sprintAction: { default: 'none' },
       deadzone: { default: 0.18 },
       chargeMs: { default: 900 },
       minimumStrength: { default: 0.35 },
@@ -234,6 +235,7 @@ if (typeof AFRAME !== 'undefined') {
         watch: this.data.watchAction,
         back: this.data.backAction,
         crouch: this.data.crouchAction,
+        sprint: this.data.sprintAction,
       });
     },
 

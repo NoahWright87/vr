@@ -6,6 +6,7 @@
       turnMode: { default: 'snap' },
       speed: { default: 1.5 },
       speedMultiplier: { default: 1 },
+      sprintMultiplier: { default: 1.5 },
       snapAngle: { default: 30 },
       teleportDistance: { default: 2.8 },
       comfortVignette: { default: true },
@@ -35,11 +36,14 @@
       this._teleportHand = 'left';
       this.onMenuOptionChange = this.onMenuOptionChange.bind(this);
       this.onSemanticMove = this.onSemanticMove.bind(this);
+      this.onSemanticAction = this.onSemanticAction.bind(this);
+      this.gamepadSprinting = false;
 
       var self = this;
       var sceneEl = this.el.sceneEl;
       sceneEl.addEventListener('menu-option-change', this.onMenuOptionChange);
       this.el.addEventListener('semantic-move', this.onSemanticMove);
+      this.el.addEventListener('semantic-action-intent', this.onSemanticAction);
       sceneEl.addEventListener('loaded', function () {
         var leftEl = document.querySelector('#left-hand');
         var rightEl = document.querySelector('#right-hand');
@@ -219,26 +223,33 @@
 
     // Input-source-neutral movement core. XR thumbsticks and desktop WASD
     // both express a local x/z intent and arrive here.
-    applyMoveVector: function (moveX, moveY, deltaMs) {
+    applyMoveVector: function (moveX, moveY, deltaMs, sprinting) {
       if (!this.cameraEl) return;
 
       var direction = new AFRAME.THREE.Vector3(moveX, 0, moveY);
       var cameraQuat = new AFRAME.THREE.Quaternion();
       this.cameraEl.object3D.getWorldQuaternion(cameraQuat);
       var worldMove = direction.applyQuaternion(cameraQuat).setY(0);
-      worldMove.normalize().multiplyScalar(this.data.speed * this.data.speedMultiplier * (deltaMs / 1000));
+      var sprint = sprinting || this.gamepadSprinting;
+      var rate = this.data.speed * this.data.speedMultiplier * (sprint ? this.data.sprintMultiplier : 1);
+      worldMove.normalize().multiplyScalar(rate * (deltaMs / 1000));
       this.rigEl.object3D.position.add(worldMove);
     },
 
-    applyDesktopMove: function (moveX, moveY, deltaMs) {
+    applyDesktopMove: function (moveX, moveY, deltaMs, sprinting) {
       var amount = Math.hypot(moveX, moveY);
       if (!amount) return;
-      this.applyMoveVector(moveX / amount, moveY / amount, deltaMs);
+      this.applyMoveVector(moveX / amount, moveY / amount, deltaMs, sprinting);
     },
 
     onSemanticMove: function (evt) {
       if (!evt.detail) return;
-      this.applyDesktopMove(evt.detail.x || 0, evt.detail.z || 0, evt.detail.deltaMs || 0);
+      this.applyDesktopMove(evt.detail.x || 0, evt.detail.z || 0, evt.detail.deltaMs || 0, !!evt.detail.sprint);
+    },
+
+    onSemanticAction: function (evt) {
+      if (!evt.detail || evt.detail.action !== 'sprint') return;
+      this.gamepadSprinting = evt.detail.phase === 'start';
     },
 
     applySmoothTurn: function (deltaMs) {
@@ -330,5 +341,6 @@
     remove: function () {
       this.el.sceneEl.removeEventListener('menu-option-change', this.onMenuOptionChange);
       this.el.removeEventListener('semantic-move', this.onSemanticMove);
+      this.el.removeEventListener('semantic-action-intent', this.onSemanticAction);
     },
   });
