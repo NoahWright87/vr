@@ -32,6 +32,29 @@ this is only for work that has been decided on and postponed.
   hand frames where useful) without making hint zones care which headset or
   controller supplied the action.
 
+## Level editor
+
+- **Axis-locked movement/rotation handles.** The in-VR editor's grab-to-place
+  flow (grid/angle snapping toggled per face button, free-rotate via stick
+  click) covers the common case, but constraining a move or rotation to a
+  single axis needs real on-object handles (like Blender/Unity's gizmo arms)
+  — a bigger interaction surface than a toggle. Deferred until the snap-only
+  version has been used enough to know if single-axis control is actually
+  needed day to day, or if grid snapping alone is good enough.
+
+- **Build Mode should take precedence over gameplay controls once the
+  editor reaches Pistols at Dawn, not just the Showcase.** The Showcase v1
+  gates this by swapping the fingertip raycaster's target selector so
+  pointing+face-button hits editor objects instead of real menus while
+  Build Mode is on (see `common/level-editor.js`). Pistols' own hand-rig/
+  holsterable graph (`games/pistols-at-dawn/js/core-hand-rig.js` and
+  friends) will need the equivalent: while Build Mode is active there,
+  weapon/prop interactions should stand down in favor of editor placement,
+  the same way pointing at a real menu stands down in the Showcase. Depends
+  on the "migrate Pistols onto the shared semantic hand/object contracts"
+  item above landing first, since Pistols doesn't share the Showcase's
+  input plumbing yet.
+
 ## Liquids
 
 - **Dissipation rates per surface.** Right now a puddle dries at a rate

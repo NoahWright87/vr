@@ -350,6 +350,16 @@ import { cycleMenuOptionIndex, parseMenuOptions } from './menu-options.js';
       modeHysteresis: { default: 0.12 },
       orientationGrace: { default: 250 },
       automatic: { default: false },
+      // 'auto' keeps today's behavior (fixed rotation in poke mode, a full
+      // lookAt in laser mode). 'yaw' is the one genuinely new option: turn
+      // to face the player without pitching, for a panel that should stand
+      // upright regardless of where the camera is relative to it.
+      rotationMode: { default: 'auto', oneOf: ['auto', 'fixed', 'yaw', 'full'] },
+      // Skips the open/close state machine entirely: no trigger wiring, no
+      // distance/look-away dismissal, panel is simply always visible at its
+      // laser scale. For menus that shouldn't need (or allow) a physical
+      // activator, e.g. an always-present main menu.
+      alwaysOn: { default: false },
     },
 
     init: function () {
@@ -389,11 +399,15 @@ import { cycleMenuOptionIndex, parseMenuOptions } from './menu-options.js';
       });
       this.updatePanelPosition();
 
-      el.setAttribute('obb-collider', '');
-      el.addEventListener('obbcollisionstarted', function (evt) {
-        var poker = evt.detail.withEl;
-        if (poker.handComponent && poker.handComponent.isPointing && !self.active) self.open();
-      });
+      if (this.data.alwaysOn) {
+        this.active = true;
+      } else {
+        el.setAttribute('obb-collider', '');
+        el.addEventListener('obbcollisionstarted', function (evt) {
+          var poker = evt.detail.withEl;
+          if (poker.handComponent && poker.handComponent.isPointing && !self.active) self.open();
+        });
+      }
 
       this.pmTargets = [];
       this.registerMenuTarget = function (item) {
@@ -439,6 +453,14 @@ import { cycleMenuOptionIndex, parseMenuOptions } from './menu-options.js';
     },
 
     tick: function () {
+      if (this.data.alwaysOn) {
+        // Scale/interactivity piggyback on the 'laser' branch of
+        // applyState (full-size, always interactive); rotationMode is
+        // resolved independently below, so this does not imply a lookAt.
+        this.mode = 'laser';
+        this.applyState();
+        return;
+      }
       if (this.data.automatic && !this.forcedMode) {
         var automaticIntent = this.computeAutomaticIntent();
         if (automaticIntent !== 'open') this.automaticDismissed = false;
@@ -544,16 +566,47 @@ import { cycleMenuOptionIndex, parseMenuOptions } from './menu-options.js';
       return lookQuat;
     },
 
+    // Same technique as computeLaserLocalQuat, but the look target's
+    // height is pinned to the panel's own height first, so the resulting
+    // lookAt has zero pitch/roll — the panel turns to face the player
+    // without ever tilting.
+    computeYawLocalQuat: function () {
+      var THREE = AFRAME.THREE;
+      this.panelEl.object3D.updateMatrixWorld(true);
+      var camPos = new THREE.Vector3();
+      this.cameraEl.object3D.getWorldPosition(camPos);
+      var panelPos = new THREE.Vector3();
+      this.panelEl.object3D.getWorldPosition(panelPos);
+      camPos.y = panelPos.y;
+      var savedQuat = this.panelEl.object3D.quaternion.clone();
+      this.panelEl.object3D.lookAt(camPos);
+      var lookQuat = this.panelEl.object3D.quaternion.clone();
+      this.panelEl.object3D.quaternion.copy(savedQuat);
+      return lookQuat;
+    },
+
+    // rotationMode is independent of the poke/laser interaction mode:
+    // 'auto' preserves the historical coupling (poke -> fixed, laser ->
+    // full lookAt) so every existing consumer is unaffected by this field
+    // existing at all.
+    resolveTargetQuat: function (interactionMode) {
+      var rotationMode = this.data.rotationMode;
+      if (rotationMode === 'auto') rotationMode = interactionMode === 'laser' ? 'full' : 'fixed';
+      if (rotationMode === 'yaw') return this.computeYawLocalQuat();
+      if (rotationMode === 'full') return this.computeLaserLocalQuat();
+      return this.pokeQuat;
+    },
+
     applyState: function () {
       this.updatePanelPosition();
       var targetScale;
       var targetQuat;
       if (this.mode === 'poke') {
         targetScale = this.data.pokeScale;
-        targetQuat = this.pokeQuat;
+        targetQuat = this.resolveTargetQuat('poke');
       } else if (this.mode === 'laser') {
         targetScale = this.data.laserScale;
-        targetQuat = this.computeLaserLocalQuat();
+        targetQuat = this.resolveTargetQuat('laser');
       } else {
         targetScale = 0.0001;
         targetQuat = null;
