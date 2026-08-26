@@ -36,7 +36,7 @@
             'boots-suits-entrance': { position: { x: 6.05, y: 0, z: -6 }, rotationY: -90 },
             'shooting-gallery-entrance': { position: { x: 6.25, y: 0, z: 0 }, rotationY: -90 },
           },
-          scripts: ['js/world-ghost-town-stalls.js', 'js/world-targets.js', 'js/world-ghost-town-gallery.js', 'js/world-ghost-town-carriage.js'],
+          scripts: ['js/world-ghost-town-stalls.js', 'js/world-targets.js', 'js/world-ghost-town-gallery.js', 'js/world-ghost-town-carriage.js', 'js/world-ghost-town-environment.js'],
         },
         {
           id: 'range', label: 'The Range', position: { x: 0, y: 0, z: 0 }, rotationY: 0,
