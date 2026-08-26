@@ -8,7 +8,7 @@
   width="50"
   height="54"
   color="#8b7654"
-  material="src: assets/textures/stable-dirt-straw-v1.png; repeat: 24 26; color: #ffffff; shader: flat"
+  material="src: assets/textures/stable-dirt-straw-v1.png; repeat: 24 26; color: #ffffff; shader: standard"
   position="0 0 0"
 ></a-plane>
 
@@ -19,19 +19,19 @@
   width="9"
   height="42"
   color="#b7905d"
-  material="src: assets/textures/stable-dirt-straw-v1.png; repeat: 5 21; color: #ffffff; shader: flat"
+  material="src: assets/textures/stable-dirt-straw-v1.png; repeat: 5 21; color: #ffffff; shader: standard"
   position="0 0.01 0"
 ></a-plane>
 
 <!-- Simple boardwalks reserve the walking edges of the future storefronts. -->
-<a-box class="ghost-town-boardwalk" width="2" height="0.1" depth="34" color="#69462d" material="src: assets/textures/western-wood-planks-v1.png; repeat: 2 17; color: #ffffff; shader: flat" position="-5.5 0.05 0"></a-box>
-<a-box class="ghost-town-boardwalk" width="2" height="0.1" depth="34" color="#69462d" material="src: assets/textures/western-wood-planks-v1.png; repeat: 2 17; color: #ffffff; shader: flat" position="5.5 0.05 0"></a-box>
+<a-box class="ghost-town-boardwalk" width="2" height="0.1" depth="34" color="#69462d" material="src: assets/textures/western-wood-planks-v1.png; repeat: 2 17; color: #ffffff; shader: standard" position="-5.5 0.05 0"></a-box>
+<a-box class="ghost-town-boardwalk" width="2" height="0.1" depth="34" color="#69462d" material="src: assets/textures/western-wood-planks-v1.png; repeat: 2 17; color: #ffffff; shader: standard" position="5.5 0.05 0"></a-box>
 
 <!-- The south gate faces outward toward +Z, where the player arrives. -->
 <a-entity class="ghost-town-welcome-gateway" position="0 0 20">
   <a-box width="0.35" height="4" depth="0.35" color="#5c3d28" position="-4.5 2 0"></a-box>
   <a-box width="0.35" height="4" depth="0.35" color="#5c3d28" position="4.5 2 0"></a-box>
-  <a-box width="9.4" height="1.15" depth="0.22" color="#6b452b" material="src: assets/textures/signboard-walnut-v1.png; repeat: 4 1; color: #ffffff; shader: flat" position="0 4 0"></a-box>
+  <a-box width="9.4" height="1.15" depth="0.22" color="#6b452b" material="src: assets/textures/signboard-walnut-v1.png; repeat: 4 1; color: #ffffff; shader: standard" position="0 4 0"></a-box>
   <a-text value="Welcome to Ghost Town!" align="center" color="#f0dfba" width="8" position="0 3.78 0.13"></a-text>
 </a-entity>
 
@@ -39,7 +39,7 @@
 <a-entity class="ghost-town-welcome-gateway" position="0 0 -20" rotation="0 180 0">
   <a-box width="0.35" height="4" depth="0.35" color="#5c3d28" position="-4.5 2 0"></a-box>
   <a-box width="0.35" height="4" depth="0.35" color="#5c3d28" position="4.5 2 0"></a-box>
-  <a-box width="9.4" height="1.15" depth="0.22" color="#6b452b" material="src: assets/textures/signboard-walnut-v1.png; repeat: 4 1; color: #ffffff; shader: flat" position="0 4 0"></a-box>
+  <a-box width="9.4" height="1.15" depth="0.22" color="#6b452b" material="src: assets/textures/signboard-walnut-v1.png; repeat: 4 1; color: #ffffff; shader: standard" position="0 4 0"></a-box>
   <a-text value="Welcome to Ghost Town!" align="center" color="#f0dfba" width="8" position="0 3.78 0.13"></a-text>
 </a-entity>
 
@@ -48,7 +48,7 @@
 <!-- The first west-side blockout is the Saloon. Its front is toward the
      street (+X); the door uses the shared semantic hint path rather than
      becoming a one-off desktop click target. -->
-<a-box class="ghost-town-building ghost-town-saloon" width="4.6" height="3.4" depth="5.2" color="#87513a" material="src: assets/textures/western-wood-planks-v1.png; repeat: 3 2; color: #ffffff; shader: flat" position="-9 1.7 12"></a-box>
+<a-box class="ghost-town-building ghost-town-saloon" width="4.6" height="3.4" depth="5.2" color="#87513a" material="src: assets/textures/western-wood-planks-v1.png; repeat: 3 2; color: #ffffff; shader: standard" position="-9 1.7 12"></a-box>
 <a-text value="SALOON" align="center" color="#f0dfba" width="3.3" position="-6.68 2.8 12" rotation="0 90 0"></a-text>
 <a-box
   id="ghost-town-saloon-door"
@@ -61,27 +61,27 @@
   town-door="destination: saloon"
   hint-zone="action: mounted; radius: 0.8; maxReach: 1.65; gazeThreshold: 0.78; priority: 30; desktopKey: E; desktopLabel: Enter Saloon; gamepadKey: X; gamepadLabel: Enter Saloon; touchKey: TAP; touchLabel: Enter Saloon; xrKey: POKE; xrLabel: Enter Saloon; hintOffset: 0 0.32 0.16; hintOffsetSpace: target; hintLockX: true; hintLockY: true; hintLockZ: true; hintScale: 0.88; highlightOpacity: 0.3; highlightScale: 1.055"
 ></a-box>
-<a-box class="ghost-town-building ghost-town-sheriff" width="5.3" height="4.6" depth="4.6" color="#6f6250" material="src: assets/textures/western-wood-planks-v1.png; repeat: 3 2; color: #ffffff; shader: flat" position="-9 2.3 6"></a-box>
+<a-box class="ghost-town-building ghost-town-sheriff" width="5.3" height="4.6" depth="4.6" color="#6f6250" material="src: assets/textures/western-wood-planks-v1.png; repeat: 3 2; color: #ffffff; shader: standard" position="-9 2.3 6"></a-box>
 <a-text value="SHERIFF" align="center" color="#f0dfba" width="3" position="-6.33 3.75 6" rotation="0 90 0"></a-text>
 <a-box id="ghost-town-sheriff-door" class="ghost-town-door" width="0.16" height="2.15" depth="1.35" color="#493526" position="-6.32 1.075 6" town-door="destination: sheriff-office" hint-zone="action: mounted; radius: 0.8; maxReach: 1.65; gazeThreshold: 0.78; priority: 30; desktopKey: E; desktopLabel: Enter Sheriff; gamepadKey: X; gamepadLabel: Enter Sheriff; touchKey: TAP; touchLabel: Enter Sheriff; xrKey: POKE; xrLabel: Enter Sheriff; hintOffset: 0 0.42 0; hintScale: 0.88; highlightOpacity: 0.3"></a-box>
-<a-box class="ghost-town-building ghost-town-bank" width="4.2" height="3.8" depth="5" color="#6d5847" material="src: assets/textures/western-wood-planks-v1.png; repeat: 3 2; color: #ffffff; shader: flat" position="-9 1.9 0"></a-box>
+<a-box class="ghost-town-building ghost-town-bank" width="4.2" height="3.8" depth="5" color="#6d5847" material="src: assets/textures/western-wood-planks-v1.png; repeat: 3 2; color: #ffffff; shader: standard" position="-9 1.9 0"></a-box>
 <a-text value="BANK" align="center" color="#f0dfba" width="3" position="-6.88 2.95 0" rotation="0 90 0"></a-text>
 <a-box id="ghost-town-bank-door" class="ghost-town-door" width="0.16" height="2.15" depth="1.35" color="#4d3020" position="-6.88 1.075 0" town-door="destination: bank" hint-zone="action: mounted; radius: 0.8; maxReach: 1.65; gazeThreshold: 0.78; priority: 30; desktopKey: E; desktopLabel: Enter Bank; gamepadKey: X; gamepadLabel: Enter Bank; touchKey: TAP; touchLabel: Enter Bank; xrKey: POKE; xrLabel: Enter Bank; hintOffset: 0 0.42 0; hintScale: 0.88; highlightOpacity: 0.3"></a-box>
-<a-box class="ghost-town-building ghost-town-post-office" width="5.6" height="4.1" depth="4.4" color="#6d5b49" material="src: assets/textures/western-wood-planks-v1.png; repeat: 3 2; color: #ffffff; shader: flat" position="-9 2.05 -6"></a-box>
+<a-box class="ghost-town-building ghost-town-post-office" width="5.6" height="4.1" depth="4.4" color="#6d5b49" material="src: assets/textures/western-wood-planks-v1.png; repeat: 3 2; color: #ffffff; shader: standard" position="-9 2.05 -6"></a-box>
 <a-text value="POST OFFICE" align="center" color="#f0dfba" width="2.65" position="-6.18 3.2 -6" rotation="0 90 0"></a-text>
 <a-box id="ghost-town-post-office-door" class="ghost-town-door" width="0.16" height="2.15" depth="1.35" color="#4d3020" position="-6.18 1.075 -6" town-door="destination: post-office" hint-zone="action: mounted; radius: 0.8; maxReach: 1.65; gazeThreshold: 0.78; priority: 30; desktopKey: E; desktopLabel: Enter Post Office; gamepadKey: X; gamepadLabel: Enter Post Office; touchKey: TAP; touchLabel: Enter Post Office; xrKey: POKE; xrLabel: Enter Post Office; hintOffset: 0 0.42 0; hintScale: 0.88; highlightOpacity: 0.3"></a-box>
-<a-box class="ghost-town-building ghost-town-pharmacy" width="4.8" height="3.2" depth="5.4" color="#587064" material="src: assets/textures/western-wood-planks-v1.png; repeat: 3 2; color: #ffffff; shader: flat" position="-9 1.6 -12"></a-box>
+<a-box class="ghost-town-building ghost-town-pharmacy" width="4.8" height="3.2" depth="5.4" color="#587064" material="src: assets/textures/western-wood-planks-v1.png; repeat: 3 2; color: #ffffff; shader: standard" position="-9 1.6 -12"></a-box>
 <a-text value="ELIXIRS &amp; SODA" align="center" color="#f0dfba" width="2.45" position="-6.58 2.55 -12" rotation="0 90 0"></a-text>
 <a-box id="ghost-town-pharmacy-door" class="ghost-town-door" width="0.16" height="2.15" depth="1.35" color="#345047" position="-6.58 1.075 -12" town-door="destination: pharmacy" hint-zone="action: mounted; radius: 0.8; maxReach: 1.65; gazeThreshold: 0.78; priority: 30; desktopKey: E; desktopLabel: Enter Pharmacy; gamepadKey: X; gamepadLabel: Enter Pharmacy; touchKey: TAP; touchLabel: Enter Pharmacy; xrKey: POKE; xrLabel: Enter Pharmacy; hintOffset: 0 0.42 0; hintScale: 0.88; highlightOpacity: 0.3"></a-box>
 
 <a-entity class="ghost-town-building ghost-town-carriage-tickets" carriage-ticket-stall position="9 1.35 12"></a-entity>
-<a-box class="ghost-town-building ghost-town-store" width="4.4" height="3.5" depth="5.4" color="#8e7251" material="src: assets/textures/western-wood-planks-v1.png; repeat: 3 2; color: #ffffff; shader: flat" position="9 1.75 6"></a-box>
+<a-box class="ghost-town-building ghost-town-store" width="4.4" height="3.5" depth="5.4" color="#8e7251" material="src: assets/textures/western-wood-planks-v1.png; repeat: 3 2; color: #ffffff; shader: standard" position="9 1.75 6"></a-box>
 <a-text value="GENERAL STORE" align="center" color="#f0dfba" width="2.8" position="6.78 2.85 6" rotation="0 -90 0"></a-text>
 <a-box id="ghost-town-store-door" class="ghost-town-door" width="0.16" height="2.15" depth="1.35" color="#4d3020" position="6.78 1.075 6" town-door="destination: general-store" hint-zone="action: mounted; radius: 0.8; maxReach: 1.65; gazeThreshold: 0.78; priority: 30; desktopKey: E; desktopLabel: Enter Store; gamepadKey: X; gamepadLabel: Enter Store; touchKey: TAP; touchLabel: Enter Store; xrKey: POKE; xrLabel: Enter Store; hintOffset: 0 0.42 0; hintScale: 0.88; highlightOpacity: 0.3"></a-box>
 <!-- The little street-front gallery is only the entrance. Its real range is
      happily, impossibly larger on the inside. -->
 <a-entity class="ghost-town-building ghost-town-gallery" ghost-town-gallery position="9 0 0" rotation="0 -90 0"></a-entity>
-<a-box class="ghost-town-building ghost-town-boots-suits" width="4.7" height="3.7" depth="5.1" color="#7b4b45" material="src: assets/textures/western-wood-planks-v1.png; repeat: 3 2; color: #ffffff; shader: flat" position="9 1.85 -6"></a-box>
+<a-box class="ghost-town-building ghost-town-boots-suits" width="4.7" height="3.7" depth="5.1" color="#7b4b45" material="src: assets/textures/western-wood-planks-v1.png; repeat: 3 2; color: #ffffff; shader: standard" position="9 1.85 -6"></a-box>
 <a-text value="BOOTS &amp; SUITS" align="center" color="#f0dfba" width="2.5" position="6.63 2.8 -6" rotation="0 -90 0"></a-text>
 <a-box id="ghost-town-boots-suits-door" class="ghost-town-door" width="0.16" height="2.15" depth="1.35" color="#4d3020" position="6.63 1.075 -6" town-door="destination: boots-suits" hint-zone="action: mounted; radius: 0.8; maxReach: 1.65; gazeThreshold: 0.78; priority: 30; desktopKey: E; desktopLabel: Enter Boots &amp; Suits; gamepadKey: X; gamepadLabel: Enter Boots &amp; Suits; touchKey: TAP; touchLabel: Enter Boots &amp; Suits; xrKey: POKE; xrLabel: Enter Boots &amp; Suits; hintOffset: 0 0.42 0; hintScale: 0.88; highlightOpacity: 0.3"></a-box>
 <!-- The final east-side lot is deliberately open to the road: a small row

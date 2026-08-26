@@ -16,9 +16,14 @@ test('destinations are lazy fragments instead of simultaneous scene entities', (
   }
   assert.match(page, /<a-entity id="area-host" data-area-persistent><\/a-entity>/);
   assert.match(page, /id="carried-items" data-area-persistent/);
-  assert.match(page, /<a-scene pistols-watch-menu area-manager scene-index day-night-cycle>/);
+  assert.match(page, /<a-scene pistols-watch-menu area-manager scene-index day-night-cycle shadow="enabled: true; type: pcfsoft">/);
   assert.match(dayNight, /FAST_FORWARD_TIME_SCALE = 20/);
   assert.match(dayNight, /evt\.code !== 'Backslash'/);
+  assert.match(page, /desert-day-skybox-v2\.png/);
+  assert.match(page, /desert-clouds-skybox-v1\.png/);
+  assert.match(dayNight, /sun-billboard-v1\.png/);
+  assert.match(dayNight, /moon-billboard-v1\.png/);
+  assert.match(dayNight, /this\.sunShadows = true/);
   assert.match(loader, /preservePlayerItems: function/);
   assert.doesNotMatch(page, /<a-entity (?:saloon-darts|farm|stable)>/);
 });

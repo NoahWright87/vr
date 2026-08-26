@@ -13,7 +13,7 @@
           terrain.setAttribute('rotation', '-90 0 0');
           terrain.setAttribute('width', 180); terrain.setAttribute('height', 180);
           terrain.setAttribute('position', '0 -0.012 0');
-          terrain.setAttribute('material', 'src: assets/textures/stable-dirt-straw-v1.png; repeat: 70 70; color: #d2aa68; shader: flat');
+          terrain.setAttribute('material', 'src: assets/textures/stable-dirt-straw-v1.png; repeat: 70 70; color: #d2aa68; shader: standard');
           this.el.appendChild(terrain);
         },
 
