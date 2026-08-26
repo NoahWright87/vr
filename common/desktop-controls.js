@@ -273,10 +273,14 @@ AFRAME.registerComponent('desktop-controls', {
     this.activateMenuSelection();
   },
 
-  // Raw pointer-locked mouse movement while in watch mode drives the
-  // invisible cursor instead of the camera (look-controls is paused for
-  // the duration — see setMode) — touch-drag and gamepad-look reach the
-  // same cursor through onSemanticLook below.
+  // Raw mouse movement while in watch mode drives the invisible cursor
+  // instead of the camera (look-controls is paused for the duration —
+  // see setMode). No pointer lock needed: MouseEvent.movementX/Y is
+  // reported on ordinary mouse events too, whether the mouse happens to
+  // already be locked (from earlier free-look navigation) or not — see
+  // openWatch for why watch mode never requests it either way.
+  // Touch-drag and gamepad-look reach the same cursor through
+  // onSemanticLook below.
   onMouseMove: function (evt) {
     if (this.mode !== 'watch' || xrIsPresenting(this.sceneEl)) return;
     this.moveWatchCursor(evt.movementX * 0.0032, -evt.movementY * 0.0032);
@@ -538,13 +542,6 @@ AFRAME.registerComponent('desktop-controls', {
     document.head.appendChild(this.cursorStyleEl);
   },
 
-  ensureMouseLookCapture: function () {
-    var canvas = this.sceneEl.canvas;
-    if (!canvas || document.pointerLockElement || !canvas.requestPointerLock) return;
-    var request = canvas.requestPointerLock();
-    if (request && request.catch) request.catch(function () {});
-  },
-
   setLookEnabled: function (enabled) {
     var look = this.cameraEl && this.cameraEl.components['look-controls'];
     if (!look) return;
@@ -577,15 +574,15 @@ AFRAME.registerComponent('desktop-controls', {
     // last time — see git history).
     this.setCameraLocalRotation(this.getCameraLocalYaw(), this.clampedCameraPitch());
     this.setMode('watch');
-    // No requestPointerLock here (unlike beginMounted, which genuinely
-    // needs it for continuous free-look aiming): onMouseMove below reads
-    // plain MouseEvent.movementX/Y, which browsers report on ordinary
-    // mouse events too, locked or not -- pointer lock only matters for
+    // No requestPointerLock here: onMouseMove below reads plain
+    // MouseEvent.movementX/Y, which browsers report on ordinary mouse
+    // events too, locked or not -- pointer lock only matters for
     // *unbounded* movement like a full look-around turn, and the watch
-    // cursor's range is small and bounded. Requesting lock here bought
-    // nothing but a jarring "click to recapture"/permission-prompt round
-    // trip on desktop, and outright broke touch input, which has no mouse
-    // to lock in the first place.
+    // cursor's range is small and bounded. Requesting lock bought nothing
+    // but a jarring "click to recapture"/permission-prompt round trip on
+    // desktop, and outright broke touch input, which has no mouse to lock
+    // in the first place (mounted-panel aiming used to request it here
+    // too, for the same reason — see beginMounted).
     // The real VR mechanism for "point with your other hand" is a held
     // grip (see wireUpFingertipPointing in watch-menu.js) — firing the
     // same event here, rather than forcing the menu into a mode or
@@ -672,7 +669,6 @@ AFRAME.registerComponent('desktop-controls', {
     };
     this.el.setAttribute('data-mounted-transition', 'moving');
     this.setMode('mounted');
-    this.ensureMouseLookCapture();
   },
 
   setCameraLocalRotation: function (yaw, pitch) {
