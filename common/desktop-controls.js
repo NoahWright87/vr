@@ -100,6 +100,7 @@ AFRAME.registerComponent('desktop-controls', {
     this.mountedPokingUntil = 0;
     this.mountedTransition = null;
     this.mountedOpenTimer = null;
+    this.watchPitchTransition = null;
     this._worldPosition = new THREE.Vector3();
     this._worldQuaternion = new THREE.Quaternion();
     this._cameraQuaternion = new THREE.Quaternion();
@@ -509,8 +510,33 @@ AFRAME.registerComponent('desktop-controls', {
   setLookEnabled: function (enabled) {
     var look = this.cameraEl && this.cameraEl.components['look-controls'];
     if (!look) return;
-    if (enabled && look.play) look.play();
-    else if (!enabled && look.pause) look.pause();
+    if (enabled) {
+      this.rebaselineMagicWindowYaw(look);
+      if (look.play) look.play();
+    } else if (look.pause) {
+      look.pause();
+    }
+  },
+
+  // look-controls freezes its magic-window (gyro) tracking for as long as
+  // it's paused — pausing stops tick(), and updateMagicWindowOrientation
+  // (which folds the phone's live orientation into the camera) only ever
+  // runs from there. The raw deviceorientation events keep arriving the
+  // whole time regardless (that listener lives on the DeviceOrientation-
+  // Controls instance itself, independent of pause/play), so the moment
+  // ticking resumes, look-controls treats the *entire* paused-duration's
+  // physical rotation as a single frame's worth of delta and dumps it
+  // straight into the camera — snapping the view to wherever the phone
+  // now physically points and discarding whatever the player did with
+  // drag/touch before the lock. Refreshing the magic-window baseline
+  // immediately before resuming makes that first post-resume delta ~0
+  // instead, so the camera picks back up exactly where it was locked
+  // rather than jumping.
+  rebaselineMagicWindowYaw: function (look) {
+    var controls = look.magicWindowControls;
+    if (!controls || !controls.enabled) return;
+    controls.update();
+    look.previousMagicWindowYaw = this._cameraEuler.setFromQuaternion(look.magicWindowObject.quaternion, 'YXZ').y;
   },
 
   setGazeEnabled: function (enabled) {
@@ -530,14 +556,15 @@ AFRAME.registerComponent('desktop-controls', {
     this.activePointerHand = pointerHand;
     this.trackActiveMenu(watch.faceEl);
     this.watchCursor.set(0, 0);
-    // Level out an extreme pitch instead of freezing wherever the player
-    // happened to be looking — placeWatchHand is about to put the watch
-    // hand directly along this same (now-locked) view direction every
-    // tick, so this is what guarantees the menu opens centered on screen
-    // instead of stranded off it (the bug that got camera-locking pulled
-    // last time — see git history).
-    this.setCameraLocalRotation(this.getCameraLocalYaw(), this.clampedCameraPitch());
     this.setMode('watch');
+    // Level out an extreme pitch instead of freezing wherever the player
+    // happened to be looking, eased in rather than snapped (see
+    // updateWatchPitchTransition) — placeWatchHand is about to put the
+    // watch hand directly along this same (now-locked) view direction
+    // every tick, so this is what guarantees the menu opens centered on
+    // screen instead of stranded off it (the bug that got camera-locking
+    // pulled last time — see git history).
+    this.beginWatchPitchLevel();
     // No requestPointerLock here: onMouseMove below reads plain
     // MouseEvent.movementX/Y, which browsers report on ordinary mouse
     // events too, locked or not -- pointer lock only matters for
@@ -561,6 +588,31 @@ AFRAME.registerComponent('desktop-controls', {
     this.placeWatchPointer();
   },
 
+  beginWatchPitchLevel: function () {
+    var startPitch = this.getCameraLocalPitch();
+    var targetPitch = this.clampedCameraPitch();
+    if (Math.abs(targetPitch - startPitch) < 0.001) {
+      this.watchPitchTransition = null;
+      return;
+    }
+    this.watchPitchTransition = {
+      startedAt: performance.now(),
+      duration: THREE.MathUtils.clamp(Math.abs(targetPitch - startPitch) / THREE.MathUtils.degToRad(150), 0.15, 0.35) * 1000,
+      yaw: this.getCameraLocalYaw(),
+      startPitch: startPitch,
+      targetPitch: targetPitch,
+    };
+  },
+
+  updateWatchPitchTransition: function (now) {
+    var transition = this.watchPitchTransition;
+    if (!transition) return;
+    var progress = THREE.MathUtils.clamp((now - transition.startedAt) / transition.duration, 0, 1);
+    var eased = progress * progress * (3 - 2 * progress);
+    this.setCameraLocalRotation(transition.yaw, transition.startPitch + (transition.targetPitch - transition.startPitch) * eased);
+    if (progress >= 1) this.watchPitchTransition = null;
+  },
+
   clampedCameraPitch: function () {
     return THREE.MathUtils.clamp(
       this.getCameraLocalPitch(),
@@ -572,9 +624,9 @@ AFRAME.registerComponent('desktop-controls', {
   // The reference frame every watch-mode placement below is built from:
   // the camera's current world yaw, with pitch clamped (see
   // clampedCameraPitch) so glancing at the watch while looking sharply up
-  // or down never puts it somewhere odd. openWatch snaps the now-locked
-  // camera to this exact same pitch, so what's computed here always
-  // matches what the player is actually looking at.
+  // or down never puts it somewhere odd. openWatch eases the now-locked
+  // camera toward this exact same pitch, so what's computed here always
+  // matches what the player ends up actually looking at.
   watchViewQuaternion: function () {
     var pitchQuat = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), this.clampedCameraPitch());
     return this.cameraYawQuaternion().multiply(pitchQuat);
@@ -631,11 +683,19 @@ AFRAME.registerComponent('desktop-controls', {
     this.setMode('mounted');
   },
 
+  // yawObject/pitchObject hold only the mouse/touch-drag contribution —
+  // look-controls adds the magic-window (gyro) contribution on top of
+  // them each tick (object3D.rotation = magicWindowDeltaEuler +
+  // yawObject/pitchObject). Setting yawObject/pitchObject to the desired
+  // *combined* result directly would double-count whatever the magic
+  // window is currently contributing, so subtract it out here instead —
+  // that's what makes the combined result land exactly on yaw/pitch.
   setCameraLocalRotation: function (yaw, pitch) {
     var look = this.cameraEl && this.cameraEl.components['look-controls'];
     if (look && look.yawObject) {
-      look.yawObject.rotation.y = yaw;
-      if (look.pitchObject) look.pitchObject.rotation.x = pitch;
+      var magicWindow = look.magicWindowDeltaEuler;
+      look.yawObject.rotation.y = yaw - (magicWindow ? magicWindow.y : 0);
+      if (look.pitchObject) look.pitchObject.rotation.x = pitch - (magicWindow ? magicWindow.x : 0);
       if (look.updateOrientation) look.updateOrientation();
     } else {
       this.cameraEl.object3D.rotation.y = yaw;
@@ -681,6 +741,7 @@ AFRAME.registerComponent('desktop-controls', {
     if (this.mountedOpenTimer) clearTimeout(this.mountedOpenTimer);
     this.mountedOpenTimer = null;
     this.mountedTransition = null;
+    this.watchPitchTransition = null;
     this.el.removeAttribute('data-mounted-transition');
     this.trackActiveMenu(null);
     if (this.activePointerHand) this.activePointerHand.el.emit('gripup', null, false);
@@ -1003,6 +1064,7 @@ AFRAME.registerComponent('desktop-controls', {
       // setMode), with the freed-up look input driving the invisible
       // cursor instead (onMouseMove/onSemanticLook).
       this.applyMovement(delta);
+      this.updateWatchPitchTransition(performance.now());
       this.placeWatchHand();
       this.placeWatchPointer();
     } else if (this.mode === 'mounted') {
