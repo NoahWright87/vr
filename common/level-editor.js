@@ -17,6 +17,35 @@ var DEFAULT_ACTIVATOR_TEMPLATE = '#wall-screen-menu-template';
 var FACE_BUTTON_DOWN_EVENTS = ['abuttondown', 'bbuttondown', 'xbuttondown', 'ybuttondown'];
 var FACE_BUTTON_UP_EVENTS = ['abuttonup', 'bbuttonup', 'xbuttonup', 'ybuttonup'];
 
+// Click-to-cycle fields on the watch: one button advances through `values`
+// (wrapping), showing `labels[i]` for `values[i]`. Deliberately not
+// menu-option here — see the comment on these rows in index.html: each
+// menu-option instance costs 3 permanent entries in A-Frame's built-in
+// obb-collider system, which does an O(n^2) pairwise check every frame.
+var CYCLE_FIELDS = {
+  color: { values: ['0', '1', '2', '3', '4', '5'], labels: ['Orange', 'Blue', 'Green', 'Pink', 'Yellow', 'Purple'] },
+  shape: { values: ['box', 'sphere', 'cylinder', 'cone'], labels: ['Box', 'Sphere', 'Cylinder', 'Cone'] },
+  template: { values: ['#wall-screen-menu-template', '#pedestal-menu-template'], labels: ['Wall screen', 'Pedestal'] },
+  rotationMode: { values: ['fixed', 'yaw', 'full'], labels: ['Fixed', 'Upright follow', 'Full follow'] },
+  alwaysOn: { values: ['off', 'on'], labels: ['Off', 'On'] },
+};
+var SNAP_DEFAULT_CYCLE = { values: ['snap', 'free'], labels: ['Snap', 'Free-move'] };
+
+function cycleLabelFor(cycle, value) {
+  var index = cycle.values.indexOf(String(value));
+  return cycle.labels[index >= 0 ? index : 0];
+}
+
+function nextCycleValue(cycle, value) {
+  var index = cycle.values.indexOf(String(value));
+  return cycle.values[(Math.max(index, 0) + 1) % cycle.values.length];
+}
+
+function setRowLabel(panelEl, className, text) {
+  var textEl = panelEl.querySelector('.' + className);
+  if (textEl) textEl.setAttribute('text', 'value', text);
+}
+
 // Everything here is one scene's worth of state; the Showcase only ever
 // has one level editor active at a time.
 var editorState = {
@@ -102,7 +131,14 @@ AFRAME.registerComponent('editor-target', {
 
   init: function () {
     this.el.classList.add('editor-target');
-    this.el.setAttribute('obb-collider', 'size: 0.14');
+    // The poke obb-collider is expensive (A-Frame's built-in obb-collider
+    // system is an O(n^2) pairwise check, every frame, for every collider
+    // that ever exists) and only meaningful while Build Mode can actually
+    // select things — see setEditorTargetsPokeEnabled, which attaches it
+    // here immediately if Build Mode already happens to be on (true
+    // whenever this runs from the palette, since that's only reachable
+    // from Build Mode) and detaches/reattaches it as Build Mode toggles.
+    if (editorState.buildMode) this.el.setAttribute('obb-collider', 'size: 0.14');
     this.pokeReadyAt = 0;
     this.rotateReadyAt = 0;
 
@@ -261,13 +297,6 @@ function selectEditorObject(el) {
   });
 }
 
-function setOptionValue(panelEl, className, value) {
-  var rowEl = panelEl.querySelector('.' + className);
-  if (!rowEl) return;
-  var option = rowEl.components['menu-option'];
-  if (option) option.setValue(value);
-}
-
 function refreshEditPages() {
   var el = editorState.selected;
   var data = el && el.components['editor-target'] && el.components['editor-target'].data;
@@ -294,13 +323,16 @@ function refreshEditPages() {
     if (deleteEl) deleteEl.setAttribute('visible', !!data);
 
     if (!data) return;
-    setOptionValue(panelEl, 'watch-menu-edit-color', String(data.colorIndex));
-    if (data.kind === 'primitive') setOptionValue(panelEl, 'watch-menu-edit-shape', data.shape);
+    setRowLabel(panelEl, 'watch-menu-edit-color-label', 'Color: ' + cycleLabelFor(CYCLE_FIELDS.color, data.colorIndex));
+    if (data.kind === 'primitive') {
+      setRowLabel(panelEl, 'watch-menu-edit-shape-label', 'Shape: ' + cycleLabelFor(CYCLE_FIELDS.shape, data.shape));
+    }
     if (hasMenu) {
       var pm = el.components['projected-menu'];
-      setOptionValue(panelEl, 'watch-menu-edit-template', pm.data.template ? '#' + pm.data.template.id : DEFAULT_ACTIVATOR_TEMPLATE);
-      setOptionValue(panelEl, 'watch-menu-edit-rotation', pm.data.rotationMode);
-      setOptionValue(panelEl, 'watch-menu-edit-alwayson', pm.data.alwaysOn ? 'on' : 'off');
+      var templateValue = pm.data.template ? '#' + pm.data.template.id : DEFAULT_ACTIVATOR_TEMPLATE;
+      setRowLabel(panelEl, 'watch-menu-edit-template-label', 'Window: ' + cycleLabelFor(CYCLE_FIELDS.template, templateValue));
+      setRowLabel(panelEl, 'watch-menu-edit-rotation-label', 'Facing: ' + cycleLabelFor(CYCLE_FIELDS.rotationMode, pm.data.rotationMode));
+      setRowLabel(panelEl, 'watch-menu-edit-alwayson-label', 'Always on: ' + cycleLabelFor(CYCLE_FIELDS.alwaysOn, pm.data.alwaysOn ? 'on' : 'off'));
     }
   });
 }
@@ -396,8 +428,16 @@ function copyLevelToClipboard() {
 // Build/Edit pages are never unreachable) instead of real-world menus.
 // ---------------------------------------------------------------------
 
+function setEditorTargetsPokeEnabled(active) {
+  Array.prototype.forEach.call(document.querySelectorAll('.editor-target'), function (el) {
+    if (active) el.setAttribute('obb-collider', 'size: 0.14');
+    else el.removeAttribute('obb-collider');
+  });
+}
+
 function setBuildMode(active) {
   editorState.buildMode = active;
+  setEditorTargetsPokeEnabled(active);
   editorState.watches.forEach(function (watch) {
     if (watch.fingertipEl) {
       watch.fingertipEl.setAttribute('raycaster', 'objects',
@@ -414,7 +454,7 @@ function setBuildMode(active) {
 
 // ---------------------------------------------------------------------
 // Wiring: collect each watch as it becomes ready, and handle every
-// custom menu-item-select / menu-option-change value this module owns.
+// custom menu-item-select value this module owns.
 // hand-with-watch's own dispatch (common/watch-menu.js) is untouched —
 // it already generically routes "page-<name>" and "<name>-close"
 // values, which the Build/Edit page markup relies on.
@@ -438,14 +478,32 @@ function wireWatch(panelEl, projectedMenu, fingertipEl) {
     else if (value === 'editor-add-menu') {
       if (editorState.selected) attachMenuToObject(editorState.selected, DEFAULT_ACTIVATOR_TEMPLATE);
       refreshEditPages();
+    } else if (value === 'editor-cycle-snap-default') {
+      editorState.snapDefault = nextCycleValue(SNAP_DEFAULT_CYCLE, editorState.snapDefault);
+      setRowLabel(panelEl, 'watch-menu-snap-default-label', 'Hold-to: ' + cycleLabelFor(SNAP_DEFAULT_CYCLE, editorState.snapDefault));
+    } else if (value.indexOf('editor-cycle-') === 0) {
+      var field = value.slice('editor-cycle-'.length);
+      var cycle = CYCLE_FIELDS[field];
+      if (cycle) {
+        applyEditChange(field, nextCycleValue(cycle, getCurrentCycleValue(field)));
+        refreshEditPages();
+      }
     }
   });
+}
 
-  panelEl.addEventListener('menu-option-change', function (evt) {
-    if (evt.detail.key === 'snap-default') { editorState.snapDefault = evt.detail.value; return; }
-    applyEditChange(evt.detail.key, evt.detail.value);
-    refreshEditPages();
-  });
+function getCurrentCycleValue(field) {
+  var el = editorState.selected;
+  var data = el && el.components['editor-target'] && el.components['editor-target'].data;
+  if (!data) return '';
+  if (field === 'color') return String(data.colorIndex);
+  if (field === 'shape') return data.shape;
+  var pm = el.components['projected-menu'];
+  if (!pm) return '';
+  if (field === 'template') return pm.data.template ? '#' + pm.data.template.id : DEFAULT_ACTIVATOR_TEMPLATE;
+  if (field === 'rotationMode') return pm.data.rotationMode;
+  if (field === 'alwaysOn') return pm.data.alwaysOn ? 'on' : 'off';
+  return '';
 }
 
 function init() {

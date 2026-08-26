@@ -260,6 +260,21 @@ import { cycleMenuOptionIndex, parseMenuOptions } from './menu-options.js';
         var matches = page.getAttribute('data-menu-page') === nextPage;
         page.setAttribute('visible', matches);
         if (matches) page.object3D.position.z = pageOffsets[nextPage] || 0;
+        // A hidden page's rows are already excluded from laser/click
+        // eligibility (isMenuTargetInteractive walks up the object3D
+        // hierarchy and finds this page's own visible:false). But their
+        // poke obb-colliders stay registered with A-Frame's built-in
+        // obb-collider system regardless of visibility, and that system
+        // does an O(n^2) pairwise check across every registered collider,
+        // every frame — so five-sixths of a multi-page watch panel was
+        // paying full poke-collision cost while sitting on a page nobody
+        // could see. Only the active page's rows need it; re-registering
+        // on show is safe/idempotent (registerMenuTarget's own listener
+        // guard skips re-adding the click handler).
+        Array.prototype.forEach.call(page.querySelectorAll('.pm-target'), function (item) {
+          if (matches) item.setAttribute('obb-collider', 'size: 0.035');
+          else item.removeAttribute('obb-collider');
+        });
       });
       this.currentPage = nextPage;
     },
