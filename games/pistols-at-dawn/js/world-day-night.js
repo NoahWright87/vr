@@ -3,6 +3,7 @@
       // sun/moon props, not the lights themselves.
       var DAY_NIGHT_CYCLE_MS = 24 * 60 * 1000;
       var DAY_NIGHT_ORBIT_RADIUS = 120;
+      var FAST_FORWARD_TIME_SCALE = 20;
 
       AFRAME.registerShader('sunset-gradient', {
         schema: {
@@ -23,11 +24,14 @@
           this.clock = DAY_NIGHT_CYCLE_MS * 0.25; // begin at high noon
           this.sunShadows = false;
           this.moonShadows = false;
+          this.timeScale = 1;
           this.daySky = document.querySelector('#day-sky');
           this.gradient = document.querySelector('#sunset-gradient');
           this.scene = this.el.object3D;
           this.onAreaLoaded = this.applyShadowState.bind(this);
+          this.onKeyDown = this.onKeyDown.bind(this);
           this.el.addEventListener('area-loaded', this.onAreaLoaded);
+          window.addEventListener('keydown', this.onKeyDown);
 
           this.sun = new THREE.DirectionalLight('#ffd1aa', 0);
           this.moon = new THREE.DirectionalLight('#9bc7ff', 0);
@@ -45,6 +49,14 @@
 
         remove: function () {
           this.el.removeEventListener('area-loaded', this.onAreaLoaded);
+          window.removeEventListener('keydown', this.onKeyDown);
+        },
+
+        onKeyDown: function (evt) {
+          if (evt.code !== 'Backslash' || evt.repeat) return;
+          evt.preventDefault();
+          this.timeScale = this.timeScale === 1 ? FAST_FORWARD_TIME_SCALE : 1;
+          this.el.emit('day-night-time-scale-change', { timeScale: this.timeScale });
         },
 
         makeOrb: function (color, radius) {
@@ -107,7 +119,7 @@
         },
 
         tick: function (time, delta) {
-          this.clock = (this.clock + Math.min(delta || 16, 100)) % DAY_NIGHT_CYCLE_MS;
+          this.clock = (this.clock + Math.min(delta || 16, 100) * this.timeScale) % DAY_NIGHT_CYCLE_MS;
           // Material changes only need a modest cadence; lights/orbs still
           // move every rendered frame so the day arc stays smooth.
           if (!this.lastUpdate || time - this.lastUpdate > 180) {

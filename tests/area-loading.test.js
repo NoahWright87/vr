@@ -5,6 +5,7 @@ import test from 'node:test';
 const page = readFileSync(new URL('../games/pistols-at-dawn/index.html', import.meta.url), 'utf8');
 const loader = readFileSync(new URL('../games/pistols-at-dawn/js/world-town.js', import.meta.url), 'utf8');
 const menu = readFileSync(new URL('../games/pistols-at-dawn/js/world-menu.js', import.meta.url), 'utf8');
+const dayNight = readFileSync(new URL('../games/pistols-at-dawn/js/world-day-night.js', import.meta.url), 'utf8');
 const ghostTown = readFileSync(new URL('../games/pistols-at-dawn/areas/ghost-town.html', import.meta.url), 'utf8');
 const saloonInterior = readFileSync(new URL('../games/pistols-at-dawn/js/world-saloon-interior.js', import.meta.url), 'utf8');
 const hubInteriors = readFileSync(new URL('../games/pistols-at-dawn/js/world-hub-interiors.js', import.meta.url), 'utf8');
@@ -16,6 +17,8 @@ test('destinations are lazy fragments instead of simultaneous scene entities', (
   assert.match(page, /<a-entity id="area-host" data-area-persistent><\/a-entity>/);
   assert.match(page, /id="carried-items" data-area-persistent/);
   assert.match(page, /<a-scene pistols-watch-menu area-manager scene-index day-night-cycle>/);
+  assert.match(dayNight, /FAST_FORWARD_TIME_SCALE = 20/);
+  assert.match(dayNight, /evt\.code !== 'Backslash'/);
   assert.match(loader, /preservePlayerItems: function/);
   assert.doesNotMatch(page, /<a-entity (?:saloon-darts|farm|stable)>/);
 });
