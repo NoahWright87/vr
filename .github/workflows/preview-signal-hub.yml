@@ -1,0 +1,88 @@
+name: Preview signal hub (Cloudflare Worker)
+
+# Cloudflare's own "preview URL" feature (wrangler versions upload)
+# doesn't work here — it's explicitly unsupported for Workers that use
+# Durable Objects, which worker/src/signal-hub.js does. The workaround
+# is a fully separate, fully live Worker per PR (its own name, its own
+# Durable Object namespace/storage, isolated from production), deleted
+# again once the PR closes — see cleanup-signal-hub-preview.yml.
+#
+# PRs from forks don't carry repo secrets by default (GitHub's normal
+# behavior for the `pull_request` trigger, deliberately not worked
+# around here with `pull_request_target`), so this only actually
+# deploys for PRs from branches within this repo.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'worker/**'
+      - 'server/signal-rooms.js'
+      - 'common/multiplayer.js'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/preview-signal-hub.yml'
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    # The default GITHUB_TOKEN is read-only for pull requests/issues
+    # unless a workflow explicitly asks for more — needed here since
+    # the last step comments the preview URL onto the PR.
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - run: npm ci
+
+      - run: npm test
+
+      - name: Deploy preview Worker
+        id: deploy
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          workingDirectory: worker
+          command: deploy --name vr-signal-relay-pr-${{ github.event.pull_request.number }}
+
+      - name: Comment the preview address on the PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            var httpsUrl = `${{ steps.deploy.outputs.deployment-url }}`;
+            var wssUrl = httpsUrl ? httpsUrl.replace(/^https:/, 'wss:') : null;
+            var marker = '<!-- signal-hub-preview -->';
+            var body = marker + '\n\n**Hosted relay preview deployed.**\n\n' +
+              (wssUrl
+                ? `Paste this into the showcase panel's "Relay" field to test: \`${wssUrl}\`\n\n` +
+                  'This is a separate live Worker + Durable Object from production, isolated storage, deleted automatically when this PR closes.'
+                : 'Deployed, but the URL could not be read from the deploy step output — check the "Deploy preview Worker" step log for the address.');
+
+            var comments = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            var existing = comments.data.find(function (c) { return c.body.includes(marker); });
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body: body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: body,
+              });
+            }

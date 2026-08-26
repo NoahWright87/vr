@@ -295,7 +295,14 @@ import { cycleMenuOptionIndex, parseMenuOptions } from './menu-options.js';
       var x = rightOccupiedEdge - btnSize / 2;
       rightOccupiedEdge -= btnSize + gap;
       var btn = document.createElement('a-entity');
-      btn.classList.add('pm-target');
+      // menu-chrome-item, not just pm-target: it's the marker
+      // control-mode-layout's default rowSelector excludes, so a
+      // page using both control-mode-layout AND chrome buttons
+      // (only "main" does today) doesn't sweep close/help/automatic
+      // into its vertical row stack — they carry menu-item too (for
+      // the same click handling every row uses), so rowSelector
+      // alone can't otherwise tell them apart from a real row.
+      btn.classList.add('pm-target', 'menu-chrome-item');
       btn.setAttribute('geometry', 'primitive: plane; width: ' + btnSize + '; height: ' + btnSize);
       btn.setAttribute('material', 'color: #182238');
       btn.setAttribute('menu-item', 'value: ' + value + '; label: ' + label + '; hoverColor: ' + hoverColor);
@@ -595,7 +602,14 @@ import { cycleMenuOptionIndex, parseMenuOptions } from './menu-options.js';
 
     isMenuTargetInteractive: function (item) {
       if (!isVisibleInHierarchy(item.object3D)) return false;
-      var popup = this.panelEl.querySelector('.menu-option-popup');
+      // Any open modal popup layer (menu-option's own list, or
+      // room-code-entry's character grid — common/room-code-entry.js)
+      // suppresses everything outside itself. Both popup types re-fire
+      // menu-targets-changed when they open (so the raycaster picks up
+      // their new cells), which lands here too — this needs to recognize
+      // either class or that refresh silently re-enables whatever the
+      // popup just suppressed.
+      var popup = this.panelEl.querySelector('.menu-option-popup, .room-code-popup');
       return !popup || popup.contains(item);
     },
 

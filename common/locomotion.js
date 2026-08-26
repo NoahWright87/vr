@@ -244,6 +244,16 @@
 
     onSemanticMove: function (evt) {
       if (!evt.detail) return;
+      // Touch and gamepad input emit this regardless of what the player is
+      // doing (unlike keyboard, gated at the source in desktop-controls'
+      // own tick), so this is the one place that has to block movement
+      // while a watch/mounted menu has taken over the view — otherwise a
+      // thumb left resting on the joystick keeps walking the rig around
+      // while the player is looking at their watch.
+      if (!this.controlMode.isMode('xr')) {
+        var desktopControls = this.el.components['desktop-controls'];
+        if (desktopControls && desktopControls.mode !== 'normal') return;
+      }
       this.applyDesktopMove(evt.detail.x || 0, evt.detail.z || 0, evt.detail.deltaMs || 0, !!evt.detail.sprint);
     },
 

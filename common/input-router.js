@@ -25,6 +25,11 @@ export function createStandardGamepadButtonBindings(actions) {
 
 if (typeof AFRAME !== 'undefined') {
   var THREE = AFRAME.THREE;
+  // A look-area press under this much movement, released within this
+  // long, reads as a tap rather than the start of a look-drag — see
+  // touch-controls' bindLook.
+  var TAP_MOVE_THRESHOLD = 12;
+  var TAP_MAX_MS = 400;
 
   AFRAME.registerSystem('input-router', {
     init: function () {
@@ -360,9 +365,17 @@ if (typeof AFRAME !== 'undefined') {
       this.lookLast = null;
       this.activeActions = new Map();
       this.nextHand = this.data.dominantHand;
+      this.interactionMode = 'normal';
       this.onFamilyChanged = this.updateVisibility.bind(this);
+      this.onInteractionModeChanged = this.handleInteractionModeChanged.bind(this);
       this.el.sceneEl.addEventListener('input-family-changed', this.onFamilyChanged);
+      this.el.sceneEl.addEventListener('desktop-interaction-mode-changed', this.onInteractionModeChanged);
       this.createUi();
+      this.updateVisibility();
+    },
+
+    handleInteractionModeChanged: function (evt) {
+      this.interactionMode = (evt.detail && evt.detail.mode) || 'normal';
       this.updateVisibility();
     },
 
@@ -445,6 +458,12 @@ if (typeof AFRAME !== 'undefined') {
         evt.preventDefault(); evt.stopPropagation();
         self.lookPointer = evt.pointerId;
         self.lookLast = { x: evt.clientX, y: evt.clientY };
+        // The look area covers most of the screen so it's also where a
+        // menu-item tap lands (the watch no longer locks the view — see
+        // desktop-controls.js's setMode — so this still needs to double
+        // as free look). Track whether the press stayed put; a real drag
+        // clears this via the movement check in pointermove below.
+        self.lookDown = { x: evt.clientX, y: evt.clientY, time: performance.now(), moved: false };
         self.lookEl.setPointerCapture(evt.pointerId);
       });
       this.lookEl.addEventListener('pointermove', function (evt) {
@@ -453,12 +472,19 @@ if (typeof AFRAME !== 'undefined') {
         var dx = evt.clientX - self.lookLast.x;
         var dy = evt.clientY - self.lookLast.y;
         self.lookLast = { x: evt.clientX, y: evt.clientY };
+        if (self.lookDown && !self.lookDown.moved) {
+          var totalMove = Math.hypot(evt.clientX - self.lookDown.x, evt.clientY - self.lookDown.y);
+          if (totalMove > TAP_MOVE_THRESHOLD) self.lookDown.moved = true;
+        }
         self.el.emit('semantic-look', { x: dx, y: dy, kind: 'delta', source: 'touch' }, false);
       });
       ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(function (name) {
         self.lookEl.addEventListener(name, function (evt) {
           if (evt.pointerId !== self.lookPointer) return;
-          self.lookPointer = null; self.lookLast = null;
+          var down = self.lookDown;
+          self.lookPointer = null; self.lookLast = null; self.lookDown = null;
+          var isTap = name === 'pointerup' && down && !down.moved && performance.now() - down.time < TAP_MAX_MS;
+          if (isTap) self.el.sceneEl.emit('semantic-tap', { clientX: evt.clientX, clientY: evt.clientY, source: 'touch' }, false);
         });
       });
     },
@@ -519,7 +545,19 @@ if (typeof AFRAME !== 'undefined') {
       if (!this.root) return;
       var flat = !this.el.sceneEl.systems['control-mode'].isMode('xr');
       var family = this.router.getActiveFamily();
-      this.root.style.display = flat && this.router.hasTouch && family === 'touch' ? 'block' : 'none';
+      var active = flat && this.router.hasTouch && family === 'touch';
+      this.root.style.display = active ? 'block' : 'none';
+      if (!active) return;
+      // Movement is gated off while the watch is open (locomotion.js) and
+      // there's nothing else worth reaching (grabbing, other actions), so
+      // the joystick and action buttons (including the watch's own open
+      // button — the panel has its own close button) hide. The look area
+      // stays up: the watch no longer locks the view, so the player still
+      // needs it to look around and find the menu — see bindLook, which
+      // doubles a stationary tap there as a menu selection.
+      var watchOpen = this.interactionMode === 'watch';
+      this.stickEl.style.display = watchOpen ? 'none' : '';
+      this.actionsEl.style.display = watchOpen ? 'none' : '';
     },
 
     tick: function (time, delta) {
