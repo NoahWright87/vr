@@ -577,7 +577,15 @@ AFRAME.registerComponent('desktop-controls', {
     // last time — see git history).
     this.setCameraLocalRotation(this.getCameraLocalYaw(), this.clampedCameraPitch());
     this.setMode('watch');
-    this.ensureMouseLookCapture();
+    // No requestPointerLock here (unlike beginMounted, which genuinely
+    // needs it for continuous free-look aiming): onMouseMove below reads
+    // plain MouseEvent.movementX/Y, which browsers report on ordinary
+    // mouse events too, locked or not -- pointer lock only matters for
+    // *unbounded* movement like a full look-around turn, and the watch
+    // cursor's range is small and bounded. Requesting lock here bought
+    // nothing but a jarring "click to recapture"/permission-prompt round
+    // trip on desktop, and outright broke touch input, which has no mouse
+    // to lock in the first place.
     // The real VR mechanism for "point with your other hand" is a held
     // grip (see wireUpFingertipPointing in watch-menu.js) — firing the
     // same event here, rather than forcing the menu into a mode or
