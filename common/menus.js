@@ -444,7 +444,7 @@ import { cycleMenuOptionIndex, parseMenuOptions } from './menu-options.js';
       this.panelEl.object3D.position.set(t.x + o.x, t.y + o.y, t.z + o.z);
     },
 
-    tick: function () {
+    tick: function (time, delta) {
       if (this.data.automatic) {
         var automaticIntent = this.computeAutomaticIntent();
         if (automaticIntent !== 'open') this.automaticDismissed = false;
@@ -458,7 +458,7 @@ import { cycleMenuOptionIndex, parseMenuOptions } from './menu-options.js';
       } else {
         this.mode = 'closed';
       }
-      this.applyState();
+      this.applyState(delta);
     },
 
     computeMode: function () {
@@ -549,7 +549,7 @@ import { cycleMenuOptionIndex, parseMenuOptions } from './menu-options.js';
       return lookQuat;
     },
 
-    applyState: function () {
+    applyState: function (delta) {
       this.updatePanelPosition();
       var targetScale;
       var targetQuat;
@@ -563,9 +563,16 @@ import { cycleMenuOptionIndex, parseMenuOptions } from './menu-options.js';
         targetScale = 0.0001;
         targetQuat = null;
       }
-      this.scale += (targetScale - this.scale) * this.data.lerp;
+      // data.lerp is calibrated as "fraction covered per ~16.7ms frame"
+      // (60fps). Reapplying it that many times over whatever this tick's
+      // actual delta was, rather than once flat, keeps the open/close
+      // animation's wall-clock duration constant regardless of frame
+      // rate — a slow frame (or a sustained low frame rate) no longer
+      // stretches it out; it converges in the same real time either way.
+      var t = 1 - Math.pow(1 - this.data.lerp, Math.min(delta || 16.667, 1000) / 16.667);
+      this.scale += (targetScale - this.scale) * t;
       this.panelEl.object3D.scale.setScalar(this.scale);
-      if (targetQuat) this.panelEl.object3D.quaternion.slerp(targetQuat, this.data.lerp);
+      if (targetQuat) this.panelEl.object3D.quaternion.slerp(targetQuat, t);
       if (this.mode === 'closed') {
         if (this.scale < 0.005 && this.visible) {
           this.panelEl.setAttribute('visible', false);
