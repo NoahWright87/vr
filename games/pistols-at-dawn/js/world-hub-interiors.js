@@ -3,10 +3,24 @@
       var HUB_WOOD_TEXTURE = 'assets/textures/western-wood-planks-v1.png';
       var HUB_PLASTER_TEXTURE = 'assets/textures/interior-cream-plaster-v1.png';
       var HUB_SIGN_TEXTURE = 'assets/textures/signboard-walnut-v1.png';
+      var HUB_GLASS_SHEEN_TEXTURE = 'assets/textures/window-glass-sheen-v1.png';
       function hubBox(parent, w, h, d, pos, color) {
         var el = document.createElement('a-box');
         el.setAttribute('width', w); el.setAttribute('height', h); el.setAttribute('depth', d);
         el.setAttribute('position', pos); el.setAttribute('color', color); parent.appendChild(el); return el;
+      }
+      function hubWindow(parent, position, rotation) {
+        var pane = document.createElement('a-plane');
+        pane.setAttribute('width', 1.65); pane.setAttribute('height', 1.3);
+        pane.setAttribute('position', position); pane.setAttribute('rotation', rotation);
+        pane.setAttribute('material', 'color: #9bcfe4; shader: flat; transparent: true; opacity: 0.24; side: double; depthWrite: false');
+        parent.appendChild(pane);
+
+        var sheen = document.createElement('a-plane');
+        sheen.setAttribute('width', 1.65); sheen.setAttribute('height', 1.3);
+        sheen.setAttribute('position', { x: position.x * 0.998, y: position.y, z: position.z }); sheen.setAttribute('rotation', rotation);
+        sheen.setAttribute('material', 'src: ' + HUB_GLASS_SHEEN_TEXTURE + '; shader: flat; transparent: true; blending: additive; depthWrite: false; side: double');
+        parent.appendChild(sheen);
       }
       function hubRoom(el, loc, width, depth, label) {
         el.setAttribute('position', loc.position);
@@ -15,6 +29,11 @@
         [-1, 1].forEach(function (side) { walls.push(hubBox(el, .2, 3.6, depth, { x: side * width / 2, y: 1.8, z: 0 }, '#493020')); });
         walls.forEach(function (wall) { wall.setAttribute('material', { src: HUB_PLASTER_TEXTURE, repeat: '4 2', color: '#ffffff', shader: 'flat' }); });
         var ceiling = hubBox(el, width, .16, depth, { x: 0, y: 3.6, z: 0 }, '#2d1d15'); ceiling.setAttribute('material', { src: HUB_WOOD_TEXTURE, repeat: width / 2 + ' ' + depth / 2, color: '#ffffff', shader: 'flat' });
+        [-1, 1].forEach(function (side) {
+          [-1.7, 1.7].forEach(function (z) {
+            hubWindow(el, { x: side * (width / 2 - .111), y: 2.12, z: z }, { x: 0, y: side * 90, z: 0 });
+          });
+        });
         var ambient = document.createElement('a-entity'); ambient.setAttribute('light', 'type: ambient; color: #d9b887; intensity: .42'); el.appendChild(ambient);
         [-width / 4, width / 4].forEach(function (x) {
           var light = document.createElement('a-entity'); light.setAttribute('light', 'type: point; color: #ffd48a; intensity: 1.25; distance: 9'); light.setAttribute('position', { x: x, y: 3.15, z: -.5 }); el.appendChild(light);

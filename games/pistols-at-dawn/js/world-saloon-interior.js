@@ -14,6 +14,7 @@
       var SALOON_DARK_WOOD = '#392318';
       var SALOON_BRASS = '#a77e36';
       var SALOON_WOOD_TEXTURE = 'assets/textures/western-wood-planks-v1.png';
+      var SALOON_GLASS_SHEEN_TEXTURE = 'assets/textures/window-glass-sheen-v1.png';
 
       registerComponent('saloon-interior', {
         init: function () {
@@ -88,8 +89,16 @@
             pane.setAttribute('height', 1.35);
             pane.setAttribute('position', { x: spot.x, y: 2.65, z: spot.z });
             pane.setAttribute('rotation', { x: 0, y: spot.rotation, z: 0 });
-            pane.setAttribute('material', 'color: #c6e6ef; shader: flat; transparent: true; opacity: 0.82; side: double');
+            pane.setAttribute('material', 'color: #9bcfe4; shader: flat; transparent: true; opacity: 0.26; side: double; depthWrite: false');
             self.el.appendChild(pane);
+
+            var sheen = document.createElement('a-plane');
+            sheen.setAttribute('width', 2.1);
+            sheen.setAttribute('height', 1.35);
+            sheen.setAttribute('position', { x: spot.x * 0.999, y: 2.65, z: spot.z });
+            sheen.setAttribute('rotation', { x: 0, y: spot.rotation, z: 0 });
+            sheen.setAttribute('material', 'src: ' + SALOON_GLASS_SHEEN_TEXTURE + '; shader: flat; transparent: true; blending: additive; depthWrite: false; side: double');
+            self.el.appendChild(sheen);
             self.addBox(0.09, 1.55, 2.3, { x: spot.x * 0.997, y: 2.65, z: spot.z }, SALOON_WOOD);
 
             var windowLight = document.createElement('a-entity');
