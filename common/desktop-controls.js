@@ -77,12 +77,6 @@ AFRAME.registerComponent('desktop-controls', {
     // extent (see watchCursorWorldPoint/getWatchPanelExtent).
     this.watchCursor = new THREE.Vector2(0, 0);
     this.watchCursorMargin = 1.15;
-    // The player explicitly closed the watch (menu-item value 'close' —
-    // see onWatchPanelSelect) — placeWatchHand's re-assert stops trying
-    // to force it back open once this is set, letting the panel actually
-    // shrink and exitInteraction fire, even though the scripted wrist
-    // pose itself hasn't changed and would otherwise still qualify.
-    this.watchDismissed = false;
     this._watchFaceScratch = new THREE.Object3D();
     // lookAt() points local -Z at its target; the watch face's own
     // "normal" (the axis projected-menu reads to decide poke/laser mode
@@ -131,8 +125,7 @@ AFRAME.registerComponent('desktop-controls', {
     this.onMountedRequest = this.onMountedRequest.bind(this);
     this.onActiveMenuClosed = this.onActiveMenuClosed.bind(this);
     this.onPreferenceChange = this.onPreferenceChange.bind(this);
-    this.onWatchReady = this.handleWatchReady.bind(this);
-    this.onWatchPanelSelect = this.onWatchPanelSelect.bind(this);
+    this.onWatchReady = this.syncPreferenceControls.bind(this);
     this.onControlModeChanged = this.handleControlModeChanged.bind(this);
     this.onSemanticAction = this.onSemanticAction.bind(this);
     document.addEventListener('keydown', this.onKeyDown, true);
@@ -150,10 +143,7 @@ AFRAME.registerComponent('desktop-controls', {
     this.ensureCursorStyleEl();
     this.setMode('normal');
     this.updateCrouchStateAttribute();
-    setTimeout(function () {
-      self.syncPreferenceControls();
-      self.setupExistingWatches();
-    }, 0);
+    setTimeout(function () { self.syncPreferenceControls(); }, 0);
   },
 
   dominantSide: function () {
@@ -181,61 +171,6 @@ AFRAME.registerComponent('desktop-controls', {
     this.hintSystem.setPreferences(this.preferences);
     this.syncPreferenceControls();
     this.sceneEl.emit('player-preferences-changed', Object.assign({}, this.preferences), false);
-  },
-
-  // Fires per-hand as each watch finishes constructing its projected-menu
-  // (watch-menu.js) — but hand-with-watch is declared right in the HTML,
-  // so A-Frame typically finishes constructing it (and fires this) as
-  // part of the normal scene-load sequence, before this component even
-  // exists (it's attached later, from JS, once the scene's ready) — the
-  // same reason syncPreferenceControls below needs its own setTimeout
-  // fallback. This still matters for a watch that genuinely finishes
-  // later (any component whose face wasn't loaded yet when hand-with-watch
-  // itself initialized), so it stays as a second path alongside that
-  // fallback rather than replacing it — setupWatchIntegration is
-  // idempotent (addEventListener no-ops on an identical listener) so
-  // running it from both places twice for the same watch is harmless.
-  handleWatchReady: function (evt) {
-    this.syncPreferenceControls();
-    if (evt.detail && evt.detail.projectedMenu) this.setupWatchIntegration(evt.detail.projectedMenu);
-  },
-
-  // The deferred-fallback half of handleWatchReady above — sweeps
-  // whichever hands already have a constructed watch by the time this
-  // runs, since the event that would normally announce that has almost
-  // certainly already come and gone by then.
-  setupExistingWatches: function () {
-    ['left', 'right'].forEach(function (side) {
-      var hand = this.hands[side];
-      var watch = hand && hand.el.components['hand-with-watch'];
-      if (watch && watch.projectedMenu) this.setupWatchIntegration(watch.projectedMenu);
-    }, this);
-  },
-
-  setupWatchIntegration: function (projectedMenu) {
-    // Outside XR, only the explicit Tab/watch-button toggle should ever
-    // open a watch (see setWatchAutomaticSuspended) — automatic wrist-raise
-    // detection has no real wrist to read off-headset.
-    if (!xrIsPresenting(this.sceneEl)) projectedMenu.suspendAutomatic = true;
-    // Permanent, mode-gated inside onWatchPanelSelect itself — see there
-    // for why this needs its own dismissal tracking distinct from
-    // projected-menu's own automaticDismissed.
-    if (projectedMenu.panelEl) projectedMenu.panelEl.addEventListener('menu-item-select', this.onWatchPanelSelect);
-  },
-
-  // The watch's own close button (an ordinary menu-item click, value
-  // 'close' — see menus.js's projected-menu, which calls close() itself
-  // off this exact same event) reaches here too. On its own, that close()
-  // call would immediately get overridden: placeWatchHand keeps the
-  // scripted wrist in the same real "watch held up to your face" pose the
-  // whole time watch mode is active, since nothing about clicking a close
-  // button changes where the hand actually is — so without this flag its
-  // re-assert (see the comment there) would treat the resulting
-  // active=false as "hasn't reached a qualifying pose yet" and force it
-  // straight back open, the same tick, forever. Reset on the next
-  // openWatch.
-  onWatchPanelSelect: function (evt) {
-    if (this.mode === 'watch' && evt.detail && evt.detail.value === 'close') this.watchDismissed = true;
   },
 
   syncPreferenceControls: function () {
@@ -486,36 +421,8 @@ AFRAME.registerComponent('desktop-controls', {
   },
 
   handleControlModeChanged: function (evt) {
-    if (evt.detail.mode === 'xr') {
-      // Real tracked wrists take back over — automatic pose detection
-      // should read them, not whatever a scripted hand was left at.
-      this.setWatchAutomaticSuspended(false);
-      this.exitInteraction(false);
-    } else {
-      // Neither hand has a real tracked wrist outside XR; only the
-      // explicit Tab/watch-button toggle (openWatch/exitInteraction)
-      // should ever open a watch here — see setWatchAutomaticSuspended.
-      this.setWatchAutomaticSuspended(true);
-      this.setMode('normal');
-    }
-  },
-
-  // Both hands carry their own watch (hand-with-watch is on left and
-  // right alike), and outside XR their pose is scripted for other
-  // reasons — resting, holding something, pointing at a different menu —
-  // that a real wrist raise would never produce but can still coincidentally
-  // pass through (this is exactly how a stale menu was found staying open
-  // after exiting watch mode: the watch hand's smooth glide back to its
-  // rest pose transiently crossed the automatic-open orientation before
-  // settling). Suspending automatic detection whenever there's no real
-  // tracked wrist to read removes the false signal at the source, rather
-  // than reactively closing whatever it opens.
-  setWatchAutomaticSuspended: function (suspended) {
-    ['left', 'right'].forEach(function (side) {
-      var hand = this.hands[side];
-      var watch = hand && hand.el.components['hand-with-watch'];
-      if (watch && watch.projectedMenu) watch.projectedMenu.suspendAutomatic = suspended;
-    }, this);
+    if (evt.detail.mode === 'xr') this.exitInteraction(false);
+    else this.setMode('normal');
   },
 
   handleGrabKey: function (source) {
@@ -620,7 +527,6 @@ AFRAME.registerComponent('desktop-controls', {
     this.activePointerHand = pointerHand;
     this.trackActiveMenu(watch.faceEl);
     this.watchCursor.set(0, 0);
-    this.watchDismissed = false;
     // Level out an extreme pitch instead of freezing wherever the player
     // happened to be looking — placeWatchHand is about to put the watch
     // hand directly along this same (now-locked) view direction every
@@ -643,16 +549,22 @@ AFRAME.registerComponent('desktop-controls', {
     // same event here, rather than forcing the menu into a mode or
     // position, makes the pointer hand's own fingertip laser/cursor real.
     // Explicit open() is the same thing an explicit poke does in VR
-    // regardless of automatic/manual setting (automatic detection itself
-    // is suspended outside XR — see setWatchAutomaticSuspended, and the
-    // note on why in handleControlModeChanged). Combined with
+    // regardless of automatic/manual setting — needed here because manual
+    // mode never opens itself from pose alone (see menus.js's tick, which
+    // only runs automatic detection when data.automatic is on). When
+    // automatic is on, this gets immediately overridden by that same
+    // tick if the hand hasn't glided into a qualifying pose yet, and the
+    // menu opens itself once it has — exactly like a real wrist raise,
+    // no different handling needed here for that case. Combined with
     // placeWatchHand putting the watch face where it can see it,
-    // projected-menu's existing pose-driven size/orientation logic (the
-    // same code real VR already uses, just no longer deciding open/closed
-    // itself here) does the rest.
+    // projected-menu's own existing pose-driven open/size/orientation
+    // logic (the same code real VR already uses) does the rest, including
+    // correctly refusing to reopen after an explicit close — see
+    // automaticDismissed in menus.js, which close() already sets and
+    // which only clears once the pose actually stops qualifying.
     this.activePointerHand.el.emit('gripdown', null, false);
     watch.projectedMenu.open();
-    this.placeWatchHand();
+    this.placeWatchHand(true);
     this.placeWatchPointer();
   },
 
@@ -936,7 +848,17 @@ AFRAME.registerComponent('desktop-controls', {
   // (see menus.js's computeMode/computeAutomaticIntent) — scripting the
   // hand into it, rather than overriding where the panel renders, is what
   // lets projected-menu's own existing logic drive the menu correctly.
-  placeWatchHand: function () {
+  // snap (true only on the very first call, from openWatch) puts the hand
+  // at its target pose immediately instead of gliding into it — a real
+  // tracked wrist is never "mid-animation," it's just wherever the hand
+  // physically is, and computeMode() (menus.js) has no grace period until
+  // a mode has actually been reached once. Without this, entering with
+  // automatic detection off has nothing to self-heal through that gap
+  // with (automatic mode happens to survive it, since the pose keeps
+  // getting rechecked until it naturally qualifies mid-glide) — the menu
+  // would open then immediately get closed again before the hand ever
+  // arrives, exiting watch mode within a couple frames.
+  placeWatchHand: function (snap) {
     var watch = this.activeWatchHand.el.components['hand-with-watch'];
     if (!watch) return;
     var viewQuat = this.watchViewQuaternion();
@@ -958,20 +880,7 @@ AFRAME.registerComponent('desktop-controls', {
       .multiply(this._watchFaceRollQuat);
 
     var handPose = watch.computeHandPoseForFace(facePosition, faceQuaternion);
-    this.activeWatchHand.setWorldTransform(handPose.position, handPose.quaternion, this.activeWatchHand.heldEl ? 'Hold' : 'Open');
-
-    // Explicit open() is what a real poke does regardless of the watch's
-    // own automatic/manual setting (see openWatch) — this just keeps
-    // re-asserting it for the brief window before the hand finishes
-    // gliding into a pose that qualifies on its own, since projected-menu
-    // can otherwise flip active back off first (menus.js's computeMode
-    // has no grace period until a real mode has actually been reached
-    // once). Once the pose qualifies this stops doing anything on its
-    // own — and watchDismissed (see onWatchPanelSelect) stops it outright
-    // once the player explicitly closes the panel, since the scripted
-    // wrist pose itself doesn't change just because they clicked close,
-    // and would otherwise keep re-qualifying forever.
-    if (!watch.projectedMenu.active && !this.watchDismissed) watch.projectedMenu.open();
+    this.activeWatchHand.setWorldTransform(handPose.position, handPose.quaternion, this.activeWatchHand.heldEl ? 'Hold' : 'Open', snap);
   },
 
   // Places the pointer hand close to the camera in the real VR "point"

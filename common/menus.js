@@ -371,11 +371,6 @@ import { cycleMenuOptionIndex, parseMenuOptions } from './menu-options.js';
       this.orientationLostSince = null;
       this.automaticDismissed = false;
       this.suppressPointing = false;
-      // Set/cleared externally (e.g. desktop-controls.js) to keep a
-      // scripted, non-tracked hand's pose from being misread as a real
-      // wrist raise while it's just passing through a qualifying
-      // orientation on its way somewhere else — real XR leaves this off.
-      this.suspendAutomatic = false;
       this.cameraEl = document.querySelector('a-camera');
 
       var panel = this.data.template.content.cloneNode(true).firstElementChild;
@@ -450,7 +445,7 @@ import { cycleMenuOptionIndex, parseMenuOptions } from './menu-options.js';
     },
 
     tick: function () {
-      if (this.data.automatic && !this.suspendAutomatic) {
+      if (this.data.automatic) {
         var automaticIntent = this.computeAutomaticIntent();
         if (automaticIntent !== 'open') this.automaticDismissed = false;
         if (automaticIntent === 'open' && !this.automaticDismissed) this.active = true;
