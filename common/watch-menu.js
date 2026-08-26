@@ -202,6 +202,23 @@ import './menus.js';
       else face.addEventListener('loaded', finishMenuSetup);
     },
 
+    // Back-solves the hand root's world transform from a desired world
+    // pose for the watch face, using the actual live local transforms of
+    // wrapperEl/faceEl (wrapper has a fixed local rotation off the hand
+    // root and zero local position; face has a fixed local position off
+    // wrapper and zero local rotation of its own). Reading those live
+    // rather than hardcoding the rotation constants above keeps this
+    // correct regardless of hand side or the hasWebXR branch in init().
+    // Desktop/mobile use this to script the hand into a real "watch held
+    // up to your face" pose instead of faking the menu's position.
+    computeHandPoseForFace: function (faceWorldPosition, faceWorldQuaternion) {
+      var wrapperLocalQuat = this.wrapperEl.object3D.quaternion;
+      var faceLocalPos = this.faceEl.object3D.position;
+      var quaternion = faceWorldQuaternion.clone().multiply(wrapperLocalQuat.clone().invert());
+      var position = faceWorldPosition.clone().sub(faceLocalPos.clone().applyQuaternion(faceWorldQuaternion));
+      return { position: position, quaternion: quaternion };
+    },
+
     triggerHaptics: function () {
       var tracked = this.el.components['tracked-controls'];
       var actuators = tracked && tracked.controller && tracked.controller.hapticActuators;

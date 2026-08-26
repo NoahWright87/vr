@@ -171,6 +171,13 @@ if (typeof AFRAME !== 'undefined') {
 
     onLook: function (evt) {
       if (!evt.detail || !this.data.camera) return;
+      // Watch mode locks the camera and repurposes touch-drag/gamepad-look
+      // to move an invisible in-menu cursor instead (see
+      // desktop-controls.js's own semantic-look listener) — this reads
+      // the same data-desktop-mode attribute that publishes elsewhere
+      // (data-crouch-state, data-mounted-transition, ...), since it and
+      // desktop-controls share the same rig entity.
+      if (this.el.getAttribute('data-desktop-mode') === 'watch') return;
       var detail = evt.detail;
       var yawDelta;
       var pitchDelta;
@@ -409,7 +416,7 @@ if (typeof AFRAME !== 'undefined') {
       this.bindJoystick();
       this.bindLook();
       this.addActionButton(this.data.watchAction, this.data.watchLabel, false);
-      this.addActionButton(this.data.crouchAction, this.data.crouchLabel, false);
+      this.crouchButtonEl = this.addActionButton(this.data.crouchAction, this.data.crouchLabel, false);
       this.addActionButton(this.data.interactAction, this.data.interactLabel, false);
       this.addActionButton(this.data.grabAction, this.data.grabLabel, false);
       this.addActionButton(this.data.secondaryAction, this.data.secondaryLabel, true);
@@ -498,7 +505,7 @@ if (typeof AFRAME !== 'undefined') {
     },
 
     addActionButton: function (action, label, primary) {
-      if (!action || action === 'none') return;
+      if (!action || action === 'none') return null;
       var self = this;
       var button = document.createElement('button');
       button.type = 'button';
@@ -527,6 +534,7 @@ if (typeof AFRAME !== 'undefined') {
       button.addEventListener('pointercancel', function (evt) { finish(evt, 'cancel'); });
       button.addEventListener('lostpointercapture', function (evt) { finish(evt, 'cancel'); });
       this.actionsEl.appendChild(button);
+      return button;
     },
 
     emitAction: function (pending, phase, heldMs) {
@@ -548,16 +556,20 @@ if (typeof AFRAME !== 'undefined') {
       var active = flat && this.router.hasTouch && family === 'touch';
       this.root.style.display = active ? 'block' : 'none';
       if (!active) return;
-      // Movement is gated off while the watch is open (locomotion.js) and
-      // there's nothing else worth reaching (grabbing, other actions), so
-      // the joystick and action buttons (including the watch's own open
-      // button — the panel has its own close button) hide. The look area
-      // stays up: the watch no longer locks the view, so the player still
-      // needs it to look around and find the menu — see bindLook, which
-      // doubles a stationary tap there as a menu selection.
+      // Movement and crouch still work while the watch is open
+      // (desktop-controls.js/locomotion.js), so the joystick and crouch
+      // button stay up. Everything else hides: the watch button is
+      // redundant once the panel has its own close button, and
+      // interact/grab/primary/secondary don't apply to a menu — tapping
+      // activates whatever the laser points at instead (see bindLook,
+      // which doubles a stationary tap in the look area as a selection).
       var watchOpen = this.interactionMode === 'watch';
-      this.stickEl.style.display = watchOpen ? 'none' : '';
-      this.actionsEl.style.display = watchOpen ? 'none' : '';
+      var self = this;
+      this.stickEl.style.display = '';
+      this.actionsEl.style.display = '';
+      Array.prototype.forEach.call(this.actionsEl.children, function (button) {
+        button.style.display = (watchOpen && button !== self.crouchButtonEl) ? 'none' : '';
+      });
     },
 
     tick: function (time, delta) {
