@@ -15,8 +15,7 @@ test('destinations are lazy fragments instead of simultaneous scene entities', (
   }
   assert.match(page, /<a-entity id="area-host" data-area-persistent><\/a-entity>/);
   assert.match(page, /id="carried-items" data-area-persistent/);
-  assert.match(page, /data-area-persistent light="type: ambient; color: #d8d0c0; intensity: 0\.48"/);
-  assert.match(page, /data-area-persistent light="type: directional; color: #fff3d6; intensity: 0\.75"/);
+  assert.match(page, /<a-scene pistols-watch-menu area-manager scene-index day-night-cycle>/);
   assert.match(loader, /preservePlayerItems: function/);
   assert.doesNotMatch(page, /<a-entity (?:saloon-darts|farm|stable)>/);
 });

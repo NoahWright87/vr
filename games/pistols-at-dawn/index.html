@@ -79,8 +79,8 @@
     <template id="watch-menu-template">
       <a-entity class="watch-menu-panel" visible="false">
         <a-entity data-menu-page="main">
-          <a-plane width="1" height="1.3" color="#101827" position="0 -0.05 -0.01"></a-plane>
-          <a-entity class="menu-chrome-slot" data-title="" data-help="false" data-close="true" data-width="1" data-bar-y="0.49"></a-entity>
+          <a-plane width="1" height="1.55" color="#101827" position="0 -0.12 -0.01"></a-plane>
+          <a-entity class="menu-chrome-slot" data-title="" data-help="false" data-close="true" data-width="1" data-bar-y="0.62"></a-entity>
           <a-entity
             class="pm-target"
             geometry="primitive: plane; width: 0.78; height: 0.2"
@@ -103,8 +103,17 @@
             class="pm-target"
             geometry="primitive: plane; width: 0.78; height: 0.2"
             material="color: #182238"
-            menu-item="value: toggle-hud; label: Hide HUD"
+            menu-item="value: page-time; label: Time"
             position="0 -0.14 0"
+          >
+            <a-text value="Time  >" align="center" color="#eee" width="2.4" position="0 0 0.01"></a-text>
+          </a-entity>
+          <a-entity
+            class="pm-target"
+            geometry="primitive: plane; width: 0.78; height: 0.2"
+            material="color: #182238"
+            menu-item="value: toggle-hud; label: Hide HUD"
+            position="0 -0.36 0"
           >
             <a-text class="hud-toggle-label" value="Hide HUD" align="center" color="#eee" width="2.4" position="0 0 0.01"></a-text>
           </a-entity>
@@ -113,10 +122,19 @@
             geometry="primitive: plane; width: 0.78; height: 0.2"
             material="color: #182238"
             menu-item="value: toggle-performance; label: Show Performance"
-            position="0 -0.36 0"
+            position="0 -0.58 0"
           >
             <a-text class="performance-toggle-label" value="Show Performance" align="center" color="#eee" width="2.4" position="0 0 0.01"></a-text>
           </a-entity>
+        </a-entity>
+
+        <a-entity data-menu-page="time" visible="false">
+          <a-plane width="1" height="1.55" color="#101827" position="0 -0.12 -0.01"></a-plane>
+          <a-entity class="menu-chrome-slot" data-title="TIME" data-help="false" data-close="true" data-width="1" data-bar-y="0.62"></a-entity>
+          <a-entity class="pm-target" geometry="primitive: plane; width: 0.78; height: 0.2" material="color: #182238" menu-item="value: wait-hour; label: Wait one hour" position="0 0.36 0"><a-text value="Wait one hour" align="center" color="#eee" width="2.4" position="0 0 0.01"></a-text></a-entity>
+          <a-entity class="pm-target" geometry="primitive: plane; width: 0.78; height: 0.2" material="color: #182238" menu-item="value: toggle-sun-shadows; label: Sun shadows" position="0 0.12 0"><a-text class="sun-shadow-label" value="Sun shadows: Off" align="center" color="#eee" width="2.4" position="0 0 0.01"></a-text></a-entity>
+          <a-entity class="pm-target" geometry="primitive: plane; width: 0.78; height: 0.2" material="color: #182238" menu-item="value: toggle-moon-shadows; label: Moon shadows" position="0 -0.12 0"><a-text class="moon-shadow-label" value="Moon shadows: Off" align="center" color="#eee" width="2.4" position="0 0 0.01"></a-text></a-entity>
+          <a-entity class="pm-target" geometry="primitive: plane; width: 0.78; height: 0.2" material="color: #182238" menu-item="value: page-main; label: Back" position="0 -0.43 0"><a-text value="&lt; Back" align="center" color="#aaa" width="2.4" position="0 0 0.01"></a-text></a-entity>
         </a-entity>
 
         <a-entity data-menu-page="targets" visible="false">
@@ -290,14 +308,12 @@
       </a-entity>
     </template>
 
-    <a-scene pistols-watch-menu area-manager scene-index>
-      <a-sky src="assets/textures/desert-midwest-skybox-v1.png" data-area-persistent></a-sky>
-      <!-- Area fragments may add their own lamps, but these outdoor lights
-           live for the whole session. Without a persistent baseline the
-           Saloon's lamps can replace A-Frame's implicit default lights and
-           leave Ghost Town black after the Saloon fragment is removed. -->
-      <a-entity data-area-persistent light="type: ambient; color: #d8d0c0; intensity: 0.48"></a-entity>
-      <a-entity data-area-persistent light="type: directional; color: #fff3d6; intensity: 0.75" position="-3 7 4"></a-entity>
+    <a-scene pistols-watch-menu area-manager scene-index day-night-cycle>
+      <a-sky id="night-sky" src="assets/textures/desert-stars-skybox-v1.png" data-area-persistent></a-sky>
+      <a-sky id="day-sky" src="assets/textures/desert-midwest-skybox-v1.png" material="transparent: true; opacity: 1; depthWrite: false" data-area-persistent></a-sky>
+      <a-sphere id="sunset-gradient" radius="490" material="shader: sunset-gradient; transparent: true; opacity: 0; side: back; depthWrite: false" data-area-persistent></a-sphere>
+      <!-- day-night-cycle supplies the session-persistent ambient, sun, and
+           moon lights. Area fragments may add local lamps. -->
 
       <!-- ============================================================
            PLAYER RIG + DESKTOP/PHONE FALLBACK
@@ -649,6 +665,7 @@
     <script src="js/items-vices.js"></script>
     <script src="js/items-throwing-weapons.js"></script>
     <script src="js/world-player-body.js"></script>
+    <script src="js/world-day-night.js"></script>
     <script src="js/world-menu.js"></script>
     <script src="js/world-town.js"></script>
     <script src="js/world-structures.js"></script>

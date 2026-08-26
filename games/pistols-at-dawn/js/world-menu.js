@@ -56,6 +56,7 @@
       this.targetsPaused = false;
       this.hudVisible = true;
       this.performanceVisible = false;
+      this.onDayNightChange = this.updateTimeLabels.bind(this);
       this.galleryHost = null;
       this.activeGalleryEl = null;
       this.onSelection = this.onSelection.bind(this);
@@ -68,6 +69,7 @@
       this.el.addEventListener('watch-menu-ready', this.onWatchReady);
       this.el.addEventListener('area-loaded', this.onAreaLoaded);
       this.el.addEventListener('area-unloading', this.onAreaUnloading);
+      this.el.addEventListener('day-night-shadow-change', this.onDayNightChange);
     },
 
     remove: function () {
@@ -76,6 +78,7 @@
       this.el.removeEventListener('watch-menu-ready', this.onWatchReady);
       this.el.removeEventListener('area-loaded', this.onAreaLoaded);
       this.el.removeEventListener('area-unloading', this.onAreaUnloading);
+      this.el.removeEventListener('day-night-shadow-change', this.onDayNightChange);
     },
 
     onAreaLoaded: function (evt) {
@@ -92,6 +95,10 @@
     },
 
     onSelection: function (evt) {
+      var dayNight = this.el.components['day-night-cycle'];
+      if (evt.detail.value === 'wait-hour' && dayNight) { dayNight.waitOneHour(); return; }
+      if (evt.detail.value === 'toggle-sun-shadows' && dayNight) { dayNight.setShadow('sun', !dayNight.sunShadows); return; }
+      if (evt.detail.value === 'toggle-moon-shadows' && dayNight) { dayNight.setShadow('moon', !dayNight.moonShadows); return; }
       if (evt.detail.value === 'toggle-hud') {
         this.hudVisible = !this.hudVisible;
         PLAYER_HUD_VISIBLE = this.hudVisible;
@@ -208,6 +215,7 @@
       this.updateMotionLabels();
       this.updateHudLabels();
       this.updatePerformanceLabels();
+      this.updateTimeLabels();
       this.syncOption('.target-kind-option', this.settings.kind);
       this.syncOption('.target-count-option', this.settings.count);
       this.syncOption('.target-speed-option', this.settings.speed);
@@ -245,6 +253,22 @@
         labelEl.setAttribute('text', 'value', label);
         var row = labelEl.closest('[menu-item]');
         if (row) row.setAttribute('menu-item', 'label', label);
+      });
+    },
+
+    updateTimeLabels: function () {
+      var dayNight = this.el.components['day-night-cycle'];
+      if (!dayNight) return;
+      var labels = [
+        ['.sun-shadow-label', 'Sun shadows: ' + (dayNight.sunShadows ? 'On' : 'Off')],
+        ['.moon-shadow-label', 'Moon shadows: ' + (dayNight.moonShadows ? 'On' : 'Off')],
+      ];
+      labels.forEach(function (entry) {
+        Array.prototype.forEach.call(document.querySelectorAll(entry[0]), function (labelEl) {
+          labelEl.setAttribute('text', 'value', entry[1]);
+          var row = labelEl.closest('[menu-item]');
+          if (row) row.setAttribute('menu-item', 'label', entry[1]);
+        });
       });
     },
   });
