@@ -77,6 +77,9 @@ AFRAME.registerComponent('desktop-controls', {
     // extent (see watchCursorWorldPoint/getWatchPanelExtent).
     this.watchCursor = new THREE.Vector2(0, 0);
     this.watchCursorMargin = 1.15;
+    // Tracks the watch hand's own qualify/don't-qualify transitions —
+    // see placeWatchHand's virtual-poke check.
+    this._watchWasQualifying = false;
     this._watchFaceScratch = new THREE.Object3D();
     // lookAt() points local -Z at its target; the watch face's own
     // "normal" (the axis projected-menu reads to decide poke/laser mode
@@ -548,23 +551,13 @@ AFRAME.registerComponent('desktop-controls', {
     // grip (see wireUpFingertipPointing in watch-menu.js) — firing the
     // same event here, rather than forcing the menu into a mode or
     // position, makes the pointer hand's own fingertip laser/cursor real.
-    // Explicit open() is the same thing an explicit poke does in VR
-    // regardless of automatic/manual setting — needed here because manual
-    // mode never opens itself from pose alone (see menus.js's tick, which
-    // only runs automatic detection when data.automatic is on). When
-    // automatic is on, this gets immediately overridden by that same
-    // tick if the hand hasn't glided into a qualifying pose yet, and the
-    // menu opens itself once it has — exactly like a real wrist raise,
-    // no different handling needed here for that case. Combined with
-    // placeWatchHand putting the watch face where it can see it,
-    // projected-menu's own existing pose-driven open/size/orientation
-    // logic (the same code real VR already uses) does the rest, including
-    // correctly refusing to reopen after an explicit close — see
-    // automaticDismissed in menus.js, which close() already sets and
-    // which only clears once the pose actually stops qualifying.
+    // No explicit open() call here — the hand hasn't moved into place
+    // yet at this point, so the pose wouldn't qualify anyway; placeWatchHand
+    // opens it itself the instant the live pose actually does (see the
+    // comment there for why, and why that has to be edge-triggered).
     this.activePointerHand.el.emit('gripdown', null, false);
-    watch.projectedMenu.open();
-    this.placeWatchHand(true);
+    this._watchWasQualifying = false;
+    this.placeWatchHand();
     this.placeWatchPointer();
   },
 
@@ -848,17 +841,7 @@ AFRAME.registerComponent('desktop-controls', {
   // (see menus.js's computeMode/computeAutomaticIntent) — scripting the
   // hand into it, rather than overriding where the panel renders, is what
   // lets projected-menu's own existing logic drive the menu correctly.
-  // snap (true only on the very first call, from openWatch) puts the hand
-  // at its target pose immediately instead of gliding into it — a real
-  // tracked wrist is never "mid-animation," it's just wherever the hand
-  // physically is, and computeMode() (menus.js) has no grace period until
-  // a mode has actually been reached once. Without this, entering with
-  // automatic detection off has nothing to self-heal through that gap
-  // with (automatic mode happens to survive it, since the pose keeps
-  // getting rechecked until it naturally qualifies mid-glide) — the menu
-  // would open then immediately get closed again before the hand ever
-  // arrives, exiting watch mode within a couple frames.
-  placeWatchHand: function (snap) {
+  placeWatchHand: function () {
     var watch = this.activeWatchHand.el.components['hand-with-watch'];
     if (!watch) return;
     var viewQuat = this.watchViewQuaternion();
@@ -880,7 +863,26 @@ AFRAME.registerComponent('desktop-controls', {
       .multiply(this._watchFaceRollQuat);
 
     var handPose = watch.computeHandPoseForFace(facePosition, faceQuaternion);
-    this.activeWatchHand.setWorldTransform(handPose.position, handPose.quaternion, this.activeWatchHand.heldEl ? 'Hold' : 'Open', snap);
+    this.activeWatchHand.setWorldTransform(handPose.position, handPose.quaternion, this.activeWatchHand.heldEl ? 'Hold' : 'Open');
+
+    // The desktop equivalent of a physical poke: VR only ever opens a
+    // watch once a real hand's pose already satisfies computeMode() (an
+    // automatic-mode raise self-heals into that moment on its own; a
+    // manual-mode poke is a physical collision, which by construction
+    // can't happen until the hand is already there) — it never asks the
+    // menu to open before the hand backing that request has arrived.
+    // Scripting the hand into place over a few frames instead of
+    // teleporting it means the same has to hold here: open the instant
+    // the live pose first satisfies it, not before (openWatch no longer
+    // opens it up front for exactly this reason). Edge-triggered on the
+    // qualify/don't-qualify transition, not level-triggered on it — the
+    // scripted hand keeps holding a qualifying pose for as long as watch
+    // mode stays active, including the moment the player explicitly
+    // clicks close, and a level check would immediately re-open it right
+    // back (this is, in fact, exactly the bug that caused).
+    var qualifies = Boolean(watch.projectedMenu.computeMode());
+    if (qualifies && !this._watchWasQualifying && !watch.projectedMenu.active) watch.projectedMenu.open();
+    this._watchWasQualifying = qualifies;
   },
 
   // Places the pointer hand close to the camera in the real VR "point"
