@@ -356,6 +356,7 @@ import { cycleMenuOptionIndex, parseMenuOptions } from './menu-options.js';
       pokeCooldown: { default: 400 },
       modeHysteresis: { default: 0.12 },
       orientationGrace: { default: 250 },
+      automaticOpenDelay: { default: 320 },
       automatic: { default: false },
     },
 
@@ -370,6 +371,7 @@ import { cycleMenuOptionIndex, parseMenuOptions } from './menu-options.js';
       this.lookAwaySince = null;
       this.orientationLostSince = null;
       this.automaticDismissed = false;
+      this.automaticOpenSince = null;
       this.suppressPointing = false;
       this.cameraEl = document.querySelector('a-camera');
 
@@ -447,9 +449,23 @@ import { cycleMenuOptionIndex, parseMenuOptions } from './menu-options.js';
     tick: function (time, delta) {
       if (this.data.automatic) {
         var automaticIntent = this.computeAutomaticIntent();
-        if (automaticIntent !== 'open') this.automaticDismissed = false;
-        if (automaticIntent === 'open' && !this.automaticDismissed) this.active = true;
-        else if (automaticIntent === 'close') this.active = false;
+        if (automaticIntent !== 'open') {
+          this.automaticDismissed = false;
+          this.automaticOpenSince = null;
+        }
+        if (automaticIntent === 'open' && !this.automaticDismissed) {
+          // A hand mid-transition to some unrelated pose (reaching for a
+          // button elsewhere, say) can swing through this same pose
+          // window for a single-digit number of frames on its way past.
+          // Real intent to check a watch holds the pose; requiring it to
+          // hold briefly here before committing to open is what tells the
+          // two apart, the same way orientationGrace already tells a
+          // real, deliberate look-away from a brief flicker on exit.
+          if (!this.automaticOpenSince) this.automaticOpenSince = time;
+          if (time - this.automaticOpenSince >= this.data.automaticOpenDelay) this.active = true;
+        } else if (automaticIntent === 'close') {
+          this.active = false;
+        }
       }
       if (this.active) {
         var mode = this.computeMode();

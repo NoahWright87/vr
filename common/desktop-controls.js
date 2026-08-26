@@ -778,6 +778,38 @@ AFRAME.registerComponent('desktop-controls', {
     return this._cameraEuler.setFromQuaternion(this.cameraEl.object3D.quaternion, 'YXZ').x;
   },
 
+  // Mouse-drag and touch-drag pitch are already clamped to +/-90deg at
+  // the source (look-controls' own onMouseMove, and semantic-look-
+  // controls' onLook for gamepad/touch) -- but mobile's magic-window
+  // (gyro) pitch isn't clamped anywhere: it's a direct, unbounded copy of
+  // the phone's own physical tilt (see look-controls.js's
+  // updateMagicWindowOrientation). Once combined with a nonzero yaw, a
+  // magic-window pitch past +/-90deg composes into a 3D orientation that
+  // sits exactly on the YXZ decomposition's gimbal lock -- yaw and roll
+  // become degenerate there, so this whole file's YXZ-based reads
+  // (getCameraLocalYaw/Pitch) come back with yaw flipped ~180deg and
+  // pitch mirrored back into range, even though nothing about the actual
+  // orientation looks out of range once decomposed. That's why this
+  // clamps magicWindowDeltaEuler.x itself -- the raw, still-unambiguous
+  // input -- rather than the camera's already-decomposed pose: by the
+  // time a flip shows up in the decomposed values, the composition that
+  // caused it has already happened and re-decomposing again can't tell
+  // it apart from a legitimate orientation. Clamping a couple of degrees
+  // short of the pole (89deg, not exactly 90) keeps every consumer of
+  // the camera's pose safely on one side of it, however far the player
+  // keeps tilting their phone. This runs after look-controls' own tick
+  // this frame, so it recomputes the just-rendered pose from the clamped
+  // input rather than leaving the flip to correct itself next frame.
+  enforcePitchLimit: function () {
+    var look = this.cameraEl && this.cameraEl.components['look-controls'];
+    var magicWindow = look && look.magicWindowDeltaEuler;
+    if (!magicWindow) return;
+    var maxPitch = THREE.MathUtils.degToRad(89);
+    if (magicWindow.x <= maxPitch && magicWindow.x >= -maxPitch) return;
+    magicWindow.x = THREE.MathUtils.clamp(magicWindow.x, -maxPitch, maxPitch);
+    if (look.updateOrientation) look.updateOrientation();
+  },
+
   handFollowsCameraPose: function (hand) {
     if (this.mode === 'watch') return hand === this.activePointerHand;
     if (this.mode === 'mounted' && hand === this.activePointerHand && performance.now() < this.mountedPokingUntil) return false;
@@ -885,7 +917,17 @@ AFRAME.registerComponent('desktop-controls', {
     if (mounted) {
       var outwardNormal = mounted.getWorldNormal(new THREE.Vector3());
       fingertip = target.clone().add(outwardNormal.clone().multiplyScalar(standoff));
-      direction = outwardNormal.negate();
+      // Aiming purely opposite the surface normal is a straight-on poke —
+      // for a target that faces mostly up or down (a pedestal button),
+      // that's a much bigger swing away from the hand's own resting
+      // orientation than a real reach would be (nobody points straight
+      // down at a button from directly above it; they reach in at an
+      // angle). Blending in the natural "reach from roughly where you're
+      // standing" direction keeps the preview's turn-to-point closer to
+      // the hand's resting orientation, the same way an unmounted target's
+      // preview already aims.
+      var naturalReach = target.clone().sub(this.cameraWorldPosition()).normalize();
+      direction = outwardNormal.clone().negate().addScaledVector(naturalReach, 0.6).normalize();
     } else {
       direction = target.clone().sub(this.cameraWorldPosition()).normalize();
       fingertip = target.clone().addScaledVector(direction, -standoff);
@@ -1052,6 +1094,7 @@ AFRAME.registerComponent('desktop-controls', {
       this._lastCameraY = this.cameraEl.object3D.position.y;
       return;
     }
+    this.enforcePitchLimit();
     this.syncHandsToCameraPose();
     this.updateCrouch(delta);
     this.syncHandsToCameraPose();

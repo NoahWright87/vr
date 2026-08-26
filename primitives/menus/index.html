@@ -894,14 +894,21 @@
 
       <a-entity id="wall-slab" position="1.1 1.4 -0.7" rotation="0 -58 0">
         <a-box width="1.4" height="1.8" depth="0.1" color="#2b2f38"></a-box>
-        <!-- The authored anchor is where a desktop player's head smoothly
-             approaches the control. Local +Z is the wall's front. -->
-        <a-entity id="wall-interaction-anchor" position="0 0 0.74"></a-entity>
+        <!-- radialAnchor approaches to a set *distance* from the trigger
+             (widened further still if the panel wouldn't fit the
+             viewer's own field of view -- see getFramedInteractionDistance
+             in interaction-hints.js) rather than a fixed authored
+             position, the same way the pedestal already does; a wall
+             panel can only be approached from its own front hemisphere
+             anyway (the slab blocks the rest), so it converges to the
+             same "stand square in front" spot a fixed anchor point would
+             have picked, without needing one. Local +Z is the wall's
+             front, matching mounted-interaction's own normal default. -->
         <a-entity id="wall-screen-trigger"
           geometry="primitive: plane; width: 0.4; height: 0.28"
           material="color: #16324a; side: double"
           position="0 0 0.051"
-          mounted-interaction="anchor: #wall-interaction-anchor; previewStandoff: 0.12"
+          mounted-interaction="radialAnchor: true; interactionDistance: 0.74; previewStandoff: 0.12"
           hint-zone="action: mounted; radius: 0.34; maxReach: 1.0; gazeThreshold: 0.88; priority: 20; desktopKey: E; desktopLabel: Open menu; xrKey: POKE; xrLabel: Open menu; hintOffset: 0 0.32 0.13; hintOffsetSpace: target; hintLockX: true; hintLockY: true; hintLockZ: true; hintScale: 0.68; highlightOpacity: 0.24; highlightScale: 1.045"
         >
           <a-text value="TAP" align="center" color="#7fd" width="4" position="0 0 0.002"></a-text>

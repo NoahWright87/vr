@@ -1047,13 +1047,43 @@ AFRAME.registerComponent('mounted-interaction', {
       var outward = cameraPosition.clone().sub(target);
       outward.y = 0;
       if (outward.lengthSq() < 0.0001) outward.set(0, 0, 1);
-      outward.normalize().multiplyScalar(this.data.interactionDistance);
+      outward.normalize().multiplyScalar(this.getFramedInteractionDistance());
       target.add(outward);
       target.y = cameraPosition.y;
       return target;
     }
     if (!this.data.anchor) return null;
     return this.data.anchor.object3D.getWorldPosition(target);
+  },
+
+  // A panel's on-screen size at a given distance depends on the viewer's
+  // field of view, and a narrow mobile portrait viewport has a much
+  // tighter horizontal FOV than a landscape desktop window — the same
+  // authored interactionDistance that frames a menu comfortably on one
+  // can run the same panel off the edges of the other. interactionDistance
+  // stays the closest comfortable reach; this only ever widens it,
+  // pushing the approach back until the panel's own known rendered size
+  // (its background geometry at whatever scale its current mode uses)
+  // fits the live camera's frustum with a bit of margin.
+  getFramedInteractionDistance: function () {
+    var base = this.data.interactionDistance;
+    var menu = this.el.components['projected-menu'];
+    var camera = this.el.sceneEl.camera;
+    if (!menu || !menu.panelEl || !camera || !camera.isPerspectiveCamera) return base;
+    var background = menu.panelEl.querySelector('a-plane, a-box');
+    var geometry = background && background.getAttribute('geometry');
+    if (!geometry || !geometry.width || !geometry.height) return base;
+    var scale = menu.data.mode === 'laser' ? menu.data.laserScale : menu.data.pokeScale;
+    var halfWidth = (geometry.width * scale) / 2;
+    var halfHeight = (geometry.height * scale) / 2;
+    var verticalFov = THREE.MathUtils.degToRad(camera.fov);
+    var horizontalFov = 2 * Math.atan(Math.tan(verticalFov / 2) * camera.aspect);
+    // Fit within this fraction of the available half-angle so the panel
+    // keeps a comfortable margin instead of running edge-to-edge.
+    var fitMargin = 0.8;
+    var distanceForHeight = halfHeight / Math.tan((verticalFov / 2) * fitMargin);
+    var distanceForWidth = halfWidth / Math.tan((horizontalFov / 2) * fitMargin);
+    return Math.max(base, distanceForHeight, distanceForWidth);
   },
 
   open: function () {
