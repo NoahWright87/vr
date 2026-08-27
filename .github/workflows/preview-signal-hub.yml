@@ -7,6 +7,25 @@ name: Preview signal hub (Cloudflare Worker)
 # Durable Object namespace/storage, isolated from production), deleted
 # again once the PR closes — see cleanup-signal-hub-preview.yml.
 #
+# Deliberately no `paths:` filter: build-relay-url.js's computeRelayUrl
+# bakes a `vr-signal-relay-pr-<number>` address into *every* Netlify
+# deploy-preview build, purely from Netlify's own CONTEXT/REVIEW_ID —
+# it has no idea whether this particular PR touched anything
+# relay-related, since the HOST/JOIN buttons (primitives/menus/index.html)
+# ship on every build regardless of what the PR changed. A `paths:`
+# filter here used to scope this to "PRs that touch worker/**"
+# (and had drifted stale besides — it still referenced
+# server/signal-rooms.js, a file moved to worker/src/signal-rooms.js
+# in e0b7d2e and never updated here), which meant any other PR's
+# Netlify preview pointed its build at a Worker that was never
+# deployed: the button lit up (the click itself worked) but hosting
+# silently failed, since the resulting WebSocket error only ever
+# reached the browser console. Deploying a preview Worker on every PR
+# keeps the two systems' assumptions in sync; see the "Cost" section
+# of README.md's "Hosted relay" for why this is still effectively
+# free, and cleanup-signal-hub-preview.yml for teardown, which already
+# runs unconditionally.
+#
 # PRs from forks don't carry repo secrets by default (GitHub's normal
 # behavior for the `pull_request` trigger, deliberately not worked
 # around here with `pull_request_target`), so this only actually
@@ -14,13 +33,6 @@ name: Preview signal hub (Cloudflare Worker)
 on:
   pull_request:
     types: [opened, synchronize, reopened]
-    paths:
-      - 'worker/**'
-      - 'server/signal-rooms.js'
-      - 'common/multiplayer.js'
-      - 'package.json'
-      - 'package-lock.json'
-      - '.github/workflows/preview-signal-hub.yml'
 
 jobs:
   preview:
