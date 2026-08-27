@@ -380,6 +380,16 @@ import { cycleMenuOptionIndex, parseMenuOptions } from './menu-options.js';
       this.pokeQuat = panel.object3D.quaternion.clone();
       panel.object3D.scale.setScalar(this.scale);
       this.panelEl = panel;
+      // Tags each page's own background plane (or the panel's own, for a
+      // single-page template) so a fingertip raycaster can register a hit
+      // on blank panel space, not just on an actual .menu-target — see
+      // wireUpFingertipPointing in watch-menu.js, which uses this to draw
+      // a laser dot instead of a beam that runs through the panel.
+      var pageHosts = panel.querySelectorAll('[data-menu-page]');
+      (pageHosts.length ? Array.prototype.slice.call(pageHosts) : [panel]).forEach(function (host) {
+        var background = host.querySelector('a-plane, a-box');
+        if (background) background.classList.add('pm-surface');
+      });
       this.chromes = Array.prototype.slice.call(panel.querySelectorAll('.menu-chrome-slot')).map(function (slot) {
         var chrome = buildMenuChrome(slot.parentNode, {
           title: slot.getAttribute('data-title') || '',

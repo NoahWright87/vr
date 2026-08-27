@@ -171,13 +171,6 @@ if (typeof AFRAME !== 'undefined') {
 
     onLook: function (evt) {
       if (!evt.detail || !this.data.camera) return;
-      // Watch mode locks the camera and repurposes touch-drag/gamepad-look
-      // to move an invisible in-menu cursor instead (see
-      // desktop-controls.js's own semantic-look listener) — this reads
-      // the same data-desktop-mode attribute that publishes elsewhere
-      // (data-crouch-state, data-mounted-transition, ...), since it and
-      // desktop-controls share the same rig entity.
-      if (this.el.getAttribute('data-desktop-mode') === 'watch') return;
       var detail = evt.detail;
       var yawDelta;
       var pitchDelta;

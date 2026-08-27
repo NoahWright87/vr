@@ -14,35 +14,55 @@ import './menus.js';
   var ACTIVATE_DOWN_EVENTS = ['triggerdown', 'abuttondown', 'bbuttondown', 'xbuttondown', 'ybuttondown'];
   var ACTIVATE_UP_EVENTS = ['triggerup', 'abuttonup', 'bbuttonup', 'xbuttonup', 'ybuttonup'];
 
+  // A raycaster line draws all the way to `far` whenever nothing's in its
+  // way — including a miss against a real .menu-target, which reads as
+  // the laser piercing straight through the panel and out the other
+  // side. Rather than a beam, this tracks a small glowing dot at wherever
+  // the raycaster's own closest hit currently is (see the 'pm-surface'
+  // class menus.js tags each panel's background with, so a hit registers
+  // anywhere on the panel, not just squarely on a button) and hides it
+  // entirely once nothing's in range.
+  AFRAME.registerComponent('fingertip-laser-dot', {
+    init: function () {
+      var dot = document.createElement('a-entity');
+      dot.setAttribute('geometry', 'primitive: sphere; radius: 0.006; segmentsWidth: 10; segmentsHeight: 8');
+      dot.setAttribute('material', 'color: #8ff; shader: flat; opacity: 0.9');
+      dot.object3D.visible = false;
+      this.el.sceneEl.appendChild(dot);
+      this.dot = dot;
+    },
+    tick: function () {
+      var raycaster = this.el.components.raycaster;
+      var intersection = raycaster && raycaster.data.enabled && raycaster.intersections[0];
+      this.dot.object3D.visible = Boolean(intersection);
+      if (intersection) this.dot.object3D.position.copy(intersection.point);
+    },
+    remove: function () {
+      if (this.dot.parentNode) this.dot.parentNode.removeChild(this.dot);
+    },
+  });
+
   function wireUpFingertipPointing(rawEl, fingertipEl, handComp, direction) {
-    fingertipEl.setAttribute('raycaster', { objects: '.menu-target', far: 10, enabled: false, direction: direction });
+    fingertipEl.setAttribute('raycaster', {
+      objects: '.menu-target, .pm-surface', far: 10, enabled: false, direction: direction, showLine: false,
+    });
     fingertipEl.setAttribute('cursor', { fuse: false, downEvents: ACTIVATE_DOWN_EVENTS, upEvents: ACTIVATE_UP_EVENTS });
-    var hasIntersection = false;
+    fingertipEl.setAttribute('fingertip-laser-dot', '');
     var gripHeld = false;
     var activationCount = 0;
     var settleTimer = null;
     var releaseTimer = null;
-    function updateShowLine() {
-      var controlMode = rawEl.sceneEl.systems['control-mode'];
-      var isDesktop = controlMode && controlMode.isMode('desktop');
-      fingertipEl.setAttribute('raycaster', 'showLine', handComp.laserActive && (hasIntersection || isDesktop));
-    }
     function enableLaser() {
       handComp.isPointing = true;
       handComp.laserActive = true;
       fingertipEl.setAttribute('raycaster', 'enabled', true);
-      updateShowLine();
     }
     function disableLaser() {
       if (gripHeld || activationCount > 0) return;
       handComp.isPointing = false;
       handComp.laserActive = false;
       fingertipEl.setAttribute('raycaster', 'enabled', false);
-      hasIntersection = false;
-      updateShowLine();
     }
-    fingertipEl.addEventListener('raycaster-intersection', function () { hasIntersection = true; updateShowLine(); });
-    fingertipEl.addEventListener('raycaster-intersection-cleared', function () { hasIntersection = false; updateShowLine(); });
     rawEl.addEventListener('gripdown', function () {
       gripHeld = true;
       handComp.isPointing = true;
