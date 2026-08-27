@@ -250,11 +250,16 @@ AFRAME.registerComponent('desktop-controls', {
   // Mobile's look-drag area (common/input-router.js's touch-controls)
   // covers most of the screen so the player can still drag it to look
   // around while checking the watch — which means it also swallows a
-  // plain tap before it ever reaches the canvas. touch-controls tells
-  // short, near-stationary presses apart from real drags and re-emits
-  // those as this scene-level event instead.
+  // plain tap before it ever reaches the canvas, including taps on an
+  // always-open fixed panel (STYLE 1 in the showcase) that isn't part of
+  // watch/mounted mode at all and would otherwise only ever be reachable
+  // through the native mouse click A-Frame's own cursor component
+  // already handles on desktop. touch-controls tells short,
+  // near-stationary presses apart from real drags and re-emits those as
+  // this scene-level event instead.
   onSemanticTap: function () {
-    if (this.mode !== 'watch' || !this.activePointerHand || xrIsPresenting(this.sceneEl)) return;
+    if (xrIsPresenting(this.sceneEl)) return;
+    if (this.mode !== 'watch' && this.mode !== 'normal') return;
     this.activateMenuSelection();
   },
 
@@ -269,7 +274,9 @@ AFRAME.registerComponent('desktop-controls', {
   // point-gesture delay after gripdown — see openWatch) or isn't hitting
   // anything, the click is simply a no-op, same as VR.
   activateMenuSelection: function () {
-    if (this.mode === 'normal' || !this.activePointerHand || xrIsPresenting(this.sceneEl)) return false;
+    if (xrIsPresenting(this.sceneEl)) return false;
+    if (this.mode === 'normal') return this.clickNormalModeMenuTarget();
+    if (!this.activePointerHand) return false;
     var handEl = this.activePointerHand.el;
     if (this.mode === 'watch') {
       var watch = handEl.components['hand-with-watch'];
@@ -333,6 +340,22 @@ AFRAME.registerComponent('desktop-controls', {
     if (!target) return false;
     var menuItem = target.getAttribute('menu-item');
     this.activePointerHand.el.setAttribute('data-ray-target', (menuItem && (menuItem.value || menuItem.label)) || target.id || 'target');
+    target.emit('click', null, false);
+    return true;
+  },
+
+  // 'normal' mode has no scripted pointer hand and no single tracked
+  // "active menu" the way mounted/watch do — an always-open fixed panel
+  // (STYLE 1 in the showcase) just sits there, driven by the plain
+  // gaze-cursor raycaster, so the nearest .menu-target to the fixed
+  // center reticle is searched for document-wide rather than within a
+  // scope. On desktop this duplicates what A-Frame's own cursor
+  // component already does for that raycaster's native mouse click; it
+  // only matters for mobile, where onSemanticTap is the sole way a tap
+  // ever reaches it (see that comment).
+  clickNormalModeMenuTarget: function () {
+    var target = this.findNearestMenuTarget(this.sceneEl, 0.055);
+    if (!target) return false;
     target.emit('click', null, false);
     return true;
   },
