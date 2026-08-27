@@ -96,6 +96,7 @@ AFRAME.registerComponent('desktop-controls', {
     this._watchFaceRollQuat = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), -Math.PI / 2);
     this.mountedPokingUntil = 0;
     this.mountedTransition = null;
+    this._pendingMountedTransition = null;
     this.mountedOpenTimer = null;
     this._worldPosition = new THREE.Vector3();
     this._worldQuaternion = new THREE.Quaternion();
@@ -560,8 +561,21 @@ AFRAME.registerComponent('desktop-controls', {
     this.activePointerHand = hand;
     this.trackActiveMenu(component.el);
     this.mountedPokingUntil = 0;
-    this.mountedTransition = {
-      startedAt: performance.now(),
+    this.mountedTransition = null;
+    // Reaching the trigger and stepping back to a comfortable framing
+    // distance (see mounted-interaction's getFramedInteractionDistance,
+    // which can put that distance well past normal arm's reach) used to
+    // both start right here, at the same time — meaning the pointer
+    // hand's own reach toward the trigger and the rig's own step-back
+    // were racing each other, and a wide enough framing distance let the
+    // step-back win, leaving the hand stranded short of the trigger for
+    // the whole poke window. Stashing the step-back instead of starting
+    // it fixes that by construction: the poke below runs first, from
+    // wherever the player is already standing (necessarily within the
+    // hint-zone's own reach check, so always close), and only once the
+    // panel has actually opened does startMountedPoke kick off the
+    // step-back — see beginMountedStepBack.
+    this._pendingMountedTransition = {
       duration: duration,
       startPosition: this.el.object3D.position.clone(),
       targetPosition: targetRigPosition,
@@ -570,8 +584,8 @@ AFRAME.registerComponent('desktop-controls', {
       startPitch: startPitch,
       pitchDelta: pitchDelta,
     };
-    this.el.setAttribute('data-mounted-transition', 'moving');
     this.setMode('mounted');
+    this.startMountedPoke();
   },
 
   // yawObject/pitchObject hold only the mouse/touch-drag contribution —
@@ -610,7 +624,6 @@ AFRAME.registerComponent('desktop-controls', {
 
     this.mountedTransition = null;
     this.el.removeAttribute('data-mounted-transition');
-    this.startMountedPoke();
     return false;
   },
 
@@ -625,13 +638,23 @@ AFRAME.registerComponent('desktop-controls', {
       self.mountedOpenTimer = null;
       if (self.activeMounted !== component) return;
       component.open();
+      self.beginMountedStepBack();
     }, 400);
+  },
+
+  beginMountedStepBack: function () {
+    if (!this._pendingMountedTransition) return;
+    this.mountedTransition = this._pendingMountedTransition;
+    this.mountedTransition.startedAt = performance.now();
+    this._pendingMountedTransition = null;
+    this.el.setAttribute('data-mounted-transition', 'moving');
   },
 
   exitInteraction: function (restoreMode) {
     if (this.mountedOpenTimer) clearTimeout(this.mountedOpenTimer);
     this.mountedOpenTimer = null;
     this.mountedTransition = null;
+    this._pendingMountedTransition = null;
     this.el.removeAttribute('data-mounted-transition');
     this.trackActiveMenu(null);
     if (this.activePointerHand) this.activePointerHand.el.emit('gripup', null, false);
