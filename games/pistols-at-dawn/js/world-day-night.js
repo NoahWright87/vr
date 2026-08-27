@@ -224,8 +224,9 @@ registerComponent('day-night-cycle', {
   },
 });
 
-// A deliberately modest foundation for weather: eight pooled billboards and
-// at most three hidden rectangular meshes casting low-cost cloud shadows.
+// A deliberately modest foundation for weather: eight pooled billboards.
+// Cloud shadows stay scaffolded but disabled until they have a reliable,
+// artifact-free proxy material in every A-Frame renderer we target.
 registerComponent('weather-clouds', {
   schema: {
     count: { type: 'int', default: 8 },
@@ -238,7 +239,7 @@ registerComponent('weather-clouds', {
     minAltitude: { type: 'number', default: 26 },
     maxAltitude: { type: 'number', default: 44 },
     spawnRadius: { type: 'number', default: 100 },
-    shadowCasters: { type: 'int', default: 3 },
+    shadowCasters: { type: 'int', default: 0 },
   },
 
   init: function () {
@@ -273,18 +274,9 @@ registerComponent('weather-clouds', {
     detail.position.set(1.5, -0.5, -0.3);
     detail.material.rotation = Math.random() * 0.16 - 0.08;
     group.add(sprite, detail);
-    var shadowBox = new THREE.Mesh(
-      new THREE.BoxGeometry(1, 0.18, 0.62),
-      new THREE.MeshBasicMaterial({ colorWrite: false })
-    );
-    shadowBox.position.y = -0.6;
-    shadowBox.userData.weatherCloudShadow = true;
-    shadowBox.castShadow = false;
-    shadowBox.receiveShadow = false;
-    group.add(shadowBox);
     group.visible = false;
     this.scene.add(group);
-    return { group: group, sprite: sprite, detail: detail, shadowBox: shadowBox, active: false, age: 0 };
+    return { group: group, sprite: sprite, detail: detail, active: false, age: 0 };
   },
 
   spawn: function (cloud, initial) {
@@ -300,7 +292,6 @@ registerComponent('weather-clouds', {
     );
     if (!initial) cloud.group.position.x = -this.data.spawnRadius * 1.25;
     cloud.velocity = new THREE.Vector3(this.data.driftSpeed * (0.75 + Math.random() * 0.5), 0, (Math.random() - 0.5) * this.data.driftSpeed * 0.24);
-    cloud.shadowBox.scale.set(size * 1.35, 1, size * 0.72);
     cloud.age = 0;
     cloud.active = true;
     cloud.group.visible = true;
@@ -317,13 +308,9 @@ registerComponent('weather-clouds', {
   },
 
   updateShadows: function () {
-    var cycle = this.el.components['day-night-cycle'];
-    var canCast = cycle && cycle.sunShadows && cycle.sun && cycle.sun.castShadow;
-    var used = 0;
-    this.clouds.forEach(function (cloud) {
-      cloud.shadowBox.castShadow = !!(canCast && cloud.active && used < this.data.shadowCasters);
-      if (cloud.shadowBox.castShadow) used += 1;
-    }, this);
+    // Do not attach a transparent box just to cast shadows: on the deployed
+    // WebGL path it rendered as an opaque black rectangle. The setting remains
+    // for a future, tested shadow-proxy implementation.
   },
 
   tick: function (time, delta) {

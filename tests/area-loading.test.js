@@ -22,8 +22,10 @@ test('destinations are lazy fragments instead of simultaneous scene entities', (
   assert.match(dayNight, /nightSky\.object3D\.rotation\.y/);
   assert.match(dayNight, /registerComponent\('weather-clouds'/);
   assert.match(dayNight, /weather-cloud-cumulus-v1\.png/);
+  assert.doesNotMatch(dayNight, /new THREE\.BoxGeometry\(1, 0\.18, 0\.62\)/);
   assert.match(dayNight, /evt\.code !== 'Backslash'/);
   assert.match(page, /desert-day-skybox-v2\.png/);
+  assert.match(page, /id="night-sky" radius="650"/);
   assert.doesNotMatch(page, /cloud-sky/);
   assert.match(dayNight, /sun-billboard-v1\.png/);
   assert.match(dayNight, /moon-billboard-v1\.png/);
