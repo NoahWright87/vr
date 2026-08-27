@@ -1083,7 +1083,16 @@ AFRAME.registerComponent('mounted-interaction', {
     var fitMargin = 0.8;
     var distanceForHeight = halfHeight / Math.tan((verticalFov / 2) * fitMargin);
     var distanceForWidth = halfWidth / Math.tan((horizontalFov / 2) * fitMargin);
-    return Math.max(base, distanceForHeight, distanceForWidth);
+    var framed = Math.max(base, distanceForHeight, distanceForWidth);
+    // Stepping back to fit the panel in view is self-defeating if it also
+    // steps past the distance where the panel closes itself (computeMode's
+    // own closeDistance check, in menus.js) -- you'd arrive at a spot with
+    // a clear view of nothing. Keep a comfortable buffer under
+    // closeDistance so ordinary head sway near the edge doesn't tip it
+    // into closing right after arriving; never clamp below the authored
+    // base distance itself, which is assumed comfortably inside it.
+    var closeMargin = 0.3;
+    return Math.min(framed, Math.max(base, menu.data.closeDistance - closeMargin));
   },
 
   open: function () {
