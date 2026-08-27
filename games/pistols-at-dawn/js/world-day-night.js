@@ -32,7 +32,7 @@ registerComponent('day-night-cycle', {
     this.gradient = document.querySelector('#sunset-gradient');
     this.scene = this.el.object3D;
     this.onAreaLoaded = this.enableAreaShadows.bind(this);
-    this.onRenderStart = this.applyShadowState.bind(this);
+    this.onRenderStart = this.onRenderStart.bind(this);
     this.onKeyDown = this.onKeyDown.bind(this);
     this.el.addEventListener('area-loaded', this.onAreaLoaded);
     this.el.addEventListener('renderstart', this.onRenderStart);
@@ -67,6 +67,7 @@ registerComponent('day-night-cycle', {
     this.moonOrb = this.makeSprite('assets/textures/moon-billboard-v1.png', 13, false);
     this.moonAnchor.add(this.moonOrb);
     this.moonBaseSize = 13;
+    this.applyRenderOrder();
     this.applyLighting();
     this.el.emit('day-night-shadow-change', { sun: true, moon: false });
   },
@@ -90,12 +91,34 @@ registerComponent('day-night-cycle', {
     this.applyShadowState();
   },
 
+  onRenderStart: function () {
+    this.applyRenderOrder();
+    this.applyShadowState();
+  },
+
+  applyRenderOrder: function () {
+    // A transparent day sphere otherwise may be sorted after the sun sprite,
+    // painting clean blue sky over it. These fixed orders also keep the two
+    // sky layers stable while the distant star layer rotates.
+    this.setSkyRenderOrder(this.nightSky, -30);
+    this.setSkyRenderOrder(this.daySky, -20);
+    this.setSkyRenderOrder(this.gradient, -10);
+    if (this.sunOrb) this.sunOrb.renderOrder = 20;
+    if (this.moonOrb) this.moonOrb.renderOrder = 20;
+  },
+
+  setSkyRenderOrder: function (element, order) {
+    if (!element || !element.object3D) return;
+    element.object3D.traverse(function (object) { object.renderOrder = order; });
+  },
+
   makeSprite: function (src, size, additive) {
     var texture = new THREE.TextureLoader().load(src);
     var sprite = new THREE.Sprite(new THREE.SpriteMaterial({
       map: texture,
       transparent: true,
       depthWrite: false,
+      depthTest: false,
       blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending,
     }));
     sprite.scale.set(size, size, 1);
@@ -224,18 +247,19 @@ registerComponent('day-night-cycle', {
   },
 });
 
-// A deliberately modest foundation for weather: eight pooled billboards.
+// A deliberately modest foundation for weather: 28 pooled billboards.
 // Cloud shadows stay scaffolded but disabled until they have a reliable,
 // artifact-free proxy material in every A-Frame renderer we target.
 registerComponent('weather-clouds', {
   schema: {
-    count: { type: 'int', default: 8 },
-    spawnIntervalMs: { type: 'number', default: 1800 },
-    minSize: { type: 'number', default: 8 },
-    maxSize: { type: 'number', default: 16 },
-    driftSpeed: { type: 'number', default: 0.42 },
+    count: { type: 'int', default: 28 },
+    spawnIntervalMs: { type: 'number', default: 900 },
+    minSize: { type: 'number', default: 3.5 },
+    maxSize: { type: 'number', default: 30 },
+    driftSpeed: { type: 'number', default: 0.75 },
     darkness: { type: 'number', default: 0.18 },
     lifetimeMs: { type: 'number', default: 120000 },
+    maxLifetimeMs: { type: 'number', default: 720000 },
     minAltitude: { type: 'number', default: 26 },
     maxAltitude: { type: 'number', default: 44 },
     spawnRadius: { type: 'number', default: 100 },
@@ -257,7 +281,8 @@ registerComponent('weather-clouds', {
       var cloud = this.makeCloud();
       this.clouds.push(cloud);
       this.spawn(cloud, true);
-      cloud.age = (i / this.data.count) * this.data.lifetimeMs;
+      cloud.age = (i / this.data.count) * cloud.lifetimeMs;
+      this.updateCloudTransition(cloud);
     }
   },
 
@@ -281,6 +306,7 @@ registerComponent('weather-clouds', {
 
   spawn: function (cloud, initial) {
     var size = this.data.minSize + Math.random() * (this.data.maxSize - this.data.minSize);
+    cloud.lifetimeMs = this.data.lifetimeMs + Math.random() * (this.data.maxLifetimeMs - this.data.lifetimeMs);
     cloud.sprite.material.map = this.textures[Math.floor(Math.random() * this.textures.length)];
     cloud.detail.material.map = this.textures[Math.floor(Math.random() * this.textures.length)];
     cloud.sprite.scale.set(size * 1.75, size, 1);
@@ -291,11 +317,24 @@ registerComponent('weather-clouds', {
       (Math.random() - 0.5) * this.data.spawnRadius * 2
     );
     if (!initial) cloud.group.position.x = -this.data.spawnRadius * 1.25;
-    cloud.velocity = new THREE.Vector3(this.data.driftSpeed * (0.75 + Math.random() * 0.5), 0, (Math.random() - 0.5) * this.data.driftSpeed * 0.24);
+    cloud.velocity = new THREE.Vector3(this.data.driftSpeed * (0.45 + Math.random() * 1.7), 0, (Math.random() - 0.5) * this.data.driftSpeed * 0.45);
     cloud.age = 0;
     cloud.active = true;
     cloud.group.visible = true;
+    this.updateCloudTransition(cloud);
     this.updateAppearance();
+  },
+
+  updateCloudTransition: function (cloud) {
+    var transitionMs = Math.min(35000, cloud.lifetimeMs * 0.16);
+    var grow = smoothStep(0, transitionMs, cloud.age);
+    var shrink = 1 - smoothStep(cloud.lifetimeMs - transitionMs, cloud.lifetimeMs, cloud.age);
+    var presence = Math.min(grow, shrink);
+    var scale = 0.12 + presence * 0.88;
+    cloud.group.scale.set(scale, scale, scale);
+    cloud.sprite.material.opacity = 0.86 * presence;
+    cloud.detail.material.opacity = 0.42 * presence;
+    cloud.group.visible = presence > 0.01;
   },
 
   updateAppearance: function (event) {
@@ -314,12 +353,15 @@ registerComponent('weather-clouds', {
   },
 
   tick: function (time, delta) {
-    var elapsed = Math.min(delta || 16, 100);
+    var cycle = this.el.components['day-night-cycle'];
+    var weatherTimeScale = cycle ? cycle.timeScale : 1;
+    var elapsed = Math.min(delta || 16, 100) * weatherTimeScale;
     this.clouds.forEach(function (cloud) {
       if (!cloud.active) return;
       cloud.age += elapsed;
       cloud.group.position.addScaledVector(cloud.velocity, elapsed / 1000);
-      if (cloud.age >= this.data.lifetimeMs || cloud.group.position.x > this.data.spawnRadius * 1.3) {
+      this.updateCloudTransition(cloud);
+      if (cloud.age >= cloud.lifetimeMs) {
         cloud.active = false;
         cloud.group.visible = false;
       }
