@@ -380,11 +380,18 @@ import { cycleMenuOptionIndex, parseMenuOptions } from './menu-options.js';
       this.pokeQuat = panel.object3D.quaternion.clone();
       panel.object3D.scale.setScalar(this.scale);
       this.panelEl = panel;
+      // pm-panel marks the panel root itself, so a fingertip raycaster hit
+      // anywhere inside it (see fingertip-laser-indicator in watch-menu.js)
+      // can walk back up to this same object3D and read its live scale —
+      // projected-menu scales the whole panel uniformly (see applyState
+      // below), so that one number is enough to size the laser dot/trail
+      // to match this particular panel, watch-sized or wall-sized alike.
+      panel.classList.add('pm-panel');
       // Tags each page's own background plane (or the panel's own, for a
       // single-page template) so a fingertip raycaster can register a hit
       // on blank panel space, not just on an actual .menu-target — see
-      // wireUpFingertipPointing in watch-menu.js, which uses this to draw
-      // a laser dot instead of a beam that runs through the panel.
+      // fingertip-laser-indicator in watch-menu.js, which uses this to
+      // draw a laser dot instead of a beam that runs through the panel.
       var pageHosts = panel.querySelectorAll('[data-menu-page]');
       (pageHosts.length ? Array.prototype.slice.call(pageHosts) : [panel]).forEach(function (host) {
         var background = host.querySelector('a-plane, a-box');

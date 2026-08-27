@@ -17,28 +17,80 @@ import './menus.js';
   // A raycaster line draws all the way to `far` whenever nothing's in its
   // way — including a miss against a real .menu-target, which reads as
   // the laser piercing straight through the panel and out the other
-  // side. Rather than a beam, this tracks a small glowing dot at wherever
-  // the raycaster's own closest hit currently is (see the 'pm-surface'
-  // class menus.js tags each panel's background with, so a hit registers
-  // anywhere on the panel, not just squarely on a button) and hides it
-  // entirely once nothing's in range.
-  AFRAME.registerComponent('fingertip-laser-dot', {
+  // side. Rather than a beam stretching all the way to the finger, this
+  // draws a small glowing dot at wherever the raycaster's own closest hit
+  // currently is (see the 'pm-surface' class menus.js tags each panel's
+  // background with, so a hit registers anywhere on the panel, not just
+  // squarely on a button) plus a short trail growing out of the surface
+  // toward the finger and fading to nothing about a quarter of the way
+  // there — a hint for aiming without the old beam's full-length reach.
+  // Both are hidden entirely once nothing's in range, and both scale
+  // with the hit panel's own current size (read live off its object3D,
+  // since projected-menu already scales the whole panel uniformly) so a
+  // big wall panel's dot doesn't look tiny next to a watch's.
+  var TRAIL_SEGMENTS = 8;
+  var TRAIL_FRACTION = 0.25;
+  var TRAIL_START_OPACITY = 0.85;
+  var DOT_RADIUS = 0.006;
+  var REFERENCE_SCALE = 0.12; // the watch's own pokeScale -- what DOT_RADIUS was tuned to look right at.
+
+  AFRAME.registerComponent('fingertip-laser-indicator', {
     init: function () {
       var dot = document.createElement('a-entity');
-      dot.setAttribute('geometry', 'primitive: sphere; radius: 0.006; segmentsWidth: 10; segmentsHeight: 8');
+      dot.setAttribute('geometry', 'primitive: sphere; radius: ' + DOT_RADIUS + '; segmentsWidth: 10; segmentsHeight: 8');
       dot.setAttribute('material', 'color: #8ff; shader: flat; opacity: 0.9');
       dot.object3D.visible = false;
       this.el.sceneEl.appendChild(dot);
       this.dot = dot;
+
+      this.trail = [];
+      for (var i = 0; i < TRAIL_SEGMENTS; i++) {
+        var segment = document.createElement('a-entity');
+        segment.setAttribute('line', { start: '0 0 0', end: '0 0 0', color: '#8ff', opacity: 0 });
+        this.el.sceneEl.appendChild(segment);
+        this.trail.push(segment);
+      }
+
+      this._point = new AFRAME.THREE.Vector3();
+      this._segmentStart = new AFRAME.THREE.Vector3();
+      this._segmentEnd = new AFRAME.THREE.Vector3();
     },
     tick: function () {
       var raycaster = this.el.components.raycaster;
       var intersection = raycaster && raycaster.data.enabled && raycaster.intersections[0];
       this.dot.object3D.visible = Boolean(intersection);
-      if (intersection) this.dot.object3D.position.copy(intersection.point);
+      this.trail.forEach(function (segment) { segment.object3D.visible = Boolean(intersection); });
+      if (!intersection) return;
+
+      var panelEl = intersection.object.el.closest('.pm-panel');
+      var panelScale = panelEl ? panelEl.object3D.scale.x : REFERENCE_SCALE;
+      this.dot.object3D.position.copy(intersection.point);
+      this.dot.object3D.scale.setScalar(panelScale / REFERENCE_SCALE);
+
+      var ray = raycaster.raycaster.ray;
+      var trailLength = intersection.distance * TRAIL_FRACTION;
+      for (var i = 0; i < TRAIL_SEGMENTS; i++) {
+        var t0 = i / TRAIL_SEGMENTS;
+        var t1 = (i + 1) / TRAIL_SEGMENTS;
+        this._segmentStart.copy(ray.direction).multiplyScalar(-trailLength * t0).add(intersection.point);
+        this._segmentEnd.copy(ray.direction).multiplyScalar(-trailLength * t1).add(intersection.point);
+        // Plain object literals, not the reused scratch vectors above --
+        // line's own attribute diffing compares data.start to the
+        // *previous* parsed value by x/y/z, which only works if this
+        // call's value isn't the very same (already-mutated) object
+        // instance still sitting there from last tick.
+        this.trail[i].setAttribute('line', {
+          start: { x: this._segmentStart.x, y: this._segmentStart.y, z: this._segmentStart.z },
+          end: { x: this._segmentEnd.x, y: this._segmentEnd.y, z: this._segmentEnd.z },
+          opacity: TRAIL_START_OPACITY * (1 - t0),
+        });
+      }
     },
     remove: function () {
       if (this.dot.parentNode) this.dot.parentNode.removeChild(this.dot);
+      this.trail.forEach(function (segment) {
+        if (segment.parentNode) segment.parentNode.removeChild(segment);
+      });
     },
   });
 
@@ -47,7 +99,7 @@ import './menus.js';
       objects: '.menu-target, .pm-surface', far: 10, enabled: false, direction: direction, showLine: false,
     });
     fingertipEl.setAttribute('cursor', { fuse: false, downEvents: ACTIVATE_DOWN_EVENTS, upEvents: ACTIVATE_UP_EVENTS });
-    fingertipEl.setAttribute('fingertip-laser-dot', '');
+    fingertipEl.setAttribute('fingertip-laser-indicator', '');
     var gripHeld = false;
     var activationCount = 0;
     var settleTimer = null;
