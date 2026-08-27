@@ -211,7 +211,10 @@ registerComponent('day-night-cycle', {
       .applyAxisAngle(new THREE.Vector3(0, 0, 1), moonAngle)
       .normalize();
     return {
-      sun: new THREE.Vector3(Math.cos(solarAngle), Math.sin(solarAngle), Math.sin(solarAngle * 0.37) * 0.35).normalize(),
+      // At the default high-noon start, put the Sun in the camera's forward
+      // (-Z) sky rather than behind the player. The light and billboard now
+      // share this bearing, so visible direction matches illumination.
+      sun: new THREE.Vector3(Math.cos(solarAngle), Math.sin(solarAngle), -Math.sin(solarAngle * 0.37) * 0.35).normalize(),
       moon: moon,
       moonDistance: moonDistance,
       moonBrightness: Math.max(0.78, Math.min(1.3, Math.pow(DAY_NIGHT_ORBIT_RADIUS / moonDistance, 1.4))),
