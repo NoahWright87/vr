@@ -63,7 +63,7 @@ registerComponent('day-night-cycle', {
     this.moonAnchor.add(this.moon);
     this.scene.add(this.sun, this.sun.target, this.moonOrbitRoot, this.moon.target, this.ambient);
 
-    this.sunOrb = this.makeSprite('assets/textures/sun-billboard-v1.png', 30, true);
+    this.sunOrb = this.makeSprite('assets/textures/sun-billboard-v1.png', 42, true);
     this.moonOrb = this.makeSprite('assets/textures/moon-billboard-v1.png', 13, false);
     this.moonAnchor.add(this.moonOrb);
     this.moonBaseSize = 13;
@@ -227,11 +227,11 @@ registerComponent('day-night-cycle', {
   syncCelestialPositions: function (sunDir, directions) {
     this.sun.position.copy(sunDir).multiplyScalar(DAY_NIGHT_ORBIT_RADIUS);
     // Keep the lighting physically overhead at noon, but cap the visible Sun
-    // at 64° elevation. A billboard straight overhead is effectively absent
-    // in a normal forward view even though the light is working correctly.
+    // near 30° elevation. A 64° sprite is above a normal desktop camera's
+    // vertical field of view, so it was still effectively absent.
     var horizontalSun = new THREE.Vector3(sunDir.x, 0, sunDir.z);
     var sunElevation = Math.asin(Math.max(-1, Math.min(1, sunDir.y)));
-    var visibleElevation = sunElevation * (64 / 90);
+    var visibleElevation = sunElevation * (30 / 90);
     horizontalSun.normalize().multiplyScalar(Math.cos(visibleElevation));
     this.sunOrb.position.set(horizontalSun.x, Math.sin(visibleElevation), horizontalSun.z)
       .multiplyScalar(DAY_NIGHT_ORBIT_RADIUS * 1.15);
