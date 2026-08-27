@@ -32,10 +32,7 @@ test('destinations are lazy fragments instead of simultaneous scene entities', (
   assert.match(page, /id="night-sky" radius="650"/);
   assert.doesNotMatch(page, /cloud-sky/);
   assert.match(dayNight, /sun-billboard-v1\.png/);
-  assert.match(dayNight, /sun-billboard-v1\.png', 42, true/);
-  assert.match(dayNight, /visibleElevation = sunElevation \* \(30 \/ 90\)/);
-  assert.match(dayNight, /-Math\.sin\(solarAngle \* 0\.37\) \* 0\.35/);
-  assert.match(dayNight, /this\.sunOrb\.renderOrder = 20/);
+  assert.match(dayNight, /sun-billboard-v1\.png', 24, true/);
   assert.match(dayNight, /moon-billboard-v1\.png/);
   assert.match(dayNight, /this\.sunShadows = true/);
   assert.match(loader, /preservePlayerItems: function/);

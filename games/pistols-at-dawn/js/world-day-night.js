@@ -32,7 +32,7 @@ registerComponent('day-night-cycle', {
     this.gradient = document.querySelector('#sunset-gradient');
     this.scene = this.el.object3D;
     this.onAreaLoaded = this.enableAreaShadows.bind(this);
-    this.onRenderStart = this.onRenderStart.bind(this);
+    this.onRenderStart = this.applyShadowState.bind(this);
     this.onKeyDown = this.onKeyDown.bind(this);
     this.el.addEventListener('area-loaded', this.onAreaLoaded);
     this.el.addEventListener('renderstart', this.onRenderStart);
@@ -63,11 +63,10 @@ registerComponent('day-night-cycle', {
     this.moonAnchor.add(this.moon);
     this.scene.add(this.sun, this.sun.target, this.moonOrbitRoot, this.moon.target, this.ambient);
 
-    this.sunOrb = this.makeSprite('assets/textures/sun-billboard-v1.png', 42, true);
+    this.sunOrb = this.makeSprite('assets/textures/sun-billboard-v1.png', 24, true);
     this.moonOrb = this.makeSprite('assets/textures/moon-billboard-v1.png', 13, false);
     this.moonAnchor.add(this.moonOrb);
     this.moonBaseSize = 13;
-    this.applyRenderOrder();
     this.applyLighting();
     this.el.emit('day-night-shadow-change', { sun: true, moon: false });
   },
@@ -91,34 +90,12 @@ registerComponent('day-night-cycle', {
     this.applyShadowState();
   },
 
-  onRenderStart: function () {
-    this.applyRenderOrder();
-    this.applyShadowState();
-  },
-
-  applyRenderOrder: function () {
-    // A transparent day sphere otherwise may be sorted after the sun sprite,
-    // painting clean blue sky over it. These fixed orders also keep the two
-    // sky layers stable while the distant star layer rotates.
-    this.setSkyRenderOrder(this.nightSky, -30);
-    this.setSkyRenderOrder(this.daySky, -20);
-    this.setSkyRenderOrder(this.gradient, -10);
-    if (this.sunOrb) this.sunOrb.renderOrder = 20;
-    if (this.moonOrb) this.moonOrb.renderOrder = 20;
-  },
-
-  setSkyRenderOrder: function (element, order) {
-    if (!element || !element.object3D) return;
-    element.object3D.traverse(function (object) { object.renderOrder = order; });
-  },
-
   makeSprite: function (src, size, additive) {
     var texture = new THREE.TextureLoader().load(src);
     var sprite = new THREE.Sprite(new THREE.SpriteMaterial({
       map: texture,
       transparent: true,
       depthWrite: false,
-      depthTest: false,
       blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending,
     }));
     sprite.scale.set(size, size, 1);
@@ -211,10 +188,7 @@ registerComponent('day-night-cycle', {
       .applyAxisAngle(new THREE.Vector3(0, 0, 1), moonAngle)
       .normalize();
     return {
-      // At the default high-noon start, put the Sun in the camera's forward
-      // (-Z) sky rather than behind the player. The light and billboard now
-      // share this bearing, so visible direction matches illumination.
-      sun: new THREE.Vector3(Math.cos(solarAngle), Math.sin(solarAngle), -Math.sin(solarAngle * 0.37) * 0.35).normalize(),
+      sun: new THREE.Vector3(Math.cos(solarAngle), Math.sin(solarAngle), Math.sin(solarAngle * 0.37) * 0.35).normalize(),
       moon: moon,
       moonDistance: moonDistance,
       moonBrightness: Math.max(0.78, Math.min(1.3, Math.pow(DAY_NIGHT_ORBIT_RADIUS / moonDistance, 1.4))),
@@ -226,15 +200,7 @@ registerComponent('day-night-cycle', {
 
   syncCelestialPositions: function (sunDir, directions) {
     this.sun.position.copy(sunDir).multiplyScalar(DAY_NIGHT_ORBIT_RADIUS);
-    // Keep the lighting physically overhead at noon, but cap the visible Sun
-    // near 30° elevation. A 64° sprite is above a normal desktop camera's
-    // vertical field of view, so it was still effectively absent.
-    var horizontalSun = new THREE.Vector3(sunDir.x, 0, sunDir.z);
-    var sunElevation = Math.asin(Math.max(-1, Math.min(1, sunDir.y)));
-    var visibleElevation = sunElevation * (30 / 90);
-    horizontalSun.normalize().multiplyScalar(Math.cos(visibleElevation));
-    this.sunOrb.position.set(horizontalSun.x, Math.sin(visibleElevation), horizontalSun.z)
-      .multiplyScalar(DAY_NIGHT_ORBIT_RADIUS * 1.15);
+    this.sunOrb.position.copy(this.sun.position);
     this.moonOrbitRoot.rotation.z = directions.moonAngle;
     this.moonOrbitDeclination.rotation.x = directions.moonDeclination;
     this.moonOrbitPrecession.rotation.z = directions.moonNode;
