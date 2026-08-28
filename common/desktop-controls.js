@@ -71,9 +71,32 @@ AFRAME.registerComponent('desktop-controls', {
     this.activeMenuEl = null;
     this.cursorStyleEl = null;
     this.cursorNdc = new THREE.Vector2(0, 0);
-    this.hoveredMenuTarget = null;
+    // Snapshotted once when the watch opens and held fixed until it
+    // closes — see captureWatchAnchor/watchViewQuaternion.
+    this.watchAnchorQuaternion = null;
+    // Tracks the watch hand's own qualify/don't-qualify transitions —
+    // see placeWatchHand's virtual-poke check.
+    this._watchWasQualifying = false;
+    this._watchFaceScratch = new THREE.Object3D();
+    // lookAt() points local -Z at its target; the watch face's own
+    // "normal" (the axis projected-menu reads to decide poke/laser mode
+    // and orientation, see menus.js's computeMode) is local +Y instead.
+    // Post-multiplying this fixed 90deg-about-X quaternion after a lookAt
+    // remaps which local axis ends up aimed at the target, from -Z to +Y,
+    // without needing any per-call trig (verified empirically — dotCam
+    // reads exactly 1.0 head-on).
+    this._watchFaceFixQuat = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2);
+    // Rotating around the face's own local Y (applied before the fix
+    // above, so it spins the face in its own plane without disturbing
+    // which axis ends up pointing at the camera) corrects the panel's
+    // "which way is up" roll relative to the authored template — the
+    // lookAt's own up-vector orthogonalization doesn't line up with it
+    // on its own. -90deg verified empirically (screenshot: chrome bar on
+    // top, rows in authored order reading right-side up).
+    this._watchFaceRollQuat = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), -Math.PI / 2);
     this.mountedPokingUntil = 0;
     this.mountedTransition = null;
+    this._pendingMountedTransition = null;
     this.mountedOpenTimer = null;
     this._worldPosition = new THREE.Vector3();
     this._worldQuaternion = new THREE.Quaternion();
@@ -191,7 +214,7 @@ AFRAME.registerComponent('desktop-controls', {
       }
     } else if (evt.code === 'KeyC') {
       evt.preventDefault();
-      if (this.mode === 'normal') this.toggleManualCrouch();
+      if (this.mode === 'normal' || this.mode === 'watch') this.toggleManualCrouch();
     } else if (evt.code === 'KeyF') {
       evt.preventDefault();
       this.handleGrabKey();
@@ -206,17 +229,17 @@ AFRAME.registerComponent('desktop-controls', {
   },
 
   // Mouse clicks and touch taps landing directly on the canvas both end up
-  // here. Desktop aims with the fixed center reticle (mouse-look turns the
-  // camera to point it — see setMode/openWatch), same as mounted panels;
-  // a touch tap that reaches the canvas directly (nothing else caught it
-  // first) still gets its own screen point, matching onSemanticTap below.
+  // here. Both mounted panels and the watch aim with the fixed center
+  // reticle (mouse-look/touch-drag/gyro turn the camera to point it — see
+  // setMode/currentAimDirection); a touch tap that reaches the canvas
+  // directly (nothing else caught it first) just activates whatever that
+  // reticle is over. Watch mode selects through the real fingertip laser
+  // instead (see activateMenuSelection) — a tap here or via onSemanticTap
+  // below only ever activates whatever it's currently pointing at.
   onPointerDown: function (evt) {
     if (this.mode === 'normal' || !this.activePointerHand || xrIsPresenting(this.sceneEl)) return;
     if (evt.pointerType === 'touch') {
-      if (this.mode === 'watch') {
-        if (evt.target !== this.sceneEl.canvas) return;
-        this.setCursorNdcFromScreenPoint(evt.clientX, evt.clientY);
-      }
+      if (this.mode === 'watch' && evt.target !== this.sceneEl.canvas) return;
     } else if (evt.pointerType === 'mouse' && evt.button !== 0) {
       return;
     }
@@ -225,58 +248,39 @@ AFRAME.registerComponent('desktop-controls', {
   },
 
   // Mobile's look-drag area (common/input-router.js's touch-controls)
-  // covers most of the screen so the player can still freely look around
-  // to find the menu — the watch no longer locks the view (see openWatch)
-  // — which means it also swallows a plain tap before it ever reaches the
-  // canvas. touch-controls tells short, near-stationary presses apart from
-  // real drags and re-emits those as this scene-level event instead, with
-  // the tap's own screen point, so they still select directly.
-  onSemanticTap: function (evt) {
-    if (this.mode !== 'watch' || !this.activePointerHand || xrIsPresenting(this.sceneEl)) return;
-    var detail = evt.detail || {};
-    this.setCursorNdcFromScreenPoint(detail.clientX, detail.clientY);
+  // covers most of the screen so the player can still drag it to look
+  // around while checking the watch — which means it also swallows a
+  // plain tap before it ever reaches the canvas, including taps on an
+  // always-open fixed panel (STYLE 1 in the showcase) that isn't part of
+  // watch/mounted mode at all and would otherwise only ever be reachable
+  // through the native mouse click A-Frame's own cursor component
+  // already handles on desktop. touch-controls tells short,
+  // near-stationary presses apart from real drags and re-emits those as
+  // this scene-level event instead.
+  onSemanticTap: function () {
+    if (xrIsPresenting(this.sceneEl)) return;
+    if (this.mode !== 'watch' && this.mode !== 'normal') return;
     this.activateMenuSelection();
   },
 
-  setCursorNdcFromScreenPoint: function (clientX, clientY) {
-    var canvas = this.sceneEl.canvas;
-    if (!canvas) return;
-    var rect = canvas.getBoundingClientRect();
-    if (!rect.width || !rect.height) return;
-    this.cursorNdc.set(
-      ((clientX - rect.left) / rect.width) * 2 - 1,
-      -(((clientY - rect.top) / rect.height) * 2 - 1)
-    );
-  },
-
-  updateHoveredMenuTarget: function () {
-    var scope = this.getActiveMenuScope();
-    var next = scope ? this.findNearestMenuTarget(scope, 0.09) : null;
-    if (next === this.hoveredMenuTarget) return;
-    if (this.hoveredMenuTarget) this.hoveredMenuTarget.emit('mouseleave', null, false);
-    this.hoveredMenuTarget = next;
-    if (this.hoveredMenuTarget) this.hoveredMenuTarget.emit('mouseenter', null, false);
-  },
-
-  clearHoveredMenuTarget: function () {
-    if (!this.hoveredMenuTarget) return;
-    this.hoveredMenuTarget.emit('mouseleave', null, false);
-    this.hoveredMenuTarget = null;
-  },
-
+  // Watch mode always goes through the real fingertip laser/cursor —
+  // wireUpFingertipPointing (watch-menu.js), the exact mechanism VR uses,
+  // now made reliable because the pointer hand is actually posed and
+  // aimed correctly (see placeWatchPointer, which aims it the same way
+  // placeMountedPointer aims at a wall panel — at wherever the fixed
+  // center reticle currently lands). data-ray-target is set by that same
+  // physical raycaster whenever it's currently hitting something
+  // (interaction-hints.js); if it hasn't settled yet (the ~180ms
+  // point-gesture delay after gripdown — see openWatch) or isn't hitting
+  // anything, the click is simply a no-op, same as VR.
   activateMenuSelection: function () {
-    if (this.mode === 'normal' || !this.activePointerHand || xrIsPresenting(this.sceneEl)) return false;
+    if (xrIsPresenting(this.sceneEl)) return false;
+    if (this.mode === 'normal') return this.clickNormalModeMenuTarget();
+    if (!this.activePointerHand) return false;
     var handEl = this.activePointerHand.el;
-    var watch = handEl.components['hand-with-watch'];
-    // data-ray-target is set by the physical fingertip raycaster
-    // (interaction-hints.js) and never cleared on its own once set — it
-    // only means something while that raycaster is actually enabled
-    // (mounted mode still turns it on via gripdown in startMountedPoke).
-    // Watch mode no longer enables it at all (selection is cursor/tap
-    // driven — see clickDesktopMenuTarget), so checking the attribute
-    // alone would keep firing this stale branch off whatever it was last
-    // set to before laser turned off, never reaching the real hit test.
-    if (watch && watch.laserActive && handEl.hasAttribute('data-ray-target')) {
+    if (this.mode === 'watch') {
+      var watch = handEl.components['hand-with-watch'];
+      if (!watch || !watch.laserActive || !handEl.hasAttribute('data-ray-target')) return false;
       handEl.emit('triggerdown', null, false);
       requestAnimationFrame(function () { handEl.emit('triggerup', null, false); });
       return true;
@@ -303,16 +307,17 @@ AFRAME.registerComponent('desktop-controls', {
     } else if (detail.action === 'grab') {
       this.handleGrabKey(source);
     } else if (detail.action === 'crouch') {
-      if (this.mode === 'normal') this.toggleManualCrouch();
+      if (this.mode === 'normal' || this.mode === 'watch') this.toggleManualCrouch();
     } else if (detail.action === 'activate') {
       this.activateMenuSelection();
     }
   },
 
-  // Shared by click selection and hover highlighting alike: whichever
-  // .menu-target in the active scope projects closest to cursorNdc, within
-  // a tolerance loose enough to forgive an imprecise mouse position or
-  // touch tap without requiring pixel-perfect aim.
+  // Used only by mounted mode's click selection: whichever .menu-target in
+  // the active scope projects closest to cursorNdc (the fixed center
+  // reticle — see setMode), within a tolerance loose enough to forgive an
+  // imprecise touch tap without requiring pixel-perfect aim. Watch mode
+  // selects through the real fingertip laser instead (activateMenuSelection).
   findNearestMenuTarget: function (scope, tolerance) {
     var best = null;
     Array.prototype.forEach.call(scope.querySelectorAll('.menu-target'), function (targetEl) {
@@ -331,7 +336,7 @@ AFRAME.registerComponent('desktop-controls', {
     if (!this.activePointerHand) return false;
     var scope = this.getActiveMenuScope();
     if (!scope) return false;
-    var target = this.findNearestMenuTarget(scope, this.mode === 'watch' ? 0.09 : 0.055);
+    var target = this.findNearestMenuTarget(scope, 0.055);
     if (!target) return false;
     var menuItem = target.getAttribute('menu-item');
     this.activePointerHand.el.setAttribute('data-ray-target', (menuItem && (menuItem.value || menuItem.label)) || target.id || 'target');
@@ -339,14 +344,30 @@ AFRAME.registerComponent('desktop-controls', {
     return true;
   },
 
+  // 'normal' mode has no scripted pointer hand and no single tracked
+  // "active menu" the way mounted/watch do — an always-open fixed panel
+  // (STYLE 1 in the showcase) just sits there, driven by the plain
+  // gaze-cursor raycaster, so the nearest .menu-target to the fixed
+  // center reticle is searched for document-wide rather than within a
+  // scope. On desktop this duplicates what A-Frame's own cursor
+  // component already does for that raycaster's native mouse click; it
+  // only matters for mobile, where onSemanticTap is the sole way a tap
+  // ever reaches it (see that comment).
+  clickNormalModeMenuTarget: function () {
+    var target = this.findNearestMenuTarget(this.sceneEl, 0.055);
+    if (!target) return false;
+    target.emit('click', null, false);
+    return true;
+  },
+
   getActiveMenuScope: function () {
-    if (this.mode === 'watch' && this.activeWatchHand) {
-      var watch = this.activeWatchHand.el.components['hand-with-watch'];
-      return watch && watch.projectedMenu && watch.projectedMenu.panelEl;
-    }
     if (this.mode === 'mounted' && this.activeMounted) {
       var menu = this.activeMounted.el.components['projected-menu'];
       return menu && menu.panelEl;
+    }
+    if (this.mode === 'watch' && this.activeWatchHand) {
+      var watch = this.activeWatchHand.el.components['hand-with-watch'];
+      return watch && watch.projectedMenu && watch.projectedMenu.panelEl;
     }
     return null;
   },
@@ -359,15 +380,8 @@ AFRAME.registerComponent('desktop-controls', {
   setMode: function (mode) {
     this.mode = mode;
     this.cursorNdc.set(0, 0);
-    this.clearHoveredMenuTarget();
     this.el.setAttribute('data-desktop-mode', mode);
     this.hintSystem.setTargetingEnabled(mode === 'normal');
-    // The view stays free to look around in every mode, watch included —
-    // it used to lock level while the watch was open, but that leaves the
-    // menu impossible to find if it opened while looking down, with no way
-    // to look back up. Aiming is the fixed-center-reticle scheme every
-    // other mode already used: mouse-look turns the camera to point it.
-    this.setLookEnabled(true);
     this.setGazeEnabled(mode === 'normal');
     this.updateCursorStyle();
     this.sceneEl.emit('desktop-interaction-mode-changed', { mode: mode }, false);
@@ -462,20 +476,6 @@ AFRAME.registerComponent('desktop-controls', {
     document.head.appendChild(this.cursorStyleEl);
   },
 
-  ensureMouseLookCapture: function () {
-    var canvas = this.sceneEl.canvas;
-    if (!canvas || document.pointerLockElement || !canvas.requestPointerLock) return;
-    var request = canvas.requestPointerLock();
-    if (request && request.catch) request.catch(function () {});
-  },
-
-  setLookEnabled: function (enabled) {
-    var look = this.cameraEl && this.cameraEl.components['look-controls'];
-    if (!look) return;
-    if (enabled && look.play) look.play();
-    else if (!enabled && look.pause) look.pause();
-  },
-
   setGazeEnabled: function (enabled) {
     var gaze = document.querySelector('#gaze-cursor');
     if (!gaze) return;
@@ -492,32 +492,59 @@ AFRAME.registerComponent('desktop-controls', {
     this.activeWatchHand = watchHand;
     this.activePointerHand = pointerHand;
     this.trackActiveMenu(watch.faceEl);
-    this.captureWatchAnchor();
     this.setMode('watch');
-    this.ensureMouseLookCapture();
-    watch.projectedMenu.openInMode('laser');
+    // Snapshot the reference direction the watch face gets held up along
+    // (see captureWatchAnchor/watchViewQuaternion) instead of freezing the
+    // camera onto it. The camera stays free the whole time watch mode is
+    // open, exactly like a mounted panel — placeWatchPointer aims the
+    // pointer hand at wherever the fixed center reticle currently lands
+    // on the now-stationary watch face, the same way placeMountedPointer
+    // aims at a wall panel, so turning your head (or your phone) picks
+    // out a different part of the watch instead of dragging the whole
+    // thing around with your view.
+    this.captureWatchAnchor();
+    // The real VR mechanism for "point with your other hand" is a held
+    // grip (see wireUpFingertipPointing in watch-menu.js) — firing the
+    // same event here, rather than forcing the menu into a mode or
+    // position, makes the pointer hand's own fingertip laser/cursor real.
+    // No explicit open() call here — the hand hasn't moved into place
+    // yet at this point, so the pose wouldn't qualify anyway; placeWatchHand
+    // opens it itself the instant the live pose actually does (see the
+    // comment there for why, and why that has to be edge-triggered).
+    this.activePointerHand.el.emit('gripdown', null, false);
+    this._watchWasQualifying = false;
     this.placeWatchHand();
     this.placeWatchPointer();
   },
 
-  // Captured once, from wherever the player happens to be facing when the
-  // watch opens, rather than tracked continuously off the live camera: the
-  // view stays fully under the player's control while it's open (mouse-look
-  // still aims the fixed center reticle — see setMode/clickDesktopMenuTarget),
-  // so a hand/panel that kept re-anchoring to the live camera direction
-  // would simply drag along with every turn, making it impossible to aim
-  // at anything but whatever was dead ahead at the moment of opening.
+  clampedCameraPitch: function () {
+    return THREE.MathUtils.clamp(
+      this.getCameraLocalPitch(),
+      THREE.MathUtils.degToRad(-20),
+      THREE.MathUtils.degToRad(30)
+    );
+  },
+
+  // The reference direction every watch-mode placement below is built
+  // from — see openWatch/watchViewQuaternion for why this is captured
+  // once on open rather than read live every tick.
   captureWatchAnchor: function () {
-    var side = this.activeWatchHand.data.hand === 'left' ? -1 : 1;
-    this._watchHandWorldPos = this.cameraOffsetToWorld(new THREE.Vector3(side * 0.16, -0.42, -0.4), false);
-    this._watchHandWorldQuat = this.cameraYawQuaternion().multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(-0.6, 0, side * -0.25)));
+    var pitchQuat = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), this.clampedCameraPitch());
+    this.watchAnchorQuaternion = this.cameraYawQuaternion().multiply(pitchQuat);
+  },
 
-    var pointerSide = this.activePointerHand.data.hand === 'left' ? -1 : 1;
-    this._watchPointerFingertip = this.cameraOffsetToWorld(new THREE.Vector3(pointerSide * 0.24, -0.48, -0.42), false);
-    var aimAt = this.cameraOffsetToWorld(new THREE.Vector3(pointerSide * 0.12, -0.15, -1), false);
-    this._watchPointerDirection = aimAt.sub(this._watchPointerFingertip).normalize();
-
-    this._watchPanelWorldPos = this.cameraOffsetToWorld(new THREE.Vector3(0, 0.22, -0.62), false);
+  // Snapshotted once when the watch opens (see captureWatchAnchor) and
+  // held fixed for as long as it stays open, rather than read live off
+  // the camera every tick like it used to be. The camera is free to move
+  // the whole time now (see setMode) — freezing this direction, not the
+  // camera, is what lets you turn your head to aim your finger at a
+  // different part of a *fixed* watch face, the same way turning it aims
+  // at a different part of a fixed wall panel (see currentAimDirection),
+  // while the watch face itself still stays in front of you as you walk
+  // or crouch (placeWatchHand/placeWatchPointer read the camera's
+  // position live, just not its orientation).
+  watchViewQuaternion: function () {
+    return this.watchAnchorQuaternion;
   },
 
   beginMounted: function (component, hand) {
@@ -557,8 +584,21 @@ AFRAME.registerComponent('desktop-controls', {
     this.activePointerHand = hand;
     this.trackActiveMenu(component.el);
     this.mountedPokingUntil = 0;
-    this.mountedTransition = {
-      startedAt: performance.now(),
+    this.mountedTransition = null;
+    // Reaching the trigger and stepping back to a comfortable framing
+    // distance (see mounted-interaction's getFramedInteractionDistance,
+    // which can put that distance well past normal arm's reach) used to
+    // both start right here, at the same time — meaning the pointer
+    // hand's own reach toward the trigger and the rig's own step-back
+    // were racing each other, and a wide enough framing distance let the
+    // step-back win, leaving the hand stranded short of the trigger for
+    // the whole poke window. Stashing the step-back instead of starting
+    // it fixes that by construction: the poke below runs first, from
+    // wherever the player is already standing (necessarily within the
+    // hint-zone's own reach check, so always close), and only once the
+    // panel has actually opened does startMountedPoke kick off the
+    // step-back — see beginMountedStepBack.
+    this._pendingMountedTransition = {
       duration: duration,
       startPosition: this.el.object3D.position.clone(),
       targetPosition: targetRigPosition,
@@ -567,16 +607,23 @@ AFRAME.registerComponent('desktop-controls', {
       startPitch: startPitch,
       pitchDelta: pitchDelta,
     };
-    this.el.setAttribute('data-mounted-transition', 'moving');
     this.setMode('mounted');
-    this.ensureMouseLookCapture();
+    this.startMountedPoke();
   },
 
+  // yawObject/pitchObject hold only the mouse/touch-drag contribution —
+  // look-controls adds the magic-window (gyro) contribution on top of
+  // them each tick (object3D.rotation = magicWindowDeltaEuler +
+  // yawObject/pitchObject). Setting yawObject/pitchObject to the desired
+  // *combined* result directly would double-count whatever the magic
+  // window is currently contributing, so subtract it out here instead —
+  // that's what makes the combined result land exactly on yaw/pitch.
   setCameraLocalRotation: function (yaw, pitch) {
     var look = this.cameraEl && this.cameraEl.components['look-controls'];
     if (look && look.yawObject) {
-      look.yawObject.rotation.y = yaw;
-      if (look.pitchObject) look.pitchObject.rotation.x = pitch;
+      var magicWindow = look.magicWindowDeltaEuler;
+      look.yawObject.rotation.y = yaw - (magicWindow ? magicWindow.y : 0);
+      if (look.pitchObject) look.pitchObject.rotation.x = pitch - (magicWindow ? magicWindow.x : 0);
       if (look.updateOrientation) look.updateOrientation();
     } else {
       this.cameraEl.object3D.rotation.y = yaw;
@@ -600,7 +647,6 @@ AFRAME.registerComponent('desktop-controls', {
 
     this.mountedTransition = null;
     this.el.removeAttribute('data-mounted-transition');
-    this.startMountedPoke();
     return false;
   },
 
@@ -615,13 +661,23 @@ AFRAME.registerComponent('desktop-controls', {
       self.mountedOpenTimer = null;
       if (self.activeMounted !== component) return;
       component.open();
+      self.beginMountedStepBack();
     }, 400);
+  },
+
+  beginMountedStepBack: function () {
+    if (!this._pendingMountedTransition) return;
+    this.mountedTransition = this._pendingMountedTransition;
+    this.mountedTransition.startedAt = performance.now();
+    this._pendingMountedTransition = null;
+    this.el.setAttribute('data-mounted-transition', 'moving');
   },
 
   exitInteraction: function (restoreMode) {
     if (this.mountedOpenTimer) clearTimeout(this.mountedOpenTimer);
     this.mountedOpenTimer = null;
     this.mountedTransition = null;
+    this._pendingMountedTransition = null;
     this.el.removeAttribute('data-mounted-transition');
     this.trackActiveMenu(null);
     if (this.activePointerHand) this.activePointerHand.el.emit('gripup', null, false);
@@ -633,6 +689,7 @@ AFRAME.registerComponent('desktop-controls', {
     this.activeWatchHand = null;
     this.activePointerHand = null;
     this.activeMounted = null;
+    this.watchAnchorQuaternion = null;
     this.mountedPokingUntil = 0;
     this.cursorNdc.set(0, 0);
     if (restoreMode !== false) this.setMode('normal');
@@ -655,6 +712,38 @@ AFRAME.registerComponent('desktop-controls', {
 
   getCameraLocalPitch: function () {
     return this._cameraEuler.setFromQuaternion(this.cameraEl.object3D.quaternion, 'YXZ').x;
+  },
+
+  // Mouse-drag and touch-drag pitch are already clamped to +/-90deg at
+  // the source (look-controls' own onMouseMove, and semantic-look-
+  // controls' onLook for gamepad/touch) -- but mobile's magic-window
+  // (gyro) pitch isn't clamped anywhere: it's a direct, unbounded copy of
+  // the phone's own physical tilt (see look-controls.js's
+  // updateMagicWindowOrientation). Once combined with a nonzero yaw, a
+  // magic-window pitch past +/-90deg composes into a 3D orientation that
+  // sits exactly on the YXZ decomposition's gimbal lock -- yaw and roll
+  // become degenerate there, so this whole file's YXZ-based reads
+  // (getCameraLocalYaw/Pitch) come back with yaw flipped ~180deg and
+  // pitch mirrored back into range, even though nothing about the actual
+  // orientation looks out of range once decomposed. That's why this
+  // clamps magicWindowDeltaEuler.x itself -- the raw, still-unambiguous
+  // input -- rather than the camera's already-decomposed pose: by the
+  // time a flip shows up in the decomposed values, the composition that
+  // caused it has already happened and re-decomposing again can't tell
+  // it apart from a legitimate orientation. Clamping a couple of degrees
+  // short of the pole (89deg, not exactly 90) keeps every consumer of
+  // the camera's pose safely on one side of it, however far the player
+  // keeps tilting their phone. This runs after look-controls' own tick
+  // this frame, so it recomputes the just-rendered pose from the clamped
+  // input rather than leaving the flip to correct itself next frame.
+  enforcePitchLimit: function () {
+    var look = this.cameraEl && this.cameraEl.components['look-controls'];
+    var magicWindow = look && look.magicWindowDeltaEuler;
+    if (!magicWindow) return;
+    var maxPitch = THREE.MathUtils.degToRad(89);
+    if (magicWindow.x <= maxPitch && magicWindow.x >= -maxPitch) return;
+    magicWindow.x = THREE.MathUtils.clamp(magicWindow.x, -maxPitch, maxPitch);
+    if (look.updateOrientation) look.updateOrientation();
   },
 
   handFollowsCameraPose: function (hand) {
@@ -764,7 +853,17 @@ AFRAME.registerComponent('desktop-controls', {
     if (mounted) {
       var outwardNormal = mounted.getWorldNormal(new THREE.Vector3());
       fingertip = target.clone().add(outwardNormal.clone().multiplyScalar(standoff));
-      direction = outwardNormal.negate();
+      // Aiming purely opposite the surface normal is a straight-on poke —
+      // for a target that faces mostly up or down (a pedestal button),
+      // that's a much bigger swing away from the hand's own resting
+      // orientation than a real reach would be (nobody points straight
+      // down at a button from directly above it; they reach in at an
+      // angle). Blending in the natural "reach from roughly where you're
+      // standing" direction keeps the preview's turn-to-point closer to
+      // the hand's resting orientation, the same way an unmounted target's
+      // preview already aims.
+      var naturalReach = target.clone().sub(this.cameraWorldPosition()).normalize();
+      direction = outwardNormal.clone().negate().addScaledVector(naturalReach, 0.6).normalize();
     } else {
       direction = target.clone().sub(this.cameraWorldPosition()).normalize();
       fingertip = target.clone().addScaledVector(direction, -standoff);
@@ -772,61 +871,77 @@ AFRAME.registerComponent('desktop-controls', {
     hand.setPointPose(fingertip, direction, 'Point');
   },
 
-  // Desktop-only (real XR never calls this — see openWatch's early
-  // xrIsPresenting return). Applies the position captureWatchAnchor
-  // snapshotted at open time — see that method for why this doesn't
-  // track the live camera the way every other desktop hand placement
-  // does. Called every tick anyway (harmless, since the target is fixed)
-  // to keep reasserting it against anything else that might nudge the
-  // hand's transform.
-  placeWatchHand: function (snap) {
-    this.activeWatchHand.setWorldTransform(this._watchHandWorldPos, this._watchHandWorldQuat, 'Open', snap);
-  },
-
-  // Parked low and slightly forward of the watch hand, pointing generally
-  // ahead — a resting "using the watch" pose rather than an aimed one, so
-  // it never has a reason to drift up into the panel above it. Also from
-  // the captureWatchAnchor snapshot, not the live camera.
-  placeWatchPointer: function (snap) {
-    this.activePointerHand.setPointPose(this._watchPointerFingertip, this._watchPointerDirection, 'Point', snap);
-  },
-
-  // Overrides the panel's normal hand-relative position (set moments
-  // earlier this same frame by projected-menu's own tick — see menus.js's
-  // updatePanelPosition) so it renders up and out in front of where the
-  // player was facing when the watch opened (captureWatchAnchor) instead
-  // of hovering around the watch/hand sitting low below it. The position
-  // is fixed, but orientation is recomputed from the live camera position
-  // every tick so the panel keeps facing the player through anything that
-  // nudges camera height (e.g. crouch) without needing to move itself —
-  // rotation alone can't drag the panel off-anchor the way tracking full
-  // camera position would.
-  positionWatchPanel: function () {
-    var watch = this.activeWatchHand && this.activeWatchHand.el.components['hand-with-watch'];
-    var pm = watch && watch.projectedMenu;
-    var panelObject = pm && pm.panelEl && pm.panelEl.object3D;
-    var parent = panelObject && panelObject.parent;
-    if (!parent || !this._watchPanelWorldPos) return;
-    parent.updateMatrixWorld(true);
-    var worldPosition = this._watchPanelWorldPos;
+  // Places the real watch hand in a genuine "held up to your face, face
+  // toward the camera" pose every tick (continuously, not a one-time
+  // snapshot, so it tracks the player's position and crouch height while
+  // the watch stays open — its facing direction is pinned to the
+  // snapshotted watchViewQuaternion rather than the live camera, so it
+  // doesn't spin around with your view). This is the pose real VR
+  // players put their wrist in to trigger the small up-close menu layout
+  // (see menus.js's computeMode/computeAutomaticIntent) — scripting the
+  // hand into it, rather than overriding where the panel renders, is what
+  // lets projected-menu's own existing logic drive the menu correctly.
+  placeWatchHand: function () {
+    var watch = this.activeWatchHand.el.components['hand-with-watch'];
+    if (!watch) return;
+    var viewQuat = this.watchViewQuaternion();
     var camPos = this.cameraWorldPosition();
+    var forward = new THREE.Vector3(0, 0, -1).applyQuaternion(viewQuat);
+    var right = new THREE.Vector3(1, 0, 0).applyQuaternion(viewQuat);
+    var up = new THREE.Vector3(0, 1, 0).applyQuaternion(viewQuat);
+    var side = this.activeWatchHand.data.hand === 'left' ? -1 : 1;
+    var facePosition = camPos.clone()
+      .addScaledVector(forward, 0.5)
+      .addScaledVector(right, side * 0.07)
+      .addScaledVector(up, -0.09);
 
-    // Object3D.lookAt() factors out the target's own parent rotation to
-    // produce a correct world-facing orientation — but the watch hand's
-    // pose while open (see placeWatchHand) is contorted enough that this
-    // breaks down and the panel ends up facing sideways. A detached,
-    // parent-less scratch object never takes that code path at all: do
-    // the lookAt in plain world space, then convert to local the same
-    // way setWorldTransform does for hands (interaction-hints.js).
-    if (!this._panelLookAtScratch) this._panelLookAtScratch = new THREE.Object3D();
-    this._panelLookAtScratch.position.copy(worldPosition);
-    this._panelLookAtScratch.lookAt(camPos);
-    var worldQuaternion = this._panelLookAtScratch.quaternion;
+    this._watchFaceScratch.position.copy(facePosition);
+    this._watchFaceScratch.up.copy(up);
+    this._watchFaceScratch.lookAt(camPos);
+    var faceQuaternion = this._watchFaceScratch.quaternion.clone()
+      .multiply(this._watchFaceFixQuat)
+      .multiply(this._watchFaceRollQuat);
 
-    var parentQuaternion = new THREE.Quaternion();
-    parent.getWorldQuaternion(parentQuaternion);
-    panelObject.position.copy(parent.worldToLocal(worldPosition.clone()));
-    panelObject.quaternion.copy(parentQuaternion.invert().multiply(worldQuaternion));
+    var handPose = watch.computeHandPoseForFace(facePosition, faceQuaternion);
+    this.activeWatchHand.setWorldTransform(handPose.position, handPose.quaternion, this.activeWatchHand.heldEl ? 'Hold' : 'Open');
+
+    // The desktop equivalent of a physical poke: VR only ever opens a
+    // watch once a real hand's pose already satisfies computeMode() (an
+    // automatic-mode raise self-heals into that moment on its own; a
+    // manual-mode poke is a physical collision, which by construction
+    // can't happen until the hand is already there) — it never asks the
+    // menu to open before the hand backing that request has arrived.
+    // Scripting the hand into place over a few frames instead of
+    // teleporting it means the same has to hold here: open the instant
+    // the live pose first satisfies it, not before (openWatch no longer
+    // opens it up front for exactly this reason). Edge-triggered on the
+    // qualify/don't-qualify transition, not level-triggered on it — the
+    // scripted hand keeps holding a qualifying pose for as long as watch
+    // mode stays active, including the moment the player explicitly
+    // clicks close, and a level check would immediately re-open it right
+    // back (this is, in fact, exactly the bug that caused).
+    var qualifies = Boolean(watch.projectedMenu.computeMode());
+    if (qualifies && !this._watchWasQualifying && !watch.projectedMenu.active) watch.projectedMenu.open();
+    this._watchWasQualifying = qualifies;
+  },
+
+  // Places the pointer hand close to the camera in the real VR "point"
+  // pose (closed fist, extended finger — the same pose/laser mechanism
+  // wireUpFingertipPointing already wires up in watch-menu.js), aimed at
+  // wherever the fixed center reticle currently lands on the watch face —
+  // exactly like placeMountedPointer aims at a wall panel.
+  placeWatchPointer: function () {
+    var viewQuat = this.watchViewQuaternion();
+    var camPos = this.cameraWorldPosition();
+    var forward = new THREE.Vector3(0, 0, -1).applyQuaternion(viewQuat);
+    var right = new THREE.Vector3(1, 0, 0).applyQuaternion(viewQuat);
+    var up = new THREE.Vector3(0, 1, 0).applyQuaternion(viewQuat);
+    var side = this.activePointerHand.data.hand === 'left' ? -1 : 1;
+    var fingertip = camPos.clone()
+      .addScaledVector(right, side * 0.24)
+      .addScaledVector(up, -0.16)
+      .addScaledVector(forward, 0.13);
+    this.activePointerHand.setPointPose(fingertip, this.currentAimDirection(fingertip), 'Point');
   },
 
   placeMountedPoke: function (snap) {
@@ -848,15 +963,6 @@ AFRAME.registerComponent('desktop-controls', {
     if (this.hands.left && this.hands.left.heldEl) return this.hands.left;
     if (this.hands.right && this.hands.right.heldEl) return this.hands.right;
     return null;
-  },
-
-  closeUnrequestedDesktopWatches: function () {
-    if (this.mode === 'watch') return;
-    ['left', 'right'].forEach(function (side) {
-      var hand = this.hands[side];
-      var watch = hand && hand.el.components['hand-with-watch'];
-      if (watch && watch.projectedMenu && watch.projectedMenu.active) watch.projectedMenu.close();
-    }, this);
   },
 
   updateNormalHands: function () {
@@ -888,29 +994,20 @@ AFRAME.registerComponent('desktop-controls', {
       this._lastCameraY = this.cameraEl.object3D.position.y;
       return;
     }
+    this.enforcePitchLimit();
     this.syncHandsToCameraPose();
     this.updateCrouch(delta);
     this.syncHandsToCameraPose();
-    this.closeUnrequestedDesktopWatches();
     if (this.mode === 'normal') {
       this.applyMovement(delta);
       this.updateNormalHands();
     } else if (this.mode === 'watch') {
+      // Movement and crouch still work while checking the watch, per
+      // spec (see onKeyDown/onSemanticAction) — look stays free too, same
+      // as mounted mode (see setMode/captureWatchAnchor).
+      this.applyMovement(delta);
       this.placeWatchHand();
       this.placeWatchPointer();
-      // Must run in tick, not tock: A-Frame renders the scene between the
-      // tick and tock phases, so a tock-only override is always one frame
-      // late for rendering (the next tick's own updatePanelPosition — see
-      // menus.js's projected-menu — would already have put the panel back
-      // at its hand-relative default by the time the following tock ran).
-      // Called after placeWatchHand/placeWatchPointer so this frame's hand
-      // placement is already settled.
-      this.positionWatchPanel();
-      // The reticle is fixed at screen center, but what it's over changes
-      // every frame as mouse-look turns the camera — unlike the old
-      // mouse-position-driven hover, there's no discrete input event to
-      // hang this off of, so it's checked continuously instead.
-      this.updateHoveredMenuTarget();
     } else if (this.mode === 'mounted') {
       if (this.updateMountedTransition(performance.now())) {
         var zone = this.activeMounted && this.activeMounted.el.components['hint-zone'];

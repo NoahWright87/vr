@@ -356,6 +356,7 @@ import { cycleMenuOptionIndex, parseMenuOptions } from './menu-options.js';
       pokeCooldown: { default: 400 },
       modeHysteresis: { default: 0.12 },
       orientationGrace: { default: 250 },
+      automaticOpenDelay: { default: 320 },
       automatic: { default: false },
     },
 
@@ -370,8 +371,8 @@ import { cycleMenuOptionIndex, parseMenuOptions } from './menu-options.js';
       this.lookAwaySince = null;
       this.orientationLostSince = null;
       this.automaticDismissed = false;
+      this.automaticOpenSince = null;
       this.suppressPointing = false;
-      this.forcedMode = null;
       this.cameraEl = document.querySelector('a-camera');
 
       var panel = this.data.template.content.cloneNode(true).firstElementChild;
@@ -379,6 +380,23 @@ import { cycleMenuOptionIndex, parseMenuOptions } from './menu-options.js';
       this.pokeQuat = panel.object3D.quaternion.clone();
       panel.object3D.scale.setScalar(this.scale);
       this.panelEl = panel;
+      // pm-panel marks the panel root itself, so a fingertip raycaster hit
+      // anywhere inside it (see fingertip-laser-indicator in watch-menu.js)
+      // can walk back up to this same object3D and read its live scale —
+      // projected-menu scales the whole panel uniformly (see applyState
+      // below), so that one number is enough to size the laser dot/trail
+      // to match this particular panel, watch-sized or wall-sized alike.
+      panel.classList.add('pm-panel');
+      // Tags each page's own background plane (or the panel's own, for a
+      // single-page template) so a fingertip raycaster can register a hit
+      // on blank panel space, not just on an actual .menu-target — see
+      // fingertip-laser-indicator in watch-menu.js, which uses this to
+      // draw a laser dot instead of a beam that runs through the panel.
+      var pageHosts = panel.querySelectorAll('[data-menu-page]');
+      (pageHosts.length ? Array.prototype.slice.call(pageHosts) : [panel]).forEach(function (host) {
+        var background = host.querySelector('a-plane, a-box');
+        if (background) background.classList.add('pm-surface');
+      });
       this.chromes = Array.prototype.slice.call(panel.querySelectorAll('.menu-chrome-slot')).map(function (slot) {
         var chrome = buildMenuChrome(slot.parentNode, {
           title: slot.getAttribute('data-title') || '',
@@ -445,12 +463,26 @@ import { cycleMenuOptionIndex, parseMenuOptions } from './menu-options.js';
       this.panelEl.object3D.position.set(t.x + o.x, t.y + o.y, t.z + o.z);
     },
 
-    tick: function () {
-      if (this.data.automatic && !this.forcedMode) {
+    tick: function (time, delta) {
+      if (this.data.automatic) {
         var automaticIntent = this.computeAutomaticIntent();
-        if (automaticIntent !== 'open') this.automaticDismissed = false;
-        if (automaticIntent === 'open' && !this.automaticDismissed) this.active = true;
-        else if (automaticIntent === 'close') this.active = false;
+        if (automaticIntent !== 'open') {
+          this.automaticDismissed = false;
+          this.automaticOpenSince = null;
+        }
+        if (automaticIntent === 'open' && !this.automaticDismissed) {
+          // A hand mid-transition to some unrelated pose (reaching for a
+          // button elsewhere, say) can swing through this same pose
+          // window for a single-digit number of frames on its way past.
+          // Real intent to check a watch holds the pose; requiring it to
+          // hold briefly here before committing to open is what tells the
+          // two apart, the same way orientationGrace already tells a
+          // real, deliberate look-away from a brief flicker on exit.
+          if (!this.automaticOpenSince) this.automaticOpenSince = time;
+          if (time - this.automaticOpenSince >= this.data.automaticOpenDelay) this.active = true;
+        } else if (automaticIntent === 'close') {
+          this.active = false;
+        }
       }
       if (this.active) {
         var mode = this.computeMode();
@@ -459,7 +491,7 @@ import { cycleMenuOptionIndex, parseMenuOptions } from './menu-options.js';
       } else {
         this.mode = 'closed';
       }
-      this.applyState();
+      this.applyState(delta);
     },
 
     computeMode: function () {
@@ -468,7 +500,6 @@ import { cycleMenuOptionIndex, parseMenuOptions } from './menu-options.js';
       this.cameraEl.object3D.getWorldPosition(camPos);
       var pos = new THREE.Vector3();
       this.el.object3D.getWorldPosition(pos);
-      if (this.forcedMode === 'poke' || this.forcedMode === 'laser') return this.forcedMode;
       if (this.data.mode === 'poke' || this.data.mode === 'laser') {
         if (camPos.distanceTo(pos) > this.data.closeDistance) return null;
         if (this.isLookedAwayTooLong(camPos)) return null;
@@ -551,7 +582,7 @@ import { cycleMenuOptionIndex, parseMenuOptions } from './menu-options.js';
       return lookQuat;
     },
 
-    applyState: function () {
+    applyState: function (delta) {
       this.updatePanelPosition();
       var targetScale;
       var targetQuat;
@@ -565,9 +596,16 @@ import { cycleMenuOptionIndex, parseMenuOptions } from './menu-options.js';
         targetScale = 0.0001;
         targetQuat = null;
       }
-      this.scale += (targetScale - this.scale) * this.data.lerp;
+      // data.lerp is calibrated as "fraction covered per ~16.7ms frame"
+      // (60fps). Reapplying it that many times over whatever this tick's
+      // actual delta was, rather than once flat, keeps the open/close
+      // animation's wall-clock duration constant regardless of frame
+      // rate — a slow frame (or a sustained low frame rate) no longer
+      // stretches it out; it converges in the same real time either way.
+      var t = 1 - Math.pow(1 - this.data.lerp, Math.min(delta || 16.667, 1000) / 16.667);
+      this.scale += (targetScale - this.scale) * t;
       this.panelEl.object3D.scale.setScalar(this.scale);
-      if (targetQuat) this.panelEl.object3D.quaternion.slerp(targetQuat, this.data.lerp);
+      if (targetQuat) this.panelEl.object3D.quaternion.slerp(targetQuat, t);
       if (this.mode === 'closed') {
         if (this.scale < 0.005 && this.visible) {
           this.panelEl.setAttribute('visible', false);
@@ -635,16 +673,8 @@ import { cycleMenuOptionIndex, parseMenuOptions } from './menu-options.js';
       this.automaticDismissed = false;
       this.active = true;
     },
-    // Semantic input can ask for the same projected menu in a known
-    // interaction layout without pretending to be a tracked controller.
-    // Physical XR input continues to derive the mode from the prop pose.
-    openInMode: function (mode) {
-      this.forcedMode = mode === 'poke' ? 'poke' : 'laser';
-      this.open();
-    },
     close: function () {
       this.automaticDismissed = this.data.automatic;
       this.active = false;
-      this.forcedMode = null;
     },
   });

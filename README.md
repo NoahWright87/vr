@@ -281,18 +281,25 @@ instance is enough for this.
     only add this if a deploy fails asking for it. Find it on any
     domain's Overview page in the dashboard, in the right sidebar.
 
-**PR previews**: any PR touching `worker/**` (or the shared
-`common/multiplayer.js`/`worker/src/signal-rooms.js`) automatically
-gets its own live preview Worker — `preview-signal-hub.yml` deploys
-`vr-signal-relay-pr-<number>` (its own Durable Object namespace,
-isolated from production) and comments the `wss://` address on the
-PR. `cleanup-signal-hub-preview.yml` deletes it again when the PR
-closes, merged or not, so these don't pile up on the account. This
-isn't Cloudflare's built-in "preview URL" feature
-(`wrangler versions upload`) — that's explicitly unsupported for
-Workers using Durable Objects, which this one does — so it's a real
-second Worker instead of a lightweight preview version, on the same
-free plan as production.
+**PR previews**: every PR automatically gets its own live preview
+Worker — `preview-signal-hub.yml` deploys `vr-signal-relay-pr-<number>`
+(its own Durable Object namespace, isolated from production) and
+comments the `wss://` address on the PR. `cleanup-signal-hub-preview.yml`
+deletes it again when the PR closes, merged or not, so these don't
+pile up on the account. This isn't Cloudflare's built-in "preview URL"
+feature (`wrangler versions upload`) — that's explicitly unsupported
+for Workers using Durable Objects, which this one does — so it's a
+real second Worker instead of a lightweight preview version, on the
+same free plan as production.
+
+This deploys unconditionally, not just for PRs that touch `worker/**`
+— see "Hardcoding the relay address" below for why: every Netlify
+deploy-preview build bakes in a `vr-signal-relay-pr-<number>` address
+regardless of what the PR actually changed, since the HOST/JOIN
+buttons ship on every build. A PR whose own preview Worker doesn't
+exist yet still has its build pointed at that address, so the button
+lights up (the click itself works) but hosting/joining silently fails
+— the WebSocket error only reaches the browser console, not the UI.
 
 This is separate from, and unrelated to, the site's own Netlify
 deploy previews (the actual `primitives/menus/` page a browser loads)
