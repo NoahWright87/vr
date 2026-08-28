@@ -237,7 +237,12 @@ AFRAME.registerComponent('desktop-controls', {
   // instead (see activateMenuSelection) — a tap here or via onSemanticTap
   // below only ever activates whatever it's currently pointing at.
   onPointerDown: function (evt) {
-    if (this.mode === 'normal' || !this.activePointerHand || xrIsPresenting(this.sceneEl)) return;
+    if (xrIsPresenting(this.sceneEl)) return;
+    if (this.mode === 'normal') {
+      this.emitTriggerFallback(evt);
+      return;
+    }
+    if (!this.activePointerHand) return;
     if (evt.pointerType === 'touch') {
       if (this.mode === 'watch' && evt.target !== this.sceneEl.canvas) return;
     } else if (evt.pointerType === 'mouse' && evt.button !== 0) {
@@ -245,6 +250,18 @@ AFRAME.registerComponent('desktop-controls', {
     }
     evt.preventDefault();
     this.activateMenuSelection();
+  },
+
+  // The 'normal' mode mirror of emitGrabFallback: no menu/mounted/watch
+  // interaction is active, so a primary click/tap here isn't claimed by
+  // anything in this file. Left deliberately non-preventDefault()'d so
+  // A-Frame's own `cursor` component (the reticle+.shootable click
+  // fallback some games use) keeps working exactly as before for anyone
+  // not listening for this.
+  emitTriggerFallback: function (evt) {
+    if (evt.pointerType === 'mouse' && evt.button !== 0) return;
+    var dominant = this.getDominantHand();
+    if (dominant) dominant.el.emit('desktop-trigger-attempt', { source: 'desktop' }, false);
   },
 
   // Mobile's look-drag area (common/input-router.js's touch-controls)
@@ -412,11 +429,26 @@ AFRAME.registerComponent('desktop-controls', {
       else this.activateGrabCandidate(grabCandidate, source);
       return;
     }
-    if (this.manualCrouched) return;
-    var shoulderYOffset = this.data.crouchHeight - this.cameraEl.object3D.position.y;
-    var crouchCandidate = this.hintSystem.getDesktopCrouchCandidate('grab', shoulderYOffset);
-    if (!crouchCandidate) return;
-    this.beginAutoCrouch(crouchCandidate, source);
+    if (!this.manualCrouched) {
+      var shoulderYOffset = this.data.crouchHeight - this.cameraEl.object3D.position.y;
+      var crouchCandidate = this.hintSystem.getDesktopCrouchCandidate('grab', shoulderYOffset);
+      if (crouchCandidate) {
+        this.beginAutoCrouch(crouchCandidate, source);
+        return;
+      }
+    }
+    this.emitGrabFallback(source);
+  },
+
+  // Nothing in the hint-zone/simple-grabbable candidate system claimed this
+  // grab. This file has no idea what a physically-grabbed prop (a
+  // Pistols-style holsterable gun, say) looks like — that's game-specific —
+  // so it just announces "a grab was attempted by this hand" on the hand
+  // element itself and leaves it to whoever else is listening. A no-op for
+  // any scene where nothing listens for it.
+  emitGrabFallback: function (source) {
+    var dominant = this.getDominantHand();
+    if (dominant) dominant.el.emit('desktop-grab-attempt', { source: source || 'desktop' }, false);
   },
 
   beginAutoCrouch: function (candidate, source) {

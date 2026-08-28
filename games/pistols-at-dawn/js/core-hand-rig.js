@@ -12,6 +12,7 @@
       var REGRIP_WINDOW_MS = 400; // release and re-squeeze inside this and you keep what you were holding — see hand-rig.reclaimStash
       var RECOIL_MAX_POSITION = 0.18; // meters; automatic fire can kick hard, but never detach the hand from the arm
       var RECOIL_MAX_ROTATION = 0.7; // radians, about 40 degrees on any local axis
+      var DESKTOP_GRAB_REACH = 0.9; // meters from the player's own head — see onDesktopGrabAttempt/findDesktopReachableObject
       // ==============================================================
       // gripObjectOf
       // Where an object held by this hand should actually hang. Not
@@ -80,6 +81,8 @@
           this.triggerHeld = false; // and the same for the trigger, which a bowstring and a hose nozzle both need
           this.activeGripInteraction = null; // fixed machinery handles are gripped without joining the carry stack
 
+          this.waistAnchorEl = document.querySelector('#waist-anchor'); // only used by the desktop grab fallback below
+
           this.velocity = new THREE.Vector3();
           this._prevPos = new THREE.Vector3();
           this.el.object3D.getWorldPosition(this._prevPos); // avoid a garbage first-frame velocity spike
@@ -114,6 +117,8 @@
           this.onTriggerTouchStart = this.onTriggerTouchStart.bind(this);
           this.onTriggerTouchEnd = this.onTriggerTouchEnd.bind(this);
           this.onFaceButton = this.onFaceButton.bind(this);
+          this.onDesktopGrabAttempt = this.onDesktopGrabAttempt.bind(this);
+          this.onDesktopTriggerAttempt = this.onDesktopTriggerAttempt.bind(this);
 
           this.el.addEventListener('gripdown', this.onGripDown);
           this.el.addEventListener('gripup', this.onGripUp);
@@ -126,6 +131,19 @@
           FACE_BUTTON_EVENTS.forEach(function (name) {
             this.el.addEventListener(name, this.onFaceButton);
           }, this);
+          // desktop-controls.js (common/, game-agnostic) fires these two
+          // generic events on this hand's element when a desktop/mobile
+          // grab or trigger press wasn't claimed by the hint-zone/
+          // simple-grabbable candidate system it already knows about —
+          // see its own emitGrabFallback/emitTriggerFallback. Pistols'
+          // physically-grabbed holsterable props are exactly the kind of
+          // thing that system doesn't know about, so this hand answers
+          // for itself, by translating straight into the same raw
+          // gripdown/gripup/triggerdown/triggerup events a real Touch
+          // controller squeeze already fires above — no new state
+          // machine, just a second source for the same four events.
+          this.el.addEventListener('desktop-grab-attempt', this.onDesktopGrabAttempt);
+          this.el.addEventListener('desktop-trigger-attempt', this.onDesktopTriggerAttempt);
         },
 
         remove: function () {
@@ -138,6 +156,100 @@
           FACE_BUTTON_EVENTS.forEach(function (name) {
             this.el.removeEventListener(name, this.onFaceButton);
           }, this);
+          this.el.removeEventListener('desktop-grab-attempt', this.onDesktopGrabAttempt);
+          this.el.removeEventListener('desktop-trigger-attempt', this.onDesktopTriggerAttempt);
+        },
+
+        // Toggle, not a hold: on desktop/mobile there's no physical grip to
+        // keep squeezed, so one press draws (grip down and held) and a
+        // second press on an already-full hand releases (grip up) — see
+        // onGripDown/onGripUp just below for what each actually does; this
+        // only decides which one applies. Releasing doesn't reposition the
+        // hand first, so it holsters/drops from wherever the hand already
+        // is, identically to a real mid-air VR release.
+        onDesktopGrabAttempt: function () {
+          if (this.heldObjects.length || this.supportObjects.length) {
+            this.onGripUp();
+            return;
+          }
+          var obj = this.findDesktopReachableObject();
+          if (!obj) return;
+          var semanticHand = this.el.components['semantic-hand'];
+          if (semanticHand) {
+            var pos = new THREE.Vector3();
+            var quat = new THREE.Quaternion();
+            obj.object3D.getWorldPosition(pos);
+            obj.object3D.getWorldQuaternion(quat);
+            semanticHand.setWorldTransform(pos, quat, 'Hold', true);
+          }
+          // Snapped exactly onto obj's own transform above, so hand-rig's
+          // own findGrabbableObject() (tuned tight for a real tracked
+          // hand's precision) will resolve to the same object from here —
+          // this doesn't grab obj directly, it just makes the upcoming
+          // real gripdown succeed the way a precise VR reach already would.
+          this.el.emit('gripdown', null, false);
+        },
+
+        // findGrabbableObject()'s per-item grabRadius is tuned for a real
+        // tracked hand's precision and is far tighter than where a desktop
+        // player's approximate resting hand pose (desktop-controls.js's
+        // placeRestHand, tuned for holding things up in view generally,
+        // not for "hand hangs exactly at your hip") actually ends up. This
+        // widens the search to arm's reach of the player's own belt
+        // (#waist-anchor already tracks that every tick — see body-anchor)
+        // rather than the hand's current position or the camera — using
+        // the head would let the hat/mouth slots, which sit right at it,
+        // always out-rank an actual hip holster a few tens of centimeters
+        // further away.
+        //
+        // Deliberately firearms-only for now, not every ".grabbable" —
+        // the belt/vest/hat worn AT that same anchor point are themselves
+        // grabbable and sit exactly on it (distance 0), so a generic
+        // nearest-to-anchor search picks your own belt before it ever
+        // reaches an actual holstered gun a hip-width to either side. A
+        // real VR reach doesn't have this problem because it approaches
+        // from a specific side; this is the smallest fix that answers
+        // "pick up a gun" honestly rather than resolving that ambiguity
+        // properly, which Phase 1's hotbar (explicit slot selection,
+        // no nearest-anything search at all) makes moot.
+        findDesktopReachableObject: function () {
+          if (!this.waistAnchorEl) return null;
+          var waistPos = new THREE.Vector3();
+          this.waistAnchorEl.object3D.getWorldPosition(waistPos);
+
+          var self = this;
+          var objPos = new THREE.Vector3();
+          var nearest = null;
+          var nearestDist = Infinity;
+
+          sceneElements('.grabbable').forEach(function (objEl) {
+            if (!objEl.components.firearm) return;
+            var holsterable = objEl.components.holsterable;
+            if (!holsterable) return;
+            var eligible =
+              holsterable.state === 'holstered' ||
+              holsterable.state === 'resting' ||
+              (holsterable.state === 'dangling' && holsterable.hand === self.el);
+            if (!eligible) return;
+
+            objEl.object3D.getWorldPosition(objPos);
+            var d = objPos.distanceTo(waistPos);
+            if (d < DESKTOP_GRAB_REACH && d < nearestDist) {
+              nearest = objEl;
+              nearestDist = d;
+            }
+          });
+
+          return nearest;
+        },
+
+        // A tap, not a hold — Pistols' pistols/shotgun are single-action,
+        // so this mirrors a quick real trigger pull rather than adding a
+        // separate "held down" desktop firing mode.
+        onDesktopTriggerAttempt: function () {
+          if (!this.heldObjects.length) return;
+          this.el.emit('triggerdown', null, false);
+          this.el.emit('triggerup', null, false);
         },
 
         // Smoothed (50%-blended) world-space velocity, so a single
@@ -691,6 +803,46 @@
             }
           }
           return best;
+        },
+      });
+
+      // ==============================================================
+      // COMPONENT: reticle-fallback
+      // The fixed center reticle (index.html) is a desktop/phone-only
+      // sanity-check for target scoring when there's no gun in hand yet
+      // (see its own comment there) — it fires a plain "click" on
+      // whatever ".shootable" thing it's pointed at, which scoring-ring
+      // and friends already treat identically to a real fired "shot"
+      // (world-targets.js). Once a hand can actually draw and fire a
+      // real gun on desktop too (see hand-rig's onDesktopTriggerAttempt),
+      // leaving the reticle's raycaster live at the same time would let
+      // one physical click register as BOTH a real shot and a reticle
+      // click on the same target — a genuine double-hit, not just visual
+      // clutter. Disabling its raycaster (which A-Frame's own `cursor`
+      // component reads before ever emitting that synthetic click) is
+      // what actually prevents the double-count; hiding the ring is just
+      // keeping the visual honest about it being off.
+      // ==============================================================
+      registerComponent('reticle-fallback', {
+        init: function () {
+          this.lastEnabled = null;
+        },
+
+        tick: function () {
+          var hands = sceneElements('.hand');
+          var holding = false;
+          for (var i = 0; i < hands.length; i++) {
+            var rig = hands[i].components['hand-rig'];
+            if (rig && rig.hasWeapon()) {
+              holding = true;
+              break;
+            }
+          }
+          var enabled = !holding;
+          if (enabled === this.lastEnabled) return;
+          this.lastEnabled = enabled;
+          this.el.setAttribute('raycaster', 'enabled', enabled);
+          this.el.setAttribute('visible', enabled);
         },
       });
 

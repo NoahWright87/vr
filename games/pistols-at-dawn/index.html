@@ -301,12 +301,35 @@
 
       <!-- ============================================================
            PLAYER RIG + DESKTOP/PHONE FALLBACK
-           The grab/holster/dangle mechanic below is inherently a VR
-           interaction (it needs grip + trigger buttons and real hand
-           motion), so there's no meaningful desktop equivalent for it.
+           The grab/holster/dangle mechanic below reads hand-rig's own
+           entity transform and raw gripdown/gripup/triggerdown/
+           triggerup events — the same events a real Touch controller's
+           squeeze fires. Confirmed empirically (headless Playwright
+           against the real dev build, not just read from source): while
+           not presenting to WebXR, oculus-touch-controls/tracked-
+           controls never attaches/activates at all (no controller to
+           track), so nothing fights semantic-hand's own non-XR pose
+           writes to this same entity — meaning a desktop/mobile input
+           layer that (a) poses a hand's transform via semantic-hand's
+           existing setWorldTransform/setPointPose and (b) emits those
+           same four raw events on that hand element drives hand-rig,
+           holsterable, and firearm completely unchanged, with no new
+           code needed in any of those files. Drawing a holstered pistol
+           this way (snap the hand to the pistol's world transform, then
+           emit gripdown) round-trips correctly today.
+           The one nuance worth knowing before wiring a "put it back"
+           gesture: holsterable.release() checks the ITEM's own current
+           world position against nearby slots, and a held item sits at
+           the hand's grip child plus a heldPosition offset — not
+           exactly wherever the hand was placed — so re-holstering needs
+           to aim the hand so the ITEM (not the hand) lands back within
+           an anchor-slot's catch radius, or release() falls through to
+           startFalling() instead. See TODO.md's "Desktop semantic
+           hands" section for the write-up.
            The reticle + click-to-score fallback from the previous
-           version is kept as-is, purely so target scoring stays
-           sanity-checkable without a headset.
+           version is kept as-is for now, alongside this, purely so
+           target scoring stays sanity-checkable without a headset even
+           before every weapon is reachable this way.
 
            Camera and hands used to be top-level scene entities with no
            shared parent — fine when the only way to get around was the
@@ -372,7 +395,9 @@
             position="0 0.37 -1"
           ></a-text>
           <a-entity
+            id="reticle-cursor"
             cursor="fuse: false"
+            reticle-fallback
             position="0 0 -1"
             geometry="primitive: ring; radiusInner: 0.005; radiusOuter: 0.008"
             material="color: #FFFFFF; shader: flat; opacity: 0.8"
