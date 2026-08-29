@@ -218,6 +218,9 @@ AFRAME.registerComponent('desktop-controls', {
     } else if (evt.code === 'KeyF') {
       evt.preventDefault();
       this.handleGrabKey();
+    } else if (evt.code === 'Digit1' || evt.code === 'Digit2' || evt.code === 'Digit3') {
+      evt.preventDefault();
+      if (this.mode === 'normal') this.emitHotbarFallback(Number(evt.code.slice(-1)));
     }
   },
 
@@ -239,7 +242,14 @@ AFRAME.registerComponent('desktop-controls', {
   onPointerDown: function (evt) {
     if (xrIsPresenting(this.sceneEl)) return;
     if (this.mode === 'normal') {
-      this.emitTriggerFallback(evt);
+      // Touch gets its own explicit FIRE button (routed through
+      // onSemanticAction's 'activate' fallback below) rather than a raw
+      // tap here: the touch look-area covers most of the screen for
+      // free-look dragging, and a raw pointerdown fires at the very start
+      // of every drag, before touch-controls' own tap-vs-drag
+      // disambiguation has a chance to rule it out — so a tap-to-fire here
+      // would also fire on every look-drag, not just a deliberate tap.
+      if (evt.pointerType === 'mouse' && evt.button === 0) this.emitTriggerFallback();
       return;
     }
     if (!this.activePointerHand) return;
@@ -258,10 +268,20 @@ AFRAME.registerComponent('desktop-controls', {
   // A-Frame's own `cursor` component (the reticle+.shootable click
   // fallback some games use) keeps working exactly as before for anyone
   // not listening for this.
-  emitTriggerFallback: function (evt) {
-    if (evt.pointerType === 'mouse' && evt.button !== 0) return;
-    var dominant = this.getDominantHand();
-    if (dominant) dominant.el.emit('desktop-trigger-attempt', { source: 'desktop' }, false);
+  // Both hands, not just the dominant one: a weapon can now end up in
+  // either hand (Pistols' numbered holster keys draw the left hip
+  // holster into the left hand specifically, regardless of handedness
+  // preference — see core-equip.js's activateHotbarSlot), so firing
+  // can't assume it's always the dominant hand holding something.
+  // Whichever hand's own listener actually has a firearm decides for
+  // itself; the other silently no-ops, the same way it already does
+  // for an empty-handed dominant hand today.
+  emitTriggerFallback: function () {
+    var self = this;
+    ['left', 'right'].forEach(function (side) {
+      var hand = self.hands[side];
+      if (hand) hand.el.emit('desktop-trigger-attempt', { source: 'desktop' }, false);
+    });
   },
 
   // Mobile's look-drag area (common/input-router.js's touch-controls)
@@ -326,7 +346,20 @@ AFRAME.registerComponent('desktop-controls', {
     } else if (detail.action === 'crouch') {
       if (this.mode === 'normal' || this.mode === 'watch') this.toggleManualCrouch();
     } else if (detail.action === 'activate') {
-      this.activateMenuSelection();
+      // activateMenuSelection() claims this in 'watch'/'mounted' mode, or
+      // in 'normal' mode for a game that actually has .menu-target
+      // elements (the Showcase's always-open panel). Nothing here claims
+      // it for Pistols, so it falls through to the same trigger-fallback
+      // mechanism the mouse-click path uses (onPointerDown) — this is what
+      // gives gamepad's primary button and touch's FIRE button a working
+      // shot, for free, via the exact same desktop-trigger-attempt event.
+      if (!this.activateMenuSelection()) this.emitTriggerFallback();
+    } else if (detail.action === 'hotbar1') {
+      this.emitHotbarFallback(1, source);
+    } else if (detail.action === 'hotbar2') {
+      this.emitHotbarFallback(2, source);
+    } else if (detail.action === 'hotbar3') {
+      this.emitHotbarFallback(3, source);
     }
   },
 
@@ -449,6 +482,16 @@ AFRAME.registerComponent('desktop-controls', {
   emitGrabFallback: function (source) {
     var dominant = this.getDominantHand();
     if (dominant) dominant.el.emit('desktop-grab-attempt', { source: source || 'desktop' }, false);
+  },
+
+  // The numbered-holster equivalent of emitGrabFallback. Unlike grab/
+  // trigger there's no per-hand ambiguity to resolve here (the whole point
+  // of a fixed slot is that it already says which hand it wants), so this
+  // fires once at the scene level rather than on a specific hand element —
+  // this file still has no idea what slot 1/2/3 mean, only Pistols does
+  // (see core-equip.js's activateHotbarSlot).
+  emitHotbarFallback: function (slot, source) {
+    this.sceneEl.emit('desktop-hotbar-attempt', { slot: slot, source: source || 'desktop' }, false);
   },
 
   beginAutoCrouch: function (candidate, source) {

@@ -353,6 +353,12 @@ if (typeof AFRAME !== 'undefined') {
       watchLabel: { default: 'MENU' },
       crouchAction: { default: 'none' },
       crouchLabel: { default: 'CROUCH' },
+      hotbar1Action: { default: 'none' },
+      hotbar1Label: { default: '1' },
+      hotbar2Action: { default: 'none' },
+      hotbar2Label: { default: '2' },
+      hotbar3Action: { default: 'none' },
+      hotbar3Label: { default: '3' },
       chargeMs: { default: 900 },
       minimumStrength: { default: 0.35 },
     },
@@ -364,6 +370,7 @@ if (typeof AFRAME !== 'undefined') {
       this.lookPointer = null;
       this.lookLast = null;
       this.activeActions = new Map();
+      this.buttonsByAction = {};
       this.nextHand = this.data.dominantHand;
       this.interactionMode = 'normal';
       this.onFamilyChanged = this.updateVisibility.bind(this);
@@ -395,6 +402,13 @@ if (typeof AFRAME !== 'undefined') {
         '.semantic-touch-button{width:74px;height:56px;border:2px solid #fff;border-radius:18px;background:rgba(12,18,30,.7);color:#fff;font:700 12px system-ui;letter-spacing:.03em;pointer-events:auto;touch-action:none;box-shadow:0 2px 9px #0008}',
         '.semantic-touch-button[data-primary="true"]{height:74px;border-radius:50%;background:rgba(20,105,155,.78)}',
         '.semantic-touch-button.is-held{transform:scale(.94);background:rgba(38,170,225,.88)}',
+        // Contextual coloring (setButtonState) — a holster button reads
+        // differently depending on what it currently means: "empty" (dim,
+        // there's nothing there to draw), "holstered" (default look,
+        // ready to draw) and "held" (highlighted, this is what pressing it
+        // again puts away).
+        '.semantic-touch-button[data-state="empty"]{opacity:.45}',
+        '.semantic-touch-button[data-state="held"]{background:rgba(210,150,40,.85);border-color:#ffd48a}',
         'html[data-input-family="touch"] #debug-controls,html[data-input-family="touch"] #reset-button-html{display:none!important}',
         '@media (orientation:portrait){.semantic-touch-stick{width:96px;height:96px}.semantic-touch-stick-knob{left:27px;top:27px;width:42px;height:42px}.semantic-touch-actions{grid-template-columns:repeat(2,66px)}.semantic-touch-button{width:66px}}',
       ].join('');
@@ -412,6 +426,9 @@ if (typeof AFRAME !== 'undefined') {
       this.crouchButtonEl = this.addActionButton(this.data.crouchAction, this.data.crouchLabel, false);
       this.addActionButton(this.data.interactAction, this.data.interactLabel, false);
       this.addActionButton(this.data.grabAction, this.data.grabLabel, false);
+      this.addActionButton(this.data.hotbar1Action, this.data.hotbar1Label, false);
+      this.addActionButton(this.data.hotbar2Action, this.data.hotbar2Label, false);
+      this.addActionButton(this.data.hotbar3Action, this.data.hotbar3Label, false);
       this.addActionButton(this.data.secondaryAction, this.data.secondaryLabel, true);
       this.addActionButton(this.data.primaryAction, this.data.primaryLabel, true);
     },
@@ -507,6 +524,7 @@ if (typeof AFRAME !== 'undefined') {
       button.dataset.action = action;
       button.dataset.primary = primary ? 'true' : 'false';
       button.setAttribute('aria-label', label);
+      this.buttonsByAction[action] = button;
       button.addEventListener('pointerdown', function (evt) {
         evt.preventDefault(); evt.stopPropagation();
         button.setPointerCapture(evt.pointerId);
@@ -528,6 +546,19 @@ if (typeof AFRAME !== 'undefined') {
       button.addEventListener('lostpointercapture', function (evt) { finish(evt, 'cancel'); });
       this.actionsEl.appendChild(button);
       return button;
+    },
+
+    // Lets a game color one of its own action buttons contextually (e.g.
+    // Pistols' numbered holster buttons: empty/holstered/held) without
+    // this file needing to know what any of that means — it just tags the
+    // button `data-state`, and the CSS above (or a game's own added rules)
+    // decides what each state looks like. A no-op if that action's button
+    // doesn't exist (action disabled, or a family other than touch active).
+    setButtonState: function (action, state) {
+      var button = this.buttonsByAction[action];
+      if (!button) return;
+      if (state) button.dataset.state = state;
+      else delete button.dataset.state;
     },
 
     emitAction: function (pending, phase, heldMs) {

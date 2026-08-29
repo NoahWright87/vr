@@ -12,7 +12,108 @@
       var REGRIP_WINDOW_MS = 400; // release and re-squeeze inside this and you keep what you were holding — see hand-rig.reclaimStash
       var RECOIL_MAX_POSITION = 0.18; // meters; automatic fire can kick hard, but never detach the hand from the arm
       var RECOIL_MAX_ROTATION = 0.7; // radians, about 40 degrees on any local axis
-      var DESKTOP_GRAB_REACH = 0.9; // meters from the player's own head — see onDesktopGrabAttempt/findDesktopReachableObject
+
+      // ==============================================================
+      // clearOtherHandIfExclusive
+      // Shared by hand-rig's own onDesktopGrabAttempt (the F key) and
+      // core-equip.js's activateHotbarSlot (the number-key holster
+      // system): a "large" item (itemSize other than 'small' — a
+      // shotgun or long gun, per items-guns.js) is exclusive of
+      // anything the OTHER hand holds, and vice versa. Only pistols
+      // and other small hip-holsterable items are meant to be dual-
+      // wielded. This foreshadows a real future two-handed grip for
+      // weapons like the shotgun (which already has a supportGrip/
+      // supportRadius forend in items-guns.js) without needing one yet
+      // — today it just means drawing or picking up a large item bumps
+      // whatever the other hand holds, and picking up anything while a
+      // large item is out bumps that large item first.
+      //
+      // MUST run AFTER the grab it's paired with, never before:
+      // releasing the other hand's item first would send it looking
+      // for a home (tryHolsterElse) before the newly grabbed item has
+      // vacated its own slot, so a same-slot swap (drawing the shotgun
+      // while a same-sized rifle sits in the other hand) would race for
+      // that slot and drop the rifle instead of landing it there.
+      // ==============================================================
+      function clearOtherHandIfExclusive(grabbingHandRig, grabbedObj) {
+        var grabbedHolsterable = grabbedObj.components.holsterable;
+        var grabbedIsLarge = !grabbedHolsterable || grabbedHolsterable.data.itemSize !== 'small';
+
+        var otherHandEl = findOtherHand(grabbingHandRig.el);
+        var otherHandRig = otherHandEl && otherHandEl.components['hand-rig'];
+        if (!otherHandRig || !otherHandRig.heldObjects.length) return;
+
+        var otherHeld = otherHandRig.heldObjects[0];
+        var otherHolsterable = otherHeld.components.holsterable;
+        var otherIsLarge = !otherHolsterable || otherHolsterable.data.itemSize !== 'small';
+
+        if (!grabbedIsLarge && !otherIsLarge) return;
+
+        // A plain release lets the departing item go wherever
+        // tryHolsterElse's ordinary distance check finds it from the
+        // hand's CURRENT pose, which on desktop is whatever fixed
+        // formula desktop-controls.js's placeRestHand/placeHeldHand
+        // happens to be using — not a real physical position, and not
+        // reliably near where the item actually needs to land. Reach
+        // that hand to the right destination first, same as a real VR
+        // player's arm would need to physically move to put something
+        // away, in one of two shapes depending on which item is large:
+        //
+        //  - both large: there is exactly one such slot on the body
+        //    (the back bandolier), so the departing item is aimed at
+        //    the SAME slot the incoming one just vacated — the "swap"
+        //    the request describes (holster the rifle onto your back
+        //    while the other hand takes the shotgun off it).
+        //  - otherwise, the departing item is aimed at its OWN home
+        //    (holsterSelector) instead — drawing a pistol while the
+        //    shotgun is out should send the shotgun back to the back
+        //    bandolier specifically, not wherever drawing a hip pistol
+        //    happens to leave the other hand.
+        //
+        // holsterSelector is schema'd as type: 'selector', so .data
+        // already holds the resolved element, not a string to re-query.
+        var destinationSlotEl = grabbedIsLarge && otherIsLarge
+          ? grabbedHolsterable.data.holsterSelector
+          : otherHolsterable && otherHolsterable.data.holsterSelector;
+
+        var otherSemanticHand = otherHandRig.el.components['semantic-hand'];
+        if (destinationSlotEl && otherSemanticHand) {
+          var pos = new THREE.Vector3();
+          var quat = new THREE.Quaternion();
+          destinationSlotEl.object3D.getWorldPosition(pos);
+          destinationSlotEl.object3D.getWorldQuaternion(quat);
+          otherSemanticHand.setWorldTransform(pos, quat, 'Hold', true);
+          otherHandRig.settleVelocity();
+        }
+
+        otherHandRig.onGripUp();
+      }
+
+      // Releases whatever `handRig` currently holds, first reaching that
+      // hand to the item's own home slot (holsterSelector) if it has
+      // one — see clearOtherHandIfExclusive's own comment for why a
+      // plain release can't rely on tryHolsterElse's ordinary distance
+      // check succeeding from wherever the hand's desktop rest/carry
+      // pose happens to be. Used by activateHotbarSlot (core-equip.js)
+      // to bump whatever a target hand already holds before it takes a
+      // numbered slot's item — a deliberate "put this specific known
+      // thing away," unlike F's own plain release, which keeps falling
+      // wherever a real mid-air VR drop would.
+      function releaseToOwnHome(handRig) {
+        var held = handRig.heldObjects[0];
+        var holsterable = held && held.components.holsterable;
+        var homeSlotEl = holsterable && holsterable.data.holsterSelector;
+        var semanticHand = handRig.el.components['semantic-hand'];
+        if (homeSlotEl && semanticHand) {
+          var pos = new THREE.Vector3();
+          var quat = new THREE.Quaternion();
+          homeSlotEl.object3D.getWorldPosition(pos);
+          homeSlotEl.object3D.getWorldQuaternion(quat);
+          semanticHand.setWorldTransform(pos, quat, 'Hold', true);
+          handRig.settleVelocity();
+        }
+        handRig.onGripUp();
+      }
       // ==============================================================
       // gripObjectOf
       // Where an object held by this hand should actually hang. Not
@@ -80,8 +181,6 @@
           this.gripHeld = false; // true for the whole time the grip is squeezed, not just the initial press
           this.triggerHeld = false; // and the same for the trigger, which a bowstring and a hose nozzle both need
           this.activeGripInteraction = null; // fixed machinery handles are gripped without joining the carry stack
-
-          this.waistAnchorEl = document.querySelector('#waist-anchor'); // only used by the desktop grab fallback below
 
           this.velocity = new THREE.Vector3();
           this._prevPos = new THREE.Vector3();
@@ -167,13 +266,24 @@
         // only decides which one applies. Releasing doesn't reposition the
         // hand first, so it holsters/drops from wherever the hand already
         // is, identically to a real mid-air VR release.
+        //
+        // This is deliberately a plain reach now, not a wide/aimed search:
+        // the hip holsters and back bandolier have their own dedicated
+        // number-key hotbar (see core-equip.js's activateHotbarSlot) that
+        // sidesteps aiming entirely, because a desktop/mobile player can't
+        // turn their head independently of their body to actually look at
+        // a holster the way a VR player can. F is for a ".grabbable" prop
+        // that's actually in front of the player right now — walk up to a
+        // rifle on a rack and press F, same as a real VR reach would need
+        // you to be genuinely close.
         onDesktopGrabAttempt: function () {
           if (this.heldObjects.length || this.supportObjects.length) {
             this.onGripUp();
             return;
           }
-          var obj = this.findDesktopReachableObject();
+          var obj = this.findGrabbableObject();
           if (!obj) return;
+          this.settleVelocity();
           var semanticHand = this.el.components['semantic-hand'];
           if (semanticHand) {
             var pos = new THREE.Vector3();
@@ -188,59 +298,7 @@
           // this doesn't grab obj directly, it just makes the upcoming
           // real gripdown succeed the way a precise VR reach already would.
           this.el.emit('gripdown', null, false);
-        },
-
-        // findGrabbableObject()'s per-item grabRadius is tuned for a real
-        // tracked hand's precision and is far tighter than where a desktop
-        // player's approximate resting hand pose (desktop-controls.js's
-        // placeRestHand, tuned for holding things up in view generally,
-        // not for "hand hangs exactly at your hip") actually ends up. This
-        // widens the search to arm's reach of the player's own belt
-        // (#waist-anchor already tracks that every tick — see body-anchor)
-        // rather than the hand's current position or the camera — using
-        // the head would let the hat/mouth slots, which sit right at it,
-        // always out-rank an actual hip holster a few tens of centimeters
-        // further away.
-        //
-        // Deliberately firearms-only for now, not every ".grabbable" —
-        // the belt/vest/hat worn AT that same anchor point are themselves
-        // grabbable and sit exactly on it (distance 0), so a generic
-        // nearest-to-anchor search picks your own belt before it ever
-        // reaches an actual holstered gun a hip-width to either side. A
-        // real VR reach doesn't have this problem because it approaches
-        // from a specific side; this is the smallest fix that answers
-        // "pick up a gun" honestly rather than resolving that ambiguity
-        // properly, which Phase 1's hotbar (explicit slot selection,
-        // no nearest-anything search at all) makes moot.
-        findDesktopReachableObject: function () {
-          if (!this.waistAnchorEl) return null;
-          var waistPos = new THREE.Vector3();
-          this.waistAnchorEl.object3D.getWorldPosition(waistPos);
-
-          var self = this;
-          var objPos = new THREE.Vector3();
-          var nearest = null;
-          var nearestDist = Infinity;
-
-          sceneElements('.grabbable').forEach(function (objEl) {
-            if (!objEl.components.firearm) return;
-            var holsterable = objEl.components.holsterable;
-            if (!holsterable) return;
-            var eligible =
-              holsterable.state === 'holstered' ||
-              holsterable.state === 'resting' ||
-              (holsterable.state === 'dangling' && holsterable.hand === self.el);
-            if (!eligible) return;
-
-            objEl.object3D.getWorldPosition(objPos);
-            var d = objPos.distanceTo(waistPos);
-            if (d < DESKTOP_GRAB_REACH && d < nearestDist) {
-              nearest = objEl;
-              nearestDist = d;
-            }
-          });
-
-          return nearest;
+          clearOtherHandIfExclusive(this, obj);
         },
 
         // A tap, not a hold — Pistols' pistols/shotgun are single-action,
@@ -399,6 +457,25 @@
         // can happen on the very first frame.
         gripObject3D: function () {
           return this.gripEl ? this.gripEl.object3D : this.el.object3D;
+        },
+
+        // Desktop/mobile input teleports this hand via semantic-hand's
+        // setWorldTransform(..., snap: true) rather than moving it
+        // smoothly (see onDesktopGrabAttempt and core-equip.js's
+        // activateHotbarSlot) — a real reach in VR always arrives at
+        // some ordinary hand speed, but a scripted teleport is instant,
+        // and tick()'s own velocity smoothing has no way to tell "the
+        // hand just jumped 0.8m" apart from "the player swung it that
+        // fast." Left alone, the very next release reads that jump as
+        // real motion and computeThrowVelocity (core.js) can call it an
+        // overhand throw or upward toss instead of a deliberate holster.
+        // Call this right after any such teleport, before the
+        // gripdown/gripup that follows it, to tell tick() "this is
+        // where the hand has always been" rather than "the hand just
+        // moved here."
+        settleVelocity: function () {
+          this.velocity.set(0, 0, 0);
+          this.el.object3D.getWorldPosition(this._prevPos);
         },
 
         isFull: function () {

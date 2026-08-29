@@ -290,7 +290,7 @@
       </a-entity>
     </template>
 
-    <a-scene pistols-watch-menu area-manager scene-index>
+    <a-scene pistols-watch-menu area-manager scene-index hotbar-equip>
       <a-sky color="#7d6b8f" data-area-persistent></a-sky>
       <!-- Area fragments may add their own lamps, but these outdoor lights
            live for the whole session. Without a persistent baseline the
@@ -361,7 +361,7 @@
         locomotion-demo="speed: 3; sprintMultiplier: 1.5"
         semantic-look-controls="camera: #head-camera"
         gamepad-input="leftHand: #left-hand; rightHand: #right-hand; sprintAction: sprint"
-        touch-controls="leftHand: #left-hand; rightHand: #right-hand; primaryAction: none; interactAction: interact; interactLabel: INTERACT; grabAction: none; watchAction: watch; watchLabel: WATCH; crouchAction: none"
+        touch-controls="leftHand: #left-hand; rightHand: #right-hand; primaryAction: activate; primaryLabel: FIRE; interactAction: interact; interactLabel: INTERACT; grabAction: grab; grabLabel: PICKUP; watchAction: watch; watchLabel: WATCH; crouchAction: crouch; hotbar1Action: hotbar1; hotbar2Action: hotbar2; hotbar3Action: hotbar3"
         desktop-controls="camera: #head-camera; leftHand: #left-hand; rightHand: #right-hand; sprintEnabled: true"
         data-area-persistent
       >

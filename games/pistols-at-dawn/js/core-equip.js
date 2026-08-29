@@ -355,6 +355,164 @@
       });
 
       // ==============================================================
+      // COMPONENT: hotbar-equip
+      // The number-key/touch-button answer to "how do I draw a gun on
+      // desktop/mobile when I can't turn my head independently of my
+      // body to actually aim a reach at a holster the way VR lets you."
+      // Three fixed slots for now — 1: left hip, 2: right hip, 3: the
+      // back bandolier — each resolved to a specific item once, lazily,
+      // the first time its key is pressed (whatever that anchor-slot's
+      // current occupant is), so later presses keep meaning "that
+      // specific gun" even once it's left the slot.
+      //
+      // Still just choreography, not a bespoke equip system: every
+      // press ends in exactly the same two moves core-hand-rig.js's
+      // onDesktopGrabAttempt (the F key) already uses — pose a hand's
+      // transform via its semantic-hand component onto the item's
+      // current world transform, then fire the real gripdown/gripup
+      // events hand-rig already listens for. There is no separate
+      // "equip" state anywhere; hand-rig's heldObjects and holsterable's
+      // own state are the only truth.
+      // ==============================================================
+      registerComponent('hotbar-equip', {
+        init: function () {
+          this.slotItems = {}; // 1/2/3 -> resolved item element, cached lazily
+          this._lastButtonState = {};
+          this.onHotbarAttempt = this.onHotbarAttempt.bind(this);
+          this.el.addEventListener('desktop-hotbar-attempt', this.onHotbarAttempt);
+        },
+
+        remove: function () {
+          this.el.removeEventListener('desktop-hotbar-attempt', this.onHotbarAttempt);
+        },
+
+        onHotbarAttempt: function (evt) {
+          this.activateSlot(evt.detail.slot);
+        },
+
+        // Contextual button coloring for touch (common/input-router.js's
+        // setButtonState) — component init order between the scene and a
+        // nested entity isn't guaranteed, so #player-rig's touch-controls
+        // is looked up lazily here rather than cached in init(). Guarded
+        // on last-known state per slot so this is an occasional
+        // setAttribute on change, not one every frame.
+        tick: function () {
+          if (!this.touchControls) {
+            var playerRig = document.querySelector('#player-rig');
+            this.touchControls = playerRig && playerRig.components['touch-controls'];
+            if (!this.touchControls) return;
+          }
+          for (var n = 1; n <= 3; n++) {
+            var state = this.computeButtonState(n);
+            if (this._lastButtonState[n] === state) continue;
+            this._lastButtonState[n] = state;
+            this.touchControls.setButtonState('hotbar' + n, state);
+          }
+        },
+
+        computeButtonState: function (n) {
+          var item = this.resolveItem(n);
+          if (!item) return 'empty';
+          var holsterable = item.components.holsterable;
+          return holsterable && holsterable.state === 'held' ? 'held' : 'holstered';
+        },
+
+        // The anchor-slot element backing each numbered slot. Resolved
+        // live rather than cached — these are the same three fixed
+        // elements for the life of the scene, only the ITEM in each
+        // needs caching (see resolveItem) since it moves around.
+        slotElFor: function (n) {
+          if (n === 1 || n === 2) {
+            // The belt isn't a component ON #waist-anchor — it's an
+            // ordinary holsterable item OCCUPYING that anchor-slot, same
+            // as any other worn equipment (see belt's own comment).
+            var waist = document.querySelector('#waist-anchor');
+            var waistSlot = waist && waist.components['anchor-slot'];
+            var beltOccupant = waistSlot && waistSlot.occupants[0];
+            var belt = beltOccupant && beltOccupant.el.components.belt;
+            return belt && belt.hipSlots[n - 1]; // hipSlots[0] is side -1 (left), [1] is side 1 (right) — see belt's own init
+          }
+          return document.querySelector('#back-anchor');
+        },
+
+        resolveItem: function (n) {
+          if (this.slotItems[n] && this.slotItems[n].isConnected) return this.slotItems[n];
+          var slotEl = this.slotElFor(n);
+          var anchorSlot = slotEl && slotEl.components['anchor-slot'];
+          var occupant = anchorSlot && anchorSlot.occupants[0]; // occupants holds holsterable COMPONENTS, not elements
+          if (!occupant) return null;
+          this.slotItems[n] = occupant.el;
+          return this.slotItems[n];
+        },
+
+        activateSlot: function (n) {
+          var item = this.resolveItem(n);
+          if (!item) return; // empty holster — nothing to draw yet
+          var holsterable = item.components.holsterable;
+          if (!holsterable) return;
+
+          // Toggle off: already drawn — release it and stop. Aimed at
+          // its own home slot (releaseToOwnHome) rather than a plain
+          // release, so "press 1 again to holster it" reliably lands
+          // back in the left hip holster instead of depending on
+          // whatever pose the hand's desktop rest/carry logic happens
+          // to have left it in.
+          if (holsterable.state === 'held' && holsterable.hand) {
+            var heldByRig = holsterable.hand.components['hand-rig'];
+            if (heldByRig) releaseToOwnHome(heldByRig);
+            return;
+          }
+
+          var leftHandEl = document.querySelector('#left-hand');
+          var rightHandEl = document.querySelector('#right-hand');
+          var leftHandRig = leftHandEl && leftHandEl.components['hand-rig'];
+          var rightHandRig = rightHandEl && rightHandEl.components['hand-rig'];
+
+          var targetHandRig;
+          if (n === 1) {
+            targetHandRig = leftHandRig; // fixed: a real hand reaches for the holster on its own side
+          } else if (n === 2) {
+            targetHandRig = rightHandRig;
+          } else {
+            // The back bandolier isn't side-specific — prefer whichever
+            // hand is already free, tie-broken toward the dominant hand
+            // (also the fallback once both hands are occupied, in which
+            // case it gets cleared just below like anything else).
+            var playerRig = document.querySelector('#player-rig');
+            var desktopControls = playerRig && playerRig.components['desktop-controls'];
+            var dominantSide = desktopControls ? desktopControls.dominantSide() : 'right';
+            var dominantHandRig = dominantSide === 'left' ? leftHandRig : rightHandRig;
+            var otherHandRig = dominantSide === 'left' ? rightHandRig : leftHandRig;
+            if (dominantHandRig && !dominantHandRig.heldObjects.length) targetHandRig = dominantHandRig;
+            else if (otherHandRig && !otherHandRig.heldObjects.length) targetHandRig = otherHandRig;
+            else targetHandRig = dominantHandRig;
+          }
+          if (!targetHandRig) return;
+
+          // Clear whatever the target hand already holds FIRST — safe
+          // to do before the grab below (unlike the "clear the other
+          // hand" step at the end, which must run AFTER — see
+          // clearOtherHandIfExclusive's own comment for why order
+          // matters there), since releaseToOwnHome aims this release at
+          // that item's OWN home slot, which has nothing to do with
+          // slot `n`'s own item or destination.
+          if (targetHandRig.heldObjects.length) releaseToOwnHome(targetHandRig);
+
+          var semanticHand = targetHandRig.el.components['semantic-hand'];
+          if (semanticHand) {
+            var pos = new THREE.Vector3();
+            var quat = new THREE.Quaternion();
+            item.object3D.getWorldPosition(pos);
+            item.object3D.getWorldQuaternion(quat);
+            semanticHand.setWorldTransform(pos, quat, 'Hold', true);
+            targetHandRig.settleVelocity(); // see hand-rig's own comment — this is a teleport, not a real reach
+          }
+          targetHandRig.el.emit('gripdown', null, false);
+          clearOtherHandIfExclusive(targetHandRig, item);
+        },
+      });
+
+      // ==============================================================
       // COMPONENT: anchor-slot
       // The generic "you can snap a compatible item here" socket.
       // Purely declarative on its own (just a size — small/medium/
