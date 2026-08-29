@@ -12,6 +12,7 @@
       var REGRIP_WINDOW_MS = 400; // release and re-squeeze inside this and you keep what you were holding — see hand-rig.reclaimStash
       var RECOIL_MAX_POSITION = 0.18; // meters; automatic fire can kick hard, but never detach the hand from the arm
       var RECOIL_MAX_ROTATION = 0.7; // radians, about 40 degrees on any local axis
+      var HAND_REACH_MOTION_MS = 180; // how long a scripted desktop/mobile reach (draw, holster, swap) takes to arrive — see hand-rig.animateGripDown/animateRelease; tune by feel
 
       // ==============================================================
       // clearOtherHandIfExclusive
@@ -55,9 +56,11 @@
         // formula desktop-controls.js's placeRestHand/placeHeldHand
         // happens to be using — not a real physical position, and not
         // reliably near where the item actually needs to land. Reach
-        // that hand to the right destination first, same as a real VR
-        // player's arm would need to physically move to put something
-        // away, in one of two shapes depending on which item is large:
+        // that hand to the right destination first (animateRelease —
+        // a real animated motion, not a teleport, so it's visible and
+        // reads as the same kind of reach a VR player's arm would need
+        // to physically make), in one of two shapes depending on which
+        // item is large:
         //
         //  - both large: there is exactly one such slot on the body
         //    (the back bandolier), so the departing item is aimed at
@@ -76,17 +79,15 @@
           ? grabbedHolsterable.data.holsterSelector
           : otherHolsterable && otherHolsterable.data.holsterSelector;
 
-        var otherSemanticHand = otherHandRig.el.components['semantic-hand'];
-        if (destinationSlotEl && otherSemanticHand) {
+        if (destinationSlotEl) {
           var pos = new THREE.Vector3();
           var quat = new THREE.Quaternion();
           destinationSlotEl.object3D.getWorldPosition(pos);
           destinationSlotEl.object3D.getWorldQuaternion(quat);
-          otherSemanticHand.setWorldTransform(pos, quat, 'Hold', true);
-          otherHandRig.settleVelocity();
+          otherHandRig.animateRelease(pos, quat);
+        } else {
+          otherHandRig.onGripUp();
         }
-
-        otherHandRig.onGripUp();
       }
 
       // Releases whatever `handRig` currently holds, first reaching that
@@ -98,21 +99,26 @@
       // to bump whatever a target hand already holds before it takes a
       // numbered slot's item — a deliberate "put this specific known
       // thing away," unlike F's own plain release, which keeps falling
-      // wherever a real mid-air VR drop would.
-      function releaseToOwnHome(handRig) {
+      // wherever a real mid-air VR drop would. `onComplete`, if given,
+      // runs once the release has actually finished (immediately, for
+      // the no-known-home fallback) — activateHotbarSlot uses it to
+      // sequence "put the old thing away, THEN reach for the new one"
+      // on the same hand, since one hand can only run one motion at a
+      // time.
+      function releaseToOwnHome(handRig, onComplete) {
         var held = handRig.heldObjects[0];
         var holsterable = held && held.components.holsterable;
         var homeSlotEl = holsterable && holsterable.data.holsterSelector;
-        var semanticHand = handRig.el.components['semantic-hand'];
-        if (homeSlotEl && semanticHand) {
+        if (homeSlotEl) {
           var pos = new THREE.Vector3();
           var quat = new THREE.Quaternion();
           homeSlotEl.object3D.getWorldPosition(pos);
           homeSlotEl.object3D.getWorldQuaternion(quat);
-          semanticHand.setWorldTransform(pos, quat, 'Hold', true);
-          handRig.settleVelocity();
+          handRig.animateRelease(pos, quat, onComplete);
+        } else {
+          handRig.onGripUp();
+          if (onComplete) onComplete();
         }
-        handRig.onGripUp();
       }
       // ==============================================================
       // gripObjectOf
@@ -218,6 +224,8 @@
           this.onFaceButton = this.onFaceButton.bind(this);
           this.onDesktopGrabAttempt = this.onDesktopGrabAttempt.bind(this);
           this.onDesktopTriggerAttempt = this.onDesktopTriggerAttempt.bind(this);
+          this.onMotionComplete = this.onMotionComplete.bind(this);
+          this._motionCompleteCallback = null; // see animateGripDown/animateRelease
 
           this.el.addEventListener('gripdown', this.onGripDown);
           this.el.addEventListener('gripup', this.onGripUp);
@@ -243,6 +251,13 @@
           // machine, just a second source for the same four events.
           this.el.addEventListener('desktop-grab-attempt', this.onDesktopGrabAttempt);
           this.el.addEventListener('desktop-trigger-attempt', this.onDesktopTriggerAttempt);
+          // Fired by semantic-hand.runWorldMotion (interaction-hints.js)
+          // once an animated reach finishes — see animateGripDown/
+          // animateRelease, which are what drive that motion for every
+          // desktop/mobile grab/holster/swap. Non-bubbling, so this has
+          // to listen on the hand element directly, same as
+          // common/semantic-punch.js's identical pattern.
+          this.el.addEventListener('semantic-hand-motion-complete', this.onMotionComplete);
         },
 
         remove: function () {
@@ -257,6 +272,7 @@
           }, this);
           this.el.removeEventListener('desktop-grab-attempt', this.onDesktopGrabAttempt);
           this.el.removeEventListener('desktop-trigger-attempt', this.onDesktopTriggerAttempt);
+          this.el.removeEventListener('semantic-hand-motion-complete', this.onMotionComplete);
         },
 
         // Toggle, not a hold: on desktop/mobile there's no physical grip to
@@ -283,22 +299,19 @@
           }
           var obj = this.findGrabbableObject();
           if (!obj) return;
-          this.settleVelocity();
-          var semanticHand = this.el.components['semantic-hand'];
-          if (semanticHand) {
-            var pos = new THREE.Vector3();
-            var quat = new THREE.Quaternion();
-            obj.object3D.getWorldPosition(pos);
-            obj.object3D.getWorldQuaternion(quat);
-            semanticHand.setWorldTransform(pos, quat, 'Hold', true);
-          }
-          // Snapped exactly onto obj's own transform above, so hand-rig's
-          // own findGrabbableObject() (tuned tight for a real tracked
-          // hand's precision) will resolve to the same object from here —
-          // this doesn't grab obj directly, it just makes the upcoming
-          // real gripdown succeed the way a precise VR reach already would.
-          this.el.emit('gripdown', null, false);
-          clearOtherHandIfExclusive(this, obj);
+          var pos = new THREE.Vector3();
+          var quat = new THREE.Quaternion();
+          obj.object3D.getWorldPosition(pos);
+          obj.object3D.getWorldQuaternion(quat);
+          var self = this;
+          // Animated reach (animateGripDown), not a teleport: the hand
+          // visibly arrives at obj's transform before gripdown actually
+          // fires — findGrabbableObject() (tuned tight for a real tracked
+          // hand's precision) will then resolve to the same object from
+          // there, the way a precise VR reach already would.
+          this.animateGripDown(pos, quat, function () {
+            clearOtherHandIfExclusive(self, obj);
+          });
         },
 
         // A tap, not a hold — Pistols' pistols/shotgun are single-action,
@@ -459,23 +472,102 @@
           return this.gripEl ? this.gripEl.object3D : this.el.object3D;
         },
 
-        // Desktop/mobile input teleports this hand via semantic-hand's
-        // setWorldTransform(..., snap: true) rather than moving it
-        // smoothly (see onDesktopGrabAttempt and core-equip.js's
-        // activateHotbarSlot) — a real reach in VR always arrives at
-        // some ordinary hand speed, but a scripted teleport is instant,
-        // and tick()'s own velocity smoothing has no way to tell "the
-        // hand just jumped 0.8m" apart from "the player swung it that
-        // fast." Left alone, the very next release reads that jump as
-        // real motion and computeThrowVelocity (core.js) can call it an
-        // overhand throw or upward toss instead of a deliberate holster.
-        // Call this right after any such teleport, before the
-        // gripdown/gripup that follows it, to tell tick() "this is
-        // where the hand has always been" rather than "the hand just
-        // moved here."
+        // Desktop/mobile grab/holster/swap motions are real animated
+        // reaches (animateGripDown/animateRelease below), not an instant
+        // teleport, so tick()'s velocity smoothing sees an ordinary
+        // decelerating approach rather than a one-frame jump — the
+        // smoothstep easing runWorldMotion uses (interaction-hints.js)
+        // has zero speed right at each keyframe's end. This is a
+        // defensive backstop for that, not the fix: a very short or
+        // interrupted motion could still leave a sliver of residual
+        // velocity, and without settling it the next release could read
+        // that as real motion and computeThrowVelocity (core.js) could
+        // call it an overhand throw or upward toss instead of a
+        // deliberate holster. Called from onMotionComplete, right before
+        // the gripdown/gripup a scripted reach was arriving for.
         settleVelocity: function () {
           this.velocity.set(0, 0, 0);
           this.el.object3D.getWorldPosition(this._prevPos);
+        },
+
+        // Runs a real animated reach to a world pose (semantic-hand's
+        // runWorldMotion — the same keyframe mechanism
+        // common/semantic-punch.js already uses for a punch's windup/
+        // strike, not a teleport) and fires the actual gripdown only
+        // once the hand visibly arrives, via onMotionComplete below.
+        // cancelMotion() first mirrors semantic-punch's own defensive
+        // pattern, in case a previous scripted reach on this hand is
+        // still mid-flight. `onComplete`, if given, runs after the
+        // gripdown fires — activateHotbarSlot (core-equip.js) uses it to
+        // bump the other hand only once the new item has actually been
+        // grabbed. A single keyframe today; a future flourish (spin the
+        // gun up into view before it settles into the held pose) is
+        // just another entry in this same array, not new machinery.
+        animateGripDown: function (worldPosition, worldQuaternion, onComplete) {
+          var semanticHand = this.el.components['semantic-hand'];
+          if (!semanticHand) {
+            this.el.emit('gripdown', null, false);
+            if (onComplete) onComplete();
+            return;
+          }
+          semanticHand.cancelMotion();
+          var self = this;
+          this._motionCompleteCallback = function () {
+            self.settleVelocity();
+            self.el.emit('gripdown', null, false);
+            if (onComplete) onComplete();
+          };
+          semanticHand.runWorldMotion([{
+            position: worldPosition,
+            quaternion: worldQuaternion,
+            pose: 'Hold',
+            duration: HAND_REACH_MOTION_MS,
+          }], {});
+        },
+
+        // The release-side mirror of animateGripDown: reach to a known
+        // destination (a slot the item should land in) and only then
+        // let go, so tryHolsterElse's distance check runs from the hand
+        // actually being there rather than wherever its ordinary
+        // desktop rest/carry pose left it. Used for every scripted
+        // "put this specific known thing away" — the numbered hotbar's
+        // own toggle-off and target-hand pre-clear, and
+        // clearOtherHandIfExclusive's bump — never for F's plain
+        // release, which has no destination to reach for and should
+        // keep falling wherever a real mid-air VR drop would.
+        animateRelease: function (worldPosition, worldQuaternion, onComplete) {
+          var semanticHand = this.el.components['semantic-hand'];
+          if (!worldPosition || !semanticHand) {
+            this.onGripUp();
+            if (onComplete) onComplete();
+            return;
+          }
+          semanticHand.cancelMotion();
+          var self = this;
+          this._motionCompleteCallback = function () {
+            self.settleVelocity();
+            self.onGripUp();
+            if (onComplete) onComplete();
+          };
+          semanticHand.runWorldMotion([{
+            position: worldPosition,
+            quaternion: worldQuaternion,
+            pose: 'Hold',
+            duration: HAND_REACH_MOTION_MS,
+          }], {});
+        },
+
+        // semantic-hand-motion-complete fires once for every finished
+        // runWorldMotion call regardless of who started it (in Pistols,
+        // always animateGripDown/animateRelease above), so the pending
+        // callback is stored on this component rather than assumed —
+        // starting a new motion before the old one finishes (cancelMotion)
+        // simply overwrites it, which is correct: the player reaching for
+        // something else mid-motion abandons the interrupted one.
+        onMotionComplete: function () {
+          var callback = this._motionCompleteCallback;
+          this._motionCompleteCallback = null;
+          if (callback) callback();
         },
 
         isFull: function () {

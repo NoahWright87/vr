@@ -489,26 +489,34 @@
           }
           if (!targetHandRig) return;
 
-          // Clear whatever the target hand already holds FIRST — safe
-          // to do before the grab below (unlike the "clear the other
-          // hand" step at the end, which must run AFTER — see
-          // clearOtherHandIfExclusive's own comment for why order
-          // matters there), since releaseToOwnHome aims this release at
-          // that item's OWN home slot, which has nothing to do with
-          // slot `n`'s own item or destination.
-          if (targetHandRig.heldObjects.length) releaseToOwnHome(targetHandRig);
+          var pos = new THREE.Vector3();
+          var quat = new THREE.Quaternion();
+          item.object3D.getWorldPosition(pos);
+          item.object3D.getWorldQuaternion(quat);
 
-          var semanticHand = targetHandRig.el.components['semantic-hand'];
-          if (semanticHand) {
-            var pos = new THREE.Vector3();
-            var quat = new THREE.Quaternion();
-            item.object3D.getWorldPosition(pos);
-            item.object3D.getWorldQuaternion(quat);
-            semanticHand.setWorldTransform(pos, quat, 'Hold', true);
-            targetHandRig.settleVelocity(); // see hand-rig's own comment — this is a teleport, not a real reach
-          }
-          targetHandRig.el.emit('gripdown', null, false);
-          clearOtherHandIfExclusive(targetHandRig, item);
+          // The actual reach-and-grab, run once the target hand is free
+          // to make it (see below) — animateGripDown is a real animated
+          // motion (hand-rig.js), not a teleport, and only fires the
+          // real gripdown once the hand visibly arrives. clearOtherHand-
+          // IfExclusive runs from its completion callback, i.e. AFTER
+          // the grab, not alongside it — see that function's own comment
+          // for why the ordering there is load-bearing.
+          var grabItem = function () {
+            targetHandRig.animateGripDown(pos, quat, function () {
+              clearOtherHandIfExclusive(targetHandRig, item);
+            });
+          };
+
+          // Clear whatever the target hand already holds FIRST — safe to
+          // sequence before the grab (unlike clearOtherHandIfExclusive's
+          // own bump, which must follow it), since releaseToOwnHome aims
+          // this release at that item's OWN home slot, which has nothing
+          // to do with slot `n`'s own item or destination. One hand can
+          // only run one animated motion at a time, so the grab has to
+          // wait for this release's own completion callback rather than
+          // starting alongside it.
+          if (targetHandRig.heldObjects.length) releaseToOwnHome(targetHandRig, grabItem);
+          else grabItem();
         },
       });
 
