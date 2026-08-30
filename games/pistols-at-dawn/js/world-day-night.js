@@ -23,7 +23,8 @@ function smoothStep(edge0, edge1, value) {
 
 registerComponent('day-night-cycle', {
   init: function () {
-    this.clock = DAY_NIGHT_CYCLE_MS * 0.25; // Begin at high noon.
+    this.elapsedGameMs = DAY_NIGHT_CYCLE_MS * 0.25;
+    this.clock = this.elapsedGameMs % DAY_NIGHT_CYCLE_MS; // Begin at high noon.
     this.sunShadows = true;
     this.moonShadows = false;
     this.timeScale = 1;
@@ -32,7 +33,7 @@ registerComponent('day-night-cycle', {
     this.gradient = document.querySelector('#sunset-gradient');
     this.scene = this.el.object3D;
     this.onAreaLoaded = this.enableAreaShadows.bind(this);
-    this.onRenderStart = this.applyShadowState.bind(this);
+    this.onRenderStart = this.onRenderStart.bind(this);
     this.onKeyDown = this.onKeyDown.bind(this);
     this.el.addEventListener('area-loaded', this.onAreaLoaded);
     this.el.addEventListener('renderstart', this.onRenderStart);
@@ -63,10 +64,12 @@ registerComponent('day-night-cycle', {
     this.moonAnchor.add(this.moon);
     this.scene.add(this.sun, this.sun.target, this.moonOrbitRoot, this.moon.target, this.ambient);
 
-    this.sunOrb = this.makeSprite('assets/textures/sun-billboard-v1.png', 24, true);
+    this.sunOrb = this.makeSprite('assets/textures/sun-billboard-v1.png', 24, false);
     this.moonOrb = this.makeSprite('assets/textures/moon-billboard-v1.png', 13, false);
+    this.scene.add(this.sunOrb);
     this.moonAnchor.add(this.moonOrb);
     this.moonBaseSize = 13;
+    this.applyRenderOrder();
     this.applyLighting();
     this.el.emit('day-night-shadow-change', { sun: true, moon: false });
   },
@@ -90,12 +93,34 @@ registerComponent('day-night-cycle', {
     this.applyShadowState();
   },
 
+  onRenderStart: function () {
+    this.applyRenderOrder();
+    this.applyShadowState();
+  },
+
+  applyRenderOrder: function () {
+    // Transparent objects need a stable painter's order: skies, celestial
+    // bodies, then weather. Depth testing remains enabled so terrain and
+    // buildings still occlude the Sun and Moon correctly.
+    this.setRenderOrder(this.nightSky, -40);
+    this.setRenderOrder(this.daySky, -30);
+    this.setRenderOrder(this.gradient, -20);
+    if (this.sunOrb) this.sunOrb.renderOrder = -10;
+    if (this.moonOrb) this.moonOrb.renderOrder = -10;
+  },
+
+  setRenderOrder: function (element, order) {
+    if (!element || !element.object3D) return;
+    element.object3D.traverse(function (object) { object.renderOrder = order; });
+  },
+
   makeSprite: function (src, size, additive) {
     var texture = new THREE.TextureLoader().load(src);
     var sprite = new THREE.Sprite(new THREE.SpriteMaterial({
       map: texture,
       transparent: true,
       depthWrite: false,
+      depthTest: true,
       blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending,
     }));
     sprite.scale.set(size, size, 1);
@@ -117,7 +142,8 @@ registerComponent('day-night-cycle', {
   },
 
   waitOneHour: function () {
-    this.clock = (this.clock + DAY_NIGHT_CYCLE_MS / 24) % DAY_NIGHT_CYCLE_MS;
+    this.elapsedGameMs += DAY_NIGHT_CYCLE_MS / 24;
+    this.clock = this.elapsedGameMs % DAY_NIGHT_CYCLE_MS;
     this.applyLighting();
   },
 
@@ -170,9 +196,11 @@ registerComponent('day-night-cycle', {
 
   getCelestialDirections: function () {
     var solarAngle = (this.clock / DAY_NIGHT_CYCLE_MS) * Math.PI * 2;
-    var lunarPhase = (this.clock / (DAY_NIGHT_CYCLE_MS * LUNAR_SYNODIC_DAYS)) * Math.PI * 2;
-    var anomaly = (this.clock / (DAY_NIGHT_CYCLE_MS * LUNAR_ANOMALISTIC_DAYS)) * Math.PI * 2;
-    var node = (this.clock / (DAY_NIGHT_CYCLE_MS * LUNAR_NODAL_DAYS)) * Math.PI * 2;
+    // Lunar state uses unbounded game time. Using the wrapped daily clock here
+    // reset the orbit at midnight and visibly teleported the Moon.
+    var lunarPhase = (this.elapsedGameMs / (DAY_NIGHT_CYCLE_MS * LUNAR_SYNODIC_DAYS)) * Math.PI * 2;
+    var anomaly = (this.elapsedGameMs / (DAY_NIGHT_CYCLE_MS * LUNAR_ANOMALISTIC_DAYS)) * Math.PI * 2;
+    var node = (this.elapsedGameMs / (DAY_NIGHT_CYCLE_MS * LUNAR_NODAL_DAYS)) * Math.PI * 2;
     var moonAngle = solarAngle + Math.PI - lunarPhase;
     var moonDistance = DAY_NIGHT_ORBIT_RADIUS * (1 - MOON_ECCENTRICITY * MOON_ECCENTRICITY) /
       (1 + MOON_ECCENTRICITY * Math.cos(anomaly));
@@ -212,7 +240,8 @@ registerComponent('day-night-cycle', {
   },
 
   tick: function (time, delta) {
-    this.clock = (this.clock + Math.min(delta || 16, 100) * this.timeScale) % DAY_NIGHT_CYCLE_MS;
+    this.elapsedGameMs += Math.min(delta || 16, 100) * this.timeScale;
+    this.clock = this.elapsedGameMs % DAY_NIGHT_CYCLE_MS;
     if (!this.lastUpdate || time - this.lastUpdate > 180) {
       this.lastUpdate = time;
       this.applyLighting();
@@ -245,6 +274,7 @@ registerComponent('weather-clouds', {
 
   init: function () {
     this.scene = this.el.object3D;
+    this.cloudGeometry = new THREE.PlaneGeometry(1, 1);
     this.textures = [
       new THREE.TextureLoader().load('assets/textures/weather-cloud-cumulus-v1.png'),
       new THREE.TextureLoader().load('assets/textures/weather-cloud-wispy-v1.png'),
@@ -265,29 +295,50 @@ registerComponent('weather-clouds', {
 
   remove: function () {
     this.el.removeEventListener('day-night-change', this.onDayNightChange);
-    this.clouds.forEach(function (cloud) { this.scene.remove(cloud.group); }, this);
+    this.clouds.forEach(function (cloud) {
+      cloud.faces.forEach(function (face) { face.material.dispose(); });
+      this.scene.remove(cloud.group);
+    }, this);
+    this.cloudGeometry.dispose();
   },
 
   makeCloud: function () {
     var group = new THREE.Group();
-    var material = new THREE.SpriteMaterial({ transparent: true, depthWrite: false, opacity: 0.86 });
-    var sprite = new THREE.Sprite(material);
-    var detail = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, depthWrite: false, opacity: 0.42 }));
-    detail.position.set(1.5, -0.5, -0.3);
-    detail.material.rotation = Math.random() * 0.16 - 0.08;
-    group.add(sprite, detail);
+    var front = this.makeCloudPlane(0.86);
+    var cross = this.makeCloudPlane(0.62);
+    var cap = this.makeCloudPlane(0.46);
+    cross.rotation.y = Math.PI / 2;
+    cap.rotation.x = Math.PI / 2;
+    cap.position.y = -0.35;
+    group.add(front, cross, cap);
     group.visible = false;
     this.scene.add(group);
-    return { group: group, sprite: sprite, detail: detail, active: false, age: 0 };
+    return { group: group, faces: [front, cross, cap], active: false, age: 0 };
+  },
+
+  makeCloudPlane: function (opacity) {
+    var material = new THREE.MeshBasicMaterial({
+      transparent: true,
+      depthWrite: false,
+      depthTest: true,
+      side: THREE.DoubleSide,
+      alphaTest: 0.02,
+      opacity: opacity,
+    });
+    return new THREE.Mesh(this.cloudGeometry, material);
   },
 
   spawn: function (cloud, initial) {
     var size = this.data.minSize + Math.random() * (this.data.maxSize - this.data.minSize);
     cloud.lifetimeMs = this.data.lifetimeMs + Math.random() * (this.data.maxLifetimeMs - this.data.lifetimeMs);
-    cloud.sprite.material.map = this.textures[Math.floor(Math.random() * this.textures.length)];
-    cloud.detail.material.map = this.textures[Math.floor(Math.random() * this.textures.length)];
-    cloud.sprite.scale.set(size * 1.75, size, 1);
-    cloud.detail.scale.set(size * 1.15, size * 0.68, 1);
+    cloud.faces.forEach(function (face) {
+      face.material.map = this.textures[Math.floor(Math.random() * this.textures.length)];
+      face.material.needsUpdate = true;
+    }, this);
+    cloud.faces[0].scale.set(size * 1.75, size, 1);
+    cloud.faces[1].scale.set(size * 1.5, size * 0.88, 1);
+    cloud.faces[2].scale.set(size * 1.45, size * 0.72, 1);
+    cloud.group.rotation.y = Math.random() * Math.PI * 2;
     cloud.group.position.set(
       (Math.random() - 0.5) * this.data.spawnRadius * 2,
       this.data.minAltitude + Math.random() * (this.data.maxAltitude - this.data.minAltitude),
@@ -309,8 +360,9 @@ registerComponent('weather-clouds', {
     var presence = Math.min(grow, shrink);
     var scale = 0.12 + presence * 0.88;
     cloud.group.scale.set(scale, scale, scale);
-    cloud.sprite.material.opacity = 0.86 * presence;
-    cloud.detail.material.opacity = 0.42 * presence;
+    cloud.faces[0].material.opacity = 0.86 * presence;
+    cloud.faces[1].material.opacity = 0.62 * presence;
+    cloud.faces[2].material.opacity = 0.46 * presence;
     cloud.group.visible = presence > 0.01;
   },
 
@@ -318,8 +370,9 @@ registerComponent('weather-clouds', {
     var daylight = event && event.detail ? event.detail.daylight : 1;
     var shade = 1 - this.data.darkness * (0.55 + daylight * 0.45);
     this.clouds.forEach(function (cloud) {
-      cloud.sprite.material.color.setRGB(shade, shade, shade + 0.02);
-      cloud.detail.material.color.setRGB(shade * 0.92, shade * 0.95, shade);
+      cloud.faces[0].material.color.setRGB(shade, shade, shade + 0.02);
+      cloud.faces[1].material.color.setRGB(shade * 0.96, shade * 0.98, shade);
+      cloud.faces[2].material.color.setRGB(shade * 0.9, shade * 0.93, shade);
     });
   },
 

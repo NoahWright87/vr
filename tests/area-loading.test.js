@@ -19,12 +19,17 @@ test('destinations are lazy fragments instead of simultaneous scene entities', (
   assert.match(page, /<a-scene pistols-watch-menu area-manager scene-index day-night-cycle weather-clouds shadow="enabled: true; type: pcfsoft">/);
   assert.match(dayNight, /FAST_FORWARD_TIME_SCALE = 20/);
   assert.match(dayNight, /LUNAR_SYNODIC_DAYS = 29\.53059/);
+  assert.match(dayNight, /this\.elapsedGameMs \+= Math\.min\(delta \|\| 16, 100\) \* this\.timeScale/);
+  assert.match(dayNight, /this\.elapsedGameMs \/ \(DAY_NIGHT_CYCLE_MS \* LUNAR_SYNODIC_DAYS\)/);
   assert.match(dayNight, /nightSky\.object3D\.rotation\.y/);
   assert.match(dayNight, /registerComponent\('weather-clouds'/);
   assert.match(dayNight, /count: \{ type: 'int', default: 28 \}/);
   assert.match(dayNight, /maxLifetimeMs: \{ type: 'number', default: 720000 \}/);
   assert.match(dayNight, /weatherTimeScale = cycle \? cycle\.timeScale : 1/);
   assert.match(dayNight, /updateCloudTransition/);
+  assert.match(dayNight, /makeCloudPlane/);
+  assert.match(dayNight, /new THREE\.Mesh\(this\.cloudGeometry, material\)/);
+  assert.match(dayNight, /this\.sunOrb\.renderOrder = -10/);
   assert.match(dayNight, /weather-cloud-cumulus-v1\.png/);
   assert.doesNotMatch(dayNight, /new THREE\.BoxGeometry\(1, 0\.18, 0\.62\)/);
   assert.match(dayNight, /evt\.code !== 'Backslash'/);
@@ -32,7 +37,8 @@ test('destinations are lazy fragments instead of simultaneous scene entities', (
   assert.match(page, /id="night-sky" radius="650"/);
   assert.doesNotMatch(page, /cloud-sky/);
   assert.match(dayNight, /sun-billboard-v1\.png/);
-  assert.match(dayNight, /sun-billboard-v1\.png', 24, true/);
+  assert.match(dayNight, /sun-billboard-v1\.png', 24, false/);
+  assert.match(dayNight, /this\.scene\.add\(this\.sunOrb\)/);
   assert.match(dayNight, /moon-billboard-v1\.png/);
   assert.match(dayNight, /this\.sunShadows = true/);
   assert.match(loader, /preservePlayerItems: function/);
