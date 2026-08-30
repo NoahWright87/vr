@@ -19,11 +19,14 @@ function visibleInHierarchy(object3D) {
 }
 
 function readPreferences() {
-  var fallback = { handedness: 'right', hintMode: 'delayed' };
+  // Toggle is the default: it's the more accessible option (no button
+  // needs to be held down for the whole time you're aiming).
+  var fallback = { handedness: 'right', hintMode: 'delayed', aimMode: 'toggle' };
   try {
     var saved = JSON.parse(localStorage.getItem(PREFERENCES_KEY));
     if (saved && (saved.handedness === 'left' || saved.handedness === 'right')) fallback.handedness = saved.handedness;
     if (saved && ['always', 'delayed', 'never'].indexOf(saved.hintMode) !== -1) fallback.hintMode = saved.hintMode;
+    if (saved && (saved.aimMode === 'hold' || saved.aimMode === 'toggle')) fallback.aimMode = saved.aimMode;
   } catch (err) {
     // Storage can be disabled in private or embedded browsers. Defaults are fine.
   }
@@ -124,8 +127,11 @@ AFRAME.registerComponent('desktop-controls', {
     this.onPointerDown = this.onPointerDown.bind(this);
     this.onPointerUp = this.onPointerUp.bind(this);
     this.onContextMenu = this.onContextMenu.bind(this);
-    this._aimKeyHeld = false; // raw right-mouse-button hold -- see onPointerDown/onPointerUp
-    this._aimActionHeld = false; // touch/gamepad's semantic 'aim' start/cancel -- see onSemanticAction
+    this._aimKeyHeld = false; // raw right mouse button -- see onPointerDown/onPointerUp
+    this._aimActionHeld = false; // touch/gamepad's semantic 'aim' action -- see onSemanticAction
+    // Both are literally "is the button down" in hold mode, and a
+    // press-triggered flip-flop in toggle mode (this.preferences.aimMode,
+    // default 'toggle' -- see readPreferences/the aim-mode menu-option).
     this.isAiming = false; // the two above, combined -- see updateAiming
     this.onSemanticTap = this.onSemanticTap.bind(this);
     this.onMountedRequest = this.onMountedRequest.bind(this);
@@ -170,6 +176,8 @@ AFRAME.registerComponent('desktop-controls', {
       this.preferences.handedness = detail.value;
     } else if (detail.key === 'interaction-hints' && ['always', 'delayed', 'never'].indexOf(detail.value) !== -1) {
       this.preferences.hintMode = detail.value;
+    } else if (detail.key === 'aim-mode' && (detail.value === 'hold' || detail.value === 'toggle')) {
+      this.preferences.aimMode = detail.value;
     } else {
       return;
     }
@@ -186,6 +194,7 @@ AFRAME.registerComponent('desktop-controls', {
       if (!component) return;
       if (component.data.key === 'handedness') component.setValue(preferences.handedness);
       if (component.data.key === 'interaction-hints') component.setValue(preferences.hintMode);
+      if (component.data.key === 'aim-mode') component.setValue(preferences.aimMode);
     });
   },
 
@@ -260,7 +269,9 @@ AFRAME.registerComponent('desktop-controls', {
       // would also fire on every look-drag, not just a deliberate tap.
       if (evt.pointerType === 'mouse' && evt.button === 0) this.emitTriggerFallback();
       else if (evt.pointerType === 'mouse' && evt.button === 2) {
-        this._aimKeyHeld = true;
+        // Toggle mode only reacts to the press -- release is a no-op,
+        // handled below in onPointerUp.
+        this._aimKeyHeld = this.preferences.aimMode === 'toggle' ? !this._aimKeyHeld : true;
         this.updateAiming();
       }
       return;
@@ -280,7 +291,7 @@ AFRAME.registerComponent('desktop-controls', {
   // hold. Right mouse button only; left-button release needs no handling
   // since fire is already a tap (emitTriggerFallback), not a hold.
   onPointerUp: function (evt) {
-    if (evt.pointerType === 'mouse' && evt.button === 2) {
+    if (evt.pointerType === 'mouse' && evt.button === 2 && this.preferences.aimMode !== 'toggle') {
       this._aimKeyHeld = false;
       this.updateAiming();
     }
@@ -380,7 +391,11 @@ AFRAME.registerComponent('desktop-controls', {
     // phases other than 'perform' on this identical event.
     if (detail.action === 'aim') {
       if (!xrIsPresenting(this.sceneEl)) {
-        this._aimActionHeld = detail.phase === 'start';
+        if (this.preferences.aimMode === 'toggle') {
+          if (detail.phase === 'start') this._aimActionHeld = !this._aimActionHeld;
+        } else {
+          this._aimActionHeld = detail.phase === 'start';
+        }
         this.updateAiming();
       }
       return;

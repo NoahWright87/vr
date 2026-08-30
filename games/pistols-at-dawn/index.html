@@ -79,7 +79,7 @@
     <template id="watch-menu-template">
       <a-entity class="watch-menu-panel" visible="false">
         <a-entity data-menu-page="main">
-          <a-plane width="1" height="1.3" color="#101827" position="0 -0.05 -0.01"></a-plane>
+          <a-plane width="1" height="1.52" color="#101827" position="0 -0.16 -0.01"></a-plane>
           <a-entity class="menu-chrome-slot" data-title="" data-help="false" data-close="true" data-width="1" data-bar-y="0.49"></a-entity>
           <a-entity
             class="pm-target"
@@ -117,6 +117,15 @@
           >
             <a-text value="Debug  >" align="center" color="#eee" width="2.4" position="0 0 0.01"></a-text>
           </a-entity>
+          <!-- Hold vs. toggle to aim down sights -- see common/desktop-controls.js's
+               aimMode preference. Toggle is the default: it's the more
+               accessible option, since no button needs to be held down
+               for the whole time you're aiming. -->
+          <a-entity
+            class="aim-mode-option"
+            menu-option="key: aim-mode; label: Aim; values: toggle|hold; labels: Toggle|Hold; value: toggle"
+            position="0 -0.58 0"
+          ></a-entity>
         </a-entity>
 
         <a-entity data-menu-page="debug" visible="false">
