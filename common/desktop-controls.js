@@ -237,7 +237,7 @@ AFRAME.registerComponent('desktop-controls', {
     } else if (evt.code === 'KeyF') {
       evt.preventDefault();
       this.handleGrabKey();
-    } else if (evt.code === 'Digit1' || evt.code === 'Digit2' || evt.code === 'Digit3') {
+    } else if (evt.code === 'Digit1' || evt.code === 'Digit2' || evt.code === 'Digit3' || evt.code === 'Digit4' || evt.code === 'Digit5') {
       evt.preventDefault();
       if (this.mode === 'normal') this.emitHotbarFallback(Number(evt.code.slice(-1)));
     }
@@ -320,6 +320,17 @@ AFRAME.registerComponent('desktop-controls', {
     }, this);
   },
 
+  // Public: a game can call this whenever whatever's in hand changes out
+  // from under an active aim (e.g. Pistols' hotbar swapping weapons) so
+  // ADS never silently carries over onto a different gun -- most
+  // noticeable in toggle mode, where there'd otherwise be no button
+  // press to naturally end it.
+  stopAiming: function () {
+    this._aimKeyHeld = false;
+    this._aimActionHeld = false;
+    this.updateAiming();
+  },
+
   // The 'normal' mode mirror of emitGrabFallback: no menu/mounted/watch
   // interaction is active, so a primary click/tap here isn't claimed by
   // anything in this file. Left deliberately non-preventDefault()'d so
@@ -355,7 +366,13 @@ AFRAME.registerComponent('desktop-controls', {
   onSemanticTap: function () {
     if (xrIsPresenting(this.sceneEl)) return;
     if (this.mode !== 'watch' && this.mode !== 'normal') return;
-    this.activateMenuSelection();
+    // Mirrors onSemanticAction's 'activate' branch: a tap that isn't
+    // claimed by a menu target (Pistols has none) falls through to a
+    // shot, the same way a plain mouse click already does -- this is
+    // what lets a bare tap fire without a dedicated FIRE button. Watch
+    // mode has its own real fingertip laser/cursor for selection and
+    // never fires from here.
+    if (!this.activateMenuSelection() && this.mode === 'normal') this.emitTriggerFallback();
   },
 
   // Watch mode always goes through the real fingertip laser/cursor —
@@ -434,6 +451,10 @@ AFRAME.registerComponent('desktop-controls', {
       this.emitHotbarFallback(2, source);
     } else if (detail.action === 'hotbar3') {
       this.emitHotbarFallback(3, source);
+    } else if (detail.action === 'hotbar4') {
+      this.emitHotbarFallback(4, source);
+    } else if (detail.action === 'hotbar5') {
+      this.emitHotbarFallback(5, source);
     }
   },
 

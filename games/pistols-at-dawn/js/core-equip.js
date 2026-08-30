@@ -376,7 +376,7 @@
       // ==============================================================
       registerComponent('hotbar-equip', {
         init: function () {
-          this.slotItems = {}; // 1/2/3 -> resolved item element, cached lazily
+          this.slotItems = {}; // 1/2/3 -> resolved item element, cached lazily (4/5 are never cached -- see resolveItem)
           this._lastButtonState = {};
           this.onHotbarAttempt = this.onHotbarAttempt.bind(this);
           this.el.addEventListener('desktop-hotbar-attempt', this.onHotbarAttempt);
@@ -402,7 +402,7 @@
             this.touchControls = playerRig && playerRig.components['touch-controls'];
             if (!this.touchControls) return;
           }
-          for (var n = 1; n <= 3; n++) {
+          for (var n = 1; n <= 5; n++) {
             var state = this.computeButtonState(n);
             if (this._lastButtonState[n] === state) continue;
             this._lastButtonState[n] = state;
@@ -418,9 +418,13 @@
         },
 
         // The anchor-slot element backing each numbered slot. Resolved
-        // live rather than cached — these are the same three fixed
-        // elements for the life of the scene, only the ITEM in each
-        // needs caching (see resolveItem) since it moves around.
+        // live rather than cached — these are the same fixed elements
+        // for the life of the scene, only the ITEM in each needs
+        // caching (see resolveItem) since it moves around. 4/5 walk
+        // down through the vest's own pockets to each pocket's ammo
+        // pack's own inner slot — the pack itself never leaves the
+        // pocket, but what's loaded in its inner slot is swapped out
+        // by ammo-pack's auto-refill after every throw.
         slotElFor: function (n) {
           if (n === 1 || n === 2) {
             // The belt isn't a component ON #waist-anchor — it's an
@@ -432,17 +436,36 @@
             var belt = beltOccupant && beltOccupant.el.components.belt;
             return belt && belt.hipSlots[n - 1]; // hipSlots[0] is side -1 (left), [1] is side 1 (right) — see belt's own init
           }
-          return document.querySelector('#back-anchor');
+          if (n === 3) return document.querySelector('#back-anchor');
+
+          // 4 = knife pack (vest pocket 0), 5 = star pack (pocket 1) —
+          // same "item occupying a worn anchor" pattern as the belt above.
+          var chest = document.querySelector('#chest-anchor');
+          var chestSlot = chest && chest.components['anchor-slot'];
+          var vestOccupant = chestSlot && chestSlot.occupants[0];
+          var vest = vestOccupant && vestOccupant.el.components.vest;
+          var pocketEl = vest && vest.pocketSlots[n - 4];
+          var pocketSlot = pocketEl && pocketEl.components['anchor-slot'];
+          var packOccupant = pocketSlot && pocketSlot.occupants[0];
+          var ammoPack = packOccupant && packOccupant.el.components['ammo-pack'];
+          return ammoPack && ammoPack.slotEl;
         },
 
+        // Slots 1-3 hold the same persistent item for the life of the
+        // scene, so caching the resolved element is a safe, cheap
+        // shortcut. Slots 4/5 must NEVER cache: each throw replaces the
+        // ammo pack's inner-slot occupant with a freshly refilled
+        // knife/star (see ammo-pack's stocked() refill), and a stale
+        // reference (e.g. a knife now stuck in a wall via
+        // blade-projectile's attach()) would still read as connected.
         resolveItem: function (n) {
-          if (this.slotItems[n] && this.slotItems[n].isConnected) return this.slotItems[n];
+          if (n <= 3 && this.slotItems[n] && this.slotItems[n].isConnected) return this.slotItems[n];
           var slotEl = this.slotElFor(n);
           var anchorSlot = slotEl && slotEl.components['anchor-slot'];
           var occupant = anchorSlot && anchorSlot.occupants[0]; // occupants holds holsterable COMPONENTS, not elements
           if (!occupant) return null;
-          this.slotItems[n] = occupant.el;
-          return this.slotItems[n];
+          if (n <= 3) this.slotItems[n] = occupant.el;
+          return occupant.el;
         },
 
         activateSlot: function (n) {
@@ -450,6 +473,15 @@
           if (!item) return; // empty holster — nothing to draw yet
           var holsterable = item.components.holsterable;
           if (!holsterable) return;
+
+          // Whatever's about to change in your hands, any active ADS is
+          // stale the moment it does -- most noticeable in toggle mode,
+          // where there'd otherwise be no button press to naturally end
+          // it and you'd stay "aiming" a completely different gun (or no
+          // gun at all) than the one you started aiming.
+          var playerRigEl = document.querySelector('#player-rig');
+          var desktopControlsComp = playerRigEl && playerRigEl.components['desktop-controls'];
+          if (desktopControlsComp) desktopControlsComp.stopAiming();
 
           // Toggle off: already drawn — release it and stop. Aimed at
           // its own home slot (releaseToOwnHome) rather than a plain

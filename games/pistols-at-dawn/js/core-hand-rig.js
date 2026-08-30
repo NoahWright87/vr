@@ -388,11 +388,45 @@
 
         // A tap, not a hold — Pistols' pistols/shotgun are single-action,
         // so this mirrors a quick real trigger pull rather than adding a
-        // separate "held down" desktop firing mode.
+        // separate "held down" desktop firing mode. Blade weapons (knives,
+        // stars) have no trigger to pull at all -- tapping throws them
+        // instead, via throwHeldItem below.
         onDesktopTriggerAttempt: function () {
           if (!this.heldObjects.length) return;
+          var held = this.heldObjects[0];
+          if (held.components['blade-projectile']) {
+            this.throwHeldItem();
+            return;
+          }
           this.el.emit('triggerdown', null, false);
           this.el.emit('triggerup', null, false);
+        },
+
+        // Desktop/mobile has no real hand velocity to throw with, so this
+        // fabricates one just deliberate enough to clear
+        // computeThrowVelocity's gates (core.js) -- mostly upward, per the
+        // simplest of its three branches (MIN_THROW_UPWARD_SPEED), with a
+        // camera-forward lean so a guided star's hand-velocity blend
+        // (blade-projectile.onThrown) leans the same way the player is
+        // actually looking instead of straight up. Exactly how good this
+        // guess is barely matters: onThrown re-aims the real flight path at
+        // the camera's own look target regardless (fully for a knife, 68%
+        // for a star), the same way a real thrown knife/star already would.
+        // Bypasses animateRelease entirely (straight to onGripUp) so
+        // settleVelocity never zeroes this.velocity before release() reads
+        // it, and forces fingerOnTrigger off so release() evaluates a throw
+        // instead of starting a dangle.
+        throwHeldItem: function () {
+          var camera = document.querySelector('#head-camera');
+          var forward = new THREE.Vector3(0, 0, -1);
+          if (camera) {
+            var camQuat = new THREE.Quaternion();
+            camera.object3D.getWorldQuaternion(camQuat);
+            forward.applyQuaternion(camQuat);
+          }
+          this.velocity.set(forward.x * 1.2, 1.5, forward.z * 1.2);
+          this.fingerOnTrigger = false;
+          this.onGripUp();
         },
 
         // Smoothed (50%-blended) world-space velocity, so a single
