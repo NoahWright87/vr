@@ -610,6 +610,17 @@
       // tick in items-vices.js, which is also where it's ticked, and
       // hand-rig's exertion-breathing wobble contributor, which reads it.
       var EXERTION = { level: 0 };
+      // Debug-only, off by default: 'none' | 'red' | 'green'. Set by the
+      // watch's Debug page (world-menu.js's onOptionChange) and read by
+      // world-systems.updateLaserSight, which draws a translucent line +
+      // impact dot out of any held firearm's muzzle. Session-only, same
+      // as the shooting gallery's own menu-option settings -- no need to
+      // survive a reload.
+      var LASER_SIGHT = 'none';
+      var LASER_SIGHT_COLORS = { red: '#ff3b3b', green: '#3bff6a' };
+      var LASER_SIGHT_LINE_OPACITY = 0.5;
+      var LASER_SIGHT_DOT_RADIUS = 0.012;
+      var LASER_SIGHT_DOT_OPACITY = 0.85;
       // The watch menu owns this switch. HUD producers check it before doing
       // text geometry work that cannot be seen while the HUD is hidden.
       var PLAYER_HUD_VISIBLE = true;
@@ -1941,6 +1952,11 @@
           this._containerPool = []; // and behind OPEN_CONTAINERS
           this._scratch = new THREE.Vector3();
           this._blowing = {}; // per-hand latch, so one raise of the barrel is one gust
+          this._laserOrigin = new THREE.Vector3();
+          this._laserQuat = new THREE.Quaternion();
+          this._laserDir = new THREE.Vector3();
+          this._laserEnd = new THREE.Vector3();
+          this._laserVisuals = {}; // hand element id -> { lineEl, dotEl }, created lazily
         },
 
         tick: function (time, dt) {
@@ -1961,6 +1977,7 @@
           this.updateParticles(dtSeconds);
           this.updateIgnition();
           this.updateBlow();
+          this.updateLaserSight();
         },
 
         // One scan of the scene per frame, shared by every anchor-slot
@@ -2604,5 +2621,81 @@
           for (var k = 0; k < 2; k++) {
             spawnSmoke(this._delta, this._headDir.clone().multiplyScalar(2.2), 0.5);
           }
+        },
+
+        // Debug-only visual (see LASER_SIGHT, the watch's Debug page):
+        // a translucent line from any held firearm's muzzle to wherever
+        // castShot says a real shot would land right now, plus a small
+        // impact dot -- the same "cast a ray, don't fire" reuse of
+        // castShot that firearm.fire() itself uses, and the same
+        // dot-at-the-hit-point technique the watch's own fingertip laser
+        // (common/watch-menu.js) uses for pointing at a menu. Lets you
+        // judge hand wobble by eye without needing to actually shoot.
+        updateLaserSight: function () {
+          var hands = sceneElements('.hand');
+          for (var i = 0; i < hands.length; i++) {
+            var handEl = hands[i];
+            var handRig = handEl.components['hand-rig'];
+            var muzzleEl = null;
+            for (var j = 0; handRig && j < handRig.heldObjects.length; j++) {
+              var held = handRig.heldObjects[j];
+              if (!held.components.firearm) continue;
+              muzzleEl = held.querySelector('.muzzle');
+              if (muzzleEl) break;
+            }
+
+            var visual = this.getLaserVisual(handEl);
+            if (!muzzleEl || LASER_SIGHT === 'none') {
+              if (visual.visible) {
+                visual.lineEl.setAttribute('visible', false);
+                visual.dotEl.setAttribute('visible', false);
+                visual.visible = false;
+              }
+              continue;
+            }
+
+            muzzleEl.object3D.getWorldPosition(this._laserOrigin);
+            muzzleEl.object3D.getWorldQuaternion(this._laserQuat);
+            this._laserDir.set(0, 0, -1).applyQuaternion(this._laserQuat).normalize();
+            var hit = castShot(this._laserOrigin, this._laserDir);
+            if (hit) this._laserEnd.copy(hit.point);
+            else this._laserEnd.copy(this._laserOrigin).addScaledVector(this._laserDir, MAX_SHOT_RANGE);
+
+            var color = LASER_SIGHT_COLORS[LASER_SIGHT] || LASER_SIGHT_COLORS.red;
+            visual.lineEl.setAttribute('line', {
+              start: { x: this._laserOrigin.x, y: this._laserOrigin.y, z: this._laserOrigin.z },
+              end: { x: this._laserEnd.x, y: this._laserEnd.y, z: this._laserEnd.z },
+              color: color,
+              opacity: LASER_SIGHT_LINE_OPACITY,
+            });
+            visual.dotEl.object3D.position.copy(this._laserEnd);
+            visual.dotEl.setAttribute('material', 'color', color);
+            if (!visual.visible) {
+              visual.lineEl.setAttribute('visible', true);
+              visual.dotEl.setAttribute('visible', true);
+              visual.visible = true;
+            }
+          }
+        },
+
+        getLaserVisual: function (handEl) {
+          var id = handEl.id || handEl;
+          var existing = this._laserVisuals[id];
+          if (existing) return existing;
+
+          var lineEl = document.createElement('a-entity');
+          lineEl.setAttribute('line', { start: '0 0 0', end: '0 0 -1', color: LASER_SIGHT_COLORS.red, opacity: LASER_SIGHT_LINE_OPACITY });
+          lineEl.setAttribute('visible', false);
+          this.el.sceneEl.appendChild(lineEl);
+
+          var dotEl = document.createElement('a-entity');
+          dotEl.setAttribute('geometry', 'primitive: sphere; radius: ' + LASER_SIGHT_DOT_RADIUS + '; segmentsWidth: 10; segmentsHeight: 8');
+          dotEl.setAttribute('material', 'color: ' + LASER_SIGHT_COLORS.red + '; shader: flat; opacity: ' + LASER_SIGHT_DOT_OPACITY + '; transparent: true');
+          dotEl.setAttribute('visible', false);
+          this.el.sceneEl.appendChild(dotEl);
+
+          var entry = { lineEl: lineEl, dotEl: dotEl, visible: false };
+          this._laserVisuals[id] = entry;
+          return entry;
         },
       });

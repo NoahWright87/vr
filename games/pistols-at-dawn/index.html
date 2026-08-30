@@ -112,10 +112,42 @@
             class="pm-target"
             geometry="primitive: plane; width: 0.78; height: 0.2"
             material="color: #182238"
-            menu-item="value: toggle-performance; label: Show Performance"
+            menu-item="value: page-debug; label: Debug"
             position="0 -0.36 0"
           >
+            <a-text value="Debug  >" align="center" color="#eee" width="2.4" position="0 0 0.01"></a-text>
+          </a-entity>
+        </a-entity>
+
+        <a-entity data-menu-page="debug" visible="false">
+          <a-plane width="1" height="1.1" color="#101827" position="0 -0.03 -0.01"></a-plane>
+          <a-entity class="menu-chrome-slot" data-title="DEBUG" data-help="false" data-close="true" data-width="1" data-bar-y="0.4"></a-entity>
+          <a-entity
+            class="pm-target"
+            geometry="primitive: plane; width: 0.78; height: 0.2"
+            material="color: #182238"
+            menu-item="value: toggle-performance; label: Show Performance"
+            position="0 0.2 0"
+          >
             <a-text class="performance-toggle-label" value="Show Performance" align="center" color="#eee" width="2.4" position="0 0 0.01"></a-text>
+          </a-entity>
+          <!-- Laser sights: a translucent line + impact dot out of any held
+               firearm's muzzle, purely a debug aid for judging hand wobble
+               without needing to fire (see world-systems.updateLaserSight,
+               core.js). Off by default. -->
+          <a-entity
+            class="laser-sight-option"
+            menu-option="key: laser-sight; label: Laser; values: none|red|green; labels: Off|Red|Green; value: none"
+            position="0 -0.06 0"
+          ></a-entity>
+          <a-entity
+            class="pm-target"
+            geometry="primitive: plane; width: 0.78; height: 0.2"
+            material="color: #182238"
+            menu-item="value: page-main; label: Back"
+            position="0 -0.34 0"
+          >
+            <a-text value="&lt; Back" align="center" color="#aaa" width="2.4" position="0 0 0.01"></a-text>
           </a-entity>
         </a-entity>
 
@@ -365,7 +397,7 @@
         desktop-controls="camera: #head-camera; leftHand: #left-hand; rightHand: #right-hand; sprintEnabled: true"
         data-area-persistent
       >
-        <a-camera id="head-camera">
+        <a-camera id="head-camera" look-controls="pointerLockEnabled: true">
           <a-entity id="player-hud">
             <a-text
               id="hud-text"

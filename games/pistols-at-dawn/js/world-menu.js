@@ -119,6 +119,13 @@
     },
 
     onOptionChange: function (evt) {
+      // Debug-only and unrelated to the gallery -- handled here anyway
+      // since this component already owns the scene's menu-option-change
+      // listener, same as target-kind etc. below.
+      if (evt.detail.key === 'laser-sight') {
+        LASER_SIGHT = evt.detail.value;
+        return;
+      }
       var numberValue = Number(evt.detail.value);
       if (evt.detail.key === 'target-kind') this.settings.kind = evt.detail.value;
       else if (evt.detail.key === 'spinner-count') this.settings.count = numberValue;
