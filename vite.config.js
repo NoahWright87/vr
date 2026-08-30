@@ -2,6 +2,7 @@ import { cp, mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import { computeRelayUrl } from './build-relay-url.js';
 
 const root = import.meta.dirname;
 const output = resolve(root, 'dist');
@@ -37,6 +38,9 @@ function copyRuntimeAssets() {
 
 export default defineConfig({
   plugins: [react(), copyRuntimeAssets()],
+  define: {
+    __RELAY_URL__: JSON.stringify(computeRelayUrl(process.env)),
+  },
   build: {
     outDir: 'dist',
     emptyOutDir: true,

@@ -1,12 +1,17 @@
-// Peer-to-peer connection between two browsers on the same local
-// network, with no signaling server involved: the offer/answer SDP is
-// exchanged out of band (copy/paste today, maybe a QR code later) as
-// an opaque base64 string the caller is responsible for moving from
-// one peer to the other. No STUN/TURN server either — only host ICE
-// candidates are gathered, which is all two peers on the same LAN
-// need to find each other.
-
-var ICE_SERVERS = [];
+// Peer-to-peer connection between two browsers, with the offer/answer
+// SDP exchanged out of band (copy/paste, or the signaling relay in
+// worker/) as an opaque base64 string the caller is responsible for
+// moving from one peer to the other.
+//
+// A free public STUN server is enough to let two peers on separate
+// networks find each other — it only tells each side its own
+// reflexive (public-facing) address, not the other side's, so this is
+// harmless for same-LAN play too (just one extra candidate to gather,
+// well within ICE_GATHERING_TIMEOUT_MS below). It's still not enough
+// for every network (symmetric NAT, some corporate/hotel networks
+// need an actual TURN relay for game traffic, which is real ongoing
+// bandwidth cost — deliberately not added yet, see TODO.md).
+var ICE_SERVERS = [{ urls: 'stun:stun.cloudflare.com:3478' }];
 
 // Waiting for the full 'complete' state can hang indefinitely on some
 // networks/interfaces (observed in sandboxed environments, but not
@@ -161,6 +166,16 @@ export function createHostSession (callbacks) {
         if (peerId === exceptPeerId) return;
         if (peer.channel.readyState === 'open') peer.channel.send(message);
       });
+    },
+    // Ends the whole session at once (e.g. the host clicking "End").
+    // Closing each peer's RTCPeerConnection fires the same
+    // connectionstatechange -> fireClose -> onPeerClose path an
+    // individual peer disconnecting on their own already goes
+    // through, so callers get the same per-peer cleanup for free
+    // rather than needing a separate teardown code path.
+    close: function () {
+      peers.forEach(function (peer) { peer.pc.close(); });
+      peers.clear();
     },
   };
 }
