@@ -5,6 +5,7 @@ var THREE = AFRAME.THREE;
 var PREFERENCES_KEY = 'vr-showcase-player-preferences-v1';
 var AIM_PITCH_LIMIT_DEG = 55; // see aimLookQuaternion -- a plausible wrist range, not a camera-comfort limit
 var ADS_HAND_OFFSET = { x: 0.06, y: -0.09, z: -0.32 }; // camera-relative ADS hand position (dominant side), before a weapon's own aimOffset -- tune by feel per DESIGN.md; z is forward (camera-local -Z), matching every other offset in this file
+var TWO_HAND_SPAN_FALLBACK = 0.4; // meters, only used if a supported weapon somehow declares heldPosition/supportGrip at the same point
 
 function xrIsPresenting(sceneEl) {
   var controlMode = sceneEl && sceneEl.systems && sceneEl.systems['control-mode'];
@@ -1042,15 +1043,75 @@ AFRAME.registerComponent('desktop-controls', {
   // rig's grip child) still rides on top of this every tick, same as any
   // other pose -- this only computes the base, steadied-but-not-zeroed
   // target.
+  //
+  // Dual-wielding is the one case that keeps the old side offset: two
+  // pistols held symmetrically out to each side, both pointed at
+  // camera-forward, already reads as a natural akimbo aim ("works
+  // beautifully" per the request) and both hands are equally busy, so
+  // there's no third hand to bring in. Single-wielding centers the gun
+  // instead -- the camera should look straight over the top of it,
+  // through the sights, not off to one side -- and brings the idle off
+  // hand in close (placeSupportingHand) for a supported-looking stance.
   placeAimedHand: function (hand, firearm) {
+    var otherHand = hand.data.hand === 'left' ? this.hands.right : this.hands.left;
+    var dualWielding = Boolean(otherHand && otherHand.heldEl && otherHand.heldEl.components.firearm);
     var aimOffset = firearm.data.aimOffset;
-    var sideX = hand.data.hand === 'left' ? -ADS_HAND_OFFSET.x : ADS_HAND_OFFSET.x;
+    var sideX = dualWielding ? (hand.data.hand === 'left' ? -ADS_HAND_OFFSET.x : ADS_HAND_OFFSET.x) : 0;
     var position = this.cameraOffsetToWorld(new THREE.Vector3(
       sideX + aimOffset.x,
       ADS_HAND_OFFSET.y + aimOffset.y,
       ADS_HAND_OFFSET.z + aimOffset.z
     ), true);
-    hand.setWorldTransform(position, this.firearmAimQuaternion(hand.heldEl), 'Hold');
+    var quat = this.firearmAimQuaternion(hand.heldEl);
+    hand.setWorldTransform(position, quat, 'Hold');
+
+    if (!dualWielding && otherHand && !otherHand.heldEl) this.placeSupportingHand(otherHand, position, quat);
+  },
+
+  // Cosmetic only -- see findCosmeticSupportHand for why. Cups in close
+  // to the shooting hand roughly where a real supporting hand would sit,
+  // rather than actually attaching to anything.
+  placeSupportingHand: function (hand, primaryPosition, primaryQuat) {
+    var side = hand.data.hand === 'left' ? -1 : 1;
+    var offset = new THREE.Vector3(side * 0.035, -0.03, 0.05).applyQuaternion(primaryQuat);
+    hand.setWorldTransform(primaryPosition.clone().add(offset), primaryQuat, 'Hold');
+  },
+
+  // A real two-handed grip: the gun's own orientation is entirely
+  // derived (by holsterable.applyTwoHandedPose, core-equip.js) from the
+  // vector between the dominant hand's grip and the support hand's grip,
+  // so getting the aim right here means placing the SUPPORT hand along
+  // the desired barrel direction from the dominant hand, not computing
+  // any quaternion for the gun directly -- that math already exists and
+  // this only has to feed it correct hand positions. Both hands share
+  // one orientation (aiming direction, yaw-only at rest) so their
+  // averaged "up" -- what applyTwoHandedPose reads for roll -- comes out
+  // level, matching "looking down the sights, across the top."
+  placeTwoHandedFirearm: function (dominantHand, supportHand, heldEl) {
+    var holsterable = heldEl.components.holsterable;
+    var aiming = dominantHand.isAiming;
+    var handQuat = aiming ? this.aimLookQuaternion() : this.cameraYawQuaternion();
+
+    var dominantPosition;
+    if (aiming) {
+      var firearm = heldEl.components.firearm;
+      var aimOffset = firearm.data.aimOffset;
+      dominantPosition = this.cameraOffsetToWorld(new THREE.Vector3(
+        aimOffset.x,
+        ADS_HAND_OFFSET.y + aimOffset.y,
+        ADS_HAND_OFFSET.z + aimOffset.z
+      ), true);
+    } else {
+      dominantPosition = this.cameraOffsetToWorld(new THREE.Vector3(0, -0.25, -0.48), true);
+    }
+    dominantHand.setWorldTransform(dominantPosition, handQuat, 'Hold');
+
+    var hp = holsterable.data.heldPosition;
+    var sg = holsterable.data.supportGrip;
+    var handSpan = Math.hypot(sg.x - hp.x, sg.y - hp.y, sg.z - hp.z) || TWO_HAND_SPAN_FALLBACK;
+    var forward = new THREE.Vector3(0, 0, -1).applyQuaternion(handQuat);
+    var supportPosition = dominantPosition.clone().addScaledVector(forward, handSpan);
+    supportHand.setWorldTransform(supportPosition, handQuat, 'Hold');
   },
 
   placeCandidatePreview: function (candidate) {
@@ -1176,16 +1237,70 @@ AFRAME.registerComponent('desktop-controls', {
   },
 
   updateNormalHands: function () {
+    var twoHanded = this.findTwoHandedFirearm();
+    if (twoHanded) {
+      this.placeTwoHandedFirearm(twoHanded.dominant, twoHanded.support, twoHanded.heldEl);
+      return;
+    }
+
+    var cosmeticSupport = this.findCosmeticSupportHand();
     var candidate = this.autoCrouch && this.autoCrouch.phase === 'down'
       ? this.autoCrouch.candidate
       : this.hintSystem.desktopCandidate;
     ['left', 'right'].forEach(function (side) {
       var hand = this.hands[side];
       if (!hand) return;
+      // Already placed by placeAimedHand below, as part of the hand it's
+      // supporting -- see findCosmeticSupportHand/placeSupportingHand.
+      if (cosmeticSupport === hand) return;
       if (hand.heldEl) this.placeHeldHand(hand);
       else if (candidate && candidate.hand === hand) this.placeCandidatePreview(candidate);
       else this.placeRestHand(hand);
     }, this);
+  },
+
+  // A real two-handed grip (holsterable.supportHand actually set — see
+  // core-hand-rig.js's autoGrabSupport, the desktop/mobile equivalent of
+  // a VR player physically reaching to a shotgun's forend): both hands
+  // need to be positioned as a pair every tick, since the gun's own
+  // orientation is entirely derived from the vector between them
+  // (holsterable.applyTwoHandedPose, core-equip.js) — placing them
+  // independently the way a single-hand weapon's hands are placed would
+  // fight that derivation instead of feeding it.
+  findTwoHandedFirearm: function () {
+    var hands = [this.hands.left, this.hands.right];
+    for (var i = 0; i < hands.length; i++) {
+      var hand = hands[i];
+      if (!hand || !hand.heldEl) continue;
+      var holsterable = hand.heldEl.components.holsterable;
+      if (!holsterable || !holsterable.supportHand || !holsterable.data.supportAims) continue;
+      var otherHand = hands[1 - i];
+      if (!otherHand || otherHand.el !== holsterable.supportHand) continue;
+      return { dominant: hand, support: otherHand, heldEl: hand.heldEl };
+    }
+    return null;
+  },
+
+  // No real two-handed grab exists for a single pistol (holsterable.
+  // supportRadius is 0 by schema default, and no pistol overrides it) —
+  // per the request, bringing the idle off hand in close while aiming
+  // one-handed is purely cosmetic. Only when NOT dual-wielding (the
+  // other hand isn't also holding a firearm, which already has its own
+  // good-looking symmetric aim -- see placeAimedHand) and the other hand
+  // is otherwise completely empty.
+  findCosmeticSupportHand: function () {
+    var hands = [this.hands.left, this.hands.right];
+    for (var i = 0; i < hands.length; i++) {
+      var hand = hands[i];
+      if (!hand || !hand.heldEl || !hand.isAiming) continue;
+      if (!hand.heldEl.components.firearm) continue;
+      var holsterable = hand.heldEl.components.holsterable;
+      if (holsterable && holsterable.supportHand) continue; // real two-handed grip already covers this
+      var otherHand = hands[1 - i];
+      if (!otherHand || otherHand.heldEl) continue;
+      return otherHand;
+    }
+    return null;
   },
 
   applyMovement: function (delta) {

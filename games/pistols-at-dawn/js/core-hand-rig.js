@@ -162,6 +162,33 @@
           if (onComplete) onComplete();
         }
       }
+
+      function xrIsPresenting(sceneEl) {
+        var controlMode = sceneEl && sceneEl.systems && sceneEl.systems['control-mode'];
+        return Boolean(controlMode && controlMode.isMode('xr'));
+      }
+
+      // Desktop/mobile/gamepad-only (see the !xrIsPresenting call site in
+      // hand-rig.onGripDown): a real VR player two-hands a shotgun by
+      // physically reaching their off hand within holsterable.supportRadius
+      // of the forend (hand-rig.findSupportGrip) -- there's no such reach
+      // to make on desktop, and the request was explicit that "both hands
+      // should hold the gun when it's drawn" there. So the moment a
+      // support-capable weapon (supportRadius > 0) is drawn by a non-VR
+      // input, automatically send the other hand -- if it's empty -- to
+      // the weapon's own supportGrip point.
+      function autoGrabSupport(dominantHandRig, item) {
+        var holsterable = item.components.holsterable;
+        if (holsterable.data.supportRadius <= 0) return;
+        var otherHandEl = findOtherHand(dominantHandRig.el);
+        var otherHandRig = otherHandEl && otherHandEl.components['hand-rig'];
+        if (!otherHandRig || otherHandRig.heldObjects.length || otherHandRig.supportObjects.length) return;
+
+        var pos = holsterable.supportGripWorldPosition(new THREE.Vector3());
+        var quat = new THREE.Quaternion();
+        item.object3D.getWorldQuaternion(quat);
+        otherHandRig.animateSupportGrab(item, pos, quat);
+      }
       // ==============================================================
       // gripObjectOf
       // Where an object held by this hand should actually hang. Not
@@ -653,6 +680,35 @@
           }], {});
         },
 
+        // Desktop/mobile/gamepad only (see onGripDown's call site): reach
+        // this (empty) hand to a two-handed weapon's own supportGrip
+        // point and become its support hand, the scripted equivalent of
+        // a real VR player physically reaching their off hand to the
+        // forend. Deliberately does NOT emit gripdown -- becoming a
+        // support hand is a different event than picking something up
+        // (see holsterable.grabSupport), so this bypasses onGripDown's
+        // own pickup logic entirely rather than routing through it.
+        animateSupportGrab: function (item, worldPosition, worldQuaternion) {
+          var semanticHand = this.el.components['semantic-hand'];
+          var self = this;
+          function complete() {
+            item.components.holsterable.grabSupport(self.el);
+            self.supportObjects.push(item);
+          }
+          if (!semanticHand) {
+            complete();
+            return;
+          }
+          semanticHand.cancelMotion();
+          this._motionCompleteCallback = complete;
+          semanticHand.runWorldMotion([{
+            position: worldPosition,
+            quaternion: worldQuaternion,
+            pose: 'Hold',
+            duration: HAND_REACH_MOTION_MS,
+          }], {});
+        },
+
         // semantic-hand-motion-complete fires once for every finished
         // runWorldMotion call regardless of who started it (in Pistols,
         // always animateGripDown/animateRelease above), so the pending
@@ -799,6 +855,7 @@
             this.take(obj);
             var semanticHand = this.el.components['semantic-hand'];
             if (semanticHand) semanticHand.setHeld(obj);
+            if (!xrIsPresenting(this.el.sceneEl)) autoGrabSupport(this, obj);
             return;
           }
 
@@ -861,6 +918,18 @@
 
           objs.forEach(function (obj) {
             var holsterable = obj.components.holsterable;
+            // The dominant hand letting go doesn't imply the support
+            // hand ever will (nothing here calls its own onGripUp/
+            // onTriggerUp) -- most relevantly for the auto-grabbed
+            // desktop/mobile case (see autoGrabSupport), where the
+            // player never controls the support hand directly at all.
+            if (holsterable.supportHand) {
+              var supportRig = holsterable.supportHand.components['hand-rig'];
+              if (supportRig) {
+                supportRig.supportObjects = supportRig.supportObjects.filter(function (o) { return o !== obj; });
+              }
+              holsterable.releaseSupport();
+            }
             holsterable.release(self.fingerOnTrigger);
 
             if (holsterable.state === 'dangling') {
