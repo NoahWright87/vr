@@ -13,6 +13,7 @@
       var RECOIL_MAX_POSITION = 0.18; // meters; automatic fire can kick hard, but never detach the hand from the arm
       var RECOIL_MAX_ROTATION = 0.7; // radians, about 40 degrees on any local axis
       var HAND_REACH_MOTION_MS = 180; // how long a scripted desktop/mobile reach (draw, holster, swap) takes to arrive — see hand-rig.animateGripDown/animateRelease; tune by feel
+      var THROW_HAND_SPEED = 3.5; // m/s — desktop/mobile's fabricated hand speed for a scripted blade throw (see hand-rig.throwHeldItem); a plausible brisk flick, not a real measurement
 
       // Ambient-wobble steadiness multipliers -- see hand-rig.getSteadinessMultiplier.
       // Separate from firearm's own bracedRiseScale/supportedRiseScale
@@ -404,14 +405,23 @@
 
         // Desktop/mobile has no real hand velocity to throw with, so this
         // fabricates one just deliberate enough to clear
-        // computeThrowVelocity's gates (core.js) -- mostly upward, per the
-        // simplest of its three branches (MIN_THROW_UPWARD_SPEED), with a
-        // camera-forward lean so a guided star's hand-velocity blend
-        // (blade-projectile.onThrown) leans the same way the player is
-        // actually looking instead of straight up. Exactly how good this
-        // guess is barely matters: onThrown re-aims the real flight path at
-        // the camera's own look target regardless (fully for a knife, 68%
-        // for a star), the same way a real thrown knife/star already would.
+        // computeThrowVelocity's gates (core.js). A knife doesn't care what
+        // direction this points -- its flight is always fully re-solved
+        // toward the camera's look target (blade-projectile.onThrown). A
+        // guided star DOES care: onThrown blends 32% of this exact
+        // vector's raw direction into its real launch direction, so it
+        // has to actually look like a throw aimed where the camera is
+        // pointed, not an arbitrary toss -- an earlier version fixed the
+        // vertical component at a steep, constant elevation regardless of
+        // camera pitch, which dragged every star's launch angle upward by
+        // ~10-15 degrees and sent it arcing clean over anything close or
+        // below eye level (confirmed against real gallery targets before
+        // this fix). Using the camera's own full look direction keeps
+        // this blend close to the correctly-solved angle in the vast
+        // majority of aims, since both are derived from the same camera
+        // orientation; only a near-vertical aim (looking almost straight
+        // down) can fail computeThrowVelocity's gates entirely, which is
+        // an acceptable, rare edge case (the item just drops instead).
         // Bypasses animateRelease entirely (straight to onGripUp) so
         // settleVelocity never zeroes this.velocity before release() reads
         // it, and forces fingerOnTrigger off so release() evaluates a throw
@@ -424,7 +434,7 @@
             camera.object3D.getWorldQuaternion(camQuat);
             forward.applyQuaternion(camQuat);
           }
-          this.velocity.set(forward.x * 1.2, 1.5, forward.z * 1.2);
+          this.velocity.copy(forward).multiplyScalar(THROW_HAND_SPEED);
           this.fingerOnTrigger = false;
           this.onGripUp();
         },
