@@ -3,6 +3,8 @@ import './interaction-hints.js';
 
 var THREE = AFRAME.THREE;
 var PREFERENCES_KEY = 'vr-showcase-player-preferences-v1';
+var AIM_PITCH_LIMIT_DEG = 55; // see aimLookQuaternion -- a plausible wrist range, not a camera-comfort limit
+var ADS_HAND_OFFSET = { x: 0.06, y: -0.09, z: -0.32 }; // camera-relative ADS hand position (dominant side), before a weapon's own aimOffset -- tune by feel per DESIGN.md; z is forward (camera-local -Z), matching every other offset in this file
 
 function xrIsPresenting(sceneEl) {
   var controlMode = sceneEl && sceneEl.systems && sceneEl.systems['control-mode'];
@@ -120,6 +122,11 @@ AFRAME.registerComponent('desktop-controls', {
     this.onKeyDown = this.onKeyDown.bind(this);
     this.onKeyUp = this.onKeyUp.bind(this);
     this.onPointerDown = this.onPointerDown.bind(this);
+    this.onPointerUp = this.onPointerUp.bind(this);
+    this.onContextMenu = this.onContextMenu.bind(this);
+    this._aimKeyHeld = false; // raw right-mouse-button hold -- see onPointerDown/onPointerUp
+    this._aimActionHeld = false; // touch/gamepad's semantic 'aim' start/cancel -- see onSemanticAction
+    this.isAiming = false; // the two above, combined -- see updateAiming
     this.onSemanticTap = this.onSemanticTap.bind(this);
     this.onMountedRequest = this.onMountedRequest.bind(this);
     this.onActiveMenuClosed = this.onActiveMenuClosed.bind(this);
@@ -130,6 +137,8 @@ AFRAME.registerComponent('desktop-controls', {
     document.addEventListener('keydown', this.onKeyDown, true);
     document.addEventListener('keyup', this.onKeyUp, true);
     document.addEventListener('pointerdown', this.onPointerDown, true);
+    document.addEventListener('pointerup', this.onPointerUp, true);
+    document.addEventListener('contextmenu', this.onContextMenu, true);
     this.sceneEl.addEventListener('mounted-interaction-request', this.onMountedRequest);
     this.sceneEl.addEventListener('menu-option-change', this.onPreferenceChange);
     this.sceneEl.addEventListener('watch-menu-ready', this.onWatchReady);
@@ -250,6 +259,10 @@ AFRAME.registerComponent('desktop-controls', {
       // disambiguation has a chance to rule it out — so a tap-to-fire here
       // would also fire on every look-drag, not just a deliberate tap.
       if (evt.pointerType === 'mouse' && evt.button === 0) this.emitTriggerFallback();
+      else if (evt.pointerType === 'mouse' && evt.button === 2) {
+        this._aimKeyHeld = true;
+        this.updateAiming();
+      }
       return;
     }
     if (!this.activePointerHand) return;
@@ -260,6 +273,39 @@ AFRAME.registerComponent('desktop-controls', {
     }
     evt.preventDefault();
     this.activateMenuSelection();
+  },
+
+  // No pointerup listener existed in this file before ADS needed one --
+  // every other mouse/touch interaction here is a one-shot tap, not a
+  // hold. Right mouse button only; left-button release needs no handling
+  // since fire is already a tap (emitTriggerFallback), not a hold.
+  onPointerUp: function (evt) {
+    if (evt.pointerType === 'mouse' && evt.button === 2) {
+      this._aimKeyHeld = false;
+      this.updateAiming();
+    }
+  },
+
+  // Right-click drives ADS (see onPointerDown/onPointerUp) instead of the
+  // browser's own context menu while playing.
+  onContextMenu: function (evt) {
+    evt.preventDefault();
+  },
+
+  // Combines mouse (onPointerDown/onPointerUp) and touch/gamepad
+  // (onSemanticAction's 'aim' branch) into one flag per hand, mirroring
+  // how sprint is already split between this file's own key-polling and
+  // locomotion.js's separate gamepadSprinting. Every hand gets the same
+  // flag rather than just the dominant one, since a drawn firearm can end
+  // up in either hand (see core-equip.js's hotbar system) and each
+  // hand's own placeHeldHand only acts on it while actually holding one.
+  updateAiming: function () {
+    this.isAiming = Boolean(this._aimKeyHeld || this._aimActionHeld);
+    var aiming = this.isAiming;
+    ['left', 'right'].forEach(function (side) {
+      var hand = this.hands[side];
+      if (hand) hand.setAiming(aiming);
+    }, this);
   },
 
   // The 'normal' mode mirror of emitGrabFallback: no menu/mounted/watch
@@ -327,6 +373,18 @@ AFRAME.registerComponent('desktop-controls', {
 
   onSemanticAction: function (evt) {
     var detail = evt.detail || {};
+    // 'aim' is a hold, not a one-shot tap -- it needs the 'start'/'cancel'
+    // phases the blanket perform-only guard below exists to ignore for
+    // every other (one-shot) action here, so it's handled before that
+    // guard, the same way semantic-punch-controls' own onIntent reacts to
+    // phases other than 'perform' on this identical event.
+    if (detail.action === 'aim') {
+      if (!xrIsPresenting(this.sceneEl)) {
+        this._aimActionHeld = detail.phase === 'start';
+        this.updateAiming();
+      }
+      return;
+    }
     if (detail.phase !== 'perform' || xrIsPresenting(this.sceneEl)) return;
     var source = detail.source || 'desktop';
     if (detail.action === 'watch') {
@@ -882,6 +940,22 @@ AFRAME.registerComponent('desktop-controls', {
     return new THREE.Quaternion().setFromAxisAngle(this._up, yaw);
   },
 
+  // A held firearm's aim direction should track where the camera is
+  // actually looking, not just its yaw (that's cameraYawQuaternion, used
+  // for every other held/resting pose) -- otherwise a desktop/mobile
+  // player can never aim up or down at all. Clamped to a plausible aim
+  // cone rather than the camera's full look-controls-clamped pitch range
+  // (enforcePitchLimit's own ~89deg is a gimbal-lock guard, not a
+  // "can your wrist actually point this far" one), and roll is always
+  // dropped -- a gun doesn't twist with a mobile magic-window wobble.
+  aimLookQuaternion: function () {
+    this.cameraEl.object3D.getWorldQuaternion(this._cameraQuaternion);
+    var euler = new THREE.Euler().setFromQuaternion(this._cameraQuaternion, 'YXZ');
+    var pitchLimit = THREE.MathUtils.degToRad(AIM_PITCH_LIMIT_DEG);
+    var pitch = THREE.MathUtils.clamp(euler.x, -pitchLimit, pitchLimit);
+    return new THREE.Quaternion().setFromEuler(new THREE.Euler(pitch, euler.y, 0, 'YXZ'));
+  },
+
   currentAimDirection: function (pointerOrigin) {
     this.cameraEl.object3D.getWorldPosition(this._cameraPosition);
     var rayDirection = new THREE.Vector3(this.cursorNdc.x, this.cursorNdc.y, 0.5)
@@ -913,9 +987,55 @@ AFRAME.registerComponent('desktop-controls', {
   },
 
   placeHeldHand: function (hand) {
+    var firearm = hand.heldEl && hand.heldEl.components && hand.heldEl.components.firearm;
+    if (firearm && hand.isAiming) return this.placeAimedHand(hand, firearm);
     var sideX = hand.data.hand === 'left' ? -0.2 : 0.2;
     var position = this.cameraOffsetToWorld(new THREE.Vector3(sideX, -0.25, -0.48), true);
-    hand.setWorldTransform(position, this.cameraYawQuaternion(), 'Hold');
+    var orientation = firearm ? this.firearmAimQuaternion(hand.heldEl) : this.cameraYawQuaternion();
+    hand.setWorldTransform(position, orientation, 'Hold');
+  },
+
+  // The hand orientation that makes a held firearm's muzzle point exactly
+  // along the camera's look direction (aimLookQuaternion) -- used for
+  // both loose hip-fire tracking above and precise ADS below, since the
+  // target DIRECTION is identical in both; only the hand's target
+  // position (hip-level vs. near the eye) and how much wobble rides on
+  // top of it differ. The held item is a rigid child of the hand's grip
+  // point at a fixed local heldRotation (holsterable's own per-weapon
+  // correction -- see items-guns.js's comment above the pistol's
+  // declaration: it's tuned against a REAL tracked controller's own raw
+  // grip-pose convention, which does NOT put "forward" on the hand's own
+  // local -Z, so this has to invert it rather than skip it). Pointing the
+  // muzzle at camera-forward means solving for the one hand orientation
+  // that, once heldRotation is applied on top of it, lands exactly there:
+  // hand = cameraLook * heldRotation^-1.
+  firearmAimQuaternion: function (heldEl) {
+    var heldRotation = heldEl.components.holsterable.data.heldRotation;
+    var heldRotationQuat = new THREE.Quaternion().setFromEuler(new THREE.Euler(
+      THREE.MathUtils.degToRad(heldRotation.x),
+      THREE.MathUtils.degToRad(heldRotation.y),
+      THREE.MathUtils.degToRad(heldRotation.z)
+    ));
+    var quat = this.aimLookQuaternion();
+    quat.multiply(heldRotationQuat.invert());
+    return quat;
+  },
+
+  // ADS: same aim direction as hip-fire (firearmAimQuaternion), but the
+  // hand itself moves to a near-eye position (per weapon --
+  // firearm.aimOffset) instead of staying at hip level. Wobble (hand-
+  // rig's grip child) still rides on top of this every tick, same as any
+  // other pose -- this only computes the base, steadied-but-not-zeroed
+  // target.
+  placeAimedHand: function (hand, firearm) {
+    var aimOffset = firearm.data.aimOffset;
+    var sideX = hand.data.hand === 'left' ? -ADS_HAND_OFFSET.x : ADS_HAND_OFFSET.x;
+    var position = this.cameraOffsetToWorld(new THREE.Vector3(
+      sideX + aimOffset.x,
+      ADS_HAND_OFFSET.y + aimOffset.y,
+      ADS_HAND_OFFSET.z + aimOffset.z
+    ), true);
+    hand.setWorldTransform(position, this.firearmAimQuaternion(hand.heldEl), 'Hold');
   },
 
   placeCandidatePreview: function (candidate) {
@@ -1060,7 +1180,7 @@ AFRAME.registerComponent('desktop-controls', {
     if (!x && !z) return;
     var locomotion = this.el.components['locomotion-demo'];
     var sprint = this.data.sprintEnabled && Boolean(this.keys.ShiftLeft || this.keys.ShiftRight);
-    if (locomotion && locomotion.applyDesktopMove) locomotion.applyDesktopMove(x, z, delta, sprint);
+    if (locomotion && locomotion.applyDesktopMove) locomotion.applyDesktopMove(x, z, delta, sprint, this.isAiming);
   },
 
   tick: function (time, delta) {
@@ -1105,6 +1225,8 @@ AFRAME.registerComponent('desktop-controls', {
     document.removeEventListener('keydown', this.onKeyDown, true);
     document.removeEventListener('keyup', this.onKeyUp, true);
     document.removeEventListener('pointerdown', this.onPointerDown, true);
+    document.removeEventListener('pointerup', this.onPointerUp, true);
+    document.removeEventListener('contextmenu', this.onContextMenu, true);
     this.sceneEl.removeEventListener('mounted-interaction-request', this.onMountedRequest);
     this.sceneEl.removeEventListener('menu-option-change', this.onPreferenceChange);
     this.sceneEl.removeEventListener('watch-menu-ready', this.onWatchReady);

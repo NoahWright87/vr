@@ -821,6 +821,7 @@
           // capsule rather than a ball, for a couple of dot products.
           grabSpan: { type: 'vec3', default: { x: 0, y: 0, z: 0 } },
           comOffset: { type: 'vec3', default: { x: 0, y: 0, z: 0 } }, // center of mass, relative to the entity origin
+          weight: { type: 'number', default: 0.3 }, // 0..1 "heaviness" for hand-rig's weight-tremor wobble contributor -- not real mass, tuned by feel like everything else here
           maxThrowSpeed: { type: 'number', default: OVERHAND_MAX_DEFAULT_SPEED }, // how hard this particular object can be thrown, whatever your arm does
           gravityScale: { type: 'number', default: 1 }, // multiplies gravity while falling — under 1 keeps a thrown object up longer, which is what makes shooting bottles out of the air possible
           impactDamage: { type: 'number', default: 1 }, // published on projectile `shot` events; current steel targets only care that they were hit, future damageables can care how hard

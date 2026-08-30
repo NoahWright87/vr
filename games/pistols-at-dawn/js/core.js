@@ -605,6 +605,11 @@
       // module object rather than a component lookup because it's read
       // by everything, every frame.
       var VICES = { alcohol: 0, nicotine: 0 };
+      // Same shape and same reason, but unlike VICES it rises on its own
+      // (ramps up while sprinting) as well as falling — see vice-meter's
+      // tick in items-vices.js, which is also where it's ticked, and
+      // hand-rig's exertion-breathing wobble contributor, which reads it.
+      var EXERTION = { level: 0 };
       // The watch menu owns this switch. HUD producers check it before doing
       // text geometry work that cannot be seen while the HUD is hidden.
       var PLAYER_HUD_VISIBLE = true;
@@ -1311,6 +1316,46 @@
         out.x = sway * Math.sin(t * 1.3 + seed) + shake * Math.sin(t * 21.7 + seed * 3);
         out.y = sway * Math.sin(t * 0.9 + seed * 2) + shake * Math.sin(t * 27.3 + seed);
         out.z = sway * 0.6 * Math.sin(t * 1.7 + seed) + shake * 0.5 * Math.sin(t * 31.1 + seed * 5);
+        return out;
+      }
+
+      // Three more wobble contributors, same fixed-sine-sum shape as
+      // viceWobble and summed onto the same hand-rig grip child (see
+      // hand-rig.updateGrip) rather than introducing a different kind of
+      // motion per cause. Degrees, like viceWobble's output.
+
+      var IDLE_TREMOR_DEG = 0.35; // a small physiological tremor present even sober and at rest, so idle hands aren't perfectly still
+      var WEIGHT_TREMOR_DEG = 2.6; // at holsterable.weight 1.0 -- scaled down for lighter items
+      var EXERTION_BREATH_DEG = 3.2; // at EXERTION.level 1.0 -- a winded heave, not a tremor
+
+      // Always-on baseline, independent of anything held or drunk.
+      function idleTremor(seed, timeMs, out) {
+        var t = timeMs / 1000;
+        out.x = IDLE_TREMOR_DEG * Math.sin(t * 1.7 + seed * 1.3);
+        out.y = IDLE_TREMOR_DEG * Math.sin(t * 1.1 + seed * 0.7);
+        out.z = IDLE_TREMOR_DEG * 0.6 * Math.sin(t * 2.3 + seed * 2.1);
+        return out;
+      }
+
+      // A heavier held object wavers the wrist more, and more slowly,
+      // than a light one -- lower frequency than idleTremor on purpose.
+      function weightWobble(seed, timeMs, weight, out) {
+        var amp = Math.max(0, weight || 0) * WEIGHT_TREMOR_DEG;
+        var t = timeMs / 1000;
+        out.x = amp * Math.sin(t * 0.7 + seed * 1.9);
+        out.y = amp * Math.sin(t * 0.5 + seed * 0.4);
+        out.z = amp * 0.5 * Math.sin(t * 0.9 + seed * 3.3);
+        return out;
+      }
+
+      // A winded chest heave, slower than a tremor and mostly a
+      // side-to-side sway rather than a shake.
+      function exertionWobble(seed, timeMs, out) {
+        var amp = EXERTION.level * EXERTION_BREATH_DEG;
+        var t = timeMs / 1000;
+        out.x = amp * Math.sin(t * 1.9 + seed);
+        out.y = amp * 0.7 * Math.sin(t * 1.9 + seed + Math.PI / 2);
+        out.z = 0;
         return out;
       }
 

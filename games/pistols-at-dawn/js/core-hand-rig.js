@@ -14,6 +14,48 @@
       var RECOIL_MAX_ROTATION = 0.7; // radians, about 40 degrees on any local axis
       var HAND_REACH_MOTION_MS = 180; // how long a scripted desktop/mobile reach (draw, holster, swap) takes to arrive — see hand-rig.animateGripDown/animateRelease; tune by feel
 
+      // Ambient-wobble steadiness multipliers -- see hand-rig.getSteadinessMultiplier.
+      // Separate from firearm's own bracedRiseScale/supportedRiseScale
+      // (items-guns.js), which scale a shot's recoil KICK; these scale
+      // the continuous idle/weight/exertion/vice sway between shots.
+      var SUPPORTED_STEADY_SCALE = 0.6; // two-handed, not braced against anything
+      var BRACED_STEADY_SCALE = 0.3; // resting on a gun-brace-surface
+      var AIMED_STEADY_SCALE = 0.55; // ADS held (common/desktop-controls.js) -- desktop/mobile/gamepad only
+      var CROUCH_STEADY_REDUCTION = 0.35; // fraction of ambient wobble removed at full crouch
+
+      // A self-calibrating crouch heuristic shared by both hands (see
+      // getSteadinessMultiplier): rather than reading desktop-controls'
+      // crouch flags directly (VR has no equivalent flag -- crouching is
+      // just physically lowering your head), track a slowly-adapting
+      // "standing height" baseline off the live camera and treat a
+      // noticeable drop below it as crouched. This works identically for
+      // VR (real head height) and desktop (desktop-controls' own
+      // updateCrouch already moves the camera down) with no branching.
+      // Deduped to once per frame via `time` (shared across every
+      // component's tick this frame) since both hands call it.
+      var STANDING_HEIGHT_TRACK_MARGIN = 0.12; // meters -- within this of the estimate still counts as "standing," for recalibration
+      var STANDING_HEIGHT_ADAPT_PER_S = 0.4; // how fast the standing baseline follows a genuine height change while apparently standing
+      var CROUCH_SOFTEN_HEIGHT = 0.35; // meters below standing that reads as fully crouched -- tune by feel
+      var _standingHeightEstimate = null;
+      var _lastCrouchUpdateTime = -1;
+      var _crouchFactorCache = 0;
+
+      function crouchSteadinessFactor(time, dtSeconds) {
+        if (time === _lastCrouchUpdateTime) return _crouchFactorCache;
+        _lastCrouchUpdateTime = time;
+        var headEl = document.querySelector('#head-camera');
+        if (!headEl || !headEl.object3D) return _crouchFactorCache;
+        var height = headEl.object3D.position.y;
+        if (_standingHeightEstimate === null || height > _standingHeightEstimate - STANDING_HEIGHT_TRACK_MARGIN) {
+          _standingHeightEstimate = _standingHeightEstimate === null
+            ? height
+            : _standingHeightEstimate + (height - _standingHeightEstimate) * Math.min(1, STANDING_HEIGHT_ADAPT_PER_S * dtSeconds);
+        }
+        var drop = Math.max(0, _standingHeightEstimate - height);
+        _crouchFactorCache = Math.max(0, Math.min(1, drop / CROUCH_SOFTEN_HEIGHT));
+        return _crouchFactorCache;
+      }
+
       // ==============================================================
       // clearOtherHandIfExclusive
       // Shared by hand-rig's own onDesktopGrabAttempt (the F key) and
@@ -199,6 +241,9 @@
 
           this._wobbleSeed = Math.random() * 100;
           this._wobble = { x: 0, y: 0, z: 0 };
+          this._idleWobble = { x: 0, y: 0, z: 0 };
+          this._weightWobble = { x: 0, y: 0, z: 0 };
+          this._exertionWobble = { x: 0, y: 0, z: 0 };
           this._ghostHand = new THREE.Vector3();
           this._ghostVel = new THREE.Vector3();
           this._handWorld = new THREE.Vector3();
@@ -350,26 +395,44 @@
         //     where you stopped. Driven entirely by your own motion —
         //     hold still and it settles; whip the gun around and it
         //     punishes you.
+        // Every ambient contributor (vice wobble/drift, idle tremor,
+        // held-weight tremor, exertion breathing) is summed here and
+        // scaled together by one steadiness multiplier before recoil --
+        // which keeps its own separate scaling -- is added on top
+        // unscaled. See getSteadinessMultiplier for what feeds that
+        // multiplier, and DESIGN.md's "perturb the hand, not the held
+        // object" rule for why this all lands on the grip child rather
+        // than the gun itself.
         updateGrip: function (time, dtSeconds) {
           var w = viceWobble(this._wobbleSeed, time, this._wobble);
+          var idle = idleTremor(this._wobbleSeed, time, this._idleWobble);
+          var held = this.heldObjects[0];
+          var weight = held && held.components.holsterable ? held.components.holsterable.data.weight : 0;
+          var weightW = weightWobble(this._wobbleSeed, time, weight, this._weightWobble);
+          var exertionW = exertionWobble(this._wobbleSeed, time, this._exertionWobble);
           this.updateGhostHand(dtSeconds);
           this.updateRecoil(dtSeconds);
 
+          var steadiness = this.getSteadinessMultiplier(time, dtSeconds);
+
           var grip = this.gripEl.object3D;
           grip.position.set(
-            this._drift.x * DRIFT_POSITION_GAIN + this.recoilPosition.x,
-            this._drift.y * DRIFT_POSITION_GAIN + this.recoilPosition.y,
-            this._drift.z * DRIFT_POSITION_GAIN + this.recoilPosition.z
+            this._drift.x * DRIFT_POSITION_GAIN * steadiness + this.recoilPosition.x,
+            this._drift.y * DRIFT_POSITION_GAIN * steadiness + this.recoilPosition.y,
+            this._drift.z * DRIFT_POSITION_GAIN * steadiness + this.recoilPosition.z
           );
           if (this.gripAnchored) {
             this._gripAnchorLocal.copy(this.gripAnchorWorld);
             this.el.object3D.worldToLocal(this._gripAnchorLocal);
             grip.position.copy(this._gripAnchorLocal);
           }
+          var ambientXDeg = (w.x - this._drift.y * DRIFT_ROTATION_GAIN) + idle.x + weightW.x + exertionW.x;
+          var ambientYDeg = (w.y + this._drift.x * DRIFT_ROTATION_GAIN) + idle.y + weightW.y + exertionW.y;
+          var ambientZDeg = w.z + idle.z + weightW.z + exertionW.z;
           grip.rotation.set(
-            ((w.x - this._drift.y * DRIFT_ROTATION_GAIN) * Math.PI) / 180 + this.recoilRotation.x,
-            ((w.y + this._drift.x * DRIFT_ROTATION_GAIN) * Math.PI) / 180 + this.recoilRotation.y,
-            (w.z * Math.PI) / 180 + this.recoilRotation.z
+            (ambientXDeg * steadiness * Math.PI) / 180 + this.recoilRotation.x,
+            (ambientYDeg * steadiness * Math.PI) / 180 + this.recoilRotation.y,
+            (ambientZDeg * steadiness * Math.PI) / 180 + this.recoilRotation.z
           );
 
           this.applyToVisual(grip);
@@ -382,6 +445,39 @@
 
         clearGripAnchor: function () {
           this.gripAnchored = false;
+        },
+
+        // A single 0..1 multiplier applied to every AMBIENT wobble
+        // contributor below (idle tremor, weight, exertion, vice wobble
+        // and drift) -- never to recoil, which keeps its own existing
+        // braced/supported/aimed scaling applied at the impulse itself
+        // (items-guns.js's applyRecoilImpulse). Reasons to steady down
+        // multiply together, so bracing AND aiming AND crouching all at
+        // once is steadier than any one alone, and it never reaches
+        // exactly zero -- "wobble less," not "wobble not at all."
+        getSteadinessMultiplier: function (time, dtSeconds) {
+          var holdFactor = 1;
+          var held = this.heldObjects[0];
+          if (held) {
+            var firearmComp = held.components.firearm;
+            var holsterableComp = held.components.holsterable;
+            var supported = Boolean(holsterableComp && holsterableComp.supportHand && holsterableComp.data.supportAims);
+            if (firearmComp && firearmComp.braced) holdFactor = BRACED_STEADY_SCALE;
+            else if (supported) holdFactor = SUPPORTED_STEADY_SCALE;
+          }
+          var aimFactor = this.isAiming() ? AIMED_STEADY_SCALE : 1;
+          var crouch = crouchSteadinessFactor(time, dtSeconds);
+          return holdFactor * aimFactor * (1 - crouch * CROUCH_STEADY_REDUCTION);
+        },
+
+        // ADS (isAiming) is owned by common/interaction-hints.js's
+        // semantic-hand, not this component -- it's desktop/mobile/
+        // gamepad input state (see common/desktop-controls.js), and this
+        // file only ever reads it, the same way onGripDown/onGripUp
+        // already reach into semantic-hand for setHeld.
+        isAiming: function () {
+          var semanticHand = this.el.components['semantic-hand'];
+          return Boolean(semanticHand && semanticHand.isAiming);
         },
 
         // Firearms calculate kick in world space from the barrel and
@@ -701,6 +797,8 @@
           if (obj && this.canAddToHeld(obj)) {
             obj.components.holsterable.grab(this.el);
             this.take(obj);
+            var semanticHand = this.el.components['semantic-hand'];
+            if (semanticHand) semanticHand.setHeld(obj);
             return;
           }
 
@@ -752,6 +850,14 @@
           this.heldObjects = [];
           this.stash = [];
           this.stashTime = performance.now();
+
+          // desktop-controls' generic hand placement (placeHeldHand vs.
+          // placeRestHand) branches on semantic-hand's own heldEl, which
+          // Pistols' holsterable grabs otherwise never touch — without
+          // this, a drawn gun is invisibly treated as "resting" by every
+          // desktop/mobile-only system built on top of semantic-hand.
+          var semanticHand = this.el.components['semantic-hand'];
+          if (semanticHand) semanticHand.setHeld(null);
 
           objs.forEach(function (obj) {
             var holsterable = obj.components.holsterable;

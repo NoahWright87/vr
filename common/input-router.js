@@ -16,7 +16,7 @@ export function createStandardGamepadButtonBindings(actions) {
     3: actions.watch,
     4: actions.grab,
     5: actions.secondary,
-    6: actions.secondary,
+    6: actions.aim || actions.secondary,
     7: actions.primary,
     9: actions.watch,
     10: actions.sprint || actions.crouch,
@@ -223,6 +223,7 @@ if (typeof AFRAME !== 'undefined') {
       backAction: { default: 'back' },
       crouchAction: { default: 'crouch' },
       sprintAction: { default: 'none' },
+      aimAction: { default: 'none' },
       deadzone: { default: 0.18 },
       chargeMs: { default: 900 },
       minimumStrength: { default: 0.35 },
@@ -241,6 +242,7 @@ if (typeof AFRAME !== 'undefined') {
         back: this.data.backAction,
         crouch: this.data.crouchAction,
         sprint: this.data.sprintAction,
+        aim: this.data.aimAction,
       });
     },
 
@@ -359,6 +361,8 @@ if (typeof AFRAME !== 'undefined') {
       hotbar2Label: { default: '2' },
       hotbar3Action: { default: 'none' },
       hotbar3Label: { default: '3' },
+      aimAction: { default: 'none' },
+      aimLabel: { default: 'AIM' },
       chargeMs: { default: 900 },
       minimumStrength: { default: 0.35 },
     },
@@ -429,6 +433,7 @@ if (typeof AFRAME !== 'undefined') {
       this.addActionButton(this.data.hotbar1Action, this.data.hotbar1Label, false);
       this.addActionButton(this.data.hotbar2Action, this.data.hotbar2Label, false);
       this.addActionButton(this.data.hotbar3Action, this.data.hotbar3Label, false);
+      this.addActionButton(this.data.aimAction, this.data.aimLabel, false);
       this.addActionButton(this.data.secondaryAction, this.data.secondaryLabel, true);
       this.addActionButton(this.data.primaryAction, this.data.primaryLabel, true);
     },

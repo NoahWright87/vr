@@ -628,6 +628,7 @@ AFRAME.registerComponent('semantic-hand', {
     this.desiredQuaternion = this.el.object3D.quaternion.clone();
     this.desktopPose = 'Open';
     this.heldEl = null;
+    this.isAiming = false; // desktop/mobile/gamepad ADS state -- see setAiming, common/desktop-controls.js
     this.mixer = null;
     this.actions = {};
     this.currentAction = null;
@@ -724,6 +725,15 @@ AFRAME.registerComponent('semantic-hand', {
   setHeld: function (el) {
     this.heldEl = el;
     this.playPose(el ? 'Hold' : 'Open');
+  },
+
+  // Desktop/mobile/gamepad input sets this while this hand's ADS button
+  // is held (common/desktop-controls.js) -- never from any XR path,
+  // since a real hand is already as steady/aimed as the player actually
+  // holds it. A game's own recoil/wobble math just reads the field
+  // directly (e.g. Pistols' hand-rig.isAiming()).
+  setAiming: function (aiming) {
+    this.isAiming = Boolean(aiming);
   },
 
   getInteractionWorldPosition: function (target) {
