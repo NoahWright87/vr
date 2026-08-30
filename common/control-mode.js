@@ -39,13 +39,23 @@ if (typeof AFRAME !== 'undefined') {
       this.syncModeFromRenderer();
     },
 
+    // A bare window.requestAnimationFrame is not a safe way to re-check
+    // presentation state: once a real immersive XRSession owns the frame
+    // loop, browsers are not obligated to keep servicing the flat page's
+    // own top-level rAF at a useful rate (this is exactly why
+    // THREE.WebGLRenderer.setAnimationLoop transparently switches to
+    // XRSession.requestAnimationFrame instead). Every component that must
+    // keep working in real VR relies on that same A-Frame/XR-aware tick
+    // loop -- this system now does too (see tick()), so this method is a
+    // same-frame head start on enter-vr/exit-vr, not the only mechanism.
     syncModeFromRenderer: function () {
-      var self = this;
-      requestAnimationFrame(function () {
-        var renderer = self.sceneEl.renderer;
-        var presenting = Boolean(renderer && renderer.xr && renderer.xr.isPresenting);
-        self.setMode(presenting ? 'xr' : 'desktop');
-      });
+      var renderer = this.sceneEl.renderer;
+      var presenting = Boolean(renderer && renderer.xr && renderer.xr.isPresenting);
+      this.setMode(presenting ? 'xr' : 'desktop');
+    },
+
+    tick: function () {
+      this.syncModeFromRenderer();
     },
 
     setMode: function (mode) {

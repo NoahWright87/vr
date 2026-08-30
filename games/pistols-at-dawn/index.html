@@ -517,11 +517,20 @@
              bubbles up through the rig on its way to <a-scene>,
              exactly like it would from a top-level hand — the wrap
              doesn't change that path, just adds a stop along it.
+
+             hand-with-watch must be declared before semantic-hand:
+             A-Frame inits attribute components in source order, and
+             semantic-hand's own init() looks up hand-with-watch's
+             wrapperEl synchronously to parent its desktop-only cosmetic
+             hand inside the watch's corrective rotation. Declared the
+             other way around, semantic-hand finds no wrapperEl yet and
+             falls back to parenting directly on the hand entity instead
+             — same mesh, wrong orientation.
         ============================================================ -->
-        <a-entity id="left-hand" class="hand" oculus-touch-controls="hand: left; model: false" hand-rig="visual: #hand-visual-left" semantic-hand="hand: left; maxReach: 1" proximity-haptics hand-with-watch="hand: left"></a-entity>
+        <a-entity id="left-hand" class="hand" oculus-touch-controls="hand: left; model: false" hand-rig="visual: #hand-visual-left" hand-with-watch="hand: left" semantic-hand="hand: left; maxReach: 1" proximity-haptics></a-entity>
         <a-entity id="hand-visual-left" hand-controls="hand: left; handModelStyle: lowPoly; color: #3a3a3a"></a-entity>
 
-        <a-entity id="right-hand" class="hand" oculus-touch-controls="hand: right; model: false" hand-rig="visual: #hand-visual-right" semantic-hand="hand: right; maxReach: 1" proximity-haptics hand-with-watch="hand: right"></a-entity>
+        <a-entity id="right-hand" class="hand" oculus-touch-controls="hand: right; model: false" hand-rig="visual: #hand-visual-right" hand-with-watch="hand: right" semantic-hand="hand: right; maxReach: 1" proximity-haptics></a-entity>
         <a-entity id="hand-visual-right" hand-controls="hand: right; handModelStyle: lowPoly; color: #3a3a3a"></a-entity>
       </a-entity>
       <!-- end #player-rig -->
