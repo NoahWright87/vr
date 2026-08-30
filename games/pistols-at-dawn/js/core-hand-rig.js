@@ -766,14 +766,15 @@
             components.firearm ||
             components.bow ||
             components.launcher ||
-            components.nozzle
+            components.nozzle ||
+            components['blade-projectile']
           ));
         },
 
         // Whether this hand already has a weapon among heldObjects.
-        // Guns, bow, launcher and tank nozzle all occupy the hand by
-        // themselves; throwable explosives remain deliberately
-        // stackable props.
+        // Guns, bow, launcher, tank nozzle, and thrown blades all occupy
+        // the hand by themselves; throwable explosives remain
+        // deliberately stackable props.
         hasWeapon: function () {
           var self = this;
           return this.heldObjects.some(function (objEl) {
