@@ -29,7 +29,10 @@ test('destinations are lazy fragments instead of simultaneous scene entities', (
   assert.match(dayNight, /weatherTimeScale = cycle \? cycle\.timeScale : 1/);
   assert.match(dayNight, /spawnCell/);
   assert.match(dayNight, /attachCloudToCell/);
-  assert.match(dayNight, /cloud\.group\.quaternion\.setFromUnitVectors\(this\.planeNormal, this\.inwardNormal\)/);
+  assert.match(dayNight, /this\.tangentRight\.crossVectors\(this\.worldUp, this\.inwardNormal\)/);
+  assert.match(dayNight, /this\.orientationMatrix\.makeBasis\(this\.tangentRight, this\.tangentUp, this\.inwardNormal\)/);
+  assert.match(dayNight, /cloud\.group\.quaternion\.setFromRotationMatrix\(this\.orientationMatrix\)/);
+  assert.doesNotMatch(dayNight, /cloud\.group\.quaternion\.setFromUnitVectors/);
   assert.match(dayNight, /new THREE\.Mesh\(this\.cloudGeometry, material\)/);
   assert.doesNotMatch(dayNight, /cloud\.faces/);
   assert.match(dayNight, /shadowProxy\.customDepthMaterial = new THREE\.MeshDepthMaterial/);

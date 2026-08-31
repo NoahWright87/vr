@@ -304,6 +304,10 @@ registerComponent('weather-clouds', {
     this.rootWorldPosition = new THREE.Vector3();
     this.inwardNormal = new THREE.Vector3();
     this.planeNormal = new THREE.Vector3(0, 0, 1);
+    this.worldUp = new THREE.Vector3(0, 1, 0);
+    this.tangentRight = new THREE.Vector3();
+    this.tangentUp = new THREE.Vector3();
+    this.orientationMatrix = new THREE.Matrix4();
     this.shadowDirection = new THREE.Vector3();
     this.onDayNightChange = this.updateAppearance.bind(this);
     this.el.addEventListener('day-night-change', this.onDayNightChange);
@@ -485,10 +489,14 @@ registerComponent('weather-clouds', {
       Math.sin(elevation) * this.data.hemisphereRadius,
       Math.sin(azimuth) * horizontal
     );
-    // Orient to the hemisphere center. This depends only on the cloud's sky
-    // position; headset yaw and pitch never enter the calculation.
+    // Build a stable tangent frame. setFromUnitVectors() alone is ambiguous
+    // near the rear pole and can suddenly choose the opposite 180-degree axis,
+    // making a card visibly somersault. World-up fixes the card's roll.
     this.inwardNormal.copy(cloud.group.position).normalize().multiplyScalar(-1);
-    cloud.group.quaternion.setFromUnitVectors(this.planeNormal, this.inwardNormal);
+    this.tangentRight.crossVectors(this.worldUp, this.inwardNormal).normalize();
+    this.tangentUp.crossVectors(this.inwardNormal, this.tangentRight).normalize();
+    this.orientationMatrix.makeBasis(this.tangentRight, this.tangentUp, this.inwardNormal);
+    cloud.group.quaternion.setFromRotationMatrix(this.orientationMatrix);
     cloud.group.rotateZ(cloud.roll);
     // Keep the shadow caster near town and inside the Sun's compact shadow
     // camera. It represents the distant card without expanding that camera.
