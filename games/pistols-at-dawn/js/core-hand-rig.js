@@ -146,15 +146,19 @@
       // anything itself, just like onDesktopGrabAttempt never did —
       // arriving fires the real `gripdown`, and findGrabbableObject's
       // own tight, VR-precision radius re-resolves obj from there, the
-      // same way a real controller reach already would.
+      // same way a real controller reach already would. `onComplete`,
+      // if given, runs after clearOtherHandIfExclusive — core-equip.js's
+      // performEquipDraw uses it to know exactly when the reach has
+      // landed before starting its own twirl-to-ready sequence.
       // ==============================================================
-      function reachAndGrabItem(handRig, obj) {
+      function reachAndGrabItem(handRig, obj, onComplete) {
         var pos = new THREE.Vector3();
         var quat = new THREE.Quaternion();
         obj.object3D.getWorldPosition(pos);
         obj.object3D.getWorldQuaternion(quat);
         handRig.animateGripDown(pos, quat, function () {
           clearOtherHandIfExclusive(handRig, obj);
+          if (onComplete) onComplete();
         });
       }
 
@@ -209,10 +213,10 @@
         var otherHandEl = findOtherHand(dominantHandRig.el);
         var otherHandRig = otherHandEl && otherHandEl.components['hand-rig'];
         // danglingObjects belongs here too: a hand mid-twirl (see
-        // core-equip.js's performTwirlSwap) isn't holding or supporting
+        // core-equip.js's performEquipDraw) isn't holding or supporting
         // anything by this component's own bookkeeping, but scripting a
         // completely unrelated support-grab motion onto it right then
-        // would still cancel that twirl's own in-flight arc out from
+        // would still cancel that twirl's own in-flight motion out from
         // under it (animateSupportGrab's cancelMotion() doesn't know or
         // care why the hand was already moving).
         if (!otherHandRig || otherHandRig.heldObjects.length || otherHandRig.supportObjects.length || otherHandRig.danglingObjects.length) return;
@@ -289,6 +293,7 @@
           this.gripHeld = false; // true for the whole time the grip is squeezed, not just the initial press
           this.triggerHeld = false; // and the same for the trigger, which a bowstring and a hose nozzle both need
           this.activeGripInteraction = null; // fixed machinery handles are gripped without joining the carry stack
+          this.suppressAutoSupport = false; // true mid-twirl (core-equip.js's performEquipDraw) so the initial grab doesn't jump the off-hand to the forend before the flourish has even started
 
           this.velocity = new THREE.Vector3();
           this._prevPos = new THREE.Vector3();
@@ -684,10 +689,10 @@
 
         // The shared primitive underneath every scripted desktop/mobile
         // hand motion — animateGripDown/animateRelease below, and
-        // performTwirlSwap's own cosmetic repositioning beats
-        // (core-equip.js), which move a hand through one or more
-        // keyframes without either of those two's own automatic
-        // gripdown/gripup at the end. Same runWorldMotion keyframe
+        // performEquipDraw/performEquipHolster's own cosmetic
+        // repositioning beats (core-equip.js), which move a hand
+        // through one or more keyframes without either of those two's
+        // own automatic gripdown/gripup at the end. Same runWorldMotion keyframe
         // mechanism common/semantic-punch.js already uses for a punch's
         // windup/strike, not a teleport — multiple keyframes chain
         // sequentially (interaction-hints.js's updateMotion carries the
@@ -941,7 +946,7 @@
             this.take(obj);
             var semanticHand = this.el.components['semantic-hand'];
             if (semanticHand) semanticHand.setHeld(obj);
-            if (!xrIsPresenting(this.el.sceneEl)) autoGrabSupport(this, obj);
+            if (!xrIsPresenting(this.el.sceneEl) && !this.suppressAutoSupport) autoGrabSupport(this, obj);
             return;
           }
 
