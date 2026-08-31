@@ -762,6 +762,75 @@
       });
 
       // ==============================================================
+      // COMPONENT: slot-reach-grab
+      // A long desktop/mobile/gamepad reach for an anchor-slot's
+      // current occupant — the "define a grab area" half of picking up
+      // shop and bar props that F's own plain search (hand-rig's
+      // onDesktopGrabAttempt) can never reach on its own. That search
+      // only ever looks from wherever desktop-controls' fixed idle
+      // hand pose currently sits (roughly chest height), so a bottle
+      // sitting on a bar counter or a rifle racked on a store shelf
+      // stays permanently just out of range — confirmed directly: even
+      // standing right against the counter and looking straight down
+      // at it, the idle hand's own position never closes to within a
+      // small item's ~0.16m grabRadius. common/interaction-hints.js's
+      // hint-zone already solves exactly this for the Showcase's own
+      // simple-grabbable boxes (a shoulder-anchored reach plus a gaze
+      // cone, both far more generous than a fixed hand offset) — this
+      // component is the bridge that lets an anchor-slot opt into that
+      // same discovery mechanism while still landing in Pistols' own
+      // richer holsterable state machine (hold/holster/dangle/throw),
+      // not a second, parallel one. Put a sibling `hint-zone` on the
+      // same slot entity (action: grab -- see world-saloon-bar.js's
+      // addLocalSlot for the reference tuning, copied from the
+      // Showcase's own grab zone) to actually offer it.
+      //
+      // Deliberately never touches source: 'xr' — a real VR hand
+      // already grabs slot occupants directly via hand-rig's own
+      // tight, physically-tracked proximity check (findGrabbableObject
+      // from the hand's genuine position), and animateGripDown below
+      // is a scripted desktop/mobile reach that would fight real
+      // controller tracking if it ever ran against one.
+      // ==============================================================
+      registerComponent('slot-reach-grab', {
+        init: function () {
+          this.onSemanticAction = this.onSemanticAction.bind(this);
+          this.el.addEventListener('semantic-action', this.onSemanticAction);
+        },
+
+        remove: function () {
+          this.el.removeEventListener('semantic-action', this.onSemanticAction);
+        },
+
+        onSemanticAction: function (evt) {
+          if (evt.detail.action !== 'grab' || evt.detail.source === 'xr') return;
+
+          var handEl = evt.detail.handEl;
+          var handRig = handEl && handEl.components['hand-rig'];
+          if (!handRig) return;
+
+          // Same toggle onDesktopGrabAttempt's own plain reach already
+          // has: a full hand always means "let go," never "try to grab
+          // something else" -- otherwise F would never fall through to
+          // a plain release for as long as a hand-rig.hasWeapon-style
+          // hint-zone target stays in gaze/reach (empty or not, the
+          // hint system doesn't know), which near a whole shelf of
+          // these is most of the time you'd want to just set something
+          // down.
+          if (handRig.heldObjects.length || handRig.supportObjects.length) {
+            handRig.onGripUp();
+            return;
+          }
+
+          var slot = this.el.components['anchor-slot'];
+          var occupant = slot && slot.occupants[0];
+          if (!occupant) return;
+
+          reachAndGrabItem(handRig, occupant.el);
+        },
+      });
+
+      // ==============================================================
       // COMPONENT: holsterable
       // The shared state machine and physics behind every grabbable
       // prop in the scene (currently the two pistols and the hat):

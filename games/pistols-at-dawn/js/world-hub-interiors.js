@@ -45,7 +45,17 @@
         stock.forEach(function (item, index) {
           var slot = document.createElement('a-entity'); var id = 'store-slot-' + this.serial++;
           slot.setAttribute('id', id); slot.classList.add('anchor-slot'); slot.setAttribute('anchor-slot', 'size: ' + (item === 'shotgun' || item === 'tommy' || item === 'launcher' ? 'large' : 'medium'));
-          slot.setAttribute('position', { x: index % 2 ? 4.95 : -4.95, y: .8 + Math.floor(index / 2) * .78, z: 1.8 - (index % 3) * 1.7 }); slot.setAttribute('stocked', { item: item, refillMs: 8000 }); this.el.appendChild(slot);
+          slot.setAttribute('position', { x: index % 2 ? 4.95 : -4.95, y: .8 + Math.floor(index / 2) * .78, z: 1.8 - (index % 3) * 1.7 }); slot.setAttribute('stocked', { item: item, refillMs: 8000 });
+          // A rack's own stock is shelf-height, not idle-hand height --
+          // see slot-reach-grab's comment (core-equip.js) for why a
+          // plain F-key reach can never close that gap on its own.
+          // maxReach is wider than the Showcase's own reference value
+          // (1.0) since this rack's three rows span nearly 2.4m of
+          // height (.8 to 3.14) -- 1.0 left the top two rows outside
+          // reach even standing right against the shelf.
+          slot.setAttribute('slot-reach-grab', '');
+          slot.setAttribute('hint-zone', 'action: grab; radius: 0.34; maxReach: 1.35; gazeThreshold: 0.93; priority: 10; desktopKey: F; desktopLabel: Grab; xrKey: GRIP; xrLabel: Grab');
+          this.el.appendChild(slot);
         }, this);
         hubBox(this.el, 5.6, 1.1, 1.15, { x: 0, y: .55, z: .85 }, '#684326');
         hubBox(this.el, 5.8, .12, 1.3, { x: 0, y: 1.12, z: .85 }, '#9a7040');

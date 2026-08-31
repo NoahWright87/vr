@@ -545,10 +545,20 @@ AFRAME.registerComponent('desktop-controls', {
 
   handleGrabKey: function (source) {
     if (this.mode !== 'normal' || this.autoCrouch) return;
+    // Only a simple-grabbable (the Showcase's own held box) short-
+    // circuits here -- semantic-hand.heldEl is also set for a held
+    // Pistols-style holsterable prop (any hand-rig grab sets it, so its
+    // own desktop hand placement recognizes a held pose), and that kind
+    // of held item needs to keep going below: to a hint-zone-driven
+    // release (see core-equip.js's slot-reach-grab) or, failing that,
+    // emitGrabFallback's own plain toggle-release. Checking findHeldHand()
+    // alone used to swallow the keypress here regardless of which kind
+    // of item it was, silently breaking F's release for every ordinary
+    // held prop.
     var heldHand = this.findHeldHand();
-    if (heldHand) {
-      var held = heldHand.heldEl.components['simple-grabbable'];
-      if (held) held.release(heldHand.el);
+    var held = heldHand && heldHand.heldEl.components['simple-grabbable'];
+    if (held) {
+      held.release(heldHand.el);
       return;
     }
     var grabCandidate = this.hintSystem.getDesktopCandidate('grab');

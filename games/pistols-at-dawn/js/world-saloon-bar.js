@@ -385,6 +385,16 @@
           slot.setAttribute('anchor-slot', config);
           slot.setAttribute('position', pos);
           if (rot) slot.setAttribute('rotation', rot);
+          // Every bar prop is a bit of a reach from the fixed idle hand
+          // pose desktop-controls otherwise uses (see slot-reach-grab's
+          // own comment in core-equip.js) -- one hint-zone here covers
+          // every bottle, cigar, matchbox, and spare socket this bar
+          // builds through addSlot/addLocalSlot.
+          slot.setAttribute('slot-reach-grab', '');
+          slot.setAttribute(
+            'hint-zone',
+            'action: grab; radius: 0.34; maxReach: 1.0; gazeThreshold: 0.93; priority: 10; desktopKey: F; desktopLabel: Grab; xrKey: GRIP; xrLabel: Grab'
+          );
           parentEl.appendChild(slot);
           return id;
         },

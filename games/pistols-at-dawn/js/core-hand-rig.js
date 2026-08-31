@@ -133,6 +133,31 @@
         }
       }
 
+      // ==============================================================
+      // reachAndGrabItem
+      // The actual "animate the hand to it, then let gripdown resolve
+      // it" reach shared by every desktop/mobile grab that already
+      // knows exactly WHICH object it wants — hand-rig's own F-key
+      // blind-proximity search (onDesktopGrabAttempt) and
+      // core-equip.js's slot-reach-grab (a hint-zone-driven long
+      // reach for shop/bar props a fixed idle hand pose could never
+      // get physically close enough to on its own — see that
+      // component's own comment). Deliberately thin: it doesn't grab
+      // anything itself, just like onDesktopGrabAttempt never did —
+      // arriving fires the real `gripdown`, and findGrabbableObject's
+      // own tight, VR-precision radius re-resolves obj from there, the
+      // same way a real controller reach already would.
+      // ==============================================================
+      function reachAndGrabItem(handRig, obj) {
+        var pos = new THREE.Vector3();
+        var quat = new THREE.Quaternion();
+        obj.object3D.getWorldPosition(pos);
+        obj.object3D.getWorldQuaternion(quat);
+        handRig.animateGripDown(pos, quat, function () {
+          clearOtherHandIfExclusive(handRig, obj);
+        });
+      }
+
       // Releases whatever `handRig` currently holds, first reaching that
       // hand to the item's own home slot (holsterSelector) if it has
       // one — see clearOtherHandIfExclusive's own comment for why a
@@ -372,19 +397,12 @@
           }
           var obj = this.findGrabbableObject();
           if (!obj) return;
-          var pos = new THREE.Vector3();
-          var quat = new THREE.Quaternion();
-          obj.object3D.getWorldPosition(pos);
-          obj.object3D.getWorldQuaternion(quat);
-          var self = this;
-          // Animated reach (animateGripDown), not a teleport: the hand
-          // visibly arrives at obj's transform before gripdown actually
-          // fires — findGrabbableObject() (tuned tight for a real tracked
-          // hand's precision) will then resolve to the same object from
-          // there, the way a precise VR reach already would.
-          this.animateGripDown(pos, quat, function () {
-            clearOtherHandIfExclusive(self, obj);
-          });
+          // Animated reach (animateGripDown, via reachAndGrabItem), not a
+          // teleport: the hand visibly arrives at obj's transform before
+          // gripdown actually fires — findGrabbableObject() (tuned tight
+          // for a real tracked hand's precision) will then resolve to the
+          // same object from there, the way a precise VR reach already would.
+          reachAndGrabItem(this, obj);
         },
 
         // A tap, not a hold — Pistols' pistols/shotgun are single-action,
