@@ -208,7 +208,14 @@
         if (holsterable.data.supportRadius <= 0) return;
         var otherHandEl = findOtherHand(dominantHandRig.el);
         var otherHandRig = otherHandEl && otherHandEl.components['hand-rig'];
-        if (!otherHandRig || otherHandRig.heldObjects.length || otherHandRig.supportObjects.length) return;
+        // danglingObjects belongs here too: a hand mid-twirl (see
+        // core-equip.js's performTwirlSwap) isn't holding or supporting
+        // anything by this component's own bookkeeping, but scripting a
+        // completely unrelated support-grab motion onto it right then
+        // would still cancel that twirl's own in-flight arc out from
+        // under it (animateSupportGrab's cancelMotion() doesn't know or
+        // care why the hand was already moving).
+        if (!otherHandRig || otherHandRig.heldObjects.length || otherHandRig.supportObjects.length || otherHandRig.danglingObjects.length) return;
 
         var pos = holsterable.supportGripWorldPosition(new THREE.Vector3());
         var quat = new THREE.Quaternion();
@@ -675,14 +682,34 @@
           this.el.object3D.getWorldPosition(this._prevPos);
         },
 
-        // Runs a real animated reach to a world pose (semantic-hand's
-        // runWorldMotion — the same keyframe mechanism
-        // common/semantic-punch.js already uses for a punch's windup/
-        // strike, not a teleport) and fires the actual gripdown only
-        // once the hand visibly arrives, via onMotionComplete below.
-        // cancelMotion() first mirrors semantic-punch's own defensive
-        // pattern, in case a previous scripted reach on this hand is
-        // still mid-flight. `onComplete`, if given, runs after the
+        // The shared primitive underneath every scripted desktop/mobile
+        // hand motion — animateGripDown/animateRelease below, and
+        // performTwirlSwap's own cosmetic repositioning beats
+        // (core-equip.js), which move a hand through one or more
+        // keyframes without either of those two's own automatic
+        // gripdown/gripup at the end. Same runWorldMotion keyframe
+        // mechanism common/semantic-punch.js already uses for a punch's
+        // windup/strike, not a teleport — multiple keyframes chain
+        // sequentially (interaction-hints.js's updateMotion carries the
+        // hand's position at the end of one keyframe into the next as
+        // its new start), which is what lets a single call trace out a
+        // real arc rather than a straight line. cancelMotion() first
+        // mirrors semantic-punch's own defensive pattern, in case a
+        // previous scripted reach on this hand is still mid-flight.
+        animateHandMotion: function (keyframes, onComplete) {
+          var semanticHand = this.el.components['semantic-hand'];
+          if (!semanticHand) {
+            if (onComplete) onComplete();
+            return;
+          }
+          semanticHand.cancelMotion();
+          this._motionCompleteCallback = onComplete || null;
+          semanticHand.runWorldMotion(keyframes, {});
+        },
+
+        // Runs a real animated reach to a world pose and fires the
+        // actual gripdown only once the hand visibly arrives, via
+        // onMotionComplete below. `onComplete`, if given, runs after the
         // gripdown fires — activateHotbarSlot (core-equip.js) uses it to
         // bump the other hand only once the new item has actually been
         // grabbed. A single keyframe today; a future flourish (spin the
@@ -695,19 +722,17 @@
             if (onComplete) onComplete();
             return;
           }
-          semanticHand.cancelMotion();
           var self = this;
-          this._motionCompleteCallback = function () {
-            self.settleVelocity();
-            self.el.emit('gripdown', null, false);
-            if (onComplete) onComplete();
-          };
-          semanticHand.runWorldMotion([{
+          this.animateHandMotion([{
             position: worldPosition,
             quaternion: worldQuaternion,
             pose: 'Hold',
             duration: HAND_REACH_MOTION_MS,
-          }], {});
+          }], function () {
+            self.settleVelocity();
+            self.el.emit('gripdown', null, false);
+            if (onComplete) onComplete();
+          });
         },
 
         // The release-side mirror of animateGripDown: reach to a known
@@ -727,19 +752,17 @@
             if (onComplete) onComplete();
             return;
           }
-          semanticHand.cancelMotion();
           var self = this;
-          this._motionCompleteCallback = function () {
-            self.settleVelocity();
-            self.onGripUp();
-            if (onComplete) onComplete();
-          };
-          semanticHand.runWorldMotion([{
+          this.animateHandMotion([{
             position: worldPosition,
             quaternion: worldQuaternion,
             pose: 'Hold',
             duration: HAND_REACH_MOTION_MS,
-          }], {});
+          }], function () {
+            self.settleVelocity();
+            self.onGripUp();
+            if (onComplete) onComplete();
+          });
         },
 
         // Desktop/mobile/gamepad only (see onGripDown's call site): reach
