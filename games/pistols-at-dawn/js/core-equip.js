@@ -376,7 +376,6 @@
       // ==============================================================
       registerComponent('hotbar-equip', {
         init: function () {
-          this.slotItems = {}; // 1/2/3 -> resolved item element, cached lazily (4/5 are never cached -- see resolveItem)
           this._lastButtonState = {};
           this.onHotbarAttempt = this.onHotbarAttempt.bind(this);
           this.el.addEventListener('desktop-hotbar-attempt', this.onHotbarAttempt);
@@ -397,10 +396,11 @@
         // on last-known state per slot so this is an occasional
         // setAttribute on change, not one every frame.
         tick: function () {
-          if (!this.touchControls) {
+          if (!this.touchControls || !this.desktopControls) {
             var playerRig = document.querySelector('#player-rig');
             this.touchControls = playerRig && playerRig.components['touch-controls'];
-            if (!this.touchControls) return;
+            this.desktopControls = playerRig && playerRig.components['desktop-controls'];
+            if (!this.touchControls || !this.desktopControls) return;
           }
           for (var n = 1; n <= 5; n++) {
             var state = this.computeButtonState(n);
@@ -408,6 +408,17 @@
             this._lastButtonState[n] = state;
             this.touchControls.setButtonState('hotbar' + n, state);
           }
+
+          // GRAB and DROP are the same button (input-router.js's
+          // grabAction) — F/PICKUP always does whichever one applies,
+          // so its label should say which that is, the same way the
+          // hotbar slots above already read as empty/holstered/held
+          // instead of one fixed label regardless of state.
+          var dominantSide = this.desktopControls.dominantSide();
+          var dominantHandEl = document.querySelector(dominantSide === 'left' ? '#left-hand' : '#right-hand');
+          var dominantHandRig = dominantHandEl && dominantHandEl.components['hand-rig'];
+          var holdingSomething = Boolean(dominantHandRig && (dominantHandRig.heldObjects.length || dominantHandRig.supportObjects.length));
+          this.touchControls.setButtonLabel('grab', holdingSomething ? 'DROP' : 'GRAB');
         },
 
         computeButtonState: function (n) {
@@ -451,21 +462,25 @@
           return ammoPack && ammoPack.slotEl;
         },
 
-        // Slots 1-3 hold the same persistent item for the life of the
-        // scene, so caching the resolved element is a safe, cheap
-        // shortcut. Slots 4/5 must NEVER cache: each throw replaces the
-        // ammo pack's inner-slot occupant with a freshly refilled
-        // knife/star (see ammo-pack's stocked() refill), and a stale
-        // reference (e.g. a knife now stuck in a wall via
-        // blade-projectile's attach()) would still read as connected.
+        // Deliberately never caches the resolved ITEM (only slotElFor's
+        // anchor-slot elements are stable/reusable) — every slot's item
+        // is genuinely whatever currently occupies its home anchor-slot,
+        // full stop. A starter pistol or the starter shotgun is not a
+        // remembered specific object; it's just what happened to be
+        // stocked there at scene load, exactly like a store rack's gun
+        // or a refilled throwing knife. Caching slots 1-3 used to assume
+        // "drawn, then eventually holstered back to the same slot" was
+        // the only way an item left play — but a dropped or thrown gun
+        // can end up resting anywhere in the world while staying
+        // .isConnected, and the old cache kept pointing hotbar-equip at
+        // it regardless: pressing that slot's key would animate a hand
+        // all the way out to wherever the gun actually landed instead of
+        // correctly finding the holster empty.
         resolveItem: function (n) {
-          if (n <= 3 && this.slotItems[n] && this.slotItems[n].isConnected) return this.slotItems[n];
           var slotEl = this.slotElFor(n);
           var anchorSlot = slotEl && slotEl.components['anchor-slot'];
           var occupant = anchorSlot && anchorSlot.occupants[0]; // occupants holds holsterable COMPONENTS, not elements
-          if (!occupant) return null;
-          if (n <= 3) this.slotItems[n] = occupant.el;
-          return occupant.el;
+          return occupant ? occupant.el : null;
         },
 
         activateSlot: function (n) {

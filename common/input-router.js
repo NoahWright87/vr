@@ -587,6 +587,18 @@ if (typeof AFRAME !== 'undefined') {
       else delete button.dataset.state;
     },
 
+    // For a button whose meaning flips with context (GRAB vs. DROP,
+    // say) rather than just its visual state — see hotbar-equip
+    // (Pistols' own core-equip.js), which keeps the grab button's label
+    // in sync with whether the dominant hand is currently holding
+    // anything.
+    setButtonLabel: function (action, label) {
+      var button = this.buttonsByAction[action];
+      if (!button || button.textContent === label) return;
+      button.textContent = label;
+      button.setAttribute('aria-label', label);
+    },
+
     emitAction: function (pending, phase, heldMs) {
       this.el.setAttribute('data-last-semantic-action', pending.action + ':' + phase + ':touch');
       this.el.emit('semantic-action-intent', {
