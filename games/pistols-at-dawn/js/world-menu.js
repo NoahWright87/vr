@@ -119,6 +119,33 @@
     },
 
     onOptionChange: function (evt) {
+      // Debug-only and unrelated to the gallery -- handled here anyway
+      // since this component already owns the scene's menu-option-change
+      // listener, same as target-kind etc. below.
+      if (evt.detail.key === 'laser-sight') {
+        LASER_SIGHT = evt.detail.value;
+        return;
+      }
+      // Debug > Motion: live tunables for the scripted gun draw/holster/
+      // twirl flourish (core-hand-rig.js's buildFlourishedKeyframe) --
+      // same "debug-only global reassigned from the watch" pattern as
+      // laser-sight above, just numeric instead of a string enum.
+      if (evt.detail.key === 'motion-arc') {
+        MOTION_ARC_FRACTION = Number(evt.detail.value);
+        return;
+      }
+      if (evt.detail.key === 'motion-ease') {
+        MOTION_EASE_POWER = Number(evt.detail.value);
+        return;
+      }
+      if (evt.detail.key === 'motion-overshoot') {
+        MOTION_OVERSHOOT = Number(evt.detail.value);
+        return;
+      }
+      if (evt.detail.key === 'motion-settle') {
+        MOTION_SETTLE_RATE = Number(evt.detail.value);
+        return;
+      }
       var numberValue = Number(evt.detail.value);
       if (evt.detail.key === 'target-kind') this.settings.kind = evt.detail.value;
       else if (evt.detail.key === 'spinner-count') this.settings.count = numberValue;

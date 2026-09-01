@@ -7,6 +7,7 @@
       speed: { default: 1.5 },
       speedMultiplier: { default: 1 },
       sprintMultiplier: { default: 1.5 },
+      aimMultiplier: { default: 0.5 },
       snapAngle: { default: 30 },
       teleportDistance: { default: 2.8 },
       comfortVignette: { default: true },
@@ -38,6 +39,12 @@
       this.onSemanticMove = this.onSemanticMove.bind(this);
       this.onSemanticAction = this.onSemanticAction.bind(this);
       this.gamepadSprinting = false;
+      this.gamepadAiming = false;
+      // Whether this frame's move actually applied with sprint active --
+      // reset every tick and set from applyMoveVector, so it never gets
+      // stuck true from a stale frame. Games with an exertion mechanic
+      // (see Pistols' vice-meter) read this rather than re-deriving it.
+      this.isSprinting = false;
 
       var self = this;
       var sceneEl = this.el.sceneEl;
@@ -223,7 +230,7 @@
 
     // Input-source-neutral movement core. XR thumbsticks and desktop WASD
     // both express a local x/z intent and arrive here.
-    applyMoveVector: function (moveX, moveY, deltaMs, sprinting) {
+    applyMoveVector: function (moveX, moveY, deltaMs, sprinting, aiming) {
       if (!this.cameraEl) return;
 
       var direction = new AFRAME.THREE.Vector3(moveX, 0, moveY);
@@ -231,15 +238,18 @@
       this.cameraEl.object3D.getWorldQuaternion(cameraQuat);
       var worldMove = direction.applyQuaternion(cameraQuat).setY(0);
       var sprint = sprinting || this.gamepadSprinting;
-      var rate = this.data.speed * this.data.speedMultiplier * (sprint ? this.data.sprintMultiplier : 1);
+      var aim = aiming || this.gamepadAiming;
+      this.isSprinting = sprint;
+      var rate = this.data.speed * this.data.speedMultiplier *
+        (sprint ? this.data.sprintMultiplier : 1) * (aim ? this.data.aimMultiplier : 1);
       worldMove.normalize().multiplyScalar(rate * (deltaMs / 1000));
       this.rigEl.object3D.position.add(worldMove);
     },
 
-    applyDesktopMove: function (moveX, moveY, deltaMs, sprinting) {
+    applyDesktopMove: function (moveX, moveY, deltaMs, sprinting, aiming) {
       var amount = Math.hypot(moveX, moveY);
       if (!amount) return;
-      this.applyMoveVector(moveX / amount, moveY / amount, deltaMs, sprinting);
+      this.applyMoveVector(moveX / amount, moveY / amount, deltaMs, sprinting, aiming);
     },
 
     onSemanticMove: function (evt) {
@@ -259,8 +269,9 @@
     },
 
     onSemanticAction: function (evt) {
-      if (!evt.detail || evt.detail.action !== 'sprint') return;
-      this.gamepadSprinting = evt.detail.phase === 'start';
+      if (!evt.detail) return;
+      if (evt.detail.action === 'sprint') this.gamepadSprinting = evt.detail.phase === 'start';
+      else if (evt.detail.action === 'aim') this.gamepadAiming = evt.detail.phase === 'start';
     },
 
     applySmoothTurn: function (deltaMs) {
@@ -282,6 +293,11 @@
     },
 
     tick: function (time, delta) {
+      // Reset every frame so a held Shift with no movement key/stick
+      // pressed doesn't leave this stuck true from a stale frame --
+      // applyMoveVector (below, if it runs this frame) is what actually
+      // sets it, only while movement is actually being applied.
+      this.isSprinting = false;
       if (this.data.moveMode === 'smooth') {
         this.applySmoothMove(delta);
       } else if (this.data.moveMode === 'teleport') {

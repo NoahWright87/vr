@@ -79,7 +79,7 @@
     <template id="watch-menu-template">
       <a-entity class="watch-menu-panel" visible="false">
         <a-entity data-menu-page="main">
-          <a-plane width="1" height="1.3" color="#101827" position="0 -0.05 -0.01"></a-plane>
+          <a-plane width="1" height="1.52" color="#101827" position="0 -0.16 -0.01"></a-plane>
           <a-entity class="menu-chrome-slot" data-title="" data-help="false" data-close="true" data-width="1" data-bar-y="0.49"></a-entity>
           <a-entity
             class="pm-target"
@@ -112,10 +112,102 @@
             class="pm-target"
             geometry="primitive: plane; width: 0.78; height: 0.2"
             material="color: #182238"
-            menu-item="value: toggle-performance; label: Show Performance"
+            menu-item="value: page-debug; label: Debug"
             position="0 -0.36 0"
           >
+            <a-text value="Debug  >" align="center" color="#eee" width="2.4" position="0 0 0.01"></a-text>
+          </a-entity>
+          <!-- Hold vs. toggle to aim down sights -- see common/desktop-controls.js's
+               aimMode preference. Toggle is the default: it's the more
+               accessible option, since no button needs to be held down
+               for the whole time you're aiming. -->
+          <a-entity
+            class="aim-mode-option"
+            menu-option="key: aim-mode; label: Aim; values: toggle|hold; labels: Toggle|Hold; value: toggle"
+            position="0 -0.58 0"
+          ></a-entity>
+        </a-entity>
+
+        <a-entity data-menu-page="debug" visible="false">
+          <a-plane width="1" height="1.1" color="#101827" position="0 -0.03 -0.01"></a-plane>
+          <a-entity class="menu-chrome-slot" data-title="DEBUG" data-help="false" data-close="true" data-width="1" data-bar-y="0.4"></a-entity>
+          <a-entity
+            class="pm-target"
+            geometry="primitive: plane; width: 0.78; height: 0.2"
+            material="color: #182238"
+            menu-item="value: toggle-performance; label: Show Performance"
+            position="0 0.2 0"
+          >
             <a-text class="performance-toggle-label" value="Show Performance" align="center" color="#eee" width="2.4" position="0 0 0.01"></a-text>
+          </a-entity>
+          <!-- Laser sights: a translucent line + impact dot out of any held
+               firearm's muzzle, purely a debug aid for judging hand wobble
+               without needing to fire (see world-systems.updateLaserSight,
+               core.js). Off by default. -->
+          <a-entity
+            class="laser-sight-option"
+            menu-option="key: laser-sight; label: Laser; values: none|red|green; labels: Off|Red|Green; value: none"
+            position="0 -0.02 0"
+          ></a-entity>
+          <a-entity
+            class="pm-target"
+            geometry="primitive: plane; width: 0.78; height: 0.2"
+            material="color: #182238"
+            menu-item="value: page-debug-motion; label: Motion"
+            position="0 -0.24 0"
+          >
+            <a-text value="Motion  >" align="center" color="#eee" width="2.4" position="0 0 0.01"></a-text>
+          </a-entity>
+          <a-entity
+            class="pm-target"
+            geometry="primitive: plane; width: 0.78; height: 0.2"
+            material="color: #182238"
+            menu-item="value: page-main; label: Back"
+            position="0 -0.46 0"
+          >
+            <a-text value="&lt; Back" align="center" color="#aaa" width="2.4" position="0 0 0.01"></a-text>
+          </a-entity>
+        </a-entity>
+
+        <!-- Debug-only tunables for the scripted gun draw/holster/twirl
+             flourish (core-hand-rig.js's buildFlourishedKeyframe): how
+             far the hand's reach bows into a curve, how sharply it
+             eases, and how much it overshoots the target and springs
+             back before settling. Precision motions (watch pointing,
+             mounted interactions) never read these -- see that
+             function's own comment. Same panel size/row spacing as the
+             "targets" page below (also 4 options + Back). -->
+        <a-entity data-menu-page="debug-motion" visible="false">
+          <a-plane width="1" height="2.15" color="#101827" position="0 -0.12 -0.01"></a-plane>
+          <a-entity class="menu-chrome-slot" data-title="MOTION" data-help="false" data-close="true" data-width="1" data-bar-y="0.86"></a-entity>
+          <a-entity
+            class="motion-arc-option"
+            menu-option="key: motion-arc; label: Arc; values: 0|0.15|0.35|0.6|0.9; labels: Off|Subtle|Normal|Wide|Wild; value: 0.35"
+            position="0 0.32 0"
+          ></a-entity>
+          <a-entity
+            class="motion-ease-option"
+            menu-option="key: motion-ease; label: Ease; values: 1|1.5|2.4|3.5|5; labels: Linear|Soft|Normal|Snappy|Sharp; value: 2.4"
+            position="0 0.06 0"
+          ></a-entity>
+          <a-entity
+            class="motion-overshoot-option"
+            menu-option="key: motion-overshoot; label: Overshoot; values: 0|0.02|0.045|0.09|0.16; labels: Off|Subtle|Normal|Playful|Bouncy; value: 0.045"
+            position="0 -0.2 0"
+          ></a-entity>
+          <a-entity
+            class="motion-settle-option"
+            menu-option="key: motion-settle; label: Settle; values: 4|6|9|14; labels: Slow|Normal|Fast|Snap; value: 9"
+            position="0 -0.46 0"
+          ></a-entity>
+          <a-entity
+            class="pm-target"
+            geometry="primitive: plane; width: 0.78; height: 0.2"
+            material="color: #182238"
+            menu-item="value: page-debug; label: Back"
+            position="0 -0.76 0"
+          >
+            <a-text value="&lt; Back" align="center" color="#aaa" width="2.4" position="0 0 0.01"></a-text>
           </a-entity>
         </a-entity>
 
@@ -290,7 +382,7 @@
       </a-entity>
     </template>
 
-    <a-scene pistols-watch-menu area-manager scene-index>
+    <a-scene pistols-watch-menu area-manager scene-index hotbar-equip>
       <a-sky color="#7d6b8f" data-area-persistent></a-sky>
       <!-- Area fragments may add their own lamps, but these outdoor lights
            live for the whole session. Without a persistent baseline the
@@ -301,12 +393,35 @@
 
       <!-- ============================================================
            PLAYER RIG + DESKTOP/PHONE FALLBACK
-           The grab/holster/dangle mechanic below is inherently a VR
-           interaction (it needs grip + trigger buttons and real hand
-           motion), so there's no meaningful desktop equivalent for it.
+           The grab/holster/dangle mechanic below reads hand-rig's own
+           entity transform and raw gripdown/gripup/triggerdown/
+           triggerup events — the same events a real Touch controller's
+           squeeze fires. Confirmed empirically (headless Playwright
+           against the real dev build, not just read from source): while
+           not presenting to WebXR, oculus-touch-controls/tracked-
+           controls never attaches/activates at all (no controller to
+           track), so nothing fights semantic-hand's own non-XR pose
+           writes to this same entity — meaning a desktop/mobile input
+           layer that (a) poses a hand's transform via semantic-hand's
+           existing setWorldTransform/setPointPose and (b) emits those
+           same four raw events on that hand element drives hand-rig,
+           holsterable, and firearm completely unchanged, with no new
+           code needed in any of those files. Drawing a holstered pistol
+           this way (snap the hand to the pistol's world transform, then
+           emit gripdown) round-trips correctly today.
+           The one nuance worth knowing before wiring a "put it back"
+           gesture: holsterable.release() checks the ITEM's own current
+           world position against nearby slots, and a held item sits at
+           the hand's grip child plus a heldPosition offset — not
+           exactly wherever the hand was placed — so re-holstering needs
+           to aim the hand so the ITEM (not the hand) lands back within
+           an anchor-slot's catch radius, or release() falls through to
+           startFalling() instead. See TODO.md's "Desktop semantic
+           hands" section for the write-up.
            The reticle + click-to-score fallback from the previous
-           version is kept as-is, purely so target scoring stays
-           sanity-checkable without a headset.
+           version is kept as-is for now, alongside this, purely so
+           target scoring stays sanity-checkable without a headset even
+           before every weapon is reachable this way.
 
            Camera and hands used to be top-level scene entities with no
            shared parent — fine when the only way to get around was the
@@ -337,12 +452,12 @@
         teleport-hub
         locomotion-demo="speed: 3; sprintMultiplier: 1.5"
         semantic-look-controls="camera: #head-camera"
-        gamepad-input="leftHand: #left-hand; rightHand: #right-hand; sprintAction: sprint"
-        touch-controls="leftHand: #left-hand; rightHand: #right-hand; primaryAction: none; interactAction: interact; interactLabel: INTERACT; grabAction: none; watchAction: watch; watchLabel: WATCH; crouchAction: none"
+        gamepad-input="leftHand: #left-hand; rightHand: #right-hand; sprintAction: sprint; aimAction: aim"
+        touch-controls="leftHand: #left-hand; rightHand: #right-hand; primaryAction: none; interactAction: interact; interactLabel: INTERACT; grabAction: grab; grabLabel: PICKUP; watchAction: watch; watchLabel: WATCH; crouchAction: crouch; hotbar1Action: hotbar1; hotbar2Action: hotbar2; hotbar3Action: hotbar3; hotbar4Action: hotbar4; hotbar5Action: hotbar5; aimAction: aim; aimLabel: AIM"
         desktop-controls="camera: #head-camera; leftHand: #left-hand; rightHand: #right-hand; sprintEnabled: true"
         data-area-persistent
       >
-        <a-camera id="head-camera">
+        <a-camera id="head-camera" look-controls="pointerLockEnabled: true">
           <a-entity id="player-hud">
             <a-text
               id="hud-text"
@@ -372,7 +487,9 @@
             position="0 0.37 -1"
           ></a-text>
           <a-entity
+            id="reticle-cursor"
             cursor="fuse: false"
+            reticle-fallback
             position="0 0 -1"
             geometry="primitive: ring; radiusInner: 0.005; radiusOuter: 0.008"
             material="color: #FFFFFF; shader: flat; opacity: 0.8"
@@ -492,11 +609,20 @@
              bubbles up through the rig on its way to <a-scene>,
              exactly like it would from a top-level hand — the wrap
              doesn't change that path, just adds a stop along it.
+
+             hand-with-watch must be declared before semantic-hand:
+             A-Frame inits attribute components in source order, and
+             semantic-hand's own init() looks up hand-with-watch's
+             wrapperEl synchronously to parent its desktop-only cosmetic
+             hand inside the watch's corrective rotation. Declared the
+             other way around, semantic-hand finds no wrapperEl yet and
+             falls back to parenting directly on the hand entity instead
+             — same mesh, wrong orientation.
         ============================================================ -->
-        <a-entity id="left-hand" class="hand" oculus-touch-controls="hand: left; model: false" hand-rig="visual: #hand-visual-left" semantic-hand="hand: left; maxReach: 1" proximity-haptics hand-with-watch="hand: left"></a-entity>
+        <a-entity id="left-hand" class="hand" oculus-touch-controls="hand: left; model: false" hand-rig="visual: #hand-visual-left" hand-with-watch="hand: left" semantic-hand="hand: left; maxReach: 1" proximity-haptics></a-entity>
         <a-entity id="hand-visual-left" hand-controls="hand: left; handModelStyle: lowPoly; color: #3a3a3a"></a-entity>
 
-        <a-entity id="right-hand" class="hand" oculus-touch-controls="hand: right; model: false" hand-rig="visual: #hand-visual-right" semantic-hand="hand: right; maxReach: 1" proximity-haptics hand-with-watch="hand: right"></a-entity>
+        <a-entity id="right-hand" class="hand" oculus-touch-controls="hand: right; model: false" hand-rig="visual: #hand-visual-right" hand-with-watch="hand: right" semantic-hand="hand: right; maxReach: 1" proximity-haptics></a-entity>
         <a-entity id="hand-visual-right" hand-controls="hand: right; handModelStyle: lowPoly; color: #3a3a3a"></a-entity>
       </a-entity>
       <!-- end #player-rig -->

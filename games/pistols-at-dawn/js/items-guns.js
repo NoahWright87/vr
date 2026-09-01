@@ -656,6 +656,7 @@
           heldPosition: { x: 0, y: 0, z: 0 },
           grabRadius: 0.15,
           comOffset: { x: 0, y: 0.03, z: -0.08 },
+          weight: 0.2,
         });
         el.setAttribute('firearm', '');
         el.setAttribute('ignition-source', { tipSelector: '.muzzle' });
@@ -678,6 +679,7 @@
           supportGrip: { x: 0, y: 0.005, z: -0.28 },
           supportRadius: 0.22,
           maxThrowSpeed: 6,
+          weight: 0.55,
         });
         el.setAttribute('firearm', {
           pellets: 1,
@@ -688,6 +690,10 @@
           supportedRiseScale: 0.28,
           supportedBackScale: 0.72,
           heatPerShot: 0.5,
+          // A longer gun with a scope wants the grip held a touch closer
+          // to the eye than the base ADS offset assumes -- a reasoned
+          // starting estimate like heldRotation's own, not verified.
+          aimOffset: { x: 0, y: 0.01, z: 0.06 },
         });
         el.setAttribute('ignition-source', { tipSelector: '.muzzle' });
         el.setAttribute('boxy-sniper', '');
@@ -709,6 +715,7 @@
           supportGrip: { x: 0, y: -0.02, z: -0.25 },
           supportRadius: 0.22,
           maxThrowSpeed: 7,
+          weight: 0.7,
         });
         el.setAttribute('firearm', {
           pellets: 1,
@@ -721,6 +728,7 @@
           fireIntervalMs: 85,
           supportedRiseScale: 0.35,
           supportedBackScale: 0.78,
+          aimOffset: { x: 0, y: -0.01, z: 0.03 }, // starting estimate -- see sniper's comment above
         });
         el.setAttribute('ignition-source', { tipSelector: '.muzzle' });
         el.setAttribute('boxy-tommy', '');
@@ -760,6 +768,8 @@
           supportedBackScale: { type: 'number', default: 0.75 },
           bracedRiseScale: { type: 'number', default: 0.08 },
           bracedBackScale: { type: 'number', default: 0.28 },
+          aimedRecoilScale: { type: 'number', default: 0.7 }, // extra multiplier while ADS'd (hand-rig.isAiming), on top of braced/supported
+          aimOffset: { type: 'vec3', default: { x: 0, y: 0, z: 0 } }, // per-weapon ADS hand-position correction, added to common/desktop-controls.js's base ADS offset -- a reasoned starting estimate like heldRotation, not verified; tune by feel per weapon
           heatPerShot: { type: 'number', default: 0.22 },
           fireIntervalMs: { type: 'number', default: 0 }, // zero is semi-auto; otherwise milliseconds between shots while held
         },
@@ -1092,11 +1102,16 @@
           }
 
           var braced = supported && this.braced;
+          // ADS (desktop/mobile/gamepad-only -- see hand-rig.isAiming)
+          // steadies a shot's kick the same way bracing/support already
+          // do: one more multiplicative scale, on top of whichever tier
+          // applies, rather than a separate mechanism.
+          var aimedScale = handRig.isAiming() ? this.data.aimedRecoilScale : 1;
           var shotVariation = 1 + (Math.random() * 2 - 1) * this.data.recoilJitter;
-          var back = this.data.recoilBack * shotVariation *
+          var back = this.data.recoilBack * shotVariation * aimedScale *
             (braced ? this.data.bracedBackScale : (supported ? this.data.supportedBackScale : 1));
           var rise = (this.data.recoilRiseDeg * Math.PI / 180) *
-            heightScale * alignmentScale * shotVariation *
+            heightScale * alignmentScale * shotVariation * aimedScale *
             (braced ? this.data.bracedRiseScale : (supported ? this.data.supportedRiseScale : 1));
           var sideways = (Math.random() * 2 - 1) * this.data.recoilJitter;
           var verticalNoise = (Math.random() * 2 - 1) * this.data.recoilJitter;
@@ -1354,6 +1369,7 @@
           supportGrip: { x: 0, y: 0.01, z: -0.22 },
           supportRadius: 0.22,
           maxThrowSpeed: 7,
+          weight: 0.6,
         });
         el.setAttribute('firearm', {
           pellets: 5,
@@ -1364,6 +1380,7 @@
           heatPerShot: 0.4,
           supportedRiseScale: 0.25,
           supportedBackScale: 0.7,
+          aimOffset: { x: 0, y: 0, z: 0.04 }, // starting estimate -- see sniper's comment above
         });
         el.setAttribute('ignition-source', { tipSelector: '.muzzle' });
         el.setAttribute('boxy-shotgun', '');

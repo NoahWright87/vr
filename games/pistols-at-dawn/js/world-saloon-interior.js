@@ -97,6 +97,11 @@
           slot.classList.add('anchor-slot');
           slot.setAttribute('anchor-slot', 'size: small');
           slot.setAttribute('position', { x: x, y: 1.12, z: z });
+          slot.setAttribute('slot-reach-grab', '');
+          slot.setAttribute(
+            'hint-zone',
+            'action: grab; radius: 0.34; maxReach: 1.0; gazeThreshold: 0.93; priority: 10; desktopKey: F; desktopLabel: Grab; xrKey: GRIP; xrLabel: Grab'
+          );
           this.el.appendChild(slot);
 
           var bottle = document.createElement('a-entity');

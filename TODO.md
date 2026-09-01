@@ -25,6 +25,42 @@ this is only for work that has been decided on and postponed.
   make Pistols consume that interface rather than maintaining a second input
   path. Do not make the Showcase depend on Pistols' legacy globals.
 
+  **The foundation is confirmed working, with no changes needed to
+  `hand-rig`/`holsterable`/`firearm` themselves** (verified with a headless
+  Playwright run against the real dev build, not just read from source —
+  see the comment block above `#player-rig` in
+  `games/pistols-at-dawn/index.html`): `oculus-touch-controls`/
+  `tracked-controls` never attaches while not presenting to WebXR (no
+  controller to track), so `semantic-hand`'s existing non-XR `tick()`
+  freely drives `#left-hand`/`#right-hand`'s own `object3D` transform —
+  the exact same entity/transform `hand-rig` reads every frame — with
+  nothing fighting it. And because `hand-rig` listens for raw
+  `gripdown`/`gripup`/`triggerdown`/`triggerup` on that same entity (not a
+  higher-level `semantic-action`), emitting those same four events from
+  desktop/mobile input, after posing the hand via `semantic-hand.
+  setWorldTransform`/`setPointPose`, drives the entire hold/holster/
+  dangle/throw/catch state machine unmodified. A live probe confirmed a
+  full draw round-trip: posing `#right-hand` onto a holstered pistol's
+  world transform and firing `gripdown` correctly called
+  `holsterable.grab()` and reparented it under the hand's grip child.
+
+  One real nuance the probe surfaced, worth handing to whoever builds the
+  hotbar/switching UI: `holsterable.release()` checks the *item's* current
+  world position against nearby slots (`tryHolsterElse` →
+  `findNearestSlot`), and a held item sits at the hand's grip child plus a
+  `heldPosition` offset — not exactly wherever the hand itself was placed.
+  Releasing with the hand parked at the item's original (pre-grab) world
+  position landed in `falling`, not `holstered`, because that offset put
+  the item just outside the slot's catch radius. Positioning code that
+  wants a synthetic release to re-holster needs to aim so the *item* lands
+  within the slot's radius, accounting for that offset, not just place the
+  hand back where it grabbed from.
+
+  Remaining work is entirely about *deciding what triggers those poses/
+  events* — a hotbar mapping to specific anchor slots, aiming poses for
+  two-handed weapons, a throw/twirl gesture, and siege-weapon mounting —
+  not about touching Pistols' own gameplay files.
+
 - **Replace text-only XR action labels with real controller/hand glyphs.**
   A-Frame's bundled SDF font does not reliably contain color emoji such as
   `👉`, `🖐️`, or `✊`, so the first hint-zone pass uses `POKE` and `GRIP`.
