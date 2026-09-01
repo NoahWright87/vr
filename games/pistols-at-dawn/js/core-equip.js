@@ -454,7 +454,7 @@
             mainHandRig.settleVelocity();
             mainHandRig.fingerOnTrigger = false;
             mainHandRig.onGripDown(); // re-grip the dangling gun -> autoGrabSupport brings the off-hand the rest of the way in
-          });
+          }, gun);
 
           // Only pose the off hand cosmetically if it's actually free to
           // move. If it's still holding something -- most commonly
@@ -474,7 +474,7 @@
               quaternion: supportReadyQuat,
               pose: 'Point',
               duration: EQUIP_READY_MS,
-            }], function () {});
+            }], function () {}, gun);
           }
         });
       }
@@ -505,7 +505,7 @@
           mainHandRig.settleVelocity();
           mainHandRig.fingerOnTrigger = false;
           mainHandRig.onTriggerTouchEnd(); // endDangle() -> tryHolsterElse finds the back anchor by proximity, since the hand is now sitting right on it
-        });
+        }, gun);
       }
 
       // ==============================================================
@@ -766,7 +766,7 @@
           var grabItem = function () {
             targetHandRig.animateGripDown(pos, quat, function () {
               clearOtherHandIfExclusive(targetHandRig, item);
-            });
+            }, item);
           };
 
           // Clear whatever the target hand already holds FIRST — safe to

@@ -677,6 +677,7 @@ AFRAME.registerComponent('semantic-hand', {
     this._fingerDirectionLocal = new THREE.Vector3();
     this._fingertipParentQuaternion = new THREE.Quaternion();
     this._moveDelta = new THREE.Vector3();
+    this._bezierControl = new THREE.Vector3();
 
     if (watchComponent && watchComponent.fingertipEl) {
       watchComponent.fingertipEl.addEventListener('raycaster-intersection', function (evt) {
@@ -772,6 +773,21 @@ AFRAME.registerComponent('semantic-hand', {
   // Runs a short, semantic hand gesture through real hand transforms. The
   // gameplay system still observes an ordinary moving hand; desktop input
   // never has to manufacture a controller or bypass collision/gesture code.
+  //
+  // Two optional per-keyframe knobs, both dormant unless a caller sets
+  // them, so every existing caller (watch pointing, mounted-interaction,
+  // a punch's windup/strike) keeps its exact original straight-line/
+  // smoothstep feel with zero behavior change:
+  //   - curveOffset (world-space Vector3): bows the path into a quadratic
+  //     bezier instead of a straight line, offsetting the midpoint by
+  //     this much. Converted to the same parent-local space as
+  //     frame.quaternion below, since it's a direction, not a point.
+  //   - ease (function(t) -> t'): replaces the hardcoded smoothstep for
+  //     this keyframe's timing curve.
+  // Deliberately NOT the place for overshoot -- see
+  // core-hand-rig.js's flourish helpers for why that lives one level up,
+  // as a post-arrival cosmetic decay instead of a change to this
+  // function's own completion timing.
   runWorldMotion: function (keyframes, detail) {
     if (!keyframes || !keyframes.length) return;
     var parent = this.el.object3D.parent;
@@ -785,6 +801,8 @@ AFRAME.registerComponent('semantic-hand', {
         quaternion: parentQuaternion.clone().multiply(frame.quaternion),
         pose: frame.pose || 'Hold',
         duration: Math.max(1, frame.duration || 1),
+        curveOffset: frame.curveOffset ? frame.curveOffset.clone().applyQuaternion(parentQuaternion) : null,
+        ease: frame.ease || null,
       };
     });
     this.activeMotion = {
@@ -815,8 +833,19 @@ AFRAME.registerComponent('semantic-hand', {
       motion.elapsed += consumed;
       remaining -= consumed;
       var progress = Math.min(1, motion.elapsed / frame.duration);
-      var eased = progress * progress * (3 - 2 * progress);
-      this.el.object3D.position.lerpVectors(motion.startPosition, frame.position, eased);
+      var eased = frame.ease ? frame.ease(progress) : progress * progress * (3 - 2 * progress);
+      if (frame.curveOffset) {
+        // Quadratic bezier through a control point offset from the
+        // straight-line midpoint, instead of lerpVectors' straight line.
+        var inv = 1 - eased;
+        this._bezierControl.copy(motion.startPosition).add(frame.position).multiplyScalar(0.5).add(frame.curveOffset);
+        this.el.object3D.position
+          .copy(motion.startPosition).multiplyScalar(inv * inv)
+          .addScaledVector(this._bezierControl, 2 * inv * eased)
+          .addScaledVector(frame.position, eased * eased);
+      } else {
+        this.el.object3D.position.lerpVectors(motion.startPosition, frame.position, eased);
+      }
       this.el.object3D.quaternion.copy(motion.startQuaternion).slerp(frame.quaternion, eased);
       if (progress < 1) break;
 

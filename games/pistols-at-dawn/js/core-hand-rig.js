@@ -15,6 +15,21 @@
       var HAND_REACH_MOTION_MS = 180; // how long a scripted desktop/mobile reach (draw, holster, swap) takes to arrive — see hand-rig.animateGripDown/animateRelease; tune by feel
       var THROW_HAND_SPEED = 3.5; // m/s — desktop/mobile's fabricated hand speed for a scripted blade throw (see hand-rig.throwHeldItem); a plausible brisk flick, not a real measurement
 
+      // Flourish tunables for scripted gun reaches (draw/holster/swap) —
+      // see buildFlourishedKeyframe below. Deliberately `var`, not a
+      // fixed constant: the watch's Debug > Motion menu (world-menu.js's
+      // onOptionChange) reassigns these live for playtesting, the same
+      // pattern LASER_SIGHT (core.js) already uses for a debug-only
+      // global. Precision, non-gun motions (watch pointing, mounted
+      // interactions, a punch) never read these at all — see
+      // buildFlourishedKeyframe's own comment for why this lives here
+      // rather than in interaction-hints.js's generic runWorldMotion.
+      var MOTION_ARC_FRACTION = 0.35; // bezier control-point bow, as a fraction of the straight-line travel distance
+      var MOTION_EASE_POWER = 2.4; // ease-in-out sharpness (1 = linear, higher = more hold-then-snap)
+      var MOTION_OVERSHOOT = 0.045; // meters the hand's cosmetic grip continues past the real arrival point before springing back
+      var MOTION_SETTLE_RATE = 9; // exponential decay rate for that overshoot spring-back — higher settles faster
+      var MOTION_JITTER_FRACTION = 0.3; // +/- randomness applied to arc/ease/overshoot each time, so no two reaches feel identical — fixed, not itself exposed in the debug menu
+
       // Ambient-wobble steadiness multipliers -- see hand-rig.getSteadinessMultiplier.
       // Separate from firearm's own bracedRiseScale/supportedRiseScale
       // (items-guns.js), which scale a shot's recoil KICK; these scale
@@ -127,7 +142,7 @@
           var quat = new THREE.Quaternion();
           destinationSlotEl.object3D.getWorldPosition(pos);
           destinationSlotEl.object3D.getWorldQuaternion(quat);
-          otherHandRig.animateRelease(pos, quat);
+          otherHandRig.animateRelease(pos, quat, null, otherHeld);
         } else {
           otherHandRig.onGripUp();
         }
@@ -159,7 +174,7 @@
         handRig.animateGripDown(pos, quat, function () {
           clearOtherHandIfExclusive(handRig, obj);
           if (onComplete) onComplete();
-        });
+        }, obj);
       }
 
       // Releases whatever `handRig` currently holds, first reaching that
@@ -186,11 +201,105 @@
           var quat = new THREE.Quaternion();
           homeSlotEl.object3D.getWorldPosition(pos);
           homeSlotEl.object3D.getWorldQuaternion(quat);
-          handRig.animateRelease(pos, quat, onComplete);
+          handRig.animateRelease(pos, quat, onComplete, held);
         } else {
           handRig.onGripUp();
           if (onComplete) onComplete();
         }
+      }
+
+      // A little randomness around a base value, +/- MOTION_JITTER_FRACTION,
+      // so repeating the same motion never looks perfectly identical twice.
+      function motionJitter(base) {
+        return base * (1 - MOTION_JITTER_FRACTION + Math.random() * MOTION_JITTER_FRACTION * 2);
+      }
+
+      // Lighter items get more flourish, heavier ones less ("small things
+      // would overshoot more" per the request) — reuses holsterable's
+      // existing weight field (0-1, already hand-tuned per gun in
+      // items-guns.js) rather than adding a new schema just for this.
+      // Clamped so an unusually light/heavy future item can't blow the
+      // flourish out to something silly.
+      function flourishSizeMultiplier(item) {
+        var holsterable = item && item.components.holsterable;
+        var weight = holsterable ? holsterable.data.weight : 0.4;
+        return Math.max(0.6, Math.min(1.6, 1.5 - weight));
+      }
+
+      // ==============================================================
+      // buildFlourishedKeyframe
+      // Turns one plain {position, quaternion, pose, duration} keyframe
+      // into a curved, variably-eased one, and works out what
+      // animateHandMotion should feed into addRecoilImpulse once the
+      // motion actually arrives.
+      //
+      // Overshoot deliberately is NOT baked into the keyframe's own
+      // timing/easing the way the curve and ease are — it's returned
+      // separately (overshootPosition/overshootRotation) for
+      // animateHandMotion to apply as a post-arrival decay, via the
+      // same recoil-impulse machinery a gunshot's kick already uses.
+      // That's what makes "release at first 100%, not after the
+      // snap-back" (per the request) fall out for free: the real
+      // grip/release event fires the instant runWorldMotion's own
+      // eased progress reaches 1 — completely unchanged, still exactly
+      // as precise as it always was — and only the cosmetic grip child
+      // (and anything currently parented to or dangling from it)
+      // keeps moving afterward, decaying back to the true final pose.
+      // Nothing that reads the hand's real object3D transform (grab
+      // eligibility, hand-rig's own velocity tracking, findNearestSlot)
+      // ever sees the overshoot at all.
+      //
+      // Lives here rather than in interaction-hints.js's generic
+      // runWorldMotion on purpose — "how much flourish" is a judgment
+      // call per motion (a menu/watch point or a mounted-weapon reach
+      // should stay exact; a gun draw/holster/swap should not), so the
+      // policy and its tunables belong in Pistols' own file, layered on
+      // top of a primitive that stays generic and opt-in.
+      // ==============================================================
+      function buildFlourishedKeyframe(startPos, frame, item) {
+        var sizeScale = flourishSizeMultiplier(item);
+        var travel = new THREE.Vector3().subVectors(frame.position, startPos);
+        var distance = travel.length();
+
+        var result = {
+          position: frame.position,
+          quaternion: frame.quaternion,
+          pose: frame.pose,
+          duration: frame.duration,
+          curveOffset: null,
+          overshootPosition: null,
+          overshootRotation: null,
+        };
+
+        if (distance > 0.01) {
+          var forward = travel.clone().normalize();
+          var up = new THREE.Vector3(0, 1, 0);
+          var side = new THREE.Vector3().crossVectors(forward, up);
+          if (side.lengthSq() < 0.0001) side.set(1, 0, 0);
+          side.normalize();
+
+          // Mostly bows upward, a little sideways, with which side
+          // randomized per call — an "up and slightly around" arc reads
+          // more like a real reach than a pure straight-up bow.
+          var arcMagnitude = motionJitter(MOTION_ARC_FRACTION) * distance * sizeScale;
+          result.curveOffset = up.clone().multiplyScalar(arcMagnitude * 0.8)
+            .addScaledVector(side, arcMagnitude * (Math.random() - 0.5) * 0.7);
+
+          // Continues along the direction of travel, past the target,
+          // paired with a small sideways tilt so the follow-through
+          // reads as a wrist continuing to turn, not just a straight
+          // overshoot-and-return.
+          var overshootDistance = motionJitter(MOTION_OVERSHOOT) * sizeScale;
+          result.overshootPosition = forward.clone().multiplyScalar(overshootDistance);
+          result.overshootRotation = side.clone().multiplyScalar(overshootDistance * 2.2);
+        }
+
+        var easePower = Math.max(1, motionJitter(MOTION_EASE_POWER));
+        result.ease = function (t) {
+          return t < 0.5 ? 0.5 * Math.pow(2 * t, easePower) : 1 - 0.5 * Math.pow(2 * (1 - t), easePower);
+        };
+
+        return result;
       }
 
       function xrIsPresenting(sceneEl) {
@@ -701,15 +810,39 @@
         // real arc rather than a straight line. cancelMotion() first
         // mirrors semantic-punch's own defensive pattern, in case a
         // previous scripted reach on this hand is still mid-flight.
-        animateHandMotion: function (keyframes, onComplete) {
+        // `item`, if given, is used purely to scale the flourish (see
+        // buildFlourishedKeyframe) — a heavier gun overshoots and bows
+        // less than a light one. Every plain keyframe passed in is
+        // curved/eased/overshot here before reaching runWorldMotion;
+        // callers never build flourish parameters themselves.
+        animateHandMotion: function (keyframes, onComplete, item) {
           var semanticHand = this.el.components['semantic-hand'];
           if (!semanticHand) {
             if (onComplete) onComplete();
             return;
           }
+          var self = this;
+          var cursor = new THREE.Vector3();
+          this.el.object3D.getWorldPosition(cursor);
+          var flourished = keyframes.map(function (frame) {
+            var built = buildFlourishedKeyframe(cursor, frame, item);
+            cursor = frame.position;
+            return built;
+          });
+          var lastFrame = flourished[flourished.length - 1];
           semanticHand.cancelMotion();
-          this._motionCompleteCallback = onComplete || null;
-          semanticHand.runWorldMotion(keyframes, {});
+          this._motionCompleteCallback = function () {
+            // The real grip/release event (below, via onComplete) fires
+            // right now, at the hand's genuine arrival — this only adds
+            // a decaying cosmetic offset on top via the same recoil-
+            // impulse machinery a gunshot's kick already uses, so it
+            // never delays or touches the actual decision.
+            if (lastFrame.overshootPosition) {
+              self.addRecoilImpulse(lastFrame.overshootPosition, lastFrame.overshootRotation, MOTION_SETTLE_RATE);
+            }
+            if (onComplete) onComplete();
+          };
+          semanticHand.runWorldMotion(flourished, {});
         },
 
         // Runs a real animated reach to a world pose and fires the
@@ -720,7 +853,7 @@
         // grabbed. A single keyframe today; a future flourish (spin the
         // gun up into view before it settles into the held pose) is
         // just another entry in this same array, not new machinery.
-        animateGripDown: function (worldPosition, worldQuaternion, onComplete) {
+        animateGripDown: function (worldPosition, worldQuaternion, onComplete, item) {
           var semanticHand = this.el.components['semantic-hand'];
           if (!semanticHand) {
             this.el.emit('gripdown', null, false);
@@ -737,7 +870,7 @@
             self.settleVelocity();
             self.el.emit('gripdown', null, false);
             if (onComplete) onComplete();
-          });
+          }, item);
         },
 
         // The release-side mirror of animateGripDown: reach to a known
@@ -750,7 +883,7 @@
         // clearOtherHandIfExclusive's bump — never for F's plain
         // release, which has no destination to reach for and should
         // keep falling wherever a real mid-air VR drop would.
-        animateRelease: function (worldPosition, worldQuaternion, onComplete) {
+        animateRelease: function (worldPosition, worldQuaternion, onComplete, item) {
           var semanticHand = this.el.components['semantic-hand'];
           if (!worldPosition || !semanticHand) {
             this.onGripUp();
@@ -767,7 +900,7 @@
             self.settleVelocity();
             self.onGripUp();
             if (onComplete) onComplete();
-          });
+          }, item);
         },
 
         // Desktop/mobile/gamepad only (see onGripDown's call site): reach
@@ -779,24 +912,16 @@
         // (see holsterable.grabSupport), so this bypasses onGripDown's
         // own pickup logic entirely rather than routing through it.
         animateSupportGrab: function (item, worldPosition, worldQuaternion) {
-          var semanticHand = this.el.components['semantic-hand'];
           var self = this;
-          function complete() {
-            item.components.holsterable.grabSupport(self.el);
-            self.supportObjects.push(item);
-          }
-          if (!semanticHand) {
-            complete();
-            return;
-          }
-          semanticHand.cancelMotion();
-          this._motionCompleteCallback = complete;
-          semanticHand.runWorldMotion([{
+          this.animateHandMotion([{
             position: worldPosition,
             quaternion: worldQuaternion,
             pose: 'Hold',
             duration: HAND_REACH_MOTION_MS,
-          }], {});
+          }], function () {
+            item.components.holsterable.grabSupport(self.el);
+            self.supportObjects.push(item);
+          }, item);
         },
 
         // semantic-hand-motion-complete fires once for every finished
