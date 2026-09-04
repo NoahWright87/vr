@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Hand Tracking — WebXR Prototype</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <!--
+      A-Frame, vendored into /vendor instead of loaded from the CDN — see
+      /vendor/README.md. hand-tracking-grab-controls (A-Frame core) fetches
+      a low-poly rigged hand model per hand at runtime from AFRAME_CDN_ROOT,
+      the same way hand-controls fetches its controller hand models, so
+      those two files are vendored too
+      (vendor/aframe-1.6.0/controllers/oculus-hands/v4/{left,right}.glb).
+    -->
+    <script>window.AFRAME_CDN_ROOT = '../../vendor/aframe-1.6.0/';</script>
+    <script src="../../vendor/aframe-1.6.0/aframe-v1.6.0.min.js"></script>
+
+    <style>
+      body {
+        margin: 0;
+        font-family: system-ui, sans-serif;
+      }
+      #overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        padding: 0.75rem 1rem;
+        background: rgba(0, 0, 0, 0.55);
+        color: white;
+        z-index: 1;
+        font-size: 0.9rem;
+      }
+      #overlay a {
+        color: #9ad;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- There's no desktop/gaze fallback here (unlike Cube Pop) — hand
+         tracking has no meaningful mouse/keyboard equivalent, so this one
+         is headset-only. Put the Touch controllers down before entering
+         VR; the Quest browser switches to hand tracking automatically
+         once it no longer sees them. -->
+    <div id="overlay">
+      <span>Hand Tracking — put the controllers down and enter VR. Pinch (thumb and index finger) near the box to pick it up, un-pinch to let go. <a href="../../index.html">All prototypes</a></span>
+    </div>
+
+    <a-scene>
+      <a-plane rotation="-90 0 0" width="20" height="20" color="#445" position="0 0 0"></a-plane>
+      <a-sky color="#0d1526"></a-sky>
+
+      <a-camera position="0 1.6 0"></a-camera>
+
+      <!-- ============================================================
+           HANDS
+           hand-tracking-grab-controls (A-Frame core) is the whole
+           interaction: it tracks the hand via the WebXR Hand Input API,
+           renders a rigged low-poly hand mesh following the real finger
+           joints, and grabs whichever [grabbable] entity the hand is
+           overlapping the instant a pinch starts, releasing it on
+           pinch-end. No custom grab code needed for a basic pick-up demo.
+      ============================================================ -->
+      <a-entity id="left-hand" hand-tracking-grab-controls="hand: left"></a-entity>
+      <a-entity id="right-hand" hand-tracking-grab-controls="hand: right"></a-entity>
+
+      <!-- Sized and placed to be reachable without leaning: a hand raised
+           to roughly chest height in front of you lands right on it. -->
+      <a-box
+        id="pickup-box"
+        class="pickup-box"
+        grabbable
+        settle-to-floor
+        geometry="primitive: box; width: 0.18; height: 0.18; depth: 0.18"
+        material="color: #FFD166"
+        position="0 1 -0.35"
+      ></a-box>
+    </a-scene>
+
+    <script>
+      // ==============================================================
+      // COMPONENT: settle-to-floor
+      // hand-tracking-grab-controls has no concept of gravity — released
+      // mid-air, a grabbed entity just stays exactly where you let go of
+      // it, which reads as "frozen in place" rather than "set down".
+      // This gives the box a simple drop until it rests on the floor,
+      // same idea (and same floorY/gravity fields) as the showcase's own
+      // simple-grabbable in common/interaction-hints.js, just scoped
+      // locally since this page deliberately uses A-Frame's own grab
+      // component rather than that shared one.
+      // ==============================================================
+      AFRAME.registerComponent('settle-to-floor', {
+        schema: {
+          floorY: { default: 0.09 },
+          gravity: { default: 9.8 },
+        },
+
+        init: function () {
+          this.falling = false;
+          this.velocity = 0;
+          this.onGrabStarted = this.onGrabStarted.bind(this);
+          this.onGrabEnded = this.onGrabEnded.bind(this);
+          document.querySelectorAll('[hand-tracking-grab-controls]').forEach((hand) => {
+            hand.addEventListener('grabstarted', this.onGrabStarted);
+            hand.addEventListener('grabended', this.onGrabEnded);
+          });
+        },
+
+        onGrabStarted: function (evt) {
+          if (evt.detail.grabbedEl !== this.el) return;
+          this.falling = false;
+        },
+
+        onGrabEnded: function (evt) {
+          if (evt.detail.grabbedEl !== this.el) return;
+          this.falling = true;
+          this.velocity = 0;
+        },
+
+        tick: function (time, delta) {
+          if (!this.falling) return;
+          var dt = Math.min(delta || 0, 50) / 1000;
+          this.velocity -= this.data.gravity * dt;
+          var y = this.el.object3D.position.y + this.velocity * dt;
+          if (y <= this.data.floorY) {
+            y = this.data.floorY;
+            this.falling = false;
+            this.velocity = 0;
+          }
+          this.el.object3D.position.y = y;
+        },
+      });
+    </script>
+  </body>
+</html>
