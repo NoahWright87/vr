@@ -296,7 +296,7 @@
          watch style.
     ============================================================== -->
     <div id="overlay">
-      <span>Showcase — shared semantic-hand interactions. Keyboard: WASD/mouse, C/Tab/E/F. Gamepad: sticks + face/shoulder buttons. Mobile: joystick, drag + action buttons. XR: Touch controllers, or put them down and use bare hand tracking — pinch to grab, hold, or click. <a href="../../index.html">All prototypes</a><a class="menu-edit-link" href="?edit=1" aria-label="Open menu editor">⚙️</a></span>
+      <span>Showcase — shared semantic-hand interactions. Keyboard: WASD/mouse, C/Tab/E/F. Gamepad: sticks + face/shoulder buttons. Mobile: joystick, drag + action buttons. XR: Touch controllers, or put them down and point with a real finger gun — cock your thumb up to aim, drop it to click or grab. <a href="../../index.html">All prototypes</a><a class="menu-edit-link" href="?edit=1" aria-label="Open menu editor">⚙️</a></span>
     </div>
 
     <!-- keyboard-shortcuts' enterVR binds "F" to toggle desktop VR
@@ -341,25 +341,25 @@
         <a-entity id="left-hand" position="-0.2 1.35 -0.4"
           hand-with-watch="hand: left"
           semantic-hand="hand: left; maxReach: 1.0"
-          hand-tracking-follow="source: #hand-tracking-left"
+          finger-gun-controls="hand: left"
         ></a-entity>
         <a-entity id="tracked-hand-visual-left" control-mode-visibility="modes: xr" hand-controls="hand: left; handModelStyle: lowPoly"></a-entity>
 
         <a-entity id="right-hand" position="0.2 1.35 -0.4"
           hand-with-watch="hand: right"
           semantic-hand="hand: right; maxReach: 1.0"
-          hand-tracking-follow="source: #hand-tracking-right"
+          finger-gun-controls="hand: right"
         ></a-entity>
         <a-entity id="tracked-hand-visual-right" control-mode-visibility="modes: xr" hand-controls="hand: right; handModelStyle: lowPoly"></a-entity>
 
-        <!-- Bare-hand equivalent of tracked-hand-visual-*: a real WebXR
-             Hand Input mesh, visible only while actually in XR. It never
-             moves #left-hand/#right-hand itself (see hand-tracking.js for
-             why) -- hand-tracking-follow reads its tracked wrist pose and
-             drives the logic hand from that instead, the same way
-             tracked-hand-visual-* and #left-hand/#right-hand each
-             independently track the same physical Touch controller pose
-             when a real controller is what's connected. -->
+        <!-- Purely decorative: a real WebXR Hand Input mesh, visible only
+             while actually in XR, so a hand-tracking user sees their real
+             hand shape instead of nothing. finger-gun-controls (above)
+             does its own independent hand-joint tracking for gameplay
+             purposes (see common/hand-tracking.js for why) and never reads
+             from this entity -- the same relationship tracked-hand-visual-*
+             already has with #left-hand/#right-hand's own oculus-touch-controls
+             when a real Touch controller is what's connected instead. -->
         <a-entity id="hand-tracking-left" control-mode-visibility="modes: xr" hand-tracking-controls="hand: left; modelStyle: mesh"></a-entity>
         <a-entity id="hand-tracking-right" control-mode-visibility="modes: xr" hand-tracking-controls="hand: right; modelStyle: mesh"></a-entity>
       </a-entity>

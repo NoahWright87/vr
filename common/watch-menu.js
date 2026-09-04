@@ -194,6 +194,10 @@ import './menus.js';
 
       this.isPointing = false;
       this.laserActive = false;
+      this._fingerGunLocalPosition = new AFRAME.THREE.Vector3();
+      this._fingerGunWorldQuaternion = new AFRAME.THREE.Quaternion();
+      this._fingerGunParentQuaternion = new AFRAME.THREE.Quaternion();
+      this._fingerGunForward = new AFRAME.THREE.Vector3(0, 0, -1);
       CONTROL_COMPONENTS.forEach(function (name) { el.setAttribute(name, { hand: self.data.hand, model: false }); });
       el.addEventListener('controllerconnected', function () {
         var gaze = self.data.gazeCursor;
@@ -313,7 +317,38 @@ import './menus.js';
       if (this.panelTimeEl) this.panelTimeEl.setAttribute('text', 'value', value);
     },
 
+    // A real Touch controller's fingertip position/aim is approximated by
+    // a fixed offset off the controller's own tracked pose (FINGERTIP_OFFSET/
+    // FINGER_POINT_DIR above), because that's all a controller ever gives
+    // us. finger-gun-controls (hand-tracking.js) tracks the real index
+    // finger every frame instead, so while it's present and actively
+    // pointing, let it override that fixed approximation with the real
+    // fingertip position and aim direction -- the same idea as
+    // semantic-hand's updateDesktopFingerCalibration overriding its own
+    // fixed offset with real bone positions read off the loaded hand model.
+    updateFingertipFromFingerGun: function () {
+      var fingerGun = this.el.components['finger-gun-controls'];
+      if (!fingerGun || !fingerGun.pointing) return;
+      var fingertipObject = this.fingertipEl.object3D;
+      var parent = fingertipObject.parent;
+      parent.updateMatrixWorld(true);
+      this._fingerGunLocalPosition.copy(fingerGun.pointerPosition);
+      parent.worldToLocal(this._fingerGunLocalPosition);
+      fingertipObject.position.copy(this._fingerGunLocalPosition);
+
+      this._fingerGunWorldQuaternion.setFromUnitVectors(this._fingerGunForward, fingerGun.pointerDirection);
+      parent.getWorldQuaternion(this._fingerGunParentQuaternion);
+      fingertipObject.quaternion.copy(this._fingerGunParentQuaternion.invert().multiply(this._fingerGunWorldQuaternion));
+      // The fixed-offset case points along a per-hand-model-calibrated
+      // local direction (FINGER_POINT_DIR); here the entity's own
+      // orientation already IS the real aim direction, so the raycaster
+      // just needs its default straight-ahead local direction.
+      this.fingertipEl.setAttribute('raycaster', 'direction', { x: 0, y: 0, z: -1 });
+    },
+
     tick: function () {
+      this.updateFingertipFromFingerGun();
+
       var second = Math.floor(Date.now() / 1000);
 
       if (second === this.lastDisplaySecond) return;
