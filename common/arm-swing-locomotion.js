@@ -33,12 +33,14 @@ AFRAME.registerComponent('arm-swing-locomotion', {
     stepDistance: { default: 0.7 },
     armThreshold: { default: ARM_SWING_DEFAULTS.armThreshold },
     enabled: { default: true },
+    stepAnnounceMs: { default: 500 },
   },
 
   init: function () {
     var THREE = AFRAME.THREE;
     this.leftState = { armed: false };
     this.rightState = { armed: false };
+    this.stepAnnounceTimer = null;
 
     this._shoulderPosition = new THREE.Vector3();
     this._shoulderOffset = new THREE.Vector3();
@@ -77,6 +79,19 @@ AFRAME.registerComponent('arm-swing-locomotion', {
     this._step.copy(this._forward).multiplyScalar(this.data.stepDistance);
     this.el.object3D.position.add(this._step);
     this.el.emit('arm-swing-step', null, false);
+
+    // Same generic gesture-changed event hand-gesture-controls emits, so
+    // the shared HUD (gesture-hud in hand-tracking.js) can show this
+    // whole-body motion the same way it shows a per-hand pose -- see the
+    // "center" slot in primitives/hand-tracking/index.html. A brief,
+    // self-clearing announcement rather than a persistent "walking" state
+    // since a step is a discrete, momentary event, not a held pose.
+    this.el.emit('gesture-changed', { gesture: 'step', label: 'Step 👟' }, false);
+    clearTimeout(this.stepAnnounceTimer);
+    var el = this.el;
+    this.stepAnnounceTimer = setTimeout(function () {
+      el.emit('gesture-changed', { gesture: 'none', label: '' }, false);
+    }, this.data.stepAnnounceMs);
   },
 
   tick: function () {
@@ -98,5 +113,9 @@ AFRAME.registerComponent('arm-swing-locomotion', {
     this.rightState = updateArmSwingState(this.rightState, rightOffset, leftOffset, this.data);
 
     if (this.leftState.stepped || this.rightState.stepped) this.takeStep();
+  },
+
+  remove: function () {
+    clearTimeout(this.stepAnnounceTimer);
   },
 });

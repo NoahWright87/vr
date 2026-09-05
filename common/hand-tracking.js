@@ -31,7 +31,7 @@ var FINGER_NAMES = Object.keys(FINGER_JOINTS);
 // Underneath, it classifies the tracked hand's shape every frame into one
 // of a small, named catalog of canonical gestures (common/hand-gestures.js)
 // and emits a generic `gesture-changed` event whenever that classification
-// changes -- see `hand-gesture-label` below for a debug display, but any
+// changes -- see `gesture-hud` below for a debug display, but any
 // future experience can listen for the same event and map whichever
 // gestures it cares about onto its own actions, without needing to touch
 // this component at all. Only two gestures currently drive the shared
@@ -87,6 +87,25 @@ AFRAME.registerComponent('hand-gesture-controls', {
 
     this._wristPosition = new THREE.Vector3();
     this._wristQuaternion = new THREE.Quaternion();
+    // WebXR's wrist joint orientation follows the Hand Input spec's own
+    // bone convention (-Z local = distal, along the bone toward the
+    // fingers; -Y local = dorsal, perpendicular to the skin and outward
+    // from the palm) -- a completely different convention from a Touch
+    // controller's grip pose, which is what hand-with-watch's watch
+    // geometry (band + face) is actually built against. Fed the raw
+    // wrist quaternion uncorrected, the band ends up encircling the
+    // wrong axis entirely and the face points out to the side instead
+    // of off the back of the hand. This fixed per-hand correction
+    // (derived and checked numerically against both hands across
+    // several poses -- band-to-forearm and face-to-dorsal alignment
+    // both land within floating-point error of 0) rotates a raw wrist
+    // pose into one indistinguishable, as far as
+    // hand-with-watch/semantic-hand are concerned, from a real Touch
+    // controller's grip pose for the same physical hand position.
+    var side = this.data.hand === 'left' ? 1 : -1;
+    this._wristCorrection = new THREE.Quaternion()
+      .setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2)
+      .multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), side * Math.PI / 2));
     this._segmentA = new THREE.Vector3();
     this._segmentB = new THREE.Vector3();
     this._thumbVector = new THREE.Vector3();
@@ -183,7 +202,10 @@ AFRAME.registerComponent('hand-gesture-controls', {
     var hand = inputSource.hand;
     if (this.readJointPose(frame, hand, 'wrist', this._wristPosition, this._wristQuaternion)) {
       var handComponent = this.el.components['semantic-hand'];
-      if (handComponent) handComponent.setWorldTransform(this._wristPosition, this._wristQuaternion, null, true);
+      if (handComponent) {
+        this._wristQuaternion.multiply(this._wristCorrection);
+        handComponent.setWorldTransform(this._wristPosition, this._wristQuaternion, null, true);
+      }
     }
 
     var curl = {};
@@ -257,10 +279,10 @@ AFRAME.registerComponent('hand-gesture-controls', {
   },
 });
 
-// A page-wide on/off switch for hand-gesture-label below, flipped from a
+// A page-wide on/off switch for gesture-hud below, flipped from a
 // watch/menu row -- see primitives/hand-tracking/index.html for the
 // wiring. A system rather than component-local state so one menu toggle
-// can reach every hand's label at once.
+// can reach every HUD slot at once.
 AFRAME.registerSystem('hand-gesture-labels', {
   init: function () {
     this.enabled = true;
@@ -271,50 +293,59 @@ AFRAME.registerSystem('hand-gesture-labels', {
   },
 });
 
-// Optional debug readout for `hand-gesture-controls`: a small billboarded
-// label that floats above the hand showing whichever canonical gesture is
-// currently recognized ("Pinch", "Finger Gun (fired)", ...), or nothing
-// when the hand isn't making any recognized shape. Entirely decoupled from
+var HUD_SLOT_POSITIONS = {
+  left: { x: -0.32, y: -0.22, z: -0.6 },
+  right: { x: 0.32, y: -0.22, z: -0.6 },
+  center: { x: 0, y: -0.26, z: -0.6 },
+};
+
+// Optional debug readout for anything that emits `gesture-changed`
+// (hand-gesture-controls above, or arm-swing-locomotion's own step
+// announcements): a fixed slot in a Halo-style visor HUD -- bottom-left,
+// bottom-right, or bottom-center, per-hand vs. whole-body -- rather than a
+// label floating in the 3D scene, which reads as far more obtrusive since
+// it competes with everything else at world scale and follows the hand
+// into your peripheral vision. A HUD slot is a plain child of the camera
+// at a fixed local offset (the same "attach straight to <a-camera>, no
+// extra rotation needed" convention Cube Pop's own hud-text already
+// uses), so it simply never moves on screen regardless of where the
+// source entity's hand or body actually is. Entirely decoupled from
 // gesture recognition itself -- it only listens for the generic
-// `gesture-changed` event -- so leaving it off doesn't change any
-// gameplay behavior, and a future experience can build its own display
-// (or none) against the same event.
-AFRAME.registerComponent('hand-gesture-label', {
+// `gesture-changed` event on its own entity -- so leaving it off doesn't
+// change any gameplay behavior, and a future experience can build its own
+// display (or none) against the same event.
+AFRAME.registerComponent('gesture-hud', {
   schema: {
-    offset: { type: 'vec3', default: { x: 0, y: 0.12, z: 0 } },
+    slot: { default: 'left', oneOf: ['left', 'right', 'center'] },
   },
 
   init: function () {
-    var THREE = AFRAME.THREE;
     this.system = this.el.sceneEl.systems['hand-gesture-labels'];
     this.gesture = GESTURES.NONE;
 
-    var background = document.createElement('a-plane');
-    background.setAttribute('geometry', 'primitive: plane; width: 0.6; height: 0.13');
-    background.setAttribute('material', 'color: #080b12; opacity: 0.82; transparent: true; shader: flat; side: double');
-    background.object3D.visible = false;
-    this.el.sceneEl.appendChild(background);
-    this.backgroundEl = background;
+    var cameraEl = this.el.sceneEl.camera && this.el.sceneEl.camera.el;
+    var host = cameraEl || this.el.sceneEl;
+    var slotPosition = HUD_SLOT_POSITIONS[this.data.slot];
+
+    var plate = document.createElement('a-plane');
+    plate.setAttribute('geometry', 'primitive: plane; width: 0.34; height: 0.09');
+    plate.setAttribute('material', 'color: #080b12; opacity: 0.8; transparent: true; shader: flat; side: double; depthTest: false');
+    plate.setAttribute('position', slotPosition);
+    plate.object3D.visible = false;
+    host.appendChild(plate);
+    this.plateEl = plate;
 
     var text = document.createElement('a-text');
     text.setAttribute('align', 'center');
     text.setAttribute('color', '#8de5ff');
-    text.setAttribute('width', 1.05);
-    text.setAttribute('wrap-count', 22);
+    text.setAttribute('width', 0.9);
+    text.setAttribute('wrap-count', 20);
     text.setAttribute('position', '0 0 0.006');
-    background.appendChild(text);
+    plate.appendChild(text);
     this.textEl = text;
 
     this.onGestureChanged = this.onGestureChanged.bind(this);
     this.el.addEventListener('gesture-changed', this.onGestureChanged);
-
-    this._labelPosition = new THREE.Vector3();
-    this._cameraPosition = new THREE.Vector3();
-    this._forward = new THREE.Vector3();
-    // The plate's local front face (where its child <a-text> reads
-    // correctly, not mirrored) is +Z at identity rotation -- the usual
-    // A-Frame plane/text convention.
-    this._plateForward = new THREE.Vector3(0, 0, 1);
   },
 
   onGestureChanged: function (evt) {
@@ -323,23 +354,11 @@ AFRAME.registerComponent('hand-gesture-label', {
   },
 
   tick: function () {
-    var visible = Boolean(this.system.enabled && this.gesture !== GESTURES.NONE);
-    this.backgroundEl.object3D.visible = visible;
-    if (!visible) return;
-
-    this.el.object3D.getWorldPosition(this._labelPosition);
-    this._labelPosition.add(this.data.offset);
-    this.backgroundEl.object3D.position.copy(this._labelPosition);
-
-    var cameraEl = this.el.sceneEl.camera && this.el.sceneEl.camera.el;
-    if (!cameraEl) return;
-    cameraEl.object3D.getWorldPosition(this._cameraPosition);
-    this._forward.copy(this._cameraPosition).sub(this._labelPosition).normalize();
-    this.backgroundEl.object3D.quaternion.setFromUnitVectors(this._plateForward, this._forward);
+    this.plateEl.object3D.visible = Boolean(this.system.enabled && this.gesture !== GESTURES.NONE);
   },
 
   remove: function () {
     this.el.removeEventListener('gesture-changed', this.onGestureChanged);
-    if (this.backgroundEl.parentNode) this.backgroundEl.parentNode.removeChild(this.backgroundEl);
+    if (this.plateEl.parentNode) this.plateEl.parentNode.removeChild(this.plateEl);
   },
 });

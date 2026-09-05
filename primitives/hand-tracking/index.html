@@ -61,6 +61,7 @@
            actual physical tracking. -->
       <a-entity id="rig" position="0 0 0"
         arm-swing-locomotion="leftHand: #left-hand; rightHand: #right-hand; camera: #hand-tracking-camera"
+        gesture-hud="slot: center"
       >
         <a-camera id="hand-tracking-camera" position="0 1.6 0"></a-camera>
 
@@ -74,20 +75,25 @@
              pinch or make a fist to grab the box below, or point a finger
              gun at either watch to open and click its menu -- and a
              separate, purely decorative entity renders a real hand mesh
-             so there's something to look at. hand-gesture-label shows
-             which canonical gesture is currently recognized as a small
-             floating tag above the hand, toggled from the watch menu
-             itself (see the template below). arm-swing-locomotion (on the
-             rig, above) reads these same two entities' positions every
-             frame to detect a walking swing -- it doesn't care whether
-             hand-gesture-controls or something else is what's actually
-             moving them.
+             so there's something to look at. gesture-hud shows which
+             canonical gesture is currently recognized as a small,
+             visor-style HUD tag fixed to the bottom of your view (left
+             hand at bottom-left, right hand at bottom-right, arm-swing's
+             own whole-body "step" announcements at bottom-center, above
+             on the rig) -- fixed to the camera rather than floating in
+             the 3D scene, since a label that follows your hand around is
+             far more obtrusive than one sitting in a HUD corner, toggled
+             from the watch menu itself (see the template below).
+             arm-swing-locomotion (on the rig, above) reads these same two
+             entities' positions every frame to detect a walking swing --
+             it doesn't care whether hand-gesture-controls or something
+             else is what's actually moving them.
         ============================================================ -->
         <a-entity id="left-hand" position="-0.2 1.35 -0.4"
           hand-with-watch="hand: left"
           semantic-hand="hand: left; maxReach: 1.0"
           hand-gesture-controls="hand: left"
-          hand-gesture-label
+          gesture-hud="slot: left"
         ></a-entity>
         <a-entity id="hand-visual-left" control-mode-visibility="modes: xr" hand-tracking-controls="hand: left; modelStyle: mesh"></a-entity>
 
@@ -95,7 +101,7 @@
           hand-with-watch="hand: right"
           semantic-hand="hand: right; maxReach: 1.0"
           hand-gesture-controls="hand: right"
-          hand-gesture-label
+          gesture-hud="slot: right"
         ></a-entity>
         <a-entity id="hand-visual-right" control-mode-visibility="modes: xr" hand-tracking-controls="hand: right; modelStyle: mesh"></a-entity>
       </a-entity>

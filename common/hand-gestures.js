@@ -32,7 +32,7 @@ export var GESTURES = {
 
 // A human (and a little playful) label for each canonical gesture, for
 // anything that wants to display what was recognized -- see
-// hand-gesture-label in hand-tracking.js.
+// gesture-hud in hand-tracking.js.
 export var GESTURE_LABELS = {
   none: 'Relaxed',
   pinch: 'Pinch',
