@@ -23,6 +23,7 @@ export var GESTURES = {
   NONE: 'none',
   PINCH: 'pinch',
   OK: 'ok',
+  FIST: 'fist',
   FINGER_GUN: 'finger-gun',
   FINGER_GUN_FIRED: 'finger-gun-fired',
   THUMBS_UP: 'thumbs-up',
@@ -36,6 +37,7 @@ export var GESTURE_LABELS = {
   none: 'Relaxed',
   pinch: 'Pinch',
   ok: 'Okay 👌',
+  fist: 'Fist ✊',
   'finger-gun': 'Finger Gun',
   'finger-gun-fired': 'Finger Gun 🔥',
   'thumbs-up': 'Thumbs Up 👍',
@@ -87,6 +89,7 @@ export function classifyHandGesture(measurements, config) {
   var othersCurled = isCurled(curl.middle, cfg) && isCurled(curl.ring, cfg) && isCurled(curl.pinky, cfg);
   var othersExtended = isExtended(curl.middle, cfg) && isExtended(curl.ring, cfg) && isExtended(curl.pinky, cfg);
   var thumbExtended = isExtended(curl.thumb, cfg);
+  var thumbCurled = isCurled(curl.thumb, cfg);
 
   var touching = measurements.thumbIndexDistance <= cfg.pinchMaxDistance;
   if (touching && othersExtended) return GESTURES.OK;
@@ -98,9 +101,13 @@ export function classifyHandGesture(measurements, config) {
       : GESTURES.FINGER_GUN;
   }
 
-  if (indexCurled && othersCurled && thumbExtended) {
-    if (measurements.thumbWorldUpAngleDegrees <= cfg.thumbAlignMaxDegrees) return GESTURES.THUMBS_UP;
-    if (measurements.thumbWorldUpAngleDegrees >= 180 - cfg.thumbAlignMaxDegrees) return GESTURES.THUMBS_DOWN;
+  if (indexCurled && othersCurled) {
+    if (thumbExtended) {
+      if (measurements.thumbWorldUpAngleDegrees <= cfg.thumbAlignMaxDegrees) return GESTURES.THUMBS_UP;
+      if (measurements.thumbWorldUpAngleDegrees >= 180 - cfg.thumbAlignMaxDegrees) return GESTURES.THUMBS_DOWN;
+    } else if (thumbCurled) {
+      return GESTURES.FIST;
+    }
   }
 
   return GESTURES.NONE;
@@ -112,7 +119,12 @@ export function classifyHandGesture(measurements, config) {
 // a consumer can see, in one place, exactly which recognized shapes turn
 // into which button-shaped signal.
 export function gestureDrivesGrip(gesture) {
-  return gesture === GESTURES.PINCH || gesture === GESTURES.FINGER_GUN || gesture === GESTURES.FINGER_GUN_FIRED;
+  return (
+    gesture === GESTURES.PINCH ||
+    gesture === GESTURES.FIST ||
+    gesture === GESTURES.FINGER_GUN ||
+    gesture === GESTURES.FINGER_GUN_FIRED
+  );
 }
 
 export function gestureDrivesTrigger(gesture) {

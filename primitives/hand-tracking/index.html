@@ -44,7 +44,7 @@
          VR; the Quest browser switches to hand tracking automatically
          once it no longer sees them. -->
     <div id="overlay">
-      <span>Hand Tracking — put the controllers down and enter VR. Pinch near the box to pick it up, un-pinch to let go. Point a finger gun (cock your thumb up) at the watch on either wrist to open it — drop the thumb to click. <a href="../../index.html">All prototypes</a></span>
+      <span>Hand Tracking — put the controllers down and enter VR. Pinch or make a fist near the box to pick it up, release to let go. Point a finger gun (cock your thumb up) at the watch on either wrist to open it — drop the thumb to click. <a href="../../index.html">All prototypes</a></span>
     </div>
 
     <a-scene keyboard-shortcuts="enterVR: false">
@@ -60,10 +60,11 @@
            hand-with-watch + semantic-hand carry the wrist-worn watch and
            reach/grab logic, hand-gesture-controls (common/hand-tracking.js)
            is what actually drives them from real WebXR hand tracking --
-           pinch to grab the box below, or point a finger gun at either
-           watch to open and click its menu -- and a separate, purely
-           decorative entity renders a real hand mesh so there's something
-           to look at. hand-gesture-label shows which canonical gesture is
+           pinch or make a fist to grab the box below, or point a finger
+           gun at either watch to open and click its menu -- and a
+           separate, purely decorative entity renders a real hand mesh
+           so there's something to look at. hand-gesture-label shows
+           which canonical gesture is
            currently recognized as a small floating tag above the hand,
            toggled from the watch menu itself (see the template below).
       ============================================================ -->
@@ -87,9 +88,9 @@
            to roughly chest height in front of you lands right on it.
            simple-grabbable/hint-zone (common/interaction-hints.js) are the
            same shared grab primitive the showcase's own test box uses --
-           gripdown (fired by a pinch, see hand-gesture-controls) picks it
-           up if it's in reach, gripup drops it, and it falls to floorY on
-           its own from there. -->
+           gripdown (fired by a pinch or a fist, see hand-gesture-controls)
+           picks it up if it's in reach, gripup drops it, and it falls to
+           floorY on its own from there. -->
       <a-box
         id="pickup-box"
         simple-grabbable="heldPosition: 0 0 -0.08; floorY: 0.09"

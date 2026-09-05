@@ -27,8 +27,13 @@ function measurements(overrides) {
   }, overrides);
 }
 
-test('a relaxed fist with no distinguishing thumb position is not any canonical gesture', () => {
-  assert.equal(classifyHandGesture(measurements()), GESTURES.NONE);
+test('a hand with every finger, including the thumb, curled reads as a fist', () => {
+  assert.equal(classifyHandGesture(measurements()), GESTURES.FIST);
+});
+
+test('a thumb resting in the dead zone between extended and curled is not any canonical gesture', () => {
+  var m = measurements({ curl: { thumb: 47, index: 70, middle: 70, ring: 70, pinky: 70 } });
+  assert.equal(classifyHandGesture(m), GESTURES.NONE);
 });
 
 test('thumb and index touching, other fingers curled, reads as a pinch', () => {
@@ -51,7 +56,11 @@ test('a straight index finger with the rest of the hand curled is a cocked finge
 
 test('a curled index finger does not read as a finger gun even with the rest of the shape right', () => {
   var m = measurements({
-    curl: { thumb: 70, index: 90, middle: 70, ring: 70, pinky: 70 },
+    // Thumb left in the dead zone (neither clearly extended nor clearly
+    // curled) so this isolates "index curled -> no finger gun" from also
+    // asserting anything about the separate fist/thumbs-up/down checks,
+    // which also key off the other fingers being curled.
+    curl: { thumb: 47, index: 90, middle: 70, ring: 70, pinky: 70 },
     thumbIndexAngleDegrees: 80,
   });
   assert.equal(classifyHandGesture(m), GESTURES.NONE);
@@ -81,6 +90,14 @@ test('a fist with the thumb extended and pointing down is a thumbs-down', () => 
   assert.equal(classifyHandGesture(m), GESTURES.THUMBS_DOWN);
 });
 
+test('a fist with the thumb curled in alongside the fingers reads as a fist, not thumbs-up/down', () => {
+  var m = measurements({
+    curl: { thumb: 70, index: 70, middle: 70, ring: 70, pinky: 70 },
+    thumbWorldUpAngleDegrees: 5,
+  });
+  assert.equal(classifyHandGesture(m), GESTURES.FIST);
+});
+
 test('a fist with the thumb extended sideways is neither thumbs-up nor thumbs-down', () => {
   var m = measurements({
     curl: { thumb: 5, index: 70, middle: 70, ring: 70, pinky: 70 },
@@ -94,8 +111,9 @@ test('custom thresholds are honored instead of the defaults', () => {
   assert.equal(classifyHandGesture(m, { pinchMaxDistance: 0.06 }), GESTURES.PINCH);
 });
 
-test('pinch and both finger-gun states drive the shared grip signal; okay and thumbs do not', () => {
+test('pinch, fist, and both finger-gun states drive the shared grip signal; okay and thumbs do not', () => {
   assert.equal(gestureDrivesGrip(GESTURES.PINCH), true);
+  assert.equal(gestureDrivesGrip(GESTURES.FIST), true);
   assert.equal(gestureDrivesGrip(GESTURES.FINGER_GUN), true);
   assert.equal(gestureDrivesGrip(GESTURES.FINGER_GUN_FIRED), true);
   assert.equal(gestureDrivesGrip(GESTURES.OK), false);
