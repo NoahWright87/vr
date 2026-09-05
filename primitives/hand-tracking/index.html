@@ -44,45 +44,61 @@
          VR; the Quest browser switches to hand tracking automatically
          once it no longer sees them. -->
     <div id="overlay">
-      <span>Hand Tracking — put the controllers down and enter VR. Pinch or make a fist near the box to pick it up, release to let go. Point a finger gun (cock your thumb up) at the watch on either wrist to open it — drop the thumb to click. <a href="../../index.html">All prototypes</a></span>
+      <span>Hand Tracking — put the controllers down and enter VR. Pinch or make a fist near the box to pick it up, release to let go. Point a finger gun (cock your thumb up) at the watch on either wrist to open it — drop the thumb to click. Swing your arms like you're walking to actually walk — each opposite-arm swing takes a step. <a href="../../index.html">All prototypes</a></span>
     </div>
 
     <a-scene keyboard-shortcuts="enterVR: false">
       <a-plane rotation="-90 0 0" width="20" height="20" color="#445" position="0 0 0"></a-plane>
       <a-sky color="#0d1526"></a-sky>
 
-      <a-camera position="0 1.6 0"></a-camera>
+      <!-- Everything that tracks real physical input -- the camera and
+           both hands -- lives under one rig entity, moved as a whole by
+           arm-swing-locomotion (common/arm-swing-locomotion.js) each time
+           it recognizes a step. This is the same rig pattern every other
+           prototype uses (see e.g. games/cube-pop): a real tracked pose
+           is always expressed relative to the rig, so moving the rig
+           repositions the whole playspace without disturbing anyone's
+           actual physical tracking. -->
+      <a-entity id="rig" position="0 0 0"
+        arm-swing-locomotion="leftHand: #left-hand; rightHand: #right-hand; camera: #hand-tracking-camera"
+      >
+        <a-camera id="hand-tracking-camera" position="0 1.6 0"></a-camera>
 
-      <!-- ============================================================
-           HANDS
-           This is the same hand rig the primitives/menus/ showcase uses
-           (see its own big comment block for the full picture):
-           hand-with-watch + semantic-hand carry the wrist-worn watch and
-           reach/grab logic, hand-gesture-controls (common/hand-tracking.js)
-           is what actually drives them from real WebXR hand tracking --
-           pinch or make a fist to grab the box below, or point a finger
-           gun at either watch to open and click its menu -- and a
-           separate, purely decorative entity renders a real hand mesh
-           so there's something to look at. hand-gesture-label shows
-           which canonical gesture is
-           currently recognized as a small floating tag above the hand,
-           toggled from the watch menu itself (see the template below).
-      ============================================================ -->
-      <a-entity id="left-hand" position="-0.2 1.35 -0.4"
-        hand-with-watch="hand: left"
-        semantic-hand="hand: left; maxReach: 1.0"
-        hand-gesture-controls="hand: left"
-        hand-gesture-label
-      ></a-entity>
-      <a-entity id="hand-visual-left" control-mode-visibility="modes: xr" hand-tracking-controls="hand: left; modelStyle: mesh"></a-entity>
+        <!-- ============================================================
+             HANDS
+             This is the same hand rig the primitives/menus/ showcase uses
+             (see its own big comment block for the full picture):
+             hand-with-watch + semantic-hand carry the wrist-worn watch and
+             reach/grab logic, hand-gesture-controls (common/hand-tracking.js)
+             is what actually drives them from real WebXR hand tracking --
+             pinch or make a fist to grab the box below, or point a finger
+             gun at either watch to open and click its menu -- and a
+             separate, purely decorative entity renders a real hand mesh
+             so there's something to look at. hand-gesture-label shows
+             which canonical gesture is currently recognized as a small
+             floating tag above the hand, toggled from the watch menu
+             itself (see the template below). arm-swing-locomotion (on the
+             rig, above) reads these same two entities' positions every
+             frame to detect a walking swing -- it doesn't care whether
+             hand-gesture-controls or something else is what's actually
+             moving them.
+        ============================================================ -->
+        <a-entity id="left-hand" position="-0.2 1.35 -0.4"
+          hand-with-watch="hand: left"
+          semantic-hand="hand: left; maxReach: 1.0"
+          hand-gesture-controls="hand: left"
+          hand-gesture-label
+        ></a-entity>
+        <a-entity id="hand-visual-left" control-mode-visibility="modes: xr" hand-tracking-controls="hand: left; modelStyle: mesh"></a-entity>
 
-      <a-entity id="right-hand" position="0.2 1.35 -0.4"
-        hand-with-watch="hand: right"
-        semantic-hand="hand: right; maxReach: 1.0"
-        hand-gesture-controls="hand: right"
-        hand-gesture-label
-      ></a-entity>
-      <a-entity id="hand-visual-right" control-mode-visibility="modes: xr" hand-tracking-controls="hand: right; modelStyle: mesh"></a-entity>
+        <a-entity id="right-hand" position="0.2 1.35 -0.4"
+          hand-with-watch="hand: right"
+          semantic-hand="hand: right; maxReach: 1.0"
+          hand-gesture-controls="hand: right"
+          hand-gesture-label
+        ></a-entity>
+        <a-entity id="hand-visual-right" control-mode-visibility="modes: xr" hand-tracking-controls="hand: right; modelStyle: mesh"></a-entity>
+      </a-entity>
 
       <!-- Sized and placed to be reachable without leaning: a hand raised
            to roughly chest height in front of you lands right on it.
@@ -101,22 +117,28 @@
       ></a-box>
 
       <!-- Minimal watch menu: just enough chrome to be recognizable as
-           the same watch style the showcase uses, plus the one thing this
-           demo needs a menu for -- toggling the gesture-name labels above
-           (wired up in the script below, via hand-gesture-labels'
-           setEnabled). -->
+           the same watch style the showcase uses, plus the two things
+           this demo needs a menu for -- toggling the gesture-name labels
+           above, and toggling arm-swing walking off if it turns out to
+           get in the way of testing everything else (wired up in the
+           script below, via hand-gesture-labels' and
+           arm-swing-locomotion's setEnabled). -->
       <template id="watch-menu-template">
         <a-entity class="watch-menu-panel" visible="false">
-          <a-plane width="1.2" height="0.75" color="#101827" position="0 -0.3 -0.01"></a-plane>
+          <a-plane width="1.2" height="0.95" color="#101827" position="0 -0.32 -0.01"></a-plane>
           <!-- Title starts empty -- hand-with-watch points its live clock
                at the chrome's title element instead of a static string
                once the panel is built (same convention the showcase's own
                watch-menu-template uses). -->
-          <a-entity class="menu-chrome-slot" data-title="" data-help="false" data-close="true" data-width="1.2" data-bar-y="0.28"></a-entity>
+          <a-entity class="menu-chrome-slot" data-title="" data-help="false" data-close="true" data-width="1.2" data-bar-y="0.3"></a-entity>
 
           <a-entity
             menu-option="key: gesture-labels; label: Labels; values: off|on; labels: Off|On; value: on; width: 0.96; height: 0.22"
-            position="0 0 0"
+            position="0 0.02 0"
+          ></a-entity>
+          <a-entity
+            menu-option="key: arm-swing; label: Walk; values: off|on; labels: Off|On; value: on; width: 0.96; height: 0.22"
+            position="0 -0.24 0"
           ></a-entity>
         </a-entity>
       </template>
@@ -125,14 +147,19 @@
     <script type="module" src="../../common/interaction-hints.js"></script>
     <script type="module" src="../../common/watch-menu.js"></script>
     <script type="module" src="../../common/hand-tracking.js"></script>
+    <script type="module" src="../../common/arm-swing-locomotion.js"></script>
     <script type="module">
-      // The watch menu's one row is generic (menu-option, shared across
+      // The watch menu's rows are generic (menu-option, shared across
       // every showcase menu) -- this is the only page-specific glue,
-      // routing its change event to the shared hand-gesture-labels system.
+      // routing each change event to the system/component it toggles.
       document.querySelector('a-scene').addEventListener('menu-option-change', function (evt) {
-        if (evt.detail.key !== 'gesture-labels') return;
         var sceneEl = document.querySelector('a-scene');
-        sceneEl.systems['hand-gesture-labels'].setEnabled(evt.detail.value === 'on');
+        var enabled = evt.detail.value === 'on';
+        if (evt.detail.key === 'gesture-labels') {
+          sceneEl.systems['hand-gesture-labels'].setEnabled(enabled);
+        } else if (evt.detail.key === 'arm-swing') {
+          document.querySelector('#rig').components['arm-swing-locomotion'].setEnabled(enabled);
+        }
       });
     </script>
   </body>
