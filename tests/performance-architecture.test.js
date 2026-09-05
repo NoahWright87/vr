@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import test from 'node:test';
 
 const page = readFileSync(new URL('../games/pistols-at-dawn/index.html', import.meta.url), 'utf8');
@@ -64,4 +64,14 @@ test('future models use a simple proxy while visual meshes skip raycasts', () =>
   assert.match(core, /registerComponent\('model-prop'/);
   assert.match(core, /classList\.add\('model-hitbox'\)/);
   assert.match(core, /object\.raycast = ignoreModelRaycast/);
+});
+
+test('Pistols texture assets stay within the standalone-headset budget', () => {
+  const textureDirectory = new URL('../games/pistols-at-dawn/assets/textures/', import.meta.url);
+  for (const filename of readdirSync(textureDirectory).filter(name => name.endsWith('.png'))) {
+    const png = readFileSync(new URL(filename, textureDirectory));
+    const width = png.readUInt32BE(16);
+    const height = png.readUInt32BE(20);
+    assert.ok(width <= 1024 && height <= 512, `${filename} is ${width}x${height}`);
+  }
 });

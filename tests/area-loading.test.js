@@ -9,6 +9,7 @@ const dayNight = readFileSync(new URL('../games/pistols-at-dawn/js/world-day-nig
 const ghostTown = readFileSync(new URL('../games/pistols-at-dawn/areas/ghost-town.html', import.meta.url), 'utf8');
 const saloonInterior = readFileSync(new URL('../games/pistols-at-dawn/js/world-saloon-interior.js', import.meta.url), 'utf8');
 const hubInteriors = readFileSync(new URL('../games/pistols-at-dawn/js/world-hub-interiors.js', import.meta.url), 'utf8');
+const ghostTownEnvironment = readFileSync(new URL('../games/pistols-at-dawn/js/world-ghost-town-environment.js', import.meta.url), 'utf8');
 
 test('destinations are lazy fragments instead of simultaneous scene entities', () => {
   for (const id of ['ghost-town', 'range', 'saloon', 'farm', 'stable', 'sheriff-office', 'general-store', 'bank', 'pharmacy', 'post-office', 'boots-suits', 'shooting-gallery']) {
@@ -28,13 +29,16 @@ test('destinations are lazy fragments instead of simultaneous scene entities', (
   assert.match(dayNight, /maxCloudsPerGroup: \{ type: 'int', default: 8 \}/);
   assert.match(dayNight, /windDirection: \{ type: 'number', default: 0 \}/);
   assert.match(dayNight, /formationDistance: \{ type: 'number', default: 80 \}/);
+  assert.match(dayNight, /maxShadowGroups: \{ type: 'int', default: 6 \}/);
   assert.match(dayNight, /weatherTimeScale = cycle \? cycle\.timeScale : 1/);
-  assert.match(dayNight, /group\.mesh\.position\.x \+= Math\.cos\(heading\)/);
+  assert.match(dayNight, /group\.x \+= Math\.cos\(heading\)/);
   assert.match(dayNight, /var heading = this\.windAngle \+ wobble/);
   assert.match(dayNight, /this\.resetGroup\(group, false, 0\)/);
-  assert.match(dayNight, /new THREE\.BufferGeometry\(\)/);
-  assert.match(dayNight, /one soft ground decal per cloud group/);
-  assert.match(dayNight, /TODO\(high-graphics\): add an option for real alpha-tested cloud shadow/);
+  assert.match(dayNight, /new THREE\.InstancedMesh\(geometry, this\.cloudMaterial, this\.maxCloudSlots\)/);
+  assert.match(dayNight, /this\.cloudMeshes\.push\(mesh\)/);
+  assert.match(dayNight, /this\.shadowMesh = new THREE\.InstancedMesh/);
+  assert.match(dayNight, /TODO\(high-graphics\): allow per-cloud or real/);
+  assert.doesNotMatch(dayNight, /mesh\.frustumCulled = false/);
   assert.doesNotMatch(dayNight, /spawnCell/);
   assert.doesNotMatch(dayNight, /setFromUnitVectors|setFromRotationMatrix/);
   assert.match(dayNight, /this\.sunOrb\.renderOrder = -10/);
@@ -53,6 +57,15 @@ test('destinations are lazy fragments instead of simultaneous scene entities', (
   assert.match(dayNight, /new THREE\.Mesh\(new THREE\.PlaneGeometry\(1, 1\), new THREE\.MeshBasicMaterial/);
   assert.doesNotMatch(dayNight, /new THREE\.Sprite/);
   assert.match(dayNight, /this\.sunShadows = true/);
+  assert.match(dayNight, /this\.lowPowerShadows/);
+  assert.match(dayNight, /this\.lowPowerShadows \? 512 : 1024/);
+  assert.match(dayNight, /if \(!force && !stateChanged && !root\) return/);
+  assert.match(dayNight, /this\.daySky\.object3D\.visible = daylight > 0\.003/);
+  assert.match(dayNight, /this\.nightSky\.object3D\.visible = daylight < 0\.997/);
+  assert.match(ghostTownEnvironment, /new THREE\.InstancedMesh\(geometry, material, parts\.length\)/);
+  assert.match(ghostTownEnvironment, /new THREE\.InstancedMesh\(geometry, material, this\.tumbleweeds\.length\)/);
+  assert.doesNotMatch(ghostTownEnvironment, /createElement\('a-cylinder'\)|createElement\('a-torus'\)/);
+  assert.match(loader, /return Promise\.all\(scripts\.map/);
   assert.match(loader, /preservePlayerItems: function/);
   assert.doesNotMatch(page, /<a-entity (?:saloon-darts|farm|stable)>/);
 });

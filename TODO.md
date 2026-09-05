@@ -100,6 +100,15 @@ the split should be shaped once more code moves into a shared library):
   local workspace/link would need the design build running as the two
   repositories are developed together.
 
+## Rendering quality tiers
+
+- **Add a high-graphics weather-shadow option.** The Quest-friendly default
+  renders one soft ground decal for only the six largest active cloud groups.
+  A future high tier can raise that cap or use per-cloud alpha-tested shadow
+  casters so roofs and walls receive more detailed moving shadows. Keep the
+  current batched path as the low/default tier: it is deliberately one draw
+  call and avoids multiplying the real-time shadow-map workload.
+
 ## Weapons not built yet
 
 Ideas that have been agreed as worth doing, in rough order of

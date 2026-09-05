@@ -22,6 +22,12 @@ function smoothStep(edge0, edge1, value) {
 }
 
 registerComponent('day-night-cycle', {
+  schema: {
+    // "auto" keeps the authored desktop shadows while choosing a cheaper
+    // caster set and map on standalone/mobile headsets.
+    shadowQuality: { type: 'string', default: 'auto' },
+  },
+
   init: function () {
     this.elapsedGameMs = DAY_NIGHT_CYCLE_MS * 0.25;
     this.clock = this.elapsedGameMs % DAY_NIGHT_CYCLE_MS; // Begin at high noon.
@@ -32,6 +38,9 @@ registerComponent('day-night-cycle', {
     this.nightSky = document.querySelector('#night-sky');
     this.gradient = document.querySelector('#sunset-gradient');
     this.scene = this.el.object3D;
+    this.lowPowerShadows = this.data.shadowQuality === 'low' ||
+      (this.data.shadowQuality === 'auto' && AFRAME.utils.device.isMobile());
+    this.shadowMapEnabled = null;
     this.onAreaLoaded = this.enableAreaShadows.bind(this);
     this.onRenderStart = this.onRenderStart.bind(this);
     this.onKeyDown = this.onKeyDown.bind(this);
@@ -99,13 +108,15 @@ registerComponent('day-night-cycle', {
 
   enableAreaShadows: function (evt) {
     var root = evt.detail && evt.detail.root;
-    if (root) root.setAttribute('shadow', 'cast: true; receive: true');
-    this.applyShadowState();
+    if (root && root.object3D) this.applyShadowState(true, root.object3D);
   },
 
   onRenderStart: function () {
     this.applyRenderOrder();
-    this.applyShadowState();
+    if (this.lowPowerShadows && this.el.renderer && this.el.renderer.shadowMap) {
+      this.el.renderer.shadowMap.type = THREE.PCFShadowMap;
+    }
+    this.applyShadowState(true);
   },
 
   applyRenderOrder: function () {
@@ -140,7 +151,7 @@ registerComponent('day-night-cycle', {
   },
 
   configureShadowCamera: function (light) {
-    light.shadow.mapSize.set(1024, 1024);
+    light.shadow.mapSize.set(this.lowPowerShadows ? 512 : 1024, this.lowPowerShadows ? 512 : 1024);
     light.shadow.bias = -0.00025;
     light.shadow.normalBias = 0.02;
     light.shadow.camera.left = -85;
@@ -165,19 +176,44 @@ registerComponent('day-night-cycle', {
     this.el.emit('day-night-shadow-change', { sun: this.sunShadows, moon: this.moonShadows });
   },
 
-  applyShadowState: function () {
+  applyShadowState: function (force, root) {
     var any = (this.sunShadows && this.sun.castShadow) || (this.moonShadows && this.moon.castShadow);
     var renderer = this.el.renderer;
     var shadow = this.el.systems.shadow;
-    if (shadow && shadow.setShadowMapEnabled) shadow.setShadowMapEnabled(any);
-    if (renderer && renderer.shadowMap) renderer.shadowMap.enabled = any;
-    this.scene.traverse(function (object) {
+    var stateChanged = this.shadowMapEnabled !== any;
+    if (stateChanged || (force && !root)) {
+      this.shadowMapEnabled = any;
+      if (shadow && shadow.setShadowMapEnabled) shadow.setShadowMapEnabled(any);
+      if (renderer && renderer.shadowMap) renderer.shadowMap.enabled = any;
+    }
+    // Lighting updates about five times a second, but the expensive scene walk
+    // is only needed when a light crosses the horizon, a setting changes, or a
+    // freshly loaded area needs its one-time caster assignment.
+    if (!force && !stateChanged && !root) return;
+    (root || this.scene).traverse(function (object) {
       var owner = object.el;
       var isSky = owner && (owner.id === 'night-sky' || owner.id === 'day-sky' || owner.id === 'sunset-gradient');
-      if (!object.isMesh || object.userData.dayNightCelestial || object.userData.weatherCloud || object.userData.weatherCloudShadow || isSky) return;
-      object.castShadow = any;
+      if (!object.isMesh || object.userData.dayNightCelestial || object.userData.weatherCloud || object.userData.weatherCloudShadow || object.userData.lowPriorityShadow || isSky) return;
+      object.castShadow = any && this.shouldCastShadow(object, owner);
       object.receiveShadow = any;
-    });
+    }.bind(this));
+  },
+
+  shouldCastShadow: function (object, owner) {
+    if (!this.lowPowerShadows) return true;
+    if (!owner) return false;
+    var tag = owner.tagName;
+    if (tag === 'A-PLANE' || tag === 'A-TEXT' || tag === 'A-SKY' || tag === 'A-CIRCLE' || tag === 'A-RING') return false;
+    var materials = Array.isArray(object.material) ? object.material : [object.material];
+    for (var i = 0; i < materials.length; i += 1) {
+      if (materials[i] && materials[i].transparent && materials[i].opacity < 0.98) return false;
+    }
+    if (!object.geometry) return false;
+    if (!object.geometry.boundingSphere) object.geometry.computeBoundingSphere();
+    var radius = object.geometry.boundingSphere ? object.geometry.boundingSphere.radius : 0;
+    var scale = object.scale;
+    radius *= Math.max(Math.abs(scale.x), Math.abs(scale.y), Math.abs(scale.z));
+    return radius >= 0.55;
   },
 
   applyLighting: function () {
@@ -198,9 +234,16 @@ registerComponent('day-night-cycle', {
     this.ambient.intensity = 0.07 + daylight * 0.5 + moonlight * 0.12 + twilight * 0.12;
     this.sunOrb.visible = sunDir.y > -0.14;
     this.moonOrb.visible = moonDir.y > -0.14;
-    if (this.daySky) this.daySky.setAttribute('material', 'opacity', daylight);
+    if (this.daySky) {
+      this.daySky.object3D.visible = daylight > 0.003;
+      this.daySky.setAttribute('material', 'opacity', daylight);
+    }
+    if (this.nightSky) this.nightSky.object3D.visible = daylight < 0.997;
     if (this.nightSky) this.nightSky.object3D.rotation.y = -(this.clock / DAY_NIGHT_CYCLE_MS) * Math.PI * 2;
-    if (this.gradient) this.gradient.setAttribute('material', { opacity: twilight * 0.76, sunDirection: sunDir });
+    if (this.gradient) {
+      this.gradient.object3D.visible = twilight > 0.004;
+      this.gradient.setAttribute('material', { opacity: twilight * 0.76, sunDirection: sunDir });
+    }
     this.applyShadowState();
     this.el.emit('day-night-change', { daylight: daylight, hour: (this.clock / DAY_NIGHT_CYCLE_MS) * 24 });
   },
@@ -267,10 +310,10 @@ registerComponent('day-night-cycle', {
   },
 });
 
-// PS1-style weather. Stars rotate with the celestial sphere; clouds do not.
-// Cloud systems cross a persistent world-space field along a shared wind
-// vector, with a small smooth heading wobble. Each system is one batched mesh
-// plus one inexpensive ground-shadow decal.
+// PS1-style weather. Twenty independently simulated cloud systems still cross
+// the world-space field, but their cards are sent to the GPU in eight instanced
+// atlas buckets. A ninth batch contains only the largest few shadow decals.
+// The old one-mesh-per-system version cost more than fifty draw calls on its own.
 registerComponent('weather-clouds', {
   schema: {
     groupCount: { type: 'int', default: 20 },
@@ -292,6 +335,8 @@ registerComponent('weather-clouds', {
     fieldRadius: { type: 'number', default: 240 },
     formationDistance: { type: 'number', default: 80 },
     shadowOpacity: { type: 'number', default: 0.16 },
+    maxShadowGroups: { type: 'int', default: 6 },
+    shapeUpdateMs: { type: 'number', default: 125 },
     spriteFamily: { type: 'string', default: 'desert-underside' },
   },
 
@@ -299,8 +344,10 @@ registerComponent('weather-clouds', {
     this.scene = this.el.object3D;
     this.daylight = 1;
     this.windAngle = this.data.windDirection * Math.PI / 180;
-    this.wind = new THREE.Vector3(Math.cos(this.windAngle), 0, Math.sin(this.windAngle));
-    this.windPerpendicular = new THREE.Vector3(-this.wind.z, 0, this.wind.x);
+    this.windX = Math.cos(this.windAngle);
+    this.windZ = Math.sin(this.windAngle);
+    this.perpendicularX = -this.windZ;
+    this.perpendicularZ = this.windX;
     this.sunDirection = new THREE.Vector3();
     this.atlasTexture = new THREE.TextureLoader().load(
       'assets/textures/weather-cloud-underside-atlas-v1.png'
@@ -308,8 +355,11 @@ registerComponent('weather-clouds', {
     this.atlasTexture.wrapS = THREE.ClampToEdgeWrapping;
     this.atlasTexture.wrapT = THREE.ClampToEdgeWrapping;
     this.shadowTexture = this.makeShadowTexture();
-    this.shadowGeometry = new THREE.PlaneGeometry(2, 2);
     this.cloudGroups = [];
+    this.shapeElapsedMs = 0;
+    this.maxCloudSlots = this.data.groupCount * this.data.maxCloudsPerGroup;
+    this.makeCloudBatches();
+    this.makeShadowBatch();
     this.onDayNightChange = this.updateAppearance.bind(this);
     this.el.addEventListener('day-night-change', this.onDayNightChange);
 
@@ -321,16 +371,87 @@ registerComponent('weather-clouds', {
 
   remove: function () {
     this.el.removeEventListener('day-night-change', this.onDayNightChange);
-    this.cloudGroups.forEach(function (group) {
-      this.scene.remove(group.mesh);
-      this.scene.remove(group.shadow);
-      group.mesh.geometry.dispose();
-      group.mesh.material.dispose();
-      group.shadow.material.dispose();
+    this.cloudMeshes.forEach(function (mesh) {
+      this.scene.remove(mesh);
+      mesh.geometry.dispose();
     }, this);
+    this.scene.remove(this.shadowMesh);
+    this.cloudMaterial.dispose();
     this.shadowGeometry.dispose();
+    this.shadowMaterial.dispose();
     this.shadowTexture.dispose();
     this.atlasTexture.dispose();
+  },
+
+  makeCloudBatches: function () {
+    this.cloudMaterial = new THREE.MeshBasicMaterial({
+      map: this.atlasTexture,
+      transparent: true,
+      depthWrite: false,
+      depthTest: true,
+      side: THREE.DoubleSide,
+      alphaTest: 0.025,
+      opacity: 0.86,
+    });
+    this.cloudMeshes = [];
+    this.cloudDummy = new THREE.Object3D();
+    this.cloudTint = new THREE.Color();
+    for (var tile = 0; tile < 8; tile += 1) {
+      var geometry = new THREE.PlaneGeometry(1, 1);
+      geometry.rotateX(-Math.PI / 2);
+      var uv = geometry.attributes.uv.array;
+      var paddingU = 0.006;
+      var paddingV = 0.012;
+      var column = tile % 4;
+      var row = Math.floor(tile / 4);
+      var u0 = column * 0.25 + paddingU;
+      var u1 = (column + 1) * 0.25 - paddingU;
+      var v0 = row * 0.5 + paddingV;
+      var v1 = (row + 1) * 0.5 - paddingV;
+      uv[0] = u0; uv[1] = v1;
+      uv[2] = u1; uv[3] = v1;
+      uv[4] = u0; uv[5] = v0;
+      uv[6] = u1; uv[7] = v0;
+      geometry.attributes.uv.needsUpdate = true;
+      var mesh = new THREE.InstancedMesh(geometry, this.cloudMaterial, this.maxCloudSlots);
+      mesh.name = 'cloud-atlas-tile-' + tile;
+      mesh.count = 0;
+      mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      mesh.userData.weatherCloud = true;
+      mesh.renderOrder = 0;
+      mesh.boundingSphere = new THREE.Sphere(
+        new THREE.Vector3(0, (this.data.minHeight + this.data.maxHeight) * 0.5, 0),
+        this.data.fieldRadius * 1.55
+      );
+      this.cloudMeshes.push(mesh);
+      this.scene.add(mesh);
+    }
+  },
+
+  makeShadowBatch: function () {
+    var count = Math.max(0, Math.min(this.data.groupCount, this.data.maxShadowGroups));
+    this.shadowGeometry = new THREE.PlaneGeometry(1, 1);
+    this.shadowGeometry.rotateX(-Math.PI / 2);
+    this.shadowMaterial = new THREE.MeshBasicMaterial({
+      map: this.shadowTexture,
+      color: '#141820',
+      transparent: true,
+      depthWrite: false,
+      depthTest: true,
+      opacity: this.data.shadowOpacity,
+      side: THREE.DoubleSide,
+    });
+    this.shadowMesh = new THREE.InstancedMesh(this.shadowGeometry, this.shadowMaterial, count);
+    this.shadowMesh.count = 0;
+    this.shadowMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.shadowMesh.userData.weatherCloudShadow = true;
+    this.shadowMesh.renderOrder = 1;
+    this.shadowMesh.visible = false;
+    this.shadowMesh.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0, 0), this.data.fieldRadius * 1.8);
+    this.shadowDummy = new THREE.Object3D();
+    this.shadowSelection = new Array(count);
+    this.shadowScores = new Float32Array(count);
+    this.scene.add(this.shadowMesh);
   },
 
   makeShadowTexture: function () {
@@ -350,48 +471,16 @@ registerComponent('weather-clouds', {
   },
 
   makeCloudGroup: function (index) {
-    var cloudMaterial = new THREE.MeshBasicMaterial({
-      map: this.atlasTexture,
-      transparent: true,
-      depthWrite: false,
-      depthTest: true,
-      side: THREE.DoubleSide,
-      alphaTest: 0.025,
-      opacity: 0,
-    });
-    var mesh = new THREE.Mesh(new THREE.BufferGeometry(), cloudMaterial);
-    mesh.userData.weatherCloud = true;
-    mesh.renderOrder = 0;
-    mesh.frustumCulled = false;
-
-    var shadowMaterial = new THREE.MeshBasicMaterial({
-      map: this.shadowTexture,
-      color: '#141820',
-      transparent: true,
-      depthWrite: false,
-      depthTest: true,
-      opacity: 0,
-      side: THREE.DoubleSide,
-    });
-    var shadow = new THREE.Mesh(this.shadowGeometry, shadowMaterial);
-    shadow.userData.weatherCloudShadow = true;
-    shadow.rotation.x = -Math.PI / 2;
-    shadow.position.y = 0.07;
-    shadow.renderOrder = 1;
-    shadow.visible = false;
-
-    this.scene.add(mesh);
-    this.scene.add(shadow);
     var group = {
-      mesh: mesh,
-      shadow: shadow,
+      index: index,
       clouds: [],
+      x: 0,
+      z: 0,
       age: 0,
       travelDistance: 0,
       speed: 1,
       density: this.data.density,
       shade: 1,
-      baseOpacity: 0.86,
       wobblePhase: 0,
       wobblePeriodMs: this.data.wobbleFrequencyMs,
       wobbleRadians: this.data.wobbleAmount * Math.PI / 180,
@@ -408,7 +497,6 @@ registerComponent('weather-clouds', {
     group.speed = this.randomBetween(this.data.minSpeed, this.data.maxSpeed);
     group.density = this.clamp(this.data.density + (Math.random() - 0.5) * 0.2, 0.05, 0.98);
     group.shade = this.randomBetween(this.data.minShade, this.data.maxShade);
-    group.baseOpacity = this.randomBetween(0.76, 0.9);
     group.wobblePhase = Math.random() * Math.PI * 2;
     group.wobblePeriodMs = this.data.wobbleFrequencyMs * this.randomBetween(0.72, 1.35);
     group.wobbleRadians = this.data.wobbleAmount * Math.PI / 180 * this.randomBetween(0.55, 1.15);
@@ -425,22 +513,17 @@ registerComponent('weather-clouds', {
       this.clamp(((index || 0) + Math.random() * 0.72) / Math.max(1, this.data.groupCount), 0, 0.98) :
       0;
     var forward = startForward + (endForward - startForward) * progress;
-    group.mesh.position.set(
-      this.wind.x * forward + this.windPerpendicular.x * lateral,
-      0,
-      this.wind.z * forward + this.windPerpendicular.z * lateral
-    );
+    group.x = this.windX * forward + this.perpendicularX * lateral;
+    group.z = this.windZ * forward + this.perpendicularZ * lateral;
     group.travelDistance = initial ? (endForward - startForward) * progress : 0;
-    group.mesh.visible = true;
-    group.shadow.visible = false;
-    this.updateGroupGeometry(group, 0);
+    this.updateGroupShapes(group, 0, true);
   },
 
   configureGroupClouds: function (group) {
     var count = this.data.minCloudsPerGroup + Math.floor(Math.random() *
       (this.data.maxCloudsPerGroup - this.data.minCloudsPerGroup + 1));
     var spread = 18 + (1 - group.density) * 48;
-    group.clouds = [];
+    group.clouds.length = 0;
     var minX = Infinity;
     var maxX = -Infinity;
     var minZ = Infinity;
@@ -470,112 +553,80 @@ registerComponent('weather-clouds', {
       minZ = Math.min(minZ, cloud.offsetZ - depth * 0.5);
       maxZ = Math.max(maxZ, cloud.offsetZ + depth * 0.5);
     }
-
     group.boundsX = Math.max(8, maxX - minX);
     group.boundsZ = Math.max(8, maxZ - minZ);
     group.radius = Math.max(group.boundsX, group.boundsZ) * 0.55;
-    if (group.mesh.geometry) group.mesh.geometry.dispose();
-    group.mesh.geometry = this.makeGroupGeometry(group);
-    group.shadow.scale.set(
-      group.boundsX * (0.5 + (1 - group.density) * 0.22),
-      group.boundsZ * (0.5 + (1 - group.density) * 0.22),
-      1
-    );
   },
 
-  makeGroupGeometry: function (group) {
-    var positions = new Float32Array(group.clouds.length * 12);
-    var uvs = new Float32Array(group.clouds.length * 8);
-    var indices = [];
-    var paddingU = 0.006;
-    var paddingV = 0.012;
-
-    group.clouds.forEach(function (cloud, i) {
-      var column = cloud.tile % 4;
-      var row = Math.floor(cloud.tile / 4);
-      var u0 = column * 0.25 + paddingU;
-      var u1 = (column + 1) * 0.25 - paddingU;
-      var v0 = row * 0.5 + paddingV;
-      var v1 = (row + 1) * 0.5 - paddingV;
-      var uvOffset = i * 8;
-      uvs[uvOffset] = u0;
-      uvs[uvOffset + 1] = v0;
-      uvs[uvOffset + 2] = u1;
-      uvs[uvOffset + 3] = v0;
-      uvs[uvOffset + 4] = u1;
-      uvs[uvOffset + 5] = v1;
-      uvs[uvOffset + 6] = u0;
-      uvs[uvOffset + 7] = v1;
-      var vertex = i * 4;
-      indices.push(vertex, vertex + 2, vertex + 1, vertex, vertex + 3, vertex + 2);
-    });
-
-    var geometry = new THREE.BufferGeometry();
-    var positionAttribute = new THREE.BufferAttribute(positions, 3);
-    positionAttribute.setUsage(THREE.DynamicDrawUsage);
-    geometry.setAttribute('position', positionAttribute);
-    geometry.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
-    geometry.setIndex(indices);
-    return geometry;
-  },
-
-  updateGroupGeometry: function (group, elapsedSeconds) {
-    var positions = group.mesh.geometry.attributes.position.array;
-    var presence = this.getGroupPresence(group);
-    var formationScale = 0.12 + presence * 0.88;
-
-    group.clouds.forEach(function (cloud, i) {
-      cloud.sizeScale += cloud.sizeVelocity * elapsedSeconds;
-      if (cloud.sizeScale > 1.18) {
-        cloud.sizeScale = 1.18;
-        cloud.sizeVelocity = -Math.abs(cloud.sizeVelocity);
-      } else if (cloud.sizeScale < 0.82) {
-        cloud.sizeScale = 0.82;
-        cloud.sizeVelocity = Math.abs(cloud.sizeVelocity);
+  updateGroupShapes: function (group, shapeSeconds, forceShape) {
+    for (var i = 0; i < group.clouds.length; i += 1) {
+      var cloud = group.clouds[i];
+      if (forceShape || shapeSeconds > 0) {
+        cloud.sizeScale += cloud.sizeVelocity * shapeSeconds;
+        if (cloud.sizeScale > 1.18) {
+          cloud.sizeScale = 1.18;
+          cloud.sizeVelocity = -Math.abs(cloud.sizeVelocity);
+        } else if (cloud.sizeScale < 0.82) {
+          cloud.sizeScale = 0.82;
+          cloud.sizeVelocity = Math.abs(cloud.sizeVelocity);
+        }
       }
+    }
+  },
 
-      var halfWidth = cloud.width * cloud.sizeScale * formationScale * 0.5;
-      var halfDepth = cloud.depth * cloud.sizeScale * formationScale * 0.5;
-      var cosine = Math.cos(cloud.rotation);
-      var sine = Math.sin(cloud.rotation);
-      var corners = [
-        [-halfWidth, -halfDepth],
-        [halfWidth, -halfDepth],
-        [halfWidth, halfDepth],
-        [-halfWidth, halfDepth],
-      ];
-      var positionOffset = i * 12;
-      corners.forEach(function (corner, cornerIndex) {
-        var x = corner[0] * cosine - corner[1] * sine;
-        var z = corner[0] * sine + corner[1] * cosine;
-        var offset = positionOffset + cornerIndex * 3;
-        positions[offset] = cloud.offsetX + x;
-        positions[offset + 1] = cloud.height;
-        positions[offset + 2] = cloud.offsetZ + z;
-      });
-    });
-    group.mesh.geometry.attributes.position.needsUpdate = true;
-    if (!group.mesh.geometry.boundingSphere) group.mesh.geometry.computeBoundingSphere();
+  updateCloudBatches: function () {
+    var i;
+    for (i = 0; i < this.cloudMeshes.length; i += 1) this.cloudMeshes[i].count = 0;
+    var nightFactor = 0.38 + this.daylight * 0.62;
+    var dummy = this.cloudDummy;
+    for (i = 0; i < this.cloudGroups.length; i += 1) {
+      var group = this.cloudGroups[i];
+      var presence = this.getGroupPresence(group);
+      if (presence <= 0.01) continue;
+      var formationScale = 0.12 + presence * 0.88;
+      var shade = group.shade * nightFactor;
+      this.cloudTint.setRGB(shade * 0.96, shade * 0.98, Math.min(1, shade + 0.045));
+      for (var cloudIndex = 0; cloudIndex < group.clouds.length; cloudIndex += 1) {
+        var cloud = group.clouds[cloudIndex];
+        var mesh = this.cloudMeshes[cloud.tile];
+        var instance = mesh.count;
+        dummy.position.set(group.x + cloud.offsetX, cloud.height, group.z + cloud.offsetZ);
+        dummy.rotation.set(0, -cloud.rotation, 0);
+        dummy.scale.set(
+          cloud.width * cloud.sizeScale * formationScale,
+          1,
+          cloud.depth * cloud.sizeScale * formationScale
+        );
+        dummy.updateMatrix();
+        mesh.setMatrixAt(instance, dummy.matrix);
+        mesh.setColorAt(instance, this.cloudTint);
+        mesh.count = instance + 1;
+      }
+    }
+    for (i = 0; i < this.cloudMeshes.length; i += 1) {
+      var cloudMesh = this.cloudMeshes[i];
+      cloudMesh.visible = cloudMesh.count > 0;
+      cloudMesh.instanceMatrix.needsUpdate = true;
+      if (cloudMesh.instanceColor) cloudMesh.instanceColor.needsUpdate = true;
+    }
   },
 
   getGroupPresence: function (group) {
     return smoothStep(0, this.data.formationDistance, group.travelDistance);
   },
 
-  updateGroup: function (group, elapsed, cycle) {
+  updateGroup: function (group, elapsed, shapeSeconds) {
     var seconds = elapsed / 1000;
     group.age += elapsed;
     var wobble = Math.sin(group.age / group.wobblePeriodMs * Math.PI * 2 + group.wobblePhase) *
       group.wobbleRadians;
     var heading = this.windAngle + wobble;
-    group.mesh.position.x += Math.cos(heading) * group.speed * seconds;
-    group.mesh.position.z += Math.sin(heading) * group.speed * seconds;
+    group.x += Math.cos(heading) * group.speed * seconds;
+    group.z += Math.sin(heading) * group.speed * seconds;
     group.travelDistance += group.speed * seconds;
-    this.updateGroupGeometry(group, seconds);
 
-    var presence = this.getGroupPresence(group);
-    var forward = group.mesh.position.dot(this.wind);
-    var lateral = group.mesh.position.dot(this.windPerpendicular);
+    var forward = group.x * this.windX + group.z * this.windZ;
+    var lateral = group.x * this.perpendicularX + group.z * this.perpendicularZ;
     var lateralInside = Math.min(Math.abs(lateral), this.data.fieldRadius);
     var boundary = Math.sqrt(Math.max(0,
       this.data.fieldRadius * this.data.fieldRadius - lateralInside * lateralInside));
@@ -583,63 +634,92 @@ registerComponent('weather-clouds', {
       this.resetGroup(group, false, 0);
       return;
     }
-
-    group.mesh.material.opacity = group.baseOpacity * presence;
-    group.mesh.visible = presence > 0.01;
-    this.applyGroupColor(group);
-    this.updateGroupShadow(group, cycle, presence);
+    this.updateGroupShapes(group, shapeSeconds, false);
   },
 
-  applyGroupColor: function (group) {
-    var nightFactor = 0.38 + this.daylight * 0.62;
-    var shade = group.shade * nightFactor;
-    group.mesh.material.color.setRGB(
-      shade * 0.96,
-      shade * 0.98,
-      Math.min(1, shade + 0.045)
-    );
-  },
-
-  updateGroupShadow: function (group, cycle, presence) {
-    // Low-quality/default weather uses one soft ground decal per cloud group.
-    // TODO(high-graphics): add an option for real alpha-tested cloud shadow
-    // casters, optionally per cloud, so roofs and walls receive moving shadows.
-    if (!cycle || !cycle.sun.castShadow || presence < 0.08 || this.daylight < 0.08) {
-      group.shadow.visible = false;
+  updateShadowBatch: function (cycle) {
+    var count = this.shadowSelection.length;
+    var i;
+    for (i = 0; i < count; i += 1) {
+      this.shadowSelection[i] = null;
+      this.shadowScores[i] = -1;
+    }
+    // Default/low graphics uses one soft decal for only the most visually
+    // important groups. TODO(high-graphics): allow per-cloud or real
+    // alpha-tested shadows on roofs and walls.
+    if (!count || !cycle || !cycle.sun.castShadow || this.daylight < 0.08) {
+      this.shadowMesh.count = 0;
+      this.shadowMesh.visible = false;
       return;
     }
-
     this.sunDirection.copy(cycle.sun.position).normalize();
     if (this.sunDirection.y < 0.12) {
-      group.shadow.visible = false;
+      this.shadowMesh.count = 0;
+      this.shadowMesh.visible = false;
       return;
     }
 
-    var averageHeight = group.height;
-    var projection = Math.min(130, averageHeight / Math.max(0.2, this.sunDirection.y));
-    group.shadow.position.set(
-      group.mesh.position.x - this.sunDirection.x * projection,
-      0.07,
-      group.mesh.position.z - this.sunDirection.z * projection
-    );
-    group.shadow.material.opacity = this.data.shadowOpacity * presence * this.daylight *
-      (0.32 + group.density * 0.82) *
-      Math.min(1, group.clouds.length / Math.max(1, this.data.maxCloudsPerGroup));
-    group.shadow.visible = group.shadow.material.opacity > 0.006;
+    for (i = 0; i < this.cloudGroups.length; i += 1) {
+      var group = this.cloudGroups[i];
+      var presence = this.getGroupPresence(group);
+      if (presence < 0.08) continue;
+      var score = group.boundsX * group.boundsZ * presence * (0.45 + group.density);
+      var insertAt = -1;
+      for (var candidate = 0; candidate < count; candidate += 1) {
+        if (score > this.shadowScores[candidate]) { insertAt = candidate; break; }
+      }
+      if (insertAt < 0) continue;
+      for (var shift = count - 1; shift > insertAt; shift -= 1) {
+        this.shadowSelection[shift] = this.shadowSelection[shift - 1];
+        this.shadowScores[shift] = this.shadowScores[shift - 1];
+      }
+      this.shadowSelection[insertAt] = group;
+      this.shadowScores[insertAt] = score;
+    }
+
+    var visibleCount = 0;
+    for (i = 0; i < count; i += 1) {
+      group = this.shadowSelection[i];
+      if (!group) continue;
+      presence = this.getGroupPresence(group);
+      var projection = Math.min(130, group.height / Math.max(0.2, this.sunDirection.y));
+      var scale = (0.18 + presence * 0.82) * (0.5 + (1 - group.density) * 0.22);
+      this.shadowDummy.position.set(
+        group.x - this.sunDirection.x * projection,
+        0.07,
+        group.z - this.sunDirection.z * projection
+      );
+      this.shadowDummy.rotation.set(0, 0, 0);
+      this.shadowDummy.scale.set(group.boundsX * scale, 1, group.boundsZ * scale);
+      this.shadowDummy.updateMatrix();
+      this.shadowMesh.setMatrixAt(visibleCount, this.shadowDummy.matrix);
+      visibleCount += 1;
+    }
+    this.shadowMaterial.opacity = this.data.shadowOpacity * this.daylight;
+    this.shadowMesh.count = visibleCount;
+    this.shadowMesh.instanceMatrix.needsUpdate = true;
+    this.shadowMesh.visible = visibleCount > 0;
   },
 
   updateAppearance: function (event) {
     if (event && event.detail) this.daylight = event.detail.daylight;
-    this.cloudGroups.forEach(this.applyGroupColor, this);
   },
 
   tick: function (time, delta) {
     var cycle = this.el.components['day-night-cycle'];
     var weatherTimeScale = cycle ? cycle.timeScale : 1;
     var elapsed = Math.min(delta || 16, 100) * weatherTimeScale;
-    this.cloudGroups.forEach(function (group) {
-      this.updateGroup(group, elapsed, cycle);
-    }, this);
+    this.shapeElapsedMs += elapsed;
+    var shapeSeconds = 0;
+    if (this.shapeElapsedMs >= this.data.shapeUpdateMs) {
+      shapeSeconds = this.shapeElapsedMs / 1000;
+      this.shapeElapsedMs = 0;
+    }
+    for (var i = 0; i < this.cloudGroups.length; i += 1) {
+      this.updateGroup(this.cloudGroups[i], elapsed, shapeSeconds);
+    }
+    this.updateCloudBatches();
+    this.updateShadowBatch(cycle);
   },
 
   randomBetween: function (minimum, maximum) {

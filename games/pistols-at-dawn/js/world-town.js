@@ -118,9 +118,10 @@
       }
 
       function loadAreaScripts(scripts) {
-        return scripts.reduce(function (ready, src) {
-          return ready.then(function () { return loadAreaScript(src); });
-        }, Promise.resolve());
+        // Dynamic scripts with async=false execute in insertion order, while
+        // creating them together lets the browser fetch every independent file
+        // during the same loading screen instead of serializing network waits.
+        return Promise.all(scripts.map(function (src) { return loadAreaScript(src); }));
       }
 
       // Owns the one active destination. A MutationObserver marks effects or
