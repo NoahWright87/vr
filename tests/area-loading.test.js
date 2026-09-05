@@ -45,9 +45,13 @@ test('destinations are lazy fragments instead of simultaneous scene entities', (
   assert.match(page, /id="night-sky" radius="650"/);
   assert.doesNotMatch(page, /cloud-sky/);
   assert.match(dayNight, /sun-billboard-v1\.png/);
-  assert.match(dayNight, /sun-billboard-v1\.png', 24, false/);
+  assert.match(dayNight, /makeCelestialPlane\('assets\/textures\/sun-billboard-v1\.png', 24, false\)/);
   assert.match(dayNight, /this\.scene\.add\(this\.sunOrb\)/);
   assert.match(dayNight, /moon-billboard-v1\.png/);
+  assert.match(dayNight, /this\.moonOrb\.rotation\.y = -Math\.PI \/ 2/);
+  assert.match(dayNight, /this\.sunOrb\.lookAt\(0, 0, 0\)/);
+  assert.match(dayNight, /new THREE\.Mesh\(new THREE\.PlaneGeometry\(1, 1\), new THREE\.MeshBasicMaterial/);
+  assert.doesNotMatch(dayNight, /new THREE\.Sprite/);
   assert.match(dayNight, /this\.sunShadows = true/);
   assert.match(loader, /preservePlayerItems: function/);
   assert.doesNotMatch(page, /<a-entity (?:saloon-darts|farm|stable)>/);

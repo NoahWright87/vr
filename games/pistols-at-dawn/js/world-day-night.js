@@ -64,8 +64,11 @@ registerComponent('day-night-cycle', {
     this.moonAnchor.add(this.moon);
     this.scene.add(this.sun, this.sun.target, this.moonOrbitRoot, this.moon.target, this.ambient);
 
-    this.sunOrb = this.makeSprite('assets/textures/sun-billboard-v1.png', 24, false);
-    this.moonOrb = this.makeSprite('assets/textures/moon-billboard-v1.png', 13, false);
+    this.sunOrb = this.makeCelestialPlane('assets/textures/sun-billboard-v1.png', 24, false);
+    this.moonOrb = this.makeCelestialPlane('assets/textures/moon-billboard-v1.png', 13, false);
+    // The Moon sits on the anchor's local +X axis, so its fixed plane faces
+    // inward along -X toward the world's center. It must never face the camera.
+    this.moonOrb.rotation.y = -Math.PI / 2;
     this.scene.add(this.sunOrb);
     this.moonAnchor.add(this.moonOrb);
     this.moonBaseSize = 13;
@@ -78,6 +81,13 @@ registerComponent('day-night-cycle', {
     this.el.removeEventListener('area-loaded', this.onAreaLoaded);
     this.el.removeEventListener('renderstart', this.onRenderStart);
     window.removeEventListener('keydown', this.onKeyDown);
+    [this.sunOrb, this.moonOrb].forEach(function (body) {
+      if (!body) return;
+      if (body.parent) body.parent.remove(body);
+      body.geometry.dispose();
+      if (body.material.map) body.material.map.dispose();
+      body.material.dispose();
+    });
   },
 
   onKeyDown: function (evt) {
@@ -114,18 +124,19 @@ registerComponent('day-night-cycle', {
     element.object3D.traverse(function (object) { object.renderOrder = order; });
   },
 
-  makeSprite: function (src, size, additive) {
+  makeCelestialPlane: function (src, size, additive) {
     var texture = new THREE.TextureLoader().load(src);
-    var sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+    var plane = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({
       map: texture,
       transparent: true,
       depthWrite: false,
       depthTest: true,
+      side: THREE.DoubleSide,
       blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending,
     }));
-    sprite.scale.set(size, size, 1);
-    sprite.userData.dayNightCelestial = true;
-    return sprite;
+    plane.scale.set(size, size, 1);
+    plane.userData.dayNightCelestial = true;
+    return plane;
   },
 
   configureShadowCamera: function (light) {
@@ -229,6 +240,9 @@ registerComponent('day-night-cycle', {
   syncCelestialPositions: function (sunDir, directions) {
     this.sun.position.copy(sunDir).multiplyScalar(DAY_NIGHT_ORBIT_RADIUS);
     this.sunOrb.position.copy(this.sun.position);
+    // Mesh planes keep an authored world orientation. Unlike THREE.Sprite,
+    // this turns only as the Sun travels, never when the player's head turns.
+    this.sunOrb.lookAt(0, 0, 0);
     this.moonOrbitRoot.rotation.z = directions.moonAngle;
     this.moonOrbitDeclination.rotation.x = directions.moonDeclination;
     this.moonOrbitPrecession.rotation.z = directions.moonNode;
