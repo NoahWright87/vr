@@ -204,7 +204,7 @@ AFRAME.registerComponent('hand-gesture-controls', {
       var handComponent = this.el.components['semantic-hand'];
       if (handComponent) {
         this._wristQuaternion.multiply(this._wristCorrection);
-        handComponent.setWorldTransform(this._wristPosition, this._wristQuaternion, null, true);
+        handComponent.setLocalTransform(this._wristPosition, this._wristQuaternion, null, true);
       }
     }
 

@@ -48,7 +48,7 @@
     </div>
 
     <a-scene keyboard-shortcuts="enterVR: false">
-      <a-plane rotation="-90 0 0" width="20" height="20" color="#445" position="0 0 0"></a-plane>
+      <a-plane id="floor" rotation="-90 0 0" width="20" height="20" color="#445" position="0 0 0"></a-plane>
       <a-sky color="#0d1526"></a-sky>
 
       <!-- Everything that tracks real physical input -- the camera and
@@ -167,6 +167,25 @@
           document.querySelector('#rig').components['arm-swing-locomotion'].setEnabled(enabled);
         }
       });
+
+      // Same checkerboard floor texture as the primitives/menus/ showcase
+      // (generated on a <canvas> at runtime rather than a checked-in image,
+      // so there's no extra network dependency) -- flat parallax-free
+      // scenery on its own gives no sense of motion, and arm-swing walking
+      // is otherwise hard to feel without turning your head.
+      (function () {
+        var canvas = document.createElement('canvas');
+        canvas.width = canvas.height = 64;
+        var ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#3a4358';
+        ctx.fillRect(0, 0, 64, 64);
+        ctx.fillStyle = '#2a3040';
+        ctx.fillRect(0, 0, 32, 32);
+        ctx.fillRect(32, 32, 32, 32);
+        var floorEl = document.querySelector('#floor');
+        floorEl.setAttribute('material', 'src', canvas.toDataURL());
+        floorEl.setAttribute('material', 'repeat', '20 20');
+      })();
     </script>
   </body>
 </html>

@@ -759,6 +759,25 @@ AFRAME.registerComponent('semantic-hand', {
     }
   },
 
+  // Real WebXR joint poses already arrive relative to the XR reference
+  // space, the same space a rig entity's own local transform lives in --
+  // exactly like a Touch controller's tracked-controls pose. Unlike
+  // setWorldTransform (for desktop-simulated hands, where the caller only
+  // has a world-space target), this must NOT round-trip through
+  // parent.worldToLocal(): doing so would cancel out wherever the rig
+  // currently sits, freezing the hand at its raw physical-tracking
+  // position instead of moving together with the rig.
+  setLocalTransform: function (localPosition, localQuaternion, pose, snap) {
+    this.desiredPosition.copy(localPosition);
+    this.desiredQuaternion.copy(localQuaternion);
+    if (pose && pose !== this.desktopPose) this.playPose(pose);
+    if (snap) {
+      this.el.object3D.position.copy(this.desiredPosition);
+      this.el.object3D.quaternion.copy(this.desiredQuaternion);
+      this.el.object3D.updateMatrixWorld(true);
+    }
+  },
+
   // Runs a short, semantic hand gesture through real hand transforms. The
   // gameplay system still observes an ordinary moving hand; desktop input
   // never has to manufacture a controller or bypass collision/gesture code.
