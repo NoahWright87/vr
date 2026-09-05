@@ -13,6 +13,8 @@
       var SALOON_WOOD = '#6b4429';
       var SALOON_DARK_WOOD = '#392318';
       var SALOON_BRASS = '#a77e36';
+      var SALOON_WOOD_TEXTURE = 'assets/textures/western-wood-planks-v1.png';
+      var SALOON_GLASS_SHEEN_TEXTURE = 'assets/textures/window-glass-sheen-v1.png';
 
       registerComponent('saloon-interior', {
         init: function () {
@@ -48,17 +50,25 @@
           floor.setAttribute('height', SALOON_DEPTH);
           floor.setAttribute('position', { x: 0, y: 0.002, z: 0 });
           floor.setAttribute('color', '#76573a');
+          floor.setAttribute('material', { src: SALOON_WOOD_TEXTURE, repeat: '8 8', color: '#ffffff', shader: 'flat' });
           this.el.appendChild(floor);
 
-          this.addBox(SALOON_WIDTH, SALOON_HEIGHT, 0.22, { x: 0, y: SALOON_HEIGHT / 2, z: -halfDepth }, SALOON_WALL);
-          this.addBox(0.22, SALOON_HEIGHT, SALOON_DEPTH, { x: -halfWidth, y: SALOON_HEIGHT / 2, z: 0 }, SALOON_WALL);
-          this.addBox(0.22, SALOON_HEIGHT, SALOON_DEPTH, { x: halfWidth, y: SALOON_HEIGHT / 2, z: 0 }, SALOON_WALL);
+          var roomWalls = [
+            this.addBox(SALOON_WIDTH, SALOON_HEIGHT, 0.22, { x: 0, y: SALOON_HEIGHT / 2, z: -halfDepth }, SALOON_WALL),
+            this.addBox(0.22, SALOON_HEIGHT, SALOON_DEPTH, { x: -halfWidth, y: SALOON_HEIGHT / 2, z: 0 }, SALOON_WALL),
+            this.addBox(0.22, SALOON_HEIGHT, SALOON_DEPTH, { x: halfWidth, y: SALOON_HEIGHT / 2, z: 0 }, SALOON_WALL),
+          ];
 
           // The front wall is split around the exit so it reads as a real
           // doorway while still leaving the interior light and open.
-          this.addBox(6.2, SALOON_HEIGHT, 0.22, { x: -4.9, y: SALOON_HEIGHT / 2, z: halfDepth }, SALOON_WALL);
-          this.addBox(6.2, SALOON_HEIGHT, 0.22, { x: 4.9, y: SALOON_HEIGHT / 2, z: halfDepth }, SALOON_WALL);
-          this.addBox(3.6, 1.25, 0.22, { x: 0, y: 3.58, z: halfDepth }, SALOON_WALL);
+          roomWalls.push(
+            this.addBox(6.2, SALOON_HEIGHT, 0.22, { x: -4.9, y: SALOON_HEIGHT / 2, z: halfDepth }, SALOON_WALL),
+            this.addBox(6.2, SALOON_HEIGHT, 0.22, { x: 4.9, y: SALOON_HEIGHT / 2, z: halfDepth }, SALOON_WALL),
+            this.addBox(3.6, 1.25, 0.22, { x: 0, y: 3.58, z: halfDepth }, SALOON_WALL)
+          );
+          roomWalls.forEach(function (wall) {
+            wall.setAttribute('material', { src: SALOON_WOOD_TEXTURE, repeat: '6 2', color: '#ffffff', shader: 'flat' });
+          });
           this.addBox(SALOON_WIDTH, 0.18, SALOON_DEPTH, { x: 0, y: SALOON_HEIGHT, z: 0 }, '#2d1d15');
         },
 
@@ -79,8 +89,16 @@
             pane.setAttribute('height', 1.35);
             pane.setAttribute('position', { x: spot.x, y: 2.65, z: spot.z });
             pane.setAttribute('rotation', { x: 0, y: spot.rotation, z: 0 });
-            pane.setAttribute('material', 'color: #c6e6ef; shader: flat; transparent: true; opacity: 0.82; side: double');
+            pane.setAttribute('material', 'color: #9bcfe4; shader: flat; transparent: true; opacity: 0.26; side: double; depthWrite: false');
             self.el.appendChild(pane);
+
+            var sheen = document.createElement('a-plane');
+            sheen.setAttribute('width', 2.1);
+            sheen.setAttribute('height', 1.35);
+            sheen.setAttribute('position', { x: spot.x * 0.999, y: 2.65, z: spot.z });
+            sheen.setAttribute('rotation', { x: 0, y: spot.rotation, z: 0 });
+            sheen.setAttribute('material', 'src: ' + SALOON_GLASS_SHEEN_TEXTURE + '; shader: flat; transparent: true; blending: additive; depthWrite: false; side: double');
+            self.el.appendChild(sheen);
             self.addBox(0.09, 1.55, 2.3, { x: spot.x * 0.997, y: 2.65, z: spot.z }, SALOON_WOOD);
 
             var windowLight = document.createElement('a-entity');
@@ -90,7 +108,7 @@
           });
         },
 
-        addBottle: function (x, z, color) {
+        addBottle: function (x, z, color, labelVariant) {
           var slotId = 'saloon-beer-slot-' + this.slotSerial++;
           var slot = document.createElement('a-entity');
           slot.setAttribute('id', slotId);
@@ -111,7 +129,7 @@
             gravityScale: 0.6,
             maxThrowSpeed: 15,
           });
-          bottle.setAttribute('boxy-bottle', { glass: color });
+          bottle.setAttribute('boxy-bottle', { glass: color, labelVariant: labelVariant });
           bottle.setAttribute('pourable', '');
           bottle.setAttribute('breakable', { color: color });
           this.el.appendChild(bottle);
@@ -129,11 +147,12 @@
           }, this);
 
           var colors = ['#3f6b3a', '#6b4a1f', '#2f5b6b', '#5a2f3f', '#4a3f6b'];
-          for (var i = 0; i < 9; i++) this.addBottle(6.55, 2.7 - i * 0.72, colors[i % colors.length]);
+          var labels = ['sunset', 'canyon', 'prairie'];
+          for (var i = 0; i < 9; i++) this.addBottle(6.55, 2.7 - i * 0.72, colors[i % colors.length], labels[i % labels.length]);
           for (var row = 0; row < 3; row++) {
             for (var bottle = 0; bottle < 7; bottle++) {
               var shelfBottle = document.createElement('a-entity');
-              shelfBottle.setAttribute('boxy-bottle', { glass: colors[(row + bottle) % colors.length] });
+              shelfBottle.setAttribute('boxy-bottle', { glass: colors[(row + bottle) % colors.length], labelVariant: labels[(row + bottle) % labels.length] });
               shelfBottle.setAttribute('position', { x: 7.3, y: 2.0225 + row * 0.86, z: 2.3 - bottle * 1.05 });
               this.el.appendChild(shelfBottle);
             }

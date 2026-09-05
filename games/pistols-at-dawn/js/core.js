@@ -2143,6 +2143,7 @@
           if (pool.flame) {
             pool.flame.object3D.visible = true;
             var phase = (time / 1000) * FIRE_WIGGLE_HZ + pool.phase;
+            setFlameSpriteFrame(pool.flame, time, pool.phase);
             var height = FIRE_MIN_RADIUS + (FIRE_MAX_RADIUS - FIRE_MIN_RADIUS) * Math.sqrt(strength);
             var stretch = 1.7 + 0.35 * Math.sin(phase);
             pool.flame.object3D.scale.set(height * (1 + 0.12 * Math.sin(phase * 1.3)), height * stretch, height);

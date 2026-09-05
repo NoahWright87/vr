@@ -19,6 +19,29 @@
       // three.js light rather than an <a-light>, because adding an
       // A-Frame light makes it tear out the scene's default rig.
       var fireLight = null;
+      // Four hand-painted poses form one cheap looping VFX animation. Each
+      // pool shows the same frame on two crossed planes; this gives the old
+      // sprite-tree volume trick without a particle system per fire.
+      var FIRE_SPRITE_FRAMES = [
+        'assets/textures/fire-frame-01-v1.png',
+        'assets/textures/fire-frame-02-v1.png',
+        'assets/textures/fire-frame-03-v1.png',
+        'assets/textures/fire-frame-04-v1.png',
+      ];
+      var FIRE_SPRITE_FRAME_MS = 105;
+
+      function flameSpriteMaterial(frame) {
+        // The frame art has a black backdrop. Additive blending makes black
+        // contribute no light, leaving just the painted flame and its glow.
+        return 'src: ' + FIRE_SPRITE_FRAMES[frame] + '; shader: flat; transparent: true; blending: additive; depthWrite: false; side: double';
+      }
+
+      function setFlameSpriteFrame(flame, time, phase) {
+        var frame = Math.floor(time / FIRE_SPRITE_FRAME_MS + phase) % FIRE_SPRITE_FRAMES.length;
+        if (flame._spriteFrame === frame) return;
+        flame._spriteFrame = frame;
+        flame._spritePlanes.forEach(function (plane) { plane.setAttribute('material', flameSpriteMaterial(frame)); });
+      }
 
       function ensureFireLight(sceneEl) {
         if (fireLight) return fireLight;
@@ -86,15 +109,17 @@
         flame.classList.add('pool-flame');
         flame.setAttribute('visible', false);
 
-        var outer = document.createElement('a-sphere');
-        outer.setAttribute('radius', 1);
-        outer.setAttribute('material', 'color: #ff6a1a; shader: flat; transparent: true; opacity: 0.72; depthWrite: false');
-        flame.appendChild(outer);
-
-        var inner = document.createElement('a-sphere');
-        inner.setAttribute('radius', 0.55);
-        inner.setAttribute('material', 'color: #ffd84a; shader: flat; transparent: true; opacity: 0.9; depthWrite: false');
-        flame.appendChild(inner);
+        flame._spritePlanes = [];
+        [0, 90].forEach(function (yaw) {
+          var plane = document.createElement('a-plane');
+          plane.setAttribute('width', 1);
+          plane.setAttribute('height', 1.45);
+          plane.setAttribute('position', { x: 0, y: -0.55, z: 0 });
+          plane.setAttribute('rotation', { x: 0, y: yaw, z: 0 });
+          plane.setAttribute('material', flameSpriteMaterial(0));
+          flame._spritePlanes.push(plane);
+          flame.appendChild(plane);
+        });
 
         el.appendChild(flame);
         document.querySelector('a-scene').appendChild(el);
