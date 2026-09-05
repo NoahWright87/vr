@@ -341,20 +341,20 @@
         <a-entity id="left-hand" position="-0.2 1.35 -0.4"
           hand-with-watch="hand: left"
           semantic-hand="hand: left; maxReach: 1.0"
-          finger-gun-controls="hand: left"
+          hand-gesture-controls="hand: left"
         ></a-entity>
         <a-entity id="tracked-hand-visual-left" control-mode-visibility="modes: xr" hand-controls="hand: left; handModelStyle: lowPoly"></a-entity>
 
         <a-entity id="right-hand" position="0.2 1.35 -0.4"
           hand-with-watch="hand: right"
           semantic-hand="hand: right; maxReach: 1.0"
-          finger-gun-controls="hand: right"
+          hand-gesture-controls="hand: right"
         ></a-entity>
         <a-entity id="tracked-hand-visual-right" control-mode-visibility="modes: xr" hand-controls="hand: right; handModelStyle: lowPoly"></a-entity>
 
         <!-- Purely decorative: a real WebXR Hand Input mesh, visible only
              while actually in XR, so a hand-tracking user sees their real
-             hand shape instead of nothing. finger-gun-controls (above)
+             hand shape instead of nothing. hand-gesture-controls (above)
              does its own independent hand-joint tracking for gameplay
              purposes (see common/hand-tracking.js for why) and never reads
              from this entity -- the same relationship tracked-hand-visual-*

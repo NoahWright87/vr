@@ -18,8 +18,9 @@ vendor/aframe-1.6.0/
   fonts/Roboto-msdf.json                   default font used by every <a-text>
   fonts/Roboto-msdf.png                    (A-Frame fetches these at runtime, not bundled)
   controllers/hands/*.glb                  hand-controls' low-poly hand meshes
-  controllers/oculus-hands/v4/*.glb        hand-tracking-controls'/hand-tracking-grab-controls'
-                                            rigged low-poly hand meshes (modelStyle: 'mesh')
+  controllers/oculus-hands/v4/*.glb        hand-tracking-controls' rigged low-poly hand
+                                            meshes (modelStyle: 'mesh'), used decoratively
+                                            alongside common/hand-tracking.js's own tracking
 ```
 
 A-Frame doesn't bundle its default font or its controller/hand models —

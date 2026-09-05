@@ -1,5 +1,6 @@
 import './control-mode.js';
 import './menus.js';
+import { GESTURES } from './hand-gestures.js';
 
   var WATCH_OFFSET = { x: -0.009, y: -0.006, z: 0.100 };
   var FACE_Y_OFFSET = 0.0345;
@@ -320,23 +321,25 @@ import './menus.js';
     // A real Touch controller's fingertip position/aim is approximated by
     // a fixed offset off the controller's own tracked pose (FINGERTIP_OFFSET/
     // FINGER_POINT_DIR above), because that's all a controller ever gives
-    // us. finger-gun-controls (hand-tracking.js) tracks the real index
-    // finger every frame instead, so while it's present and actively
-    // pointing, let it override that fixed approximation with the real
-    // fingertip position and aim direction -- the same idea as
-    // semantic-hand's updateDesktopFingerCalibration overriding its own
+    // us. hand-gesture-controls (hand-tracking.js) tracks the real index
+    // finger every frame instead, so while it's present and actually
+    // aiming a finger gun (not, say, mid-pinch, where "aim direction"
+    // doesn't mean anything), let it override that fixed approximation
+    // with the real fingertip position and aim direction -- the same idea
+    // as semantic-hand's updateDesktopFingerCalibration overriding its own
     // fixed offset with real bone positions read off the loaded hand model.
-    updateFingertipFromFingerGun: function () {
-      var fingerGun = this.el.components['finger-gun-controls'];
-      if (!fingerGun || !fingerGun.pointing) return;
+    updateFingertipFromHandGesture: function () {
+      var gestureControls = this.el.components['hand-gesture-controls'];
+      if (!gestureControls) return;
+      if (gestureControls.gesture !== GESTURES.FINGER_GUN && gestureControls.gesture !== GESTURES.FINGER_GUN_FIRED) return;
       var fingertipObject = this.fingertipEl.object3D;
       var parent = fingertipObject.parent;
       parent.updateMatrixWorld(true);
-      this._fingerGunLocalPosition.copy(fingerGun.pointerPosition);
+      this._fingerGunLocalPosition.copy(gestureControls.pointerPosition);
       parent.worldToLocal(this._fingerGunLocalPosition);
       fingertipObject.position.copy(this._fingerGunLocalPosition);
 
-      this._fingerGunWorldQuaternion.setFromUnitVectors(this._fingerGunForward, fingerGun.pointerDirection);
+      this._fingerGunWorldQuaternion.setFromUnitVectors(this._fingerGunForward, gestureControls.pointerDirection);
       parent.getWorldQuaternion(this._fingerGunParentQuaternion);
       fingertipObject.quaternion.copy(this._fingerGunParentQuaternion.invert().multiply(this._fingerGunWorldQuaternion));
       // The fixed-offset case points along a per-hand-model-calibrated
@@ -347,7 +350,7 @@ import './menus.js';
     },
 
     tick: function () {
-      this.updateFingertipFromFingerGun();
+      this.updateFingertipFromHandGesture();
 
       var second = Math.floor(Date.now() / 1000);
 
