@@ -37,6 +37,35 @@ if (typeof AFRAME !== 'undefined') {
       this.sceneEl.addEventListener('exit-vr', this.onExitXr);
 
       this.syncModeFromRenderer();
+      this.suppressFlatFullscreenVrButton();
+    },
+
+    // A-Frame's own default "Enter VR" button (xr-mode-ui in 1.6.0,
+    // formerly named vr-mode-ui -- on by default) does the right thing
+    // on an actual headset. But its fallback for "no headset, not
+    // mobile" fullscreens the bare <canvas> element directly (confirmed
+    // in the vendored build) -- and per the Fullscreen API spec, every
+    // OTHER page element stops rendering while that's active, this
+    // app's own DOM-based hint cards and touch controls included, until
+    // the browser's native Escape exits it again. There's no reason to
+    // offer that fallback at all: this app already has full native
+    // desktop/mobile controls that need no "entering" step, so hide the
+    // button unless a real XR session is actually available -- which is
+    // also exactly the one case where A-Frame's own internal check
+    // takes the working real-XR branch instead of the broken
+    // fullscreen one.
+    suppressFlatFullscreenVrButton: function () {
+      var sceneEl = this.sceneEl;
+      function disable() {
+        sceneEl.setAttribute('xr-mode-ui', 'enabled', false);
+      }
+      if (!navigator.xr || !navigator.xr.isSessionSupported) {
+        disable();
+        return;
+      }
+      navigator.xr.isSessionSupported('immersive-vr').then(function (supported) {
+        if (!supported) disable();
+      }).catch(disable);
     },
 
     // A bare window.requestAnimationFrame is not a safe way to re-check

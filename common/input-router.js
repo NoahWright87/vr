@@ -418,6 +418,16 @@ if (typeof AFRAME !== 'undefined') {
         '.semantic-touch-hotbar{position:absolute;left:50%;bottom:max(14px,env(safe-area-inset-bottom));transform:translateX(-50%);display:flex;gap:8px;pointer-events:none}',
         '.semantic-touch-hotbar .semantic-touch-button{width:44px;height:40px;border-radius:12px;font-size:11px}',
         '.semantic-touch-button{width:74px;height:56px;border:2px solid #fff;border-radius:18px;background:rgba(12,18,30,.7);color:#fff;font:700 12px system-ui;letter-spacing:.03em;pointer-events:auto;touch-action:none;box-shadow:0 2px 9px #0008}',
+        // The hotbar row is persistent loadout state, not a touch-only
+        // affordance -- it stays up (see updateVisibility) as a
+        // display-only HUD on keyboard, reusing these exact same
+        // buttons/colors rather than a second parallel UI. Non-touch
+        // hotbar buttons are never real tap targets, so they default to
+        // pointer-events:none, overriding the general button rule above
+        // -- only re-enabled while touch is the family actually driving
+        // this root (is-touch-input, set in updateVisibility).
+        '.semantic-touch-hotbar .semantic-touch-button{pointer-events:none}',
+        '.semantic-touch-controls.is-touch-input .semantic-touch-hotbar .semantic-touch-button{pointer-events:auto}',
         '.semantic-touch-button[data-primary="true"]{height:74px;border-radius:50%;background:rgba(20,105,155,.78)}',
         '.semantic-touch-button.is-held{transform:scale(.94);background:rgba(38,170,225,.88)}',
         // Contextual coloring (setButtonState) — a holster button reads
@@ -625,9 +635,26 @@ if (typeof AFRAME !== 'undefined') {
       if (!this.root) return;
       var flat = !this.el.sceneEl.systems['control-mode'].isMode('xr');
       var family = this.router.getActiveFamily();
-      var active = flat && this.router.hasTouch && family === 'touch';
-      this.root.style.display = active ? 'block' : 'none';
-      if (!active) return;
+      var touchActive = flat && this.router.hasTouch && family === 'touch';
+      // The numbered hotbar is persistent loadout state (what's in each
+      // slot right now), not a touch-only affordance the way the
+      // joystick/look-area/action-grid below are -- so unlike those, it
+      // stays up as a display-only HUD on keyboard too, reusing the
+      // exact same buttons and colors Pistols' own hotbar-equip
+      // (core-equip.js) already keeps in sync via setButtonState/
+      // setButtonLabel, just non-interactive there (see the CSS above).
+      // Gamepad has no hotbar bindings yet
+      // (createStandardGamepadButtonBindings above), so showing it
+      // there would advertise slots there's no way to actually press.
+      var hotbarActive = flat && (touchActive || family === 'keyboard');
+      this.root.style.display = (touchActive || hotbarActive) ? 'block' : 'none';
+      this.root.classList.toggle('is-touch-input', touchActive);
+      if (this.hotbarEl) this.hotbarEl.style.display = hotbarActive ? '' : 'none';
+      if (!touchActive) {
+        if (this.stickEl) this.stickEl.style.display = 'none';
+        if (this.actionsEl) this.actionsEl.style.display = 'none';
+        return;
+      }
       // Movement and crouch still work while the watch is open
       // (desktop-controls.js/locomotion.js), so the joystick and crouch
       // button stay up. Everything else hides: the watch button is
