@@ -34,46 +34,11 @@
       #overlay a {
         color: #9ad;
       }
-      /* Flat HTML teleport panel — outside the canvas, so it's a
-         desktop/phone-browser convenience the same way the reticle
-         fallback is, and not reachable by hand in a headset. The real
-         in-headset equivalent is the watch's own TELEPORT page (see
-         the #watch-menu-template markup and teleport-hub's
-         menu-item-select listener in world-town.js) — this panel stays
-         alongside it purely so teleporting is still sanity-checkable
-         without a headset. */
-      #teleport-buttons {
-        position: absolute;
-        bottom: 1rem;
-        right: 1rem;
-        z-index: 1;
-        display: flex;
-        flex-direction: column;
-        gap: 0.4rem;
-        background: rgba(0, 0, 0, 0.55);
-        padding: 0.6rem;
-        border-radius: 6px;
-      }
-      #teleport-buttons .teleport-label {
-        color: #ccc;
-        font-size: 0.75rem;
-        text-transform: uppercase;
-        letter-spacing: 0.04em;
-        margin-bottom: 0.1rem;
-      }
-      #teleport-buttons button {
-        font-size: 0.9rem;
-        padding: 0.35rem 0.9rem;
-        cursor: pointer;
-      }
     </style>
   </head>
   <body>
     <div id="overlay">
       <span>Pistols at Dawn — WASD/mouse to move and look; hold Shift to run. E uses nearby doors; Tab opens Watch. Gamepad: sticks + click left stick to run, X to interact. <a href="../../index.html">All prototypes</a></span>
-    </div>
-    <div id="teleport-buttons">
-      <div class="teleport-label">Teleport</div>
     </div>
 
     <template id="watch-menu-template">

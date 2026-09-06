@@ -373,6 +373,7 @@ if (typeof AFRAME !== 'undefined') {
 
     init: function () {
       this.router = this.el.sceneEl.systems['input-router'];
+      this.hintSystem = this.el.sceneEl.systems['interaction-hints'];
       this.move = { x: 0, z: 0 };
       this.joystickPointer = null;
       this.lookPointer = null;
@@ -381,6 +382,7 @@ if (typeof AFRAME !== 'undefined') {
       this.buttonsByAction = {};
       this.nextHand = this.data.dominantHand;
       this.interactionMode = 'normal';
+      this.hintedButtonAction = null;
       this.onFamilyChanged = this.updateVisibility.bind(this);
       this.onInteractionModeChanged = this.handleInteractionModeChanged.bind(this);
       this.el.sceneEl.addEventListener('input-family-changed', this.onFamilyChanged);
@@ -441,8 +443,16 @@ if (typeof AFRAME !== 'undefined') {
       this.bindLook();
       this.addActionButton(this.data.watchAction, this.data.watchLabel, false);
       this.crouchButtonEl = this.addActionButton(this.data.crouchAction, this.data.crouchLabel, false);
-      this.addActionButton(this.data.interactAction, this.data.interactLabel, false);
-      this.addActionButton(this.data.grabAction, this.data.grabLabel, false);
+      // Both start hidden -- they're the touch equivalent of the flat
+      // corner hint (interaction-hints.js's own system), appearing only
+      // once a matching hint-zone is actually in reach, instead of that
+      // corner hint (see updateHintedButtons below). Every other button
+      // here is a persistent action unrelated to proximity (fire, aim,
+      // hotbar slots, ...) and stays visible exactly as before.
+      var interactButton = this.addActionButton(this.data.interactAction, this.data.interactLabel, false);
+      if (interactButton) interactButton.hidden = true;
+      var grabButton = this.addActionButton(this.data.grabAction, this.data.grabLabel, false);
+      if (grabButton) grabButton.hidden = true;
       this.addActionButton(this.data.hotbar1Action, this.data.hotbar1Label, false, true);
       this.addActionButton(this.data.hotbar2Action, this.data.hotbar2Label, false, true);
       this.addActionButton(this.data.hotbar3Action, this.data.hotbar3Label, false, true);
@@ -634,7 +644,32 @@ if (typeof AFRAME !== 'undefined') {
       });
     },
 
+    // The touch counterpart to interaction-hints.js's own flat corner
+    // hint: interact/grab only ever mean something when a matching
+    // hint-zone is actually in reach (see common/desktop-controls.js's
+    // identical 'interact'->'mounted', 'grab'->'grab' mapping for why
+    // those two specific action/zone names pair up), so their buttons
+    // stay hidden (see createUi's initial .hidden = true) until
+    // interaction-hints' own desktopCandidate says otherwise. Uses the
+    // plain `hidden` attribute rather than style.display so it composes
+    // safely with updateVisibility's own display toggling above (an
+    // empty inline style never overrides an attribute-driven `[hidden]`
+    // rule) instead of the two fighting over the same property.
+    updateHintedButtons: function () {
+      if (!this.hintSystem) return;
+      var candidate = this.hintSystem.desktopCandidate;
+      var action = candidate ? candidate.zone.data.action : null;
+      if (action === this.hintedButtonAction) return;
+      this.hintedButtonAction = action;
+
+      var interactButton = this.buttonsByAction[this.data.interactAction];
+      if (interactButton) interactButton.hidden = action !== 'mounted';
+      var grabButton = this.buttonsByAction[this.data.grabAction];
+      if (grabButton) grabButton.hidden = action !== 'grab';
+    },
+
     tick: function (time, delta) {
+      this.updateHintedButtons();
       if (!this.root || this.root.style.display === 'none' || (!this.move.x && !this.move.z)) return;
       this.el.emit('semantic-move', {
         x: this.move.x,
