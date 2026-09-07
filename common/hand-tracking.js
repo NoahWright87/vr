@@ -244,6 +244,34 @@ AFRAME.registerComponent('hand-gesture-controls', {
     this.setGesture(gesture);
   },
 
+  // A clean, by-value snapshot of everything this hand currently knows,
+  // for anything that needs to buffer it over time (the gesture recorder,
+  // common/gesture-recorder.js) rather than read the live tracking state
+  // frame by frame -- the fields above (_wristPosition, _fingers, ...) are
+  // scratch objects this component mutates in place every tick, so a
+  // caller holding onto them directly would see every buffered "sample"
+  // silently become whatever the hand is doing right now.
+  getSample: function () {
+    if (!this.present) return null;
+    var wristPosition = this._wristPosition;
+    var wristQuaternion = this._wristQuaternion;
+    var fingers = {};
+    FINGER_NAMES.forEach(function (name) {
+      var joints = this._fingers[name];
+      fingers[name] = {
+        metacarpal: { x: joints.metacarpal.x, y: joints.metacarpal.y, z: joints.metacarpal.z },
+        proximal: { x: joints.proximal.x, y: joints.proximal.y, z: joints.proximal.z },
+        tip: { x: joints.tip.x, y: joints.tip.y, z: joints.tip.z },
+      };
+    }, this);
+    return {
+      wristPosition: { x: wristPosition.x, y: wristPosition.y, z: wristPosition.z },
+      wristQuaternion: { x: wristQuaternion.x, y: wristQuaternion.y, z: wristQuaternion.z, w: wristQuaternion.w },
+      fingers: fingers,
+      gesture: this.gesture,
+    };
+  },
+
   setPresent: function (present) {
     if (present === this.present) return;
     this.present = present;
@@ -297,12 +325,15 @@ var HUD_SLOT_POSITIONS = {
   left: { x: -0.32, y: -0.22, z: -0.6 },
   right: { x: 0.32, y: -0.22, z: -0.6 },
   center: { x: 0, y: -0.26, z: -0.6 },
+  top: { x: 0, y: 0.28, z: -0.6 },
 };
 
 // Optional debug readout for anything that emits `gesture-changed`
-// (hand-gesture-controls above, or arm-swing-locomotion's own step
-// announcements): a fixed slot in a Halo-style visor HUD -- bottom-left,
-// bottom-right, or bottom-center, per-hand vs. whole-body -- rather than a
+// (hand-gesture-controls above, arm-swing-locomotion's own step
+// announcements, or common/gesture-recorder.js's status line): a fixed
+// slot in a Halo-style visor HUD -- bottom-left, bottom-right,
+// bottom-center, or top-center -- per-hand vs. whole-body vs. recorder
+// status -- rather than a
 // label floating in the 3D scene, which reads as far more obtrusive since
 // it competes with everything else at world scale and follows the hand
 // into your peripheral vision. A HUD slot is a plain child of the camera
@@ -316,7 +347,7 @@ var HUD_SLOT_POSITIONS = {
 // display (or none) against the same event.
 AFRAME.registerComponent('gesture-hud', {
   schema: {
-    slot: { default: 'left', oneOf: ['left', 'right', 'center'] },
+    slot: { default: 'left', oneOf: ['left', 'right', 'center', 'top'] },
   },
 
   init: function () {

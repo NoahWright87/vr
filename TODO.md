@@ -32,6 +32,46 @@ this is only for work that has been decided on and postponed.
   hand frames where useful) without making hint zones care which headset or
   controller supplied the action.
 
+## Gesture recorder
+
+The recording/review/export pipeline (`common/gesture-recorder.js`,
+`common/motion-recording.js`, documented in README.md's "Hand Tracking"
+section) is deliberately scoped to just that first slice. Deferred,
+in the order they'd naturally come up once real recorded clips exist:
+
+- **Live per-hand color feedback while recording** (tint the decorative
+  hand mesh red when still, green while a clip is actively buffering).
+  Floated early, explicitly deferred: designing what the color scheme
+  should actually track (a punch's reset motion in particular — bundle
+  it into the same clip, or cut it into its own throwaway one?) is
+  easier to answer by looking at real recorded clips than by guessing
+  ahead of having any.
+- **Automatic detection-fitting from recorded clips** — the actual
+  payoff the recorder exists for: turning a handful of labeled example
+  clips into a real detector (template/nearest-neighbor matching, e.g.
+  dynamic time warping, with a threshold fit from the recordings'
+  own positive/negative spread) instead of a hand-picked curl-angle
+  cutoff. Needs a first batch of real recordings to design against.
+- **Cross-checking new gestures against existing detectors.** Before
+  trusting a new gesture, replay its recorded clips through the
+  production classification code (`hand-gestures.js`'s
+  `classifyHandGesture`, `arm-swing.js`'s `updateArmSwingState`) and
+  assert nothing else lights up — e.g. a punch's recoil misread as a
+  walking swing. Wants a small "replay a raw recording through
+  production code" test harness that doesn't exist yet (today's
+  hand-gestures/arm-swing tests only take hand-typed synthetic
+  numbers).
+- **Clip trimming.** Right now a clip is kept whole or thrown away
+  entirely; there's no way to cut a recorded clip down to just its
+  useful portion (e.g. dropping a captured reset motion after the
+  fact rather than not recording it in the first place).
+- **The panel doesn't scroll or paginate.** Its background grows to
+  fit every row, so a long recording session produces a panel tall
+  enough to become awkward to reach in full. Fine for the handful of
+  clips a first pass will actually produce; worth revisiting if this
+  becomes a real workflow with dozens of saved clips accumulating
+  across sessions.
+
 ## Liquids
 
 - **Dissipation rates per surface.** Right now a puddle dries at a rate

@@ -44,7 +44,7 @@
          VR; the Quest browser switches to hand tracking automatically
          once it no longer sees them. -->
     <div id="overlay">
-      <span>Hand Tracking — put the controllers down and enter VR. Pinch or make a fist near the box to pick it up, release to let go. Point a finger gun (cock your thumb up) at the watch on either wrist to open it — drop the thumb to click. Swing your arms like you're walking to actually walk — each opposite-arm swing takes a step. <a href="../../index.html">All prototypes</a></span>
+      <span>Hand Tracking — put the controllers down and enter VR. Pinch or make a fist near the box to pick it up, release to let go. Point a finger gun (cock your thumb up) at the watch on either wrist to open it — drop the thumb to click. Swing your arms like you're walking to actually walk — each opposite-arm swing takes a step. Point and fire at the Gesture Recorder panel to record and export raw motion clips. <a href="../../index.html">All prototypes</a></span>
     </div>
 
     <a-scene keyboard-shortcuts="enterVR: false">
@@ -106,6 +106,37 @@
         <a-entity id="hand-visual-right" control-mode-visibility="modes: xr" hand-tracking-controls="hand: right; modelStyle: mesh"></a-entity>
       </a-entity>
 
+      <!-- gesture-hud's fourth slot, top-center: shows the recorder's own
+           countdown/status text (3...2...1...GO, then a running "REC (n)"
+           clip counter while recording), separately from arm-swing's own
+           bottom-center step announcements below. Not a rig child --
+           gesture-hud parents its plate straight to the camera regardless
+           of where this entity itself lives, so it only needs to exist
+           somewhere in the scene as an anchor for motion-recorder to emit
+           gesture-changed events at. -->
+      <a-entity id="recorder-status-hud" gesture-hud="slot: top"></a-entity>
+
+      <!-- ============================================================
+           GESTURE RECORDER
+           See README.md's "Gesture recorder" section for the why. A
+           permanent, always-reachable prop (not a rig child, so it stays
+           put like the pickup box below, and not gated behind proximity
+           or a projected-menu trigger like the watch/showcase panels --
+           it's meant to always be there) -- point a finger gun and fire
+           at its rows exactly like every other menu on this page. It
+           records both hands' raw WebXR joint data (not just wrist
+           position/rotation -- finger joints too, so a detection formula
+           invented later doesn't require re-recording), auto-segments
+           continuous motion into clips by watching for pauses, and lets
+           you review each clip as a ghost-hand replay, delete junk takes,
+           and export everything as a single JSON file to attach to a PR
+           comment for review outside the headset.
+      ============================================================ -->
+      <a-entity id="gesture-recorder"
+        motion-recorder="leftHand: #left-hand; rightHand: #right-hand; statusHud: #recorder-status-hud"
+        position="0 1.55 -1.05"
+      ></a-entity>
+
       <!-- Sized and placed to be reachable without leaning: a hand raised
            to roughly chest height in front of you lands right on it.
            simple-grabbable/hint-zone (common/interaction-hints.js) are the
@@ -154,6 +185,7 @@
     <script type="module" src="../../common/watch-menu.js"></script>
     <script type="module" src="../../common/hand-tracking.js"></script>
     <script type="module" src="../../common/arm-swing-locomotion.js"></script>
+    <script type="module" src="../../common/gesture-recorder.js"></script>
     <script type="module">
       // The watch menu's rows are generic (menu-option, shared across
       // every showcase menu) -- this is the only page-specific glue,
