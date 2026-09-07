@@ -453,12 +453,17 @@ if (typeof AFRAME !== 'undefined') {
       this.bindLook();
       this.addActionButton(this.data.watchAction, this.data.watchLabel, false);
       this.crouchButtonEl = this.addActionButton(this.data.crouchAction, this.data.crouchLabel, false);
-      // Both start hidden -- they're the touch equivalent of the flat
-      // corner hint (interaction-hints.js's own system), appearing only
-      // once a matching hint-zone is actually in reach, instead of that
-      // corner hint (see updateHintedButtons below). Every other button
-      // here is a persistent action unrelated to proximity (fire, aim,
-      // hotbar slots, ...) and stays visible exactly as before.
+      // Interact/grab start hidden -- they're the touch equivalent of the
+      // flat corner hint (interaction-hints.js's own system), appearing
+      // only once a matching hint-zone is actually in reach, instead of
+      // that corner hint (see updateHintedButtons below). Aim starts
+      // hidden too -- there's nothing to aim with empty hands -- but
+      // unlike the other two it has no proximity signal of its own to
+      // key off; a game shows it via setButtonVisible once it knows
+      // (e.g. Pistols' hotbar-equip, core-equip.js, toggling it with
+      // whether either hand currently holds a firearm). Hotbar slots
+      // and every other button here are persistent actions unrelated to
+      // proximity or what's in hand, and stay visible as before.
       var interactButton = this.addActionButton(this.data.interactAction, this.data.interactLabel, false);
       if (interactButton) interactButton.hidden = true;
       var grabButton = this.addActionButton(this.data.grabAction, this.data.grabLabel, false);
@@ -468,7 +473,8 @@ if (typeof AFRAME !== 'undefined') {
       this.addActionButton(this.data.hotbar3Action, this.data.hotbar3Label, false, true);
       this.addActionButton(this.data.hotbar4Action, this.data.hotbar4Label, false, true);
       this.addActionButton(this.data.hotbar5Action, this.data.hotbar5Label, false, true);
-      this.addActionButton(this.data.aimAction, this.data.aimLabel, false);
+      var aimButton = this.addActionButton(this.data.aimAction, this.data.aimLabel, false);
+      if (aimButton) aimButton.hidden = true;
       this.addActionButton(this.data.secondaryAction, this.data.secondaryLabel, true);
       // addActionButton no-ops for 'none' -- a game with no more use for
       // a dedicated FIRE button (e.g. Pistols, once a plain tap already
@@ -594,6 +600,17 @@ if (typeof AFRAME !== 'undefined') {
       return button;
     },
 
+    // Lets a game show/hide one of its own action buttons based on
+    // context this file has no way to know on its own (e.g. Pistols'
+    // AIM button, which only means something once a hand actually
+    // holds a firearm — see hotbar-equip, core-equip.js). A no-op if
+    // that action's button doesn't exist (action disabled, or a family
+    // other than touch active).
+    setButtonVisible: function (action, visible) {
+      var button = this.buttonsByAction[action];
+      if (button) button.hidden = !visible;
+    },
+
     // Lets a game color one of its own action buttons contextually (e.g.
     // Pistols' numbered holster buttons: empty/holstered/held) without
     // this file needing to know what any of that means — it just tags the
@@ -653,8 +670,16 @@ if (typeof AFRAME !== 'undefined') {
       if (!touchActive) {
         if (this.stickEl) this.stickEl.style.display = 'none';
         if (this.actionsEl) this.actionsEl.style.display = 'none';
+        // The look area covers most of the screen and is pointer-events:
+        // auto unconditionally in its own CSS -- harmless while the
+        // whole root was display:none for a flat family, but the root
+        // now stays up on keyboard for the hotbar HUD above, so this
+        // needs its own explicit hide or it silently swallows the click
+        // a desktop player needs to acquire pointer lock with.
+        if (this.lookEl) this.lookEl.style.display = 'none';
         return;
       }
+      if (this.lookEl) this.lookEl.style.display = '';
       // Movement and crouch still work while the watch is open
       // (desktop-controls.js/locomotion.js), so the joystick and crouch
       // button stay up. Everything else hides: the watch button is

@@ -536,6 +536,7 @@
       registerComponent('hotbar-equip', {
         init: function () {
           this._lastButtonState = {};
+          this._lastAimVisible = null;
           this.onHotbarAttempt = this.onHotbarAttempt.bind(this);
           this.el.addEventListener('desktop-hotbar-attempt', this.onHotbarAttempt);
         },
@@ -578,6 +579,18 @@
           var dominantHandRig = dominantHandEl && dominantHandEl.components['hand-rig'];
           var holdingSomething = Boolean(dominantHandRig && (dominantHandRig.heldObjects.length || dominantHandRig.supportObjects.length));
           this.touchControls.setButtonLabel('grab', holdingSomething ? 'DROP' : 'GRAB');
+
+          // AIM means nothing with empty hands -- only show it once
+          // either hand actually holds a firearm (hand-rig.hasWeapon,
+          // core-hand-rig.js — the same "gun, bow, launcher, nozzle, or
+          // thrown blade" check onDesktopTriggerAttempt already uses).
+          var leftHandRig = document.querySelector('#left-hand').components['hand-rig'];
+          var rightHandRig = document.querySelector('#right-hand').components['hand-rig'];
+          var hasWeaponDrawn = Boolean((leftHandRig && leftHandRig.hasWeapon()) || (rightHandRig && rightHandRig.hasWeapon()));
+          if (this._lastAimVisible !== hasWeaponDrawn) {
+            this._lastAimVisible = hasWeaponDrawn;
+            this.touchControls.setButtonVisible('aim', hasWeaponDrawn);
+          }
         },
 
         computeButtonState: function (n) {
