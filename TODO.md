@@ -76,6 +76,14 @@ demo panel in `primitives/menus/`. Deliberately not done yet:
   find out whether hold-to-repeat scrolling is fast enough to live
   with. Wrap-around already helps (Z is one step above A).
 
+- **A gamepad can't drive a menu off a headset.** `gamepad-input`
+  publishes `semantic-move` on the rig; `menu-stick-control` listens for
+  `axismove` on hands, which is the XR tracked-controller event. So a
+  desktop gamepad moves the player and the menu ignores it. Keyboard and
+  mouse both work. The fix wants care: movement must not be captured, so
+  a gamepad probably drives menus from the d-pad rather than the stick
+  that walks you around.
+
 - **Grip should stop meaning "point".** The fingertip laser enables on
   `gripdown` (`common/watch-menu.js`), which is why reaching for the
   watch in Pistols grabs your hat instead. The laser already has a

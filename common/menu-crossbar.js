@@ -65,6 +65,9 @@ if (typeof AFRAME !== 'undefined') {
   // Leaving takes a little more room than arriving, so a hand hovering
   // right on the boundary doesn't chatter in and out.
   var RELEASE_MARGIN = 0.06;
+  // Flat play aims by looking, so engagement is a cone rather than a
+  // reach: ~25 degrees off the view centre.
+  var FLAT_GAZE_MIN = 0.9;
 
   var ACTIVATE_EVENTS = ['triggerdown', 'abuttondown', 'xbuttondown'];
   var BACK_EVENTS = ['bbuttondown', 'ybuttondown', 'gripdown'];
@@ -100,6 +103,9 @@ if (typeof AFRAME !== 'undefined') {
       // How close a hand has to be before its thumbstick drives this
       // menu instead of the player.
       stickRange: { default: 0.9 },
+      // Flat play looks at a panel from across the room rather than
+      // standing inside arm's reach of it, so it gets its own range.
+      gazeRange: { default: 6 },
       plate: { default: true },
       color: { type: 'color', default: '#dff3ff' },
       accent: { type: 'color', default: '#7fe3ff' },
@@ -109,6 +115,7 @@ if (typeof AFRAME !== 'undefined') {
       this.rows = [];
       this.crumbs = [];
       this.engagedHand = null;
+      this.flatEngaged = false;
       this._handPosition = new THREE.Vector3();
       this._panelPosition = new THREE.Vector3();
 
@@ -371,11 +378,18 @@ if (typeof AFRAME !== 'undefined') {
 
     // ---------- stick control ----------
 
+    // The same outline the engaged hand gets, for the flat player who
+    // has no hand to light up.
+    setFlatEngaged: function (engaged) {
+      this.flatEngaged = engaged;
+      if (this.glowEl) this.glowEl.object3D.visible = engaged || Boolean(this.engagedHand);
+    },
+
     setEngagedHand: function (handEl) {
       if (this.engagedHand === handEl) return;
       var previous = this.engagedHand;
       this.engagedHand = handEl;
-      if (this.glowEl) this.glowEl.object3D.visible = Boolean(handEl);
+      if (this.glowEl) this.glowEl.object3D.visible = Boolean(handEl) || Boolean(this.flatEngaged);
       if (previous) previous.emit('menu-stick-released', { menuEl: this.el }, false);
       if (handEl) handEl.emit('menu-stick-engaged', { menuEl: this.el }, false);
     },
@@ -417,6 +431,12 @@ if (typeof AFRAME !== 'undefined') {
       this.hands = [];
       this._handPosition = new THREE.Vector3();
       this._menuPosition = new THREE.Vector3();
+      this._forward = new THREE.Vector3();
+      this._toMenu = new THREE.Vector3();
+      this._quaternion = new THREE.Quaternion();
+      this.flatMenu = null;
+      this.flatCandidate = null;
+      this.flatCandidateSince = 0;
       this.bindings = [];
       var self = this;
       this.el.addEventListener('loaded', function () { self.collectHands(); });
@@ -477,11 +497,40 @@ if (typeof AFRAME !== 'undefined') {
     },
 
     tick: function (time, delta) {
-      if (!this.hands.length) return;
       var menus = [];
       for (var m = 0; m < this.menus.length; m++) {
         if (this.menus[m].menu.isOpen) menus.push(this.menus[m]);
       }
+
+      // Off a headset there are no thumbsticks to take, so hands never
+      // engage — a simulated desktop hand drifting near a panel would
+      // otherwise light up and promise a control that doesn't exist.
+      // Flat play engages by looking instead, which keeps the rule the
+      // same in both places: the surface your input will reach is the
+      // one that's lit.
+      var mode = this.el.systems['control-mode'];
+      if (!mode || !mode.isMode('xr')) {
+        for (var r = 0; r < this.hands.length; r++) {
+          var idle = this.hands[r];
+          if (idle.menu) {
+            if (idle.menu.engagedHand === idle.el) idle.menu.setEngagedHand(null);
+            idle.menu = null;
+            this.setHandGlow(idle, false);
+          }
+        }
+        this.resolveFlat(menus, time);
+        return;
+      }
+      // Entering a headset has to put out the flat highlight, or the
+      // panel you happened to be looking at stays lit in XR and claims
+      // an input that is no longer pointed at it.
+      if (this.flatMenu) {
+        this.flatMenu.setFlatEngaged(false);
+        this.flatMenu = null;
+      }
+      this.flatCandidate = null;
+
+      if (!this.hands.length) return;
 
       // Pass one: what would each hand like to drive, and how near is
       // it? A hand that is pointing, or holding something, wants
@@ -564,6 +613,48 @@ if (typeof AFRAME !== 'undefined') {
       }
     },
 
+    // Flat play: the panel you are looking at is the one the keyboard
+    // drives, and it lights up to say so. Without this every crossbar
+    // panel on the page answers the arrow keys at once — fine while
+    // there is one, wrong the moment the watch becomes a second.
+    resolveFlat: function (menus, time) {
+      var camera = this.el.camera && this.el.camera.el;
+      var best = null;
+      var bestDot = FLAT_GAZE_MIN;
+
+      if (camera && menus.length) {
+        camera.object3D.getWorldPosition(this._handPosition);
+        this._forward.set(0, 0, -1).applyQuaternion(camera.object3D.getWorldQuaternion(this._quaternion));
+        for (var i = 0; i < menus.length; i++) {
+          menus[i].getWorldPosition(this._menuPosition);
+          this._toMenu.copy(this._menuPosition).sub(this._handPosition);
+          if (this._toMenu.length() > menus[i].data.gazeRange) continue;
+          var dot = this._forward.dot(this._toMenu.normalize());
+          if (dot > bestDot) {
+            bestDot = dot;
+            best = menus[i];
+          }
+        }
+      }
+
+      // One open panel and nothing being looked at still answers the
+      // keys, so a menu is never unreachable just because you glanced
+      // away from it.
+      if (!best && menus.length === 1) best = menus[0];
+
+      if (best !== this.flatCandidate) {
+        this.flatCandidate = best;
+        this.flatCandidateSince = time;
+      }
+      if (best !== null && (time - this.flatCandidateSince) < ENGAGE_SETTLE_MS) return;
+
+      if (this.flatMenu !== best) {
+        if (this.flatMenu) this.flatMenu.setFlatEngaged(false);
+        this.flatMenu = best;
+        if (best) best.setFlatEngaged(true);
+      }
+    },
+
     // The hand itself lights up, not just the panel. Highlighting only
     // the menu tells you something changed; highlighting the hand tells
     // you WHICH stick just changed meaning, which is the difference
@@ -632,9 +723,12 @@ if (typeof AFRAME !== 'undefined') {
     dependencies: ['crossbar-menu'],
     init: function () {
       var self = this;
+      this.system = this.el.sceneEl.systems['menu-stick-control'];
       this.onKeyDown = function (evt) {
         var menu = self.el.components['crossbar-menu'];
         if (!menu || !menu.menu.isOpen) return;
+        // Only the panel the player is looking at answers the keys.
+        if (self.system && self.system.flatMenu && self.system.flatMenu !== menu) return;
         if (evt.key === 'ArrowUp') { menu.step(-1); evt.preventDefault(); }
         else if (evt.key === 'ArrowDown') { menu.step(1); evt.preventDefault(); }
         else if (evt.key === 'ArrowRight' || evt.key === 'Enter') { menu.activate(); evt.preventDefault(); }
