@@ -328,12 +328,14 @@ registerComponent('weather-clouds', {
     windDirection: { type: 'number', default: 0 },
     wobbleFrequencyMs: { type: 'number', default: 22000 },
     wobbleAmount: { type: 'number', default: 4 },
-    minHeight: { type: 'number', default: 48 },
-    maxHeight: { type: 'number', default: 82 },
+    minHeight: { type: 'number', default: 90 },
+    maxHeight: { type: 'number', default: 165 },
+    verticalSpread: { type: 'number', default: 18 },
+    orientationVariation: { type: 'number', default: 12 },
     minShade: { type: 'number', default: 0.86 },
     maxShade: { type: 'number', default: 1 },
-    fieldRadius: { type: 'number', default: 240 },
-    formationDistance: { type: 'number', default: 80 },
+    fieldRadius: { type: 'number', default: 360 },
+    formationDistance: { type: 'number', default: 120 },
     shadowOpacity: { type: 'number', default: 0.16 },
     maxShadowGroups: { type: 'int', default: 6 },
     shapeUpdateMs: { type: 'number', default: 125 },
@@ -358,6 +360,10 @@ registerComponent('weather-clouds', {
     this.cloudGroups = [];
     this.shapeElapsedMs = 0;
     this.maxCloudSlots = this.data.groupCount * this.data.maxCloudsPerGroup;
+    this.cloudInward = new THREE.Vector3();
+    this.cloudWindTangent = new THREE.Vector3();
+    this.cloudAcrossTangent = new THREE.Vector3();
+    this.cloudOrientation = new THREE.Matrix4();
     this.makeCloudBatches();
     this.makeShadowBatch();
     this.onDayNightChange = this.updateAppearance.bind(this);
@@ -389,7 +395,7 @@ registerComponent('weather-clouds', {
       transparent: true,
       depthWrite: false,
       depthTest: true,
-      side: THREE.DoubleSide,
+      side: THREE.FrontSide,
       alphaTest: 0.025,
       opacity: 0.86,
     });
@@ -397,9 +403,21 @@ registerComponent('weather-clouds', {
     this.cloudDummy = new THREE.Object3D();
     this.cloudTint = new THREE.Color();
     for (var tile = 0; tile < 8; tile += 1) {
-      var geometry = new THREE.PlaneGeometry(1, 1);
-      geometry.rotateX(-Math.PI / 2);
-      var uv = geometry.attributes.uv.array;
+      // A shallow 4x4 underside keeps the atlas-card renderer cheap while
+      // preventing distant clouds from collapsing into perfectly flat lines.
+      // Runtime orientation points the front face at the world's fixed ground
+      // anchor, never the headset, so mobile GPUs only shade one side.
+      var geometry = new THREE.PlaneGeometry(1, 1, 4, 4);
+      var positions = geometry.attributes.position;
+      for (var vertex = 0; vertex < positions.count; vertex += 1) {
+        var normalizedX = positions.getX(vertex) * 2;
+        var normalizedY = positions.getY(vertex) * 2;
+        var radius = Math.min(1, Math.sqrt(normalizedX * normalizedX + normalizedY * normalizedY));
+        positions.setZ(vertex, Math.max(0, 1 - radius * radius));
+      }
+      positions.needsUpdate = true;
+      geometry.computeVertexNormals();
+      var uv = geometry.attributes.uv;
       var paddingU = 0.006;
       var paddingV = 0.012;
       var column = tile % 4;
@@ -408,11 +426,12 @@ registerComponent('weather-clouds', {
       var u1 = (column + 1) * 0.25 - paddingU;
       var v0 = row * 0.5 + paddingV;
       var v1 = (row + 1) * 0.5 - paddingV;
-      uv[0] = u0; uv[1] = v1;
-      uv[2] = u1; uv[3] = v1;
-      uv[4] = u0; uv[5] = v0;
-      uv[6] = u1; uv[7] = v0;
-      geometry.attributes.uv.needsUpdate = true;
+      for (var uvIndex = 0; uvIndex < uv.count; uvIndex += 1) {
+        var sourceU = uv.getX(uvIndex);
+        var sourceV = uv.getY(uvIndex);
+        uv.setXY(uvIndex, u0 + sourceU * (u1 - u0), v0 + sourceV * (v1 - v0));
+      }
+      uv.needsUpdate = true;
       var mesh = new THREE.InstancedMesh(geometry, this.cloudMaterial, this.maxCloudSlots);
       mesh.name = 'cloud-atlas-tile-' + tile;
       mesh.count = 0;
@@ -439,7 +458,7 @@ registerComponent('weather-clouds', {
       depthWrite: false,
       depthTest: true,
       opacity: this.data.shadowOpacity,
-      side: THREE.DoubleSide,
+      side: THREE.FrontSide,
     });
     this.shadowMesh = new THREE.InstancedMesh(this.shadowGeometry, this.shadowMaterial, count);
     this.shadowMesh.count = 0;
@@ -529,20 +548,32 @@ registerComponent('weather-clouds', {
     var minZ = Infinity;
     var maxZ = -Infinity;
 
+    var altitudeRange = Math.max(1, this.data.maxHeight - this.data.minHeight);
+    var altitudeFactor = this.clamp((group.height - this.data.minHeight) / altitudeRange, 0, 1);
+    var sizeCeiling = this.data.minSize + (this.data.maxSize - this.data.minSize) *
+      (0.55 + altitudeFactor * 0.45);
+    var orientationVariation = this.data.orientationVariation * Math.PI / 180;
+    var roundedTiles = [0, 1, 2, 4, 6, 7];
+    var wispyTiles = [3, 5];
+
     for (var i = 0; i < count; i += 1) {
       var angle = Math.random() * Math.PI * 2;
       var distance = spread * Math.pow(Math.random(), 0.78);
-      var size = this.randomBetween(this.data.minSize, this.data.maxSize);
-      var width = size * this.randomBetween(1.15, 1.85);
-      var depth = size * this.randomBetween(0.72, 1.18);
+      var size = this.randomBetween(this.data.minSize, sizeCeiling);
+      // The atlas already contains each silhouette's aspect ratio. Stretching
+      // the two wispy cells a second time made them look like edge-on cards.
+      var isWispy = Math.random() < 0.14;
+      var tilePool = isWispy ? wispyTiles : roundedTiles;
+      var width = size * this.randomBetween(1, isWispy ? 1.18 : 1.32);
+      var depth = size * this.randomBetween(0.9, 1.14);
       var cloud = {
         offsetX: Math.cos(angle) * distance,
         offsetZ: Math.sin(angle) * distance,
-        height: group.height + this.randomBetween(-4, 4),
+        height: group.height + this.randomBetween(-this.data.verticalSpread, this.data.verticalSpread),
         width: width,
         depth: depth,
-        rotation: Math.random() * Math.PI * 2,
-        tile: Math.floor(Math.random() * 8),
+        rotation: this.randomBetween(-orientationVariation, orientationVariation),
+        tile: tilePool[Math.floor(Math.random() * tilePool.length)],
         sizeScale: this.randomBetween(0.88, 1.12),
         sizeVelocity: this.data.sizeChangeRate * this.randomBetween(0.55, 1.25) *
           (Math.random() < 0.5 ? -1 : 1),
@@ -590,12 +621,27 @@ registerComponent('weather-clouds', {
         var cloud = group.clouds[cloudIndex];
         var mesh = this.cloudMeshes[cloud.tile];
         var instance = mesh.count;
-        dummy.position.set(group.x + cloud.offsetX, cloud.height, group.z + cloud.offsetZ);
-        dummy.rotation.set(0, -cloud.rotation, 0);
+        var worldX = group.x + cloud.offsetX;
+        var worldZ = group.z + cloud.offsetZ;
+        dummy.position.set(worldX, cloud.height, worldZ);
+        this.cloudInward.set(-worldX, -cloud.height, -worldZ).normalize();
+        this.cloudWindTangent.set(this.windX, 0, this.windZ);
+        this.cloudWindTangent.addScaledVector(
+          this.cloudInward,
+          -this.cloudWindTangent.dot(this.cloudInward)
+        ).normalize();
+        this.cloudAcrossTangent.crossVectors(this.cloudInward, this.cloudWindTangent).normalize();
+        this.cloudOrientation.makeBasis(
+          this.cloudWindTangent,
+          this.cloudAcrossTangent,
+          this.cloudInward
+        );
+        dummy.quaternion.setFromRotationMatrix(this.cloudOrientation);
+        dummy.rotateZ(cloud.rotation);
         dummy.scale.set(
           cloud.width * cloud.sizeScale * formationScale,
-          1,
-          cloud.depth * cloud.sizeScale * formationScale
+          cloud.depth * cloud.sizeScale * formationScale,
+          cloud.depth * 0.075 * cloud.sizeScale * formationScale
         );
         dummy.updateMatrix();
         mesh.setMatrixAt(instance, dummy.matrix);

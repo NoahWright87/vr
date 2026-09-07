@@ -73,5 +73,8 @@ test('Pistols texture assets stay within the standalone-headset budget', () => {
     const width = png.readUInt32BE(16);
     const height = png.readUInt32BE(20);
     assert.ok(width <= 1024 && height <= 512, `${filename} is ${width}x${height}`);
+    if (filename === 'weather-cloud-underside-atlas-v1.png') {
+      assert.equal(png[25], 6, 'cloud atlas must preserve RGBA transparency');
+    }
   }
 });
