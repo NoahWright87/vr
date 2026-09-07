@@ -492,6 +492,41 @@ The knock-on: what a pistol IS had to move out of markup and into a
 maker function so a rack could build one, and once it had, three props
 in markup became one prop and three sockets.
 
+## A menu is data; a surface decides how much of it fits
+
+The same lesson, arrived at from the other end. The watch's teleport
+page used to be twelve hand-positioned entities on a backing plane
+`4.38` tall — against a main page of `1.3` — because a page *was* its
+layout. Adding a town meant writing another nine lines of markup,
+re-deriving every Y below it, and growing the plane. The list ended up
+taller than the player, and the same destinations already existed as
+data: `world-town.js` generates the desktop teleport buttons from
+`TOWN_LOCATIONS` in a loop.
+
+So a page is now a title and a list of items (`common/menu-model.js`),
+and the surface says how many rows it can show. Twelve destinations in
+a five-row window is not a layout problem, and a thirteenth changes
+nothing anywhere.
+
+Two consequences worth keeping:
+
+**Everything a player can change is a submenu.** Picking a teleport
+destination and picking a number of targets are the same gesture at
+different depths — a value row opens into its choices, you scroll, and
+backing out commits. There is no separate "adjust sideways" verb, so
+there is no ambiguity about what left and right mean, and a renderer
+only ever draws one thing: a windowed list with a focused row. A
+continuous number renders like an endless list without being one — the
+level knows its min/max/step and computes the handful of values around
+the focus, so a 0-20 knob at 0.1 steps never materialises 201 objects.
+Toggles are the one exception: they flip in place, because a two-item
+submenu for on/off would be silly.
+
+**The model has no A-Frame in it.** Focus, windowing, wrapping,
+clamping, the drill stack and the memory modes are plain functions
+tested with `node --test`, which is the difference between "the menu
+logic is correct" and "the menu looked right in a screenshot once".
+
 ## Rules learned the hard way
 
 **Never move the camera.** A view that drifts, rolls or sways
@@ -524,6 +559,17 @@ frame. The same rule caught the second case for free: A-Frame runs
 every component's tick from one list, so an entity removing *itself*
 from the scene mid-tick (a perished gun) mutates the list being walked.
 Same fix — mark it, sweep it once.
+
+**Assistance has to be visible before it acts.** A menu that quietly
+takes your thumbstick is indistinguishable from a broken thumbstick.
+When a hand's stick is about to drive a menu instead of the player,
+both the panel *and the hand* light up — the panel alone tells you
+something changed, the hand tells you which stick changed meaning.
+Capture also follows the pose rather than the menu's open state: drop
+your arm and the stick is yours again instantly while the menu stays
+open where it was, so there is no mode to escape and no way to be
+trapped next to a panel. And a hand that is pointing, or holding
+something, is never a menu hand.
 
 **Aim assist is a feature, not a cheat.** Real hand velocity is too
 noisy for anyone to land a juggling catch or hit a target with a thrown

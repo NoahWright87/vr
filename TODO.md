@@ -32,6 +32,68 @@ this is only for work that has been decided on and postponed.
   hand frames where useful) without making hint zones care which headset or
   controller supplied the action.
 
+## The shared menu system
+
+`common/menu-model.js` (the pure model) and `common/menu-crossbar.js`
+(the A-Frame renderer plus stick engagement) exist, with an in-world
+demo panel in `primitives/menus/`. Deliberately not done yet:
+
+- **Migrate the surfaces, one at a time.** Agreed order: the watch
+  first (most used, smallest content, biggest win from stick
+  navigation), then Pistols' teleport page (worst offender — 12
+  hand-positioned entities on a `4.38`-tall plane, whose destinations
+  already exist as data in `TOWN_LOCATIONS`), then the wall and
+  pedestal panels, then Punch Pop's `createTabbedPanel` (tabs become
+  the top level of the drill). The old markup path goes when the last
+  consumer is off it, not before. `crossbar-menu` already re-emits
+  `menu-item-select` in the shape `menu-item` uses, so existing
+  handlers survive a page moving across.
+
+- **The visor surface.** The third renderer: curved, anchored to one
+  side, drawn for one eye. `crossbar-menu`'s `curve` and `side` schema
+  values exist and are exercised at 0; nothing yet opens a menu from a
+  hand held at the temple. Blocked on nothing but the eye test below.
+
+- **The one-eye test.** Whether a menu drawn for a single eye is
+  comfortable is not answerable from a diagram. three.js gives each eye
+  its own layer (`layers.enable(1)` / `enable(2)` are both in the
+  vendored A-Frame bundle), so `object.layers.set(1)` is a left-eye-only
+  object. Test three variants on one toggle in a preview build: mono
+  with a dark scrim (best contrast, worst case for binocular rivalry),
+  mono with no scrim (bright text only), and binocular with a scrim.
+  The answer decides how dark the visor's backing can be.
+
+- **Text overflow options.** Long labels currently shrink to fit and
+  then ellipsize. Agreed but not built: wrapping to a second line
+  within the row's space, and a marquee that scrolls a too-long label
+  back and forth — on the focused row only, since text drifting in the
+  periphery is both noise and a comfort problem.
+
+- **A multi-slot item kind, for room codes.** Four letters is four
+  independent slots, where "inward" should move to the next slot rather
+  than drill deeper — the arcade high-score pattern. The 26-row
+  alphabet submenu in the showcase is the crude version, and exists to
+  find out whether hold-to-repeat scrolling is fast enough to live
+  with. Wrap-around already helps (Z is one step above A).
+
+- **Grip should stop meaning "point".** The fingertip laser enables on
+  `gripdown` (`common/watch-menu.js`), which is why reaching for the
+  watch in Pistols grabs your hat instead. The laser already has a
+  gesture route — it settles ~180ms after the point animation — so grip
+  can go back to meaning only "grab". Small change, touches every
+  existing menu, so it wants its own pass.
+
+- **Register menus as ordinary interaction candidates.**
+  `common/interaction-targeting.js` already arbitrates by direct hit →
+  priority → gaze → distance, and `interaction-hints.js` already
+  guarantees that the outlined object and the object an action reaches
+  cannot disagree. Menus don't participate: watch pointing is a
+  separate path bolted to grip, which is the actual reason the two
+  collide. Registering the watch, wall panels and the visor as
+  candidates makes one resolution point instead of two systems, and
+  extends the outline-before-commit guarantee to every contested input.
+  Bigger than the menu work; worth doing on its own.
+
 ## Liquids
 
 - **Dissipation rates per surface.** Right now a puddle dries at a rate
