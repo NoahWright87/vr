@@ -84,6 +84,25 @@ demo panel in `primitives/menus/`. Deliberately not done yet:
   a gamepad probably drives menus from the d-pad rather than the stick
   that walks you around.
 
+- **On a phone, taps don't land where your finger is.** The showcase's
+  cursor is a *gaze* cursor (`rayOrigin: entity`), so a tap anywhere on
+  the canvas activates whatever the screen-centre reticle is pointing
+  at — verified by tapping an empty corner and watching the aimed-at row
+  fire. This is pre-existing and applies to every menu in the repo, new
+  and old, not just the crossbar. The model still works because aiming
+  at an off-centre row and tapping scrolls it to the middle, so a second
+  tap selects it — but it is "point the phone and tap", not "touch the
+  thing", which is not what anyone expects on a phone. The fix is to use
+  `rayOrigin: mouse` when `input-router` reports the touch family, so a
+  tap raycasts from the touch point. Small, but it changes mobile
+  behaviour for every existing menu, so it wants its own pass.
+
+- **The on-screen action buttons don't drive menus.** `touch-controls`
+  publishes `semantic-action-intent` on the rig; the crossbar listens for
+  controller button events on hands. So USE/INTERACT do nothing to an
+  open menu on mobile. Same shape of gap as the desktop gamepad above,
+  and probably the same fix.
+
 - **Grip should stop meaning "point".** The fingertip laser enables on
   `gripdown` (`common/watch-menu.js`), which is why reaching for the
   watch in Pistols grabs your hat instead. The laser already has a
