@@ -292,14 +292,106 @@ test('breadcrumb depth caps what a cramped surface has to draw', () => {
 // Closing and memory
 // ------------------------------------------------------------
 
-test('back at the root closes the menu', () => {
+// ------------------------------------------------------------
+// The title bar, and closing on purpose
+// ------------------------------------------------------------
+
+test('back at the root moves onto the close button rather than closing', () => {
   const menu = createMenu(samplePage());
   menu.open();
   const closes = [];
   menu.on('close', () => closes.push(true));
   menu.back();
+  assert.equal(menu.isOpen, true, 'one press too many must not dismiss the menu');
+  assert.equal(menu.inChrome(), true);
+  assert.equal(menu.getChromeFocus().id, 'close');
+  assert.deepEqual(closes, []);
+});
+
+test('confirming the close button closes', () => {
+  const menu = createMenu(samplePage());
+  menu.open();
+  const closes = [];
+  menu.on('close', () => closes.push(true));
+  menu.back();
+  menu.activate();
   assert.equal(menu.isOpen, false);
   assert.deepEqual(closes, [true]);
+});
+
+test('back again from the close button stays put', () => {
+  const menu = createMenu(samplePage());
+  menu.open();
+  menu.back();
+  menu.back();
+  menu.back();
+  assert.equal(menu.isOpen, true);
+  assert.equal(menu.inChrome(), true);
+});
+
+test('forward from the close button returns to the list without firing it', () => {
+  const menu = createMenu(samplePage());
+  menu.open();
+  const closes = [];
+  menu.on('close', () => closes.push(true));
+  menu.back();
+  menu.forward();
+  assert.equal(menu.inChrome(), false);
+  assert.equal(focusLabel(menu), 'Resume');
+  assert.deepEqual(closes, [], 'moving back into the list is not confirming');
+});
+
+test('stepping off a single close button drops back into the list', () => {
+  const menu = createMenu(samplePage());
+  menu.open();
+  menu.back();
+  menu.moveFocus(1);
+  assert.equal(menu.inChrome(), false, 'never swallow input with no visible effect');
+  assert.equal(focusLabel(menu), 'HUD: On');
+});
+
+test('back inside a submenu still pops a level, not to the close button', () => {
+  const menu = createMenu(samplePage());
+  menu.open();
+  menu.moveFocus(4);
+  menu.activate();
+  assert.equal(menu.depth(), 1);
+  menu.back();
+  assert.equal(menu.depth(), 0);
+  assert.equal(menu.inChrome(), false);
+});
+
+test('forward in the list still enters a submenu', () => {
+  const menu = createMenu(samplePage());
+  menu.moveFocus(4);
+  menu.forward();
+  assert.equal(menu.depth(), 1);
+});
+
+test('closing clears the title-bar focus for next time', () => {
+  const menu = createMenu(samplePage(), { memory: 'permanent' });
+  menu.open();
+  menu.back();
+  menu.activate();
+  menu.open();
+  assert.equal(menu.inChrome(), false);
+});
+
+test('a menu can be given extra title-bar controls', () => {
+  const menu = createMenu(samplePage(), {
+    chrome: [{ id: 'pin', label: 'Pin' }, { id: 'close', label: 'Close' }],
+  });
+  menu.open();
+  const fired = [];
+  menu.on('chrome-action', (detail) => fired.push(detail.id));
+  menu.back();
+  assert.equal(menu.getChromeFocus().id, 'pin');
+  menu.moveFocus(1);
+  assert.equal(menu.getChromeFocus().id, 'close', 'steps between controls when there is more than one');
+  assert.equal(menu.inChrome(), true);
+  menu.activate();
+  assert.deepEqual(fired, ['close']);
+  assert.equal(menu.isOpen, false);
 });
 
 test('memory none always reopens at the root', () => {

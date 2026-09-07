@@ -560,6 +560,23 @@ every component's tick from one list, so an entity removing *itself*
 from the scene mid-tick (a perished gun) mutates the list being walked.
 Same fix — mark it, sweep it once.
 
+**Entering a menu is a thing you do, not a thing that happens.** The
+first version of the flat path engaged by looking: aim at a panel and
+the keys went there. It tested badly, and the reason is worth keeping.
+There was no moment where you *took* the menu, so there was never a
+moment where you could tell you had it — and with two panels in a room,
+"whichever one I happen to be facing" is not a model anyone can hold.
+Now you walk up, a prompt appears, you press a key, and the panel
+brightens and lists its controls. The cost is a keypress; what it buys
+is that the answer to "is this thing listening to me" is always visible
+on the panel itself.
+
+The same rule catches a smaller thing: pressing outward at the top
+level used to close the menu, which meant one press too many dismissed
+it. It now lands on the panel's own close button, which you then
+confirm. That also drags the title bar's controls into the focus ring,
+so a close button stops being something only a pointer can reach.
+
 **Assistance has to be visible before it acts.** A menu that quietly
 takes your thumbstick is indistinguishable from a broken thumbstick.
 When a hand's stick is about to drive a menu instead of the player,

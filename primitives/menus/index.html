@@ -1028,20 +1028,40 @@
       ============================================================ -->
       <a-entity
         id="crossbar-panel"
-        position="-1.6 1.35 -2.2"
+        position="-1.6 1.22 -2.2"
         rotation="0 36 0"
         crossbar-menu="page: showcase-crossbar; title: WORKSHOP; windowSize: 5; width: 1.1; rowHeight: 0.17; stickRange: 0.9"
         crossbar-menu-registration
-        crossbar-menu-keys
       ></a-entity>
       <a-text
-        value="CROSSBAR — walk up, empty hand near the panel, use that thumbstick&#10;(desktop: arrow keys, Enter, Backspace)"
+        value="CROSSBAR A — walk up for the E prompt, press E to take the controls&#10;W/S move, D enter, A back, E or Esc to leave"
         align="center"
         color="#7fe3ff"
         width="1.1"
-        wrap-count="52"
-        position="-1.6 0.78 -2.2"
+        wrap-count="56"
+        position="-1.6 0.42 -2.2"
         rotation="0 36 0"
+      ></a-text>
+
+      <!-- A second crossbar, deliberately. Two panels in one room is
+           the only way to be sure that entering one takes the controls
+           for that one alone: with both in view, W/S must move exactly
+           one list. -->
+      <a-entity
+        id="crossbar-panel-b"
+        position="1.6 1.22 -2.2"
+        rotation="0 -36 0"
+        crossbar-menu="page: showcase-crossbar-b; title: RANGE; windowSize: 5; width: 1.1; rowHeight: 0.17; stickRange: 0.9; side: right; hintLabel: Range menu"
+        crossbar-menu-registration
+      ></a-entity>
+      <a-text
+        value="CROSSBAR B — the same system, a different page.&#10;Only the one you entered should move."
+        align="center"
+        color="#7fe3ff"
+        width="1.1"
+        wrap-count="56"
+        position="1.6 0.42 -2.2"
+        rotation="0 -36 0"
       ></a-text>
     </a-scene>
 
@@ -1059,6 +1079,32 @@
       ];
 
       var LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+
+      registerMenuPage('showcase-crossbar-b', {
+        title: 'RANGE',
+        items: [
+          { kind: 'action', id: 'reset-boxes', label: 'Reset boxes' },
+          { kind: 'toggle', id: 'range-lights', label: 'Lights', value: true },
+          {
+            kind: 'select', id: 'difficulty', label: 'Difficulty', value: 'normal',
+            options: [
+              { value: 'easy', label: 'Easy' },
+              { value: 'normal', label: 'Normal' },
+              { value: 'hard', label: 'Hard' },
+            ],
+          },
+          {
+            kind: 'number', id: 'range-gravity', label: 'Gravity',
+            value: 9.8, min: 0, max: 20, step: 0.2,
+          },
+          {
+            kind: 'submenu', id: 'letter-b', label: 'Letter',
+            items: LETTERS.map(function (letter) {
+              return { kind: 'action', id: 'b-letter-' + letter, label: letter };
+            }),
+          },
+        ],
+      });
 
       registerMenuPage('showcase-crossbar', {
         title: 'WORKSHOP',

@@ -72,6 +72,8 @@ if (typeof AFRAME !== 'undefined') {
   var ACTIVATE_EVENTS = ['triggerdown', 'abuttondown', 'xbuttondown'];
   var BACK_EVENTS = ['bbuttondown', 'ybuttondown', 'gripdown'];
 
+  var panelSerial = 0;
+
   function truncate(text, maxChars) {
     if (!maxChars || text.length <= maxChars) return text;
     return text.slice(0, Math.max(1, maxChars - 1)) + '…';
@@ -106,6 +108,17 @@ if (typeof AFRAME !== 'undefined') {
       // Flat play looks at a panel from across the room rather than
       // standing inside arm's reach of it, so it gets its own range.
       gazeRange: { default: 6 },
+      // The proximity prompt, off a headset. Reuses the repo's own
+      // hint-zone card, so a menu announces itself exactly the way a
+      // grabbable box or a mounted panel does.
+      hintKey: { type: 'string', default: 'E' },
+      hintLabel: { type: 'string', default: 'Menu' },
+      // Note the ceiling: interaction-hints resolves a desktop candidate
+      // against min(hand.maxReach, zone.maxReach) plus a fifth of the
+      // radius, and the semantic hands carry maxReach 1.0 — so raising
+      // this past about 1.2 buys nothing. Walking right up to a panel is
+      // the intended gesture anyway; mounted-interaction uses 0.75.
+      hintRadius: { default: 1.2 },
       plate: { default: true },
       color: { type: 'color', default: '#dff3ff' },
       accent: { type: 'color', default: '#7fe3ff' },
@@ -115,12 +128,13 @@ if (typeof AFRAME !== 'undefined') {
       this.rows = [];
       this.crumbs = [];
       this.engagedHand = null;
-      this.flatEngaged = false;
       this._handPosition = new THREE.Vector3();
       this._panelPosition = new THREE.Vector3();
 
       this.onRowClick = this.onRowClick.bind(this);
       this.onCrumbClick = this.onCrumbClick.bind(this);
+      this.onCloseClick = this.onCloseClick.bind(this);
+      this.locked = false;
 
       var page = getMenuPage(this.data.page);
       if (!page) {
@@ -177,6 +191,12 @@ if (typeof AFRAME !== 'undefined') {
         backing.setAttribute('height', data.rowHeight * (data.windowSize + 2));
         backing.setAttribute('material', 'color: #0b1220; shader: flat; opacity: 0.55; transparent: true');
         backing.setAttribute('position', '0 0 -0.012');
+        // Named so the hint zone can highlight this one plate. Left to
+        // itself, hint-zone highlights every mesh under the entity it
+        // is on — which for a menu is an additive copy of all five row
+        // plates and their text, and reads as banding across the whole
+        // panel.
+        backing.setAttribute('id', (this.el.id || 'crossbar') + '-backing-' + (panelSerial++));
         this.el.appendChild(backing);
         this.backingEl = backing;
       }
@@ -203,6 +223,28 @@ if (typeof AFRAME !== 'undefined') {
       this.el.appendChild(title);
       this.titleEl = title;
 
+      // The close button. It is a focus target, not only a click
+      // target: pressing outward at the root lands on it, and a second
+      // press confirms. That is the whole reason closing is no longer
+      // something a stray press can do by accident.
+      var close = document.createElement('a-entity');
+      close.classList.add('menu-target');
+      close.setAttribute('geometry', 'primitive: plane; width: ' + data.rowHeight * 0.8 + '; height: ' + data.rowHeight * 0.8);
+      close.setAttribute('material', 'color: ' + data.accent + '; shader: flat; opacity: 0; transparent: true; depthWrite: false');
+      close.setAttribute('position', { x: data.width / 2 - data.rowHeight * 0.5, y: titleY - data.rowHeight * 0.12, z: 0.002 });
+      var closeGlyph = document.createElement('a-text');
+      closeGlyph.setAttribute('value', 'X');
+      closeGlyph.setAttribute('align', 'center');
+      closeGlyph.setAttribute('color', data.accent);
+      closeGlyph.setAttribute('width', data.width * 0.92);
+      closeGlyph.setAttribute('wrapCount', data.maxChars);
+      closeGlyph.setAttribute('position', '0 0 0.004');
+      close.appendChild(closeGlyph);
+      close.addEventListener('click', this.onCloseClick);
+      this.el.appendChild(close);
+      this.closeEl = close;
+      this.closeGlyphEl = closeGlyph;
+
       var rule = document.createElement('a-plane');
       rule.setAttribute('width', data.width * 0.92);
       rule.setAttribute('height', 0.004);
@@ -215,7 +257,12 @@ if (typeof AFRAME !== 'undefined') {
         var row = document.createElement('a-entity');
         row.classList.add('menu-target');
         row.setAttribute('geometry', 'primitive: plane; width: ' + data.width * 0.94 + '; height: ' + data.rowHeight * 0.92);
-        row.setAttribute('material', 'color: ' + data.accent + '; shader: flat; opacity: 0; transparent: true');
+        // depthWrite off: an invisible plate that still writes depth
+        // punches a hole in the panel glow behind it, which reads as a
+        // band across every row. It has to stay a real (raycastable)
+        // object rather than being hidden, since it is also the pointing
+        // target — three.js skips invisible objects when raycasting.
+        row.setAttribute('material', 'color: ' + data.accent + '; shader: flat; opacity: 0; transparent: true; depthWrite: false');
         row.dataset.rowSlot = String(i);
         row.addEventListener('click', this.onRowClick);
 
@@ -282,6 +329,43 @@ if (typeof AFRAME !== 'undefined') {
       glow.object3D.visible = false;
       this.el.appendChild(glow);
       this.glowEl = glow;
+
+      // What the controls are, shown only while this menu actually has
+      // them. "No sense of I'm using this right now" was the whole
+      // complaint; a border alone did not carry it.
+      var footer = document.createElement('a-text');
+      footer.setAttribute('value', '');
+      footer.setAttribute('align', data.align === 'center' ? 'center' : 'left');
+      footer.setAttribute('color', data.accent);
+      footer.setAttribute('width', data.width * 0.92);
+      footer.setAttribute('wrapCount', 46);
+      footer.setAttribute('position', {
+        x: data.align === 'center' ? 0 : -data.width / 2 + 0.04,
+        y: -data.rowHeight * (data.windowSize / 2 + 0.45),
+        z: 0.002,
+      });
+      footer.object3D.visible = false;
+      this.el.appendChild(footer);
+      this.footerEl = footer;
+
+      // Proximity prompt. The hint system resolves this against every
+      // other zone in the scene, so walking up to a menu and walking up
+      // to a grabbable box compete on the same terms rather than each
+      // shouting over the other.
+      var hint = {
+        action: 'menu',
+        radius: data.hintRadius,
+        maxReach: data.hintRadius,
+        priority: 5,
+        desktopKey: data.hintKey,
+        desktopLabel: data.hintLabel,
+        touchKey: 'TAP',
+        touchLabel: data.hintLabel,
+        hintOffset: { x: 0, y: data.rowHeight * (data.windowSize / 2 + 1.25), z: 0 },
+      };
+      if (this.backingEl) hint.highlight = '#' + this.backingEl.getAttribute('id');
+      else hint.highlightOpacity = 0;
+      this.el.setAttribute('hint-zone', hint);
     },
 
     // ---------- drawing ----------
@@ -293,6 +377,7 @@ if (typeof AFRAME !== 'undefined') {
       if (!visible) return;
 
       var half = (data.windowSize - 1) / 2;
+      var inChrome = this.menu.inChrome();
       var windowRows = this.menu.getWindow();
       var bySlot = {};
       for (var w = 0; w < windowRows.length; w++) {
@@ -340,7 +425,14 @@ if (typeof AFRAME !== 'undefined') {
         slot.textEl.setAttribute('color', model.focused ? data.accent : data.color);
         slot.chevronEl.object3D.visible = Boolean(model.hasChildren);
         slot.chevronEl.setAttribute('text', 'opacity', opacity);
-        slot.el.setAttribute('material', 'opacity', model.focused ? PLATE_OPACITY : 0);
+        slot.el.setAttribute('material', 'opacity', (model.focused && !inChrome) ? PLATE_OPACITY : 0);
+      }
+
+      // While the title bar has the focus the list shows none, so there
+      // is never a question about where a confirm would land.
+      if (this.closeEl) {
+        this.closeEl.setAttribute('material', 'opacity', inChrome ? PLATE_OPACITY * 1.6 : 0);
+        this.closeGlyphEl.setAttribute('text', 'opacity', inChrome ? 1 : 0.45);
       }
 
       var crumbs = this.menu.getBreadcrumbs();
@@ -376,26 +468,51 @@ if (typeof AFRAME !== 'undefined') {
       this.menu.back();
     },
 
+    onCloseClick: function () {
+      this.menu.close();
+    },
+
     // ---------- stick control ----------
 
-    // The same outline the engaged hand gets, for the flat player who
-    // has no hand to light up.
-    setFlatEngaged: function (engaged) {
-      this.flatEngaged = engaged;
-      if (this.glowEl) this.glowEl.object3D.visible = engaged || Boolean(this.engagedHand);
+    // Off a headset there is no hand to light up, so the panel has to
+    // carry the whole "your keys are going here" signal by itself: a
+    // bright border, a brighter title, and the controls spelled out
+    // underneath.
+    setLocked: function (locked) {
+      if (this.locked === locked) return;
+      this.locked = locked;
+      if (this.glowEl) {
+        this.glowEl.object3D.visible = locked || Boolean(this.engagedHand);
+        this.glowEl.setAttribute('material', 'opacity', locked ? 0.75 : 0.3);
+      }
+      if (this.backingEl) {
+        this.backingEl.setAttribute('material', 'opacity', locked ? 0.82 : 0.55);
+      }
+      if (this.titleEl) {
+        this.titleEl.setAttribute('text', 'opacity', locked ? 1 : 0.6);
+      }
+      if (this.footerEl) {
+        this.footerEl.setAttribute('value', 'W/S move   D enter   A back   E exit');
+        this.footerEl.object3D.visible = locked;
+      }
+      // While a menu holds the keys it stops advertising itself, and
+      // says how to leave instead.
+      this.el.setAttribute('hint-zone', 'desktopLabel', locked ? 'Exit menu' : this.data.hintLabel);
+      this.el.emit(locked ? 'crossbar-menu-locked' : 'crossbar-menu-unlocked', {}, false);
     },
 
     setEngagedHand: function (handEl) {
       if (this.engagedHand === handEl) return;
       var previous = this.engagedHand;
       this.engagedHand = handEl;
-      if (this.glowEl) this.glowEl.object3D.visible = Boolean(handEl) || Boolean(this.flatEngaged);
+      if (this.glowEl) this.glowEl.object3D.visible = Boolean(handEl) || Boolean(this.locked);
       if (previous) previous.emit('menu-stick-released', { menuEl: this.el }, false);
       if (handEl) handEl.emit('menu-stick-engaged', { menuEl: this.el }, false);
     },
 
     step: function (delta) { this.menu.moveFocus(delta); },
     activate: function () { this.menu.activate(); },
+    forward: function () { this.menu.forward(); },
     back: function () { this.menu.back(); },
 
     getWorldPosition: function (target) {
@@ -434,10 +551,14 @@ if (typeof AFRAME !== 'undefined') {
       this._forward = new THREE.Vector3();
       this._toMenu = new THREE.Vector3();
       this._quaternion = new THREE.Quaternion();
-      this.flatMenu = null;
-      this.flatCandidate = null;
-      this.flatCandidateSince = 0;
+      // Off a headset a menu is entered deliberately and held until you
+      // leave it, rather than picked up by looking. Exactly one menu can
+      // be locked at a time, which is what makes "only this menu moves"
+      // true by construction rather than by careful bookkeeping.
+      this.lockedMenu = null;
       this.bindings = [];
+      this.onKeyDown = this.onKeyDown.bind(this);
+      window.addEventListener('keydown', this.onKeyDown);
       var self = this;
       this.el.addEventListener('loaded', function () { self.collectHands(); });
     },
@@ -450,6 +571,7 @@ if (typeof AFRAME !== 'undefined') {
           el: handEl,
           axes: [0, 0, 0, 0],
           armed: true,
+          armedX: true,
           heldSince: 0,
           repeatAt: 0,
           candidate: null,
@@ -467,6 +589,7 @@ if (typeof AFRAME !== 'undefined') {
             state.menu.activate();
           });
         });
+
         BACK_EVENTS.forEach(function (name) {
           handEl.addEventListener(name, function (evt) {
             if (!state.menu) return;
@@ -518,17 +641,14 @@ if (typeof AFRAME !== 'undefined') {
             this.setHandGlow(idle, false);
           }
         }
-        this.resolveFlat(menus, time);
+        // A locked menu that gets closed releases the keys with it.
+        if (this.lockedMenu && !this.lockedMenu.menu.isOpen) this.unlock();
         return;
       }
-      // Entering a headset has to put out the flat highlight, or the
-      // panel you happened to be looking at stays lit in XR and claims
-      // an input that is no longer pointed at it.
-      if (this.flatMenu) {
-        this.flatMenu.setFlatEngaged(false);
-        this.flatMenu = null;
-      }
-      this.flatCandidate = null;
+      // Entering a headset drops the flat lock: in XR a hand takes the
+      // menu by reaching for it, and leaving a keyboard lock in place
+      // would hold movement suspended with nothing on screen saying so.
+      if (this.lockedMenu) this.unlock();
 
       if (!this.hands.length) return;
 
@@ -613,45 +733,67 @@ if (typeof AFRAME !== 'undefined') {
       }
     },
 
-    // Flat play: the panel you are looking at is the one the keyboard
-    // drives, and it lights up to say so. Without this every crossbar
-    // panel on the page answers the arrow keys at once — fine while
-    // there is one, wrong the moment the watch becomes a second.
-    resolveFlat: function (menus, time) {
-      var camera = this.el.camera && this.el.camera.el;
-      var best = null;
-      var bestDot = FLAT_GAZE_MIN;
+    // ---------- the flat lock ----------
 
-      if (camera && menus.length) {
-        camera.object3D.getWorldPosition(this._handPosition);
-        this._forward.set(0, 0, -1).applyQuaternion(camera.object3D.getWorldQuaternion(this._quaternion));
-        for (var i = 0; i < menus.length; i++) {
-          menus[i].getWorldPosition(this._menuPosition);
-          this._toMenu.copy(this._menuPosition).sub(this._handPosition);
-          if (this._toMenu.length() > menus[i].data.gazeRange) continue;
-          var dot = this._forward.dot(this._toMenu.normalize());
-          if (dot > bestDot) {
-            bestDot = dot;
-            best = menus[i];
-          }
-        }
+    // Which menu, if any, is close enough to enter right now. The hint
+    // system has already arbitrated this against every other zone in
+    // the scene, so pressing E next to a menu and a grabbable box does
+    // whichever one the prompt is actually offering.
+    getPromptedMenu: function () {
+      var hints = this.el.systems['interaction-hints'];
+      if (!hints || typeof hints.getDesktopCandidate !== 'function') return null;
+      var candidate = hints.getDesktopCandidate('menu');
+      if (!candidate || !candidate.zone) return null;
+      var component = candidate.zone.el.components['crossbar-menu'];
+      return component && component.menu.isOpen ? component : null;
+    },
+
+    lock: function (component) {
+      if (this.lockedMenu === component) return;
+      if (this.lockedMenu) this.lockedMenu.setLocked(false);
+      this.lockedMenu = component || null;
+      if (component) component.setLocked(true);
+      // Both the keyboard path (desktop-controls' own tick) and the
+      // joystick path (locomotion) check this, so entering a menu
+      // suspends walking without either of them needing to know what a
+      // menu is.
+      this.el.setAttribute('data-menu-locked', component ? 'true' : 'false');
+    },
+
+    unlock: function () {
+      this.lock(null);
+    },
+
+    onKeyDown: function (evt) {
+      var mode = this.el.systems['control-mode'];
+      if (mode && mode.isMode('xr')) return;
+      var locked = this.lockedMenu;
+
+      if (evt.code === 'KeyE') {
+        if (locked) { this.unlock(); evt.preventDefault(); return; }
+        var prompted = this.getPromptedMenu();
+        if (prompted) { this.lock(prompted); evt.preventDefault(); }
+        return;
       }
+      if (!locked) return;
 
-      // One open panel and nothing being looked at still answers the
-      // keys, so a menu is never unreachable just because you glanced
-      // away from it.
-      if (!best && menus.length === 1) best = menus[0];
-
-      if (best !== this.flatCandidate) {
-        this.flatCandidate = best;
-        this.flatCandidateSince = time;
+      // Everything below only reaches the one locked menu, which is the
+      // whole point: a second panel in the room does not move.
+      var handled = true;
+      switch (evt.code) {
+        case 'KeyW': case 'ArrowUp': locked.step(-1); break;
+        case 'KeyS': case 'ArrowDown': locked.step(1); break;
+        case 'KeyD': case 'ArrowRight': locked.forward(); break;
+        case 'KeyA': case 'ArrowLeft': locked.back(); break;
+        case 'Enter': case 'Space': locked.activate(); break;
+        case 'Escape': this.unlock(); break;
+        default: handled = false;
       }
-      if (best !== null && (time - this.flatCandidateSince) < ENGAGE_SETTLE_MS) return;
-
-      if (this.flatMenu !== best) {
-        if (this.flatMenu) this.flatMenu.setFlatEngaged(false);
-        this.flatMenu = best;
-        if (best) best.setFlatEngaged(true);
+      if (handled) {
+        evt.preventDefault();
+        // Movement keys are shared with walking; stopping propagation
+        // keeps desktop-controls from also seeing them this frame.
+        evt.stopPropagation();
       }
     },
 
@@ -672,15 +814,35 @@ if (typeof AFRAME !== 'undefined') {
       state.glowEl.object3D.visible = engaged;
     },
 
+    remove: function () {
+      window.removeEventListener('keydown', this.onKeyDown);
+    },
+
     pumpStick: function (state, time) {
       var axes = state.axes || [];
       // Quest controllers report the thumbstick on axes 2/3; some
       // runtimes use 0/1. locomotion.js reads them the same way.
       var y = axes[3] !== undefined ? axes[3] : (axes[1] || 0);
-      var magnitude = Math.abs(y);
+      var x = axes[2] !== undefined ? axes[2] : (axes[0] || 0);
 
+      // Horizontal is hierarchy: inward goes deeper, outward comes back
+      // and, at the root, onto the title bar. One detent, no repeat --
+      // walking down levels by holding the stick is not something anyone
+      // means to do.
+      if (Math.abs(x) > Math.abs(y)) {
+        if (Math.abs(x) < STEP_OFF) state.armedX = true;
+        else if (Math.abs(x) >= STEP_ON && state.armedX !== false) {
+          state.armedX = false;
+          if (x > 0) state.menu.forward();
+          else state.menu.back();
+        }
+        return;
+      }
+
+      var magnitude = Math.abs(y);
       if (magnitude < STEP_OFF) {
         state.armed = true;
+        state.armedX = true;
         state.repeatAt = 0;
         return;
       }
@@ -715,29 +877,4 @@ if (typeof AFRAME !== 'undefined') {
     },
   });
 
-  // ============================================================
-  // Desktop keyboard driver, so the whole thing is exercisable
-  // without a headset — the same six verbs, bound to keys.
-  // ============================================================
-  AFRAME.registerComponent('crossbar-menu-keys', {
-    dependencies: ['crossbar-menu'],
-    init: function () {
-      var self = this;
-      this.system = this.el.sceneEl.systems['menu-stick-control'];
-      this.onKeyDown = function (evt) {
-        var menu = self.el.components['crossbar-menu'];
-        if (!menu || !menu.menu.isOpen) return;
-        // Only the panel the player is looking at answers the keys.
-        if (self.system && self.system.flatMenu && self.system.flatMenu !== menu) return;
-        if (evt.key === 'ArrowUp') { menu.step(-1); evt.preventDefault(); }
-        else if (evt.key === 'ArrowDown') { menu.step(1); evt.preventDefault(); }
-        else if (evt.key === 'ArrowRight' || evt.key === 'Enter') { menu.activate(); evt.preventDefault(); }
-        else if (evt.key === 'ArrowLeft' || evt.key === 'Backspace') { menu.back(); evt.preventDefault(); }
-      };
-      window.addEventListener('keydown', this.onKeyDown);
-    },
-    remove: function () {
-      window.removeEventListener('keydown', this.onKeyDown);
-    },
-  });
 }

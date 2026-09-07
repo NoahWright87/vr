@@ -46,6 +46,11 @@ export var MENU_DEFAULTS = {
   // coming straight back.
   memory: 'temporary',
   memoryMs: 60000,
+  // The menu's own controls, reached by pressing outward at the root.
+  // They live in the title bar, and being part of the focus ring is the
+  // point: a close button you can only reach by pointing is unreachable
+  // to anyone driving with a stick or a keyboard.
+  chrome: [{ id: 'close', label: 'Close' }],
   // How many ancestor titles a renderer may draw alongside the current
   // level. The renderer fades them; this only caps how many it hears
   // about, since a watch face has room for about one.
@@ -206,6 +211,7 @@ export function MenuModel(page, options) {
   this.breadcrumbDepth = opts.breadcrumbDepth === undefined
     ? MENU_DEFAULTS.breadcrumbDepth
     : opts.breadcrumbDepth;
+  this.chrome = opts.chrome || MENU_DEFAULTS.chrome;
   // Injectable so memory expiry is testable without waiting a minute.
   this.now = typeof opts.now === 'function' ? opts.now : function () { return Date.now(); };
 
@@ -213,11 +219,15 @@ export function MenuModel(page, options) {
   this.isOpen = false;
   this.stack = [];
   this.closedAt = null;
+  // null while the list has the focus; an index into `chrome` once the
+  // title bar does.
+  this.chromeIndex = null;
   this.reset();
 }
 
 MenuModel.prototype.reset = function () {
   this.stack = [makeListLevel(this.page.title || '', resolveItems(this.page.items), 0, null)];
+  this.chromeIndex = null;
 };
 
 MenuModel.prototype.on = function (event, handler) {
@@ -253,6 +263,7 @@ MenuModel.prototype.open = function () {
 
 MenuModel.prototype.close = function () {
   if (!this.isOpen) return;
+  this.chromeIndex = null;
   this.isOpen = false;
   this.closedAt = this.now();
   this.emit('close', {});
@@ -263,7 +274,35 @@ MenuModel.prototype.close = function () {
 // The one vertical verb. Wrapping is decided per level rather than per
 // menu, because a list of twelve towns wants it and a clamped number
 // never does.
+MenuModel.prototype.inChrome = function () {
+  return this.chromeIndex !== null;
+};
+
+MenuModel.prototype.getChromeFocus = function () {
+  return this.chromeIndex === null ? null : this.chrome[this.chromeIndex];
+};
+
+MenuModel.prototype.getChrome = function () {
+  return this.chrome;
+};
+
 MenuModel.prototype.moveFocus = function (delta) {
+  // With one control in the title bar there is nowhere to move inside
+  // it, so stepping drops back into the list rather than doing nothing.
+  // A menu that swallows your input without visibly changing reads as
+  // broken, and this is the only place that could happen.
+  if (this.chromeIndex !== null) {
+    if (this.chrome.length <= 1) {
+      this.chromeIndex = null;
+      this.emit('chrome-focus', { control: null });
+      return this.moveFocus(delta) || true;
+    }
+    var next = clampInt(this.chromeIndex + delta, 0, this.chrome.length - 1);
+    if (next === this.chromeIndex) return false;
+    this.chromeIndex = next;
+    this.emit('chrome-focus', { control: this.getChromeFocus() });
+    return true;
+  }
   var level = this.level();
   var count = levelCount(level);
   if (!count) return false;
@@ -298,7 +337,26 @@ MenuModel.prototype.levelPreviews = function (level) {
 // The inward verb: face button, stick-inward, or a tap on the focused
 // row. What it does is decided by the focused row's own kind, and each
 // case is visible from the row itself, so nothing here is a surprise.
+// Moving inward: into a submenu from the list, or out of the title bar
+// and back into the list. Distinct from activate() so that pressing
+// right on a chrome control returns to the list instead of firing it —
+// confirming is what the face button is for.
+MenuModel.prototype.forward = function () {
+  if (this.chromeIndex !== null) {
+    this.chromeIndex = null;
+    this.emit('chrome-focus', { control: null });
+    return true;
+  }
+  return this.activate();
+};
+
 MenuModel.prototype.activate = function () {
+  if (this.chromeIndex !== null) {
+    var control = this.getChromeFocus();
+    this.emit('chrome-action', { control: control, id: control.id });
+    if (control.id === 'close') this.close();
+    return true;
+  }
   var level = this.level();
   var row = this.focusedRow();
   if (!row || row.disabled) return false;
@@ -361,8 +419,17 @@ MenuModel.prototype.activate = function () {
 // and adding a second button to mean discard would cost more than it
 // buys.
 MenuModel.prototype.back = function () {
+  // Already on the title bar: stay put. Pressing outward repeatedly
+  // should not fall out of the menu entirely.
+  if (this.chromeIndex !== null) return false;
   if (this.stack.length <= 1) {
-    this.close();
+    // At the root, outward moves onto the menu's own controls rather
+    // than closing. Closing by pressing left one time too many is an
+    // accident waiting to happen; landing on a Close button you then
+    // have to confirm is the same gesture made deliberate.
+    if (!this.chrome.length) return false;
+    this.chromeIndex = 0;
+    this.emit('chrome-focus', { control: this.getChromeFocus() });
     return true;
   }
   var level = this.stack.pop();
