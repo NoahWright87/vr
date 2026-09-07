@@ -310,15 +310,15 @@ registerComponent('day-night-cycle', {
   },
 });
 
-// PS1-style weather. Twenty independently simulated cloud systems still cross
-// the world-space field, but their cards are sent to the GPU in eight instanced
-// atlas buckets. A ninth batch contains only the largest few shadow decals.
-// The old one-mesh-per-system version cost more than fifty draw calls on its own.
+// PS1-style weather. Twenty independently simulated cloud systems cross the
+// world-space field. Every visible puff is a 36-triangle dodecahedron in one
+// instanced draw; a second batch contains only the largest few shadow decals.
+// This avoids both transparent overdraw and the camera-angle artifacts of cards.
 registerComponent('weather-clouds', {
   schema: {
     groupCount: { type: 'int', default: 20 },
-    minCloudsPerGroup: { type: 'int', default: 4 },
-    maxCloudsPerGroup: { type: 'int', default: 8 },
+    minCloudsPerGroup: { type: 'int', default: 6 },
+    maxCloudsPerGroup: { type: 'int', default: 12 },
     minSize: { type: 'number', default: 11 },
     maxSize: { type: 'number', default: 28 },
     sizeChangeRate: { type: 'number', default: 0.032 },
@@ -330,8 +330,7 @@ registerComponent('weather-clouds', {
     wobbleAmount: { type: 'number', default: 4 },
     minHeight: { type: 'number', default: 90 },
     maxHeight: { type: 'number', default: 165 },
-    verticalSpread: { type: 'number', default: 18 },
-    orientationVariation: { type: 'number', default: 12 },
+    verticalSpread: { type: 'number', default: 8 },
     minShade: { type: 'number', default: 0.86 },
     maxShade: { type: 'number', default: 1 },
     fieldRadius: { type: 'number', default: 360 },
@@ -339,7 +338,6 @@ registerComponent('weather-clouds', {
     shadowOpacity: { type: 'number', default: 0.16 },
     maxShadowGroups: { type: 'int', default: 6 },
     shapeUpdateMs: { type: 'number', default: 125 },
-    spriteFamily: { type: 'string', default: 'desert-underside' },
   },
 
   init: function () {
@@ -351,20 +349,11 @@ registerComponent('weather-clouds', {
     this.perpendicularX = -this.windZ;
     this.perpendicularZ = this.windX;
     this.sunDirection = new THREE.Vector3();
-    this.atlasTexture = new THREE.TextureLoader().load(
-      'assets/textures/weather-cloud-underside-atlas-v1.png'
-    );
-    this.atlasTexture.wrapS = THREE.ClampToEdgeWrapping;
-    this.atlasTexture.wrapT = THREE.ClampToEdgeWrapping;
     this.shadowTexture = this.makeShadowTexture();
     this.cloudGroups = [];
     this.shapeElapsedMs = 0;
     this.maxCloudSlots = this.data.groupCount * this.data.maxCloudsPerGroup;
-    this.cloudInward = new THREE.Vector3();
-    this.cloudWindTangent = new THREE.Vector3();
-    this.cloudAcrossTangent = new THREE.Vector3();
-    this.cloudOrientation = new THREE.Matrix4();
-    this.makeCloudBatches();
+    this.makeCloudBatch();
     this.makeShadowBatch();
     this.onDayNightChange = this.updateAppearance.bind(this);
     this.el.addEventListener('day-night-change', this.onDayNightChange);
@@ -377,74 +366,46 @@ registerComponent('weather-clouds', {
 
   remove: function () {
     this.el.removeEventListener('day-night-change', this.onDayNightChange);
-    this.cloudMeshes.forEach(function (mesh) {
-      this.scene.remove(mesh);
-      mesh.geometry.dispose();
-    }, this);
+    this.scene.remove(this.cloudMesh);
     this.scene.remove(this.shadowMesh);
+    this.cloudGeometry.dispose();
     this.cloudMaterial.dispose();
     this.shadowGeometry.dispose();
     this.shadowMaterial.dispose();
     this.shadowTexture.dispose();
-    this.atlasTexture.dispose();
   },
 
-  makeCloudBatches: function () {
-    this.cloudMaterial = new THREE.MeshBasicMaterial({
-      map: this.atlasTexture,
-      transparent: true,
-      depthWrite: false,
+  makeCloudBatch: function () {
+    // Detail zero is just 12 pentagonal faces (36 GPU triangles). Flat Lambert
+    // shading gives each puff a deliberately faceted silhouette while it still
+    // responds to the shared sun, moon, and ambient environment lights.
+    this.cloudGeometry = new THREE.DodecahedronGeometry(0.5, 0);
+    this.cloudMaterial = new THREE.MeshLambertMaterial({
+      color: '#ffffff',
+      flatShading: true,
+      depthWrite: true,
       depthTest: true,
-      side: THREE.FrontSide,
-      alphaTest: 0.025,
-      opacity: 0.86,
     });
-    this.cloudMeshes = [];
     this.cloudDummy = new THREE.Object3D();
     this.cloudTint = new THREE.Color();
-    for (var tile = 0; tile < 8; tile += 1) {
-      // A shallow 4x4 underside keeps the atlas-card renderer cheap while
-      // preventing distant clouds from collapsing into perfectly flat lines.
-      // Runtime orientation points the front face at the world's fixed ground
-      // anchor, never the headset, so mobile GPUs only shade one side.
-      var geometry = new THREE.PlaneGeometry(1, 1, 4, 4);
-      var positions = geometry.attributes.position;
-      for (var vertex = 0; vertex < positions.count; vertex += 1) {
-        var normalizedX = positions.getX(vertex) * 2;
-        var normalizedY = positions.getY(vertex) * 2;
-        var radius = Math.min(1, Math.sqrt(normalizedX * normalizedX + normalizedY * normalizedY));
-        positions.setZ(vertex, Math.max(0, 1 - radius * radius));
-      }
-      positions.needsUpdate = true;
-      geometry.computeVertexNormals();
-      var uv = geometry.attributes.uv;
-      var paddingU = 0.006;
-      var paddingV = 0.012;
-      var column = tile % 4;
-      var row = Math.floor(tile / 4);
-      var u0 = column * 0.25 + paddingU;
-      var u1 = (column + 1) * 0.25 - paddingU;
-      var v0 = row * 0.5 + paddingV;
-      var v1 = (row + 1) * 0.5 - paddingV;
-      for (var uvIndex = 0; uvIndex < uv.count; uvIndex += 1) {
-        var sourceU = uv.getX(uvIndex);
-        var sourceV = uv.getY(uvIndex);
-        uv.setXY(uvIndex, u0 + sourceU * (u1 - u0), v0 + sourceV * (v1 - v0));
-      }
-      uv.needsUpdate = true;
-      var mesh = new THREE.InstancedMesh(geometry, this.cloudMaterial, this.maxCloudSlots);
-      mesh.name = 'cloud-atlas-tile-' + tile;
-      mesh.count = 0;
-      mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-      mesh.userData.weatherCloud = true;
-      mesh.renderOrder = 0;
-      mesh.boundingSphere = new THREE.Sphere(
-        new THREE.Vector3(0, (this.data.minHeight + this.data.maxHeight) * 0.5, 0),
-        this.data.fieldRadius * 1.55
-      );
-      this.cloudMeshes.push(mesh);
-      this.scene.add(mesh);
-    }
+    this.cloudMesh = new THREE.InstancedMesh(
+      this.cloudGeometry,
+      this.cloudMaterial,
+      this.maxCloudSlots
+    );
+    this.cloudMesh.name = 'low-poly-cloud-puffs';
+    this.cloudMesh.count = 0;
+    this.cloudMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.cloudMesh.userData.weatherCloud = true;
+    this.cloudMesh.userData.lowPriorityShadow = true;
+    this.cloudMesh.castShadow = false;
+    this.cloudMesh.receiveShadow = false;
+    this.cloudMesh.renderOrder = 0;
+    this.cloudMesh.boundingSphere = new THREE.Sphere(
+      new THREE.Vector3(0, (this.data.minHeight + this.data.maxHeight) * 0.5, 0),
+      this.data.fieldRadius * 1.55
+    );
+    this.scene.add(this.cloudMesh);
   },
 
   makeShadowBatch: function () {
@@ -541,7 +502,7 @@ registerComponent('weather-clouds', {
   configureGroupClouds: function (group) {
     var count = this.data.minCloudsPerGroup + Math.floor(Math.random() *
       (this.data.maxCloudsPerGroup - this.data.minCloudsPerGroup + 1));
-    var spread = 18 + (1 - group.density) * 48;
+    var spread = 5 + (1 - group.density) * 16;
     group.clouds.length = 0;
     var minX = Infinity;
     var maxX = -Infinity;
@@ -552,28 +513,25 @@ registerComponent('weather-clouds', {
     var altitudeFactor = this.clamp((group.height - this.data.minHeight) / altitudeRange, 0, 1);
     var sizeCeiling = this.data.minSize + (this.data.maxSize - this.data.minSize) *
       (0.55 + altitudeFactor * 0.45);
-    var orientationVariation = this.data.orientationVariation * Math.PI / 180;
-    var roundedTiles = [0, 1, 2, 4, 6, 7];
-    var wispyTiles = [3, 5];
-
     for (var i = 0; i < count; i += 1) {
       var angle = Math.random() * Math.PI * 2;
-      var distance = spread * Math.pow(Math.random(), 0.78);
+      // Anchor each system with one central puff, then overlap the rest into an
+      // irregular formation instead of scattering obvious individual objects.
+      var distance = i === 0 ? 0 : spread * Math.pow(Math.random(), 0.72);
       var size = this.randomBetween(this.data.minSize, sizeCeiling);
-      // The atlas already contains each silhouette's aspect ratio. Stretching
-      // the two wispy cells a second time made them look like edge-on cards.
-      var isWispy = Math.random() < 0.14;
-      var tilePool = isWispy ? wispyTiles : roundedTiles;
-      var width = size * this.randomBetween(1, isWispy ? 1.18 : 1.32);
-      var depth = size * this.randomBetween(0.9, 1.14);
+      var width = size * this.randomBetween(1, 1.38);
+      var depth = size * this.randomBetween(0.82, 1.2);
       var cloud = {
         offsetX: Math.cos(angle) * distance,
         offsetZ: Math.sin(angle) * distance,
         height: group.height + this.randomBetween(-this.data.verticalSpread, this.data.verticalSpread),
         width: width,
         depth: depth,
-        rotation: this.randomBetween(-orientationVariation, orientationVariation),
-        tile: tilePool[Math.floor(Math.random() * tilePool.length)],
+        thickness: size * this.randomBetween(0.48, 0.82),
+        rotationX: this.randomBetween(-0.12, 0.12),
+        rotationY: Math.random() * Math.PI * 2,
+        rotationZ: this.randomBetween(-0.1, 0.1),
+        shadeVariation: this.randomBetween(0.94, 1.04),
         sizeScale: this.randomBetween(0.88, 1.12),
         sizeVelocity: this.data.sizeChangeRate * this.randomBetween(0.55, 1.25) *
           (Math.random() < 0.5 ? -1 : 1),
@@ -605,56 +563,41 @@ registerComponent('weather-clouds', {
     }
   },
 
-  updateCloudBatches: function () {
+  updateCloudBatch: function () {
     var i;
-    for (i = 0; i < this.cloudMeshes.length; i += 1) this.cloudMeshes[i].count = 0;
-    var nightFactor = 0.38 + this.daylight * 0.62;
+    this.cloudMesh.count = 0;
+    // The Lambert material already follows the celestial lights. This small
+    // tint shift keeps moonlit clouds legible without lighting them twice.
+    var nightFactor = 0.76 + this.daylight * 0.24;
     var dummy = this.cloudDummy;
     for (i = 0; i < this.cloudGroups.length; i += 1) {
       var group = this.cloudGroups[i];
       var presence = this.getGroupPresence(group);
       if (presence <= 0.01) continue;
       var formationScale = 0.12 + presence * 0.88;
-      var shade = group.shade * nightFactor;
-      this.cloudTint.setRGB(shade * 0.96, shade * 0.98, Math.min(1, shade + 0.045));
       for (var cloudIndex = 0; cloudIndex < group.clouds.length; cloudIndex += 1) {
         var cloud = group.clouds[cloudIndex];
-        var mesh = this.cloudMeshes[cloud.tile];
-        var instance = mesh.count;
+        var instance = this.cloudMesh.count;
+        var shade = group.shade * cloud.shadeVariation * nightFactor;
+        this.cloudTint.setRGB(shade * 0.96, shade * 0.98, Math.min(1, shade + 0.045));
         var worldX = group.x + cloud.offsetX;
         var worldZ = group.z + cloud.offsetZ;
         dummy.position.set(worldX, cloud.height, worldZ);
-        this.cloudInward.set(-worldX, -cloud.height, -worldZ).normalize();
-        this.cloudWindTangent.set(this.windX, 0, this.windZ);
-        this.cloudWindTangent.addScaledVector(
-          this.cloudInward,
-          -this.cloudWindTangent.dot(this.cloudInward)
-        ).normalize();
-        this.cloudAcrossTangent.crossVectors(this.cloudInward, this.cloudWindTangent).normalize();
-        this.cloudOrientation.makeBasis(
-          this.cloudWindTangent,
-          this.cloudAcrossTangent,
-          this.cloudInward
-        );
-        dummy.quaternion.setFromRotationMatrix(this.cloudOrientation);
-        dummy.rotateZ(cloud.rotation);
+        dummy.rotation.set(cloud.rotationX, cloud.rotationY, cloud.rotationZ);
         dummy.scale.set(
           cloud.width * cloud.sizeScale * formationScale,
-          cloud.depth * cloud.sizeScale * formationScale,
-          cloud.depth * 0.075 * cloud.sizeScale * formationScale
+          cloud.thickness * cloud.sizeScale * formationScale,
+          cloud.depth * cloud.sizeScale * formationScale
         );
         dummy.updateMatrix();
-        mesh.setMatrixAt(instance, dummy.matrix);
-        mesh.setColorAt(instance, this.cloudTint);
-        mesh.count = instance + 1;
+        this.cloudMesh.setMatrixAt(instance, dummy.matrix);
+        this.cloudMesh.setColorAt(instance, this.cloudTint);
+        this.cloudMesh.count = instance + 1;
       }
     }
-    for (i = 0; i < this.cloudMeshes.length; i += 1) {
-      var cloudMesh = this.cloudMeshes[i];
-      cloudMesh.visible = cloudMesh.count > 0;
-      cloudMesh.instanceMatrix.needsUpdate = true;
-      if (cloudMesh.instanceColor) cloudMesh.instanceColor.needsUpdate = true;
-    }
+    this.cloudMesh.visible = this.cloudMesh.count > 0;
+    this.cloudMesh.instanceMatrix.needsUpdate = true;
+    if (this.cloudMesh.instanceColor) this.cloudMesh.instanceColor.needsUpdate = true;
   },
 
   getGroupPresence: function (group) {
@@ -764,7 +707,7 @@ registerComponent('weather-clouds', {
     for (var i = 0; i < this.cloudGroups.length; i += 1) {
       this.updateGroup(this.cloudGroups[i], elapsed, shapeSeconds);
     }
-    this.updateCloudBatches();
+    this.updateCloudBatch();
     this.updateShadowBatch(cycle);
   },
 

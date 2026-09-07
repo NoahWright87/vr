@@ -6,6 +6,7 @@ const page = readFileSync(new URL('../games/pistols-at-dawn/index.html', import.
 const core = readFileSync(new URL('../games/pistols-at-dawn/js/core.js', import.meta.url), 'utf8');
 const hands = readFileSync(new URL('../games/pistols-at-dawn/js/core-hand-rig.js', import.meta.url), 'utf8');
 const menu = readFileSync(new URL('../games/pistols-at-dawn/js/world-menu.js', import.meta.url), 'utf8');
+const dayNight = readFileSync(new URL('../games/pistols-at-dawn/js/world-day-night.js', import.meta.url), 'utf8');
 
 const definitions = {};
 globalThis.registerComponent = (name, definition) => { definitions[name] = definition; };
@@ -64,6 +65,13 @@ test('future models use a simple proxy while visual meshes skip raycasts', () =>
   assert.match(core, /registerComponent\('model-prop'/);
   assert.match(core, /classList\.add\('model-hitbox'\)/);
   assert.match(core, /object\.raycast = ignoreModelRaycast/);
+});
+
+test('weather clouds use one opaque, very-low-poly instanced batch', () => {
+  assert.match(dayNight, /new THREE\.DodecahedronGeometry\(0\.5, 0\)/);
+  assert.match(dayNight, /this\.cloudMesh = new THREE\.InstancedMesh/);
+  assert.match(dayNight, /maxCloudSlots = this\.data\.groupCount \* this\.data\.maxCloudsPerGroup/);
+  assert.doesNotMatch(dayNight, /cloudMeshes|cloud-atlas-tile|transparent: true,[\s\S]{0,100}flatShading/);
 });
 
 test('Pistols texture assets stay within the standalone-headset budget', () => {
