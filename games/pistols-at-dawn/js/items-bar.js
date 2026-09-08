@@ -30,11 +30,18 @@
       var BOTTLE_BASE_Y = -0.2225; // local y of the bottom of the bottle
       var BOTTLE_CAP_Y = 0.049;
       var BOTTLE_SPOUT_Y = 0.043;
+      var BOTTLE_GLASS_TEXTURE = 'assets/textures/olive-bottle-glass-v1.png';
+      var BOTTLE_LABEL_TEXTURES = {
+        sunset: 'assets/textures/label-sunset-lager-v1.png',
+        canyon: 'assets/textures/label-canyon-ale-v1.png',
+        prairie: 'assets/textures/label-prairie-stout-v1.png',
+      };
 
       registerComponent('boxy-bottle', {
         schema: {
           glass: { type: 'color', default: '#3f6b3a' },
           label: { type: 'color', default: '#d9c27a' },
+          labelVariant: { type: 'string', default: 'sunset' },
         },
 
         init: function () {
@@ -54,9 +61,13 @@
             return c;
           }
 
-          addCylinder(0.042, 0.135, -0.155, glass, 0.85); // body
-          addCylinder(0.0425, 0.05, -0.16, this.data.label, 1); // paper label
-          addCylinder(0.018, 0.075, 0.005, glass, 0.85); // neck
+          var body = addCylinder(0.042, 0.135, -0.155, glass, 0.85); // body
+          body.setAttribute('material', { src: BOTTLE_GLASS_TEXTURE, color: glass, opacity: 0.85, transparent: true, shader: 'flat' });
+          var label = addCylinder(0.0425, 0.05, -0.16, this.data.label, 1); // paper label
+          var labelTexture = BOTTLE_LABEL_TEXTURES[this.data.labelVariant] || BOTTLE_LABEL_TEXTURES.sunset;
+          label.setAttribute('material', { src: labelTexture, color: '#ffffff', shader: 'flat' });
+          var neck = addCylinder(0.018, 0.075, 0.005, glass, 0.85); // neck
+          neck.setAttribute('material', { src: BOTTLE_GLASS_TEXTURE, color: glass, opacity: 0.85, transparent: true, shader: 'flat' });
 
           var shoulder = document.createElement('a-entity');
           shoulder.setAttribute('geometry', {
@@ -66,6 +77,7 @@
             height: 0.055,
           });
           shoulder.setAttribute('material', 'color: ' + glass + '; opacity: 0.85; transparent: true');
+          shoulder.setAttribute('material', { src: BOTTLE_GLASS_TEXTURE, color: glass, opacity: 0.85, transparent: true, shader: 'flat' });
           shoulder.setAttribute('position', { x: 0, y: -0.06, z: 0 });
           el.appendChild(shoulder);
 

@@ -47,6 +47,14 @@
           slab.setAttribute('height', opts.thickness);
           slab.setAttribute('depth', runLength + opts.overhang);
           slab.setAttribute('color', opts.color);
+          if (opts.texture) {
+            slab.setAttribute('material', {
+              src: opts.texture,
+              repeat: opts.textureRepeat || '4 4',
+              color: '#ffffff',
+              shader: 'flat',
+            });
+          }
           slab.setAttribute('position', { x: 0, y: (ridgeY + farY) / 2, z: farZ / 2 });
           slab.setAttribute('rotation', { x: (Math.atan2(-dirY, dirZ) * 180) / Math.PI, y: 0, z: 0 });
           parentEl.appendChild(slab);
