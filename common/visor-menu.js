@@ -38,6 +38,11 @@ if (typeof AFRAME !== 'undefined') {
   // Leaving takes more room than arriving, so a hand resting on the
   // boundary doesn't flicker the pip.
   var TEMPLE_EXIT_MARGIN = 0.05;
+  // A wider box around the temple zone. A hand inside THIS is on its
+  // way; a hand inside the zone proper is there. The pip is drawn only
+  // once you are on your way, so at rest there is nothing at the edge
+  // of vision at all.
+  var TEMPLE_APPROACH_MARGIN = 0.14;
   // A hand swung past your ear is not a menu press.
   var TEMPLE_MAX_SPEED = 0.7;
 
@@ -177,6 +182,8 @@ if (typeof AFRAME !== 'undefined') {
       fill.object3D.scale.y = 0.001;
       pip.appendChild(fill);
 
+      pip.object3D.visible = false;
+      fill.object3D.visible = false;
       this.cameraEl.appendChild(pip);
       this.pips[side] = { el: pip, trackEl: track, fillEl: fill, height: data.distance * 0.17 };
     },
@@ -278,18 +285,29 @@ if (typeof AFRAME !== 'undefined') {
 
     tick: function (time, delta) {
       var mode = this.sceneEl.systems['control-mode'];
-      if (!mode || !mode.isMode('xr') || !this.cameraEl) return;
-      if (!this.hands.length) return;
+      // Off a headset there is no hand to hold to your head, so the pip
+      // advertises a gesture that does not exist — and a permanent bar
+      // at the edge of vision reads as a menu that failed to close
+      // rather than as a hint. Backtick and the corner button are the
+      // flat story; the pips are XR-only.
+      if (!mode || !mode.isMode('xr') || !this.cameraEl) return this.hidePips();
+      if (!this.hands.length) return this.hidePips();
 
       var candidate = null;
+      var approaching = {};
       for (var i = 0; i < this.hands.length; i++) {
         var handEl = this.hands[i];
-        var side = this.templeSideFor(handEl, delta);
-        if (side && this.panels[side]) {
-          candidate = { handEl: handEl, side: side };
-          break;
+        // Once per hand per frame: reading the pose twice would measure
+        // the second reading against the first and always see a
+        // stationary hand, quietly disabling the speed guard.
+        var state = this.readHand(handEl, delta);
+        if (!state) continue;
+        if (state.approachSide) approaching[state.approachSide] = true;
+        if (state.side && this.panels[state.side] && !candidate) {
+          candidate = { handEl: handEl, side: state.side };
         }
       }
+      for (var ps in this.pips) this.setPipPresence(ps, Boolean(approaching[ps]), ps === (candidate && candidate.side));
 
       // Holding at your temple while that side is already open is how
       // you close it again — the same gesture both ways, like the key.
@@ -320,7 +338,10 @@ if (typeof AFRAME !== 'undefined') {
       }
     },
 
-    templeSideFor: function (handEl, delta) {
+    // Everything the gesture needs to know about one hand this frame:
+    // where it is in head space, how fast it is moving, whether it is on
+    // its way to a temple, and whether it has arrived.
+    readHand: function (handEl, delta) {
       var semantic = handEl.components['semantic-hand'];
       if (semantic && semantic.heldEl) return null;
 
@@ -330,30 +351,57 @@ if (typeof AFRAME !== 'undefined') {
       if (previous && delta > 0) speed = previous.distanceTo(this._local) / (delta / 1000);
       if (!previous) this._previous[handEl.id] = new THREE.Vector3();
       this._previous[handEl.id].copy(this._local);
-      if (speed > TEMPLE_MAX_SPEED) return null;
 
       this.cameraEl.object3D.updateMatrixWorld(true);
       this.cameraEl.object3D.worldToLocal(this._local);
 
-      var engaged = this.dwellFor;
-      var margin = engaged ? TEMPLE_EXIT_MARGIN : 0;
+      var approachSide = insideTemple(this._local, TEMPLE_APPROACH_MARGIN)
+        ? (this._local.x < 0 ? 'left' : 'right')
+        : null;
+
+      // A hand swung past your ear is not a menu press. The pip may
+      // still show — you can see where you are heading — but the dwell
+      // does not start.
+      if (speed > TEMPLE_MAX_SPEED) return { approachSide: approachSide, side: null };
+
+      var margin = this.dwellFor ? TEMPLE_EXIT_MARGIN : 0;
       if (!insideTemple(this._local, margin)) {
         // Leaving the zone is what re-arms the gesture.
         this.armedFor[handEl.id] = true;
-        return null;
+        return { approachSide: approachSide, side: null };
       }
-      if (this.armedFor[handEl.id] === false) return null;
+      if (this.armedFor[handEl.id] === false) return { approachSide: approachSide, side: null };
       // The side of your head the hand is on, not which hand it is.
-      return this._local.x < 0 ? 'left' : 'right';
+      return { approachSide: approachSide, side: this._local.x < 0 ? 'left' : 'right' };
+    },
+
+    // Present only while a hand is on its way to the temple, and
+    // brighter once it has arrived.
+    setPipPresence: function (side, approaching, arrived) {
+      var pip = this.pips[side];
+      if (!pip) return;
+      pip.el.object3D.visible = approaching;
+      if (!approaching) {
+        this.setPipProgress(side, 0);
+        return;
+      }
+      pip.trackEl.setAttribute('material', 'opacity', arrived ? 0.5 : 0.2);
+    },
+
+    hidePips: function () {
+      for (var side in this.pips) {
+        if (this.pips[side].el.object3D.visible) this.setPipPresence(side, false, false);
+      }
     },
 
     setPipProgress: function (side, progress) {
       var pip = this.pips[side];
       if (!pip) return;
+      // Hidden rather than left as a bright sliver at zero.
+      pip.fillEl.object3D.visible = progress > 0.01;
       pip.fillEl.object3D.scale.y = Math.max(0.001, progress);
       // Grows from the bottom rather than the middle.
       pip.fillEl.object3D.position.y = -pip.height * (1 - progress) / 2;
-      pip.trackEl.setAttribute('material', 'opacity', progress > 0 ? 0.4 : 0.16);
     },
 
     remove: function () {
