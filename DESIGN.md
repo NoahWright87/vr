@@ -577,6 +577,14 @@ it. It now lands on the panel's own close button, which you then
 confirm. That also drags the title bar's controls into the focus ring,
 so a close button stops being something only a pointer can reach.
 
+**A menu does not own whether it exists.** Closing one used to hide the
+panel outright, which is right for a watch (the wrist dropped) and for
+the visor (the hand left the temple), and wrong for a panel standing in
+a room — it deleted the thing from the world with no way to get it
+back. Those surfaces have a trigger that owns their visibility; a world
+panel is its own trigger. So closing collapses it to its title bar,
+where its prompt still offers it, rather than removing it.
+
 **Assistance has to be visible before it acts.** A menu that quietly
 takes your thumbstick is indistinguishable from a broken thumbstick.
 When a hand's stick is about to drive a menu instead of the player,

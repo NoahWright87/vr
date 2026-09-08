@@ -74,6 +74,13 @@ if (typeof AFRAME !== 'undefined') {
 
   var panelSerial = 0;
 
+  // Breadcrumb titles are drawn a letter at a time so they can fly into
+  // place; these bound the pool and set the glyph pitch.
+  var CRUMB_MAX_CHARS = 18;
+  var CRUMB_WRAP = 18;
+  var CRUMB_FLY_MS = 260;
+  var CRUMB_STAGGER_MS = 22;
+
   function truncate(text, maxChars) {
     if (!maxChars || text.length <= maxChars) return text;
     return text.slice(0, Math.max(1, maxChars - 1)) + '…';
@@ -102,6 +109,15 @@ if (typeof AFRAME !== 'undefined') {
       side: { default: 'left', oneOf: ['left', 'right'] },
       maxChars: { default: 22 },
       open: { default: true },
+      // What closing means, which is the surface's business rather than
+      // the menu's. A watch panel vanishes because the wrist dropped;
+      // the visor's does because the hand left the temple. A panel
+      // standing in the room has no such trigger, so it collapses to
+      // its title bar and stays there to be re-entered — otherwise
+      // closing it deletes it from the world with no way back.
+      closeBehavior: { default: 'collapse', oneOf: ['collapse', 'hide'] },
+      // Per-letter fly-in for the breadcrumb title. 'none' snaps.
+      titleMotion: { default: 'fly', oneOf: ['fly', 'none'] },
       // How close a hand has to be before its thumbstick drives this
       // menu instead of the player.
       stickRange: { default: 0.9 },
@@ -300,23 +316,43 @@ if (typeof AFRAME !== 'undefined') {
       // edge, with ancestors pushed further out and faded. Tapping any
       // of them goes up exactly one level — never several — so the
       // gesture means the same thing wherever you hit it.
+      //
+      // Built one character at a time rather than as a single a-text,
+      // because the letters have to fly into place individually when
+      // you change level: one text mesh can only move as a block.
       for (var c = 0; c < Math.max(0, data.breadcrumbDepth); c++) {
-        var crumb = document.createElement('a-text');
-        crumb.classList.add('menu-target');
-        crumb.setAttribute('color', data.accent);
-        crumb.setAttribute('align', 'center');
-        crumb.setAttribute('width', data.width * 0.92);
-        crumb.setAttribute('wrapCount', 18);
+        var crumb = document.createElement('a-entity');
         crumb.setAttribute('rotation', '0 0 ' + (outward < 0 ? 90 : -90));
         crumb.setAttribute('position', {
           x: outward * (data.width / 2 + 0.05 + c * 0.075),
           y: 0,
           z: 0.002,
         });
-        crumb.object3D.visible = false;
-        crumb.addEventListener('click', this.onCrumbClick);
+
+        // A hit target for pointing, since individual letters are far
+        // too small to aim at.
+        var crumbTarget = document.createElement('a-entity');
+        crumbTarget.classList.add('menu-target');
+        crumbTarget.setAttribute('geometry', 'primitive: plane; width: ' + data.rowHeight * (data.windowSize * 0.7) + '; height: ' + data.rowHeight * 0.7);
+        crumbTarget.setAttribute('material', 'color: ' + data.accent + '; shader: flat; opacity: 0; transparent: true; depthWrite: false');
+        crumbTarget.addEventListener('click', this.onCrumbClick);
+        crumb.appendChild(crumbTarget);
+
+        var chars = [];
+        for (var ci = 0; ci < CRUMB_MAX_CHARS; ci++) {
+          var charEl = document.createElement('a-text');
+          charEl.setAttribute('value', '');
+          charEl.setAttribute('align', 'center');
+          charEl.setAttribute('color', data.accent);
+          charEl.setAttribute('width', data.width * 0.92);
+          charEl.setAttribute('wrapCount', CRUMB_WRAP);
+          charEl.object3D.visible = false;
+          crumb.appendChild(charEl);
+          chars.push(charEl);
+        }
+
         this.el.appendChild(crumb);
-        this.crumbs.push(crumb);
+        this.crumbs.push({ el: crumb, chars: chars, targetEl: crumbTarget, title: '' });
       }
 
       // The engaged-panel outline. Its whole job is to answer "is my
@@ -372,9 +408,25 @@ if (typeof AFRAME !== 'undefined') {
 
     render: function () {
       var data = this.data;
-      var visible = this.menu.isOpen;
-      this.el.object3D.visible = visible;
-      if (!visible) return;
+      var open = this.menu.isOpen;
+
+      // Closed does not have to mean gone. A panel set to collapse keeps
+      // its backing and title so it still reads as a thing in the room,
+      // and keeps its hint zone so E opens it again.
+      var collapsed = !open && data.closeBehavior === 'collapse';
+      this.el.object3D.visible = open || collapsed;
+      if (this.footerEl && !open) this.footerEl.object3D.visible = false;
+      if (this.titleEl) this.titleEl.setAttribute('text', 'opacity', open ? (this.locked ? 1 : 0.6) : 0.4);
+      if (collapsed) {
+        for (var h = 0; h < this.rows.length; h++) this.rows[h].el.object3D.visible = false;
+        for (var hc = 0; hc < this.crumbs.length; hc++) this.setCrumb(this.crumbs[hc], '', hc, false);
+        if (this.closeEl) this.closeEl.object3D.visible = false;
+        if (this.backingEl) this.backingEl.setAttribute('material', 'opacity', 0.35);
+        return;
+      }
+      if (!open) return;
+      if (this.closeEl) this.closeEl.object3D.visible = true;
+      if (this.backingEl) this.backingEl.setAttribute('material', 'opacity', this.locked ? 0.82 : 0.55);
 
       var half = (data.windowSize - 1) / 2;
       var inChrome = this.menu.inChrome();
@@ -437,18 +489,115 @@ if (typeof AFRAME !== 'undefined') {
 
       var crumbs = this.menu.getBreadcrumbs();
       for (var c = 0; c < this.crumbs.length; c++) {
-        var crumbEl = this.crumbs[c];
         var crumb = crumbs[c];
-        if (!crumb) {
-          crumbEl.object3D.visible = false;
+        this.setCrumb(this.crumbs[c], crumb ? crumb.title : '', c, true);
+      }
+    },
+
+    // ---------- the breadcrumb title, a letter at a time ----------
+
+    // Letters fly in from the row that opened the level and out toward
+    // it again on the way back, so going a level deeper reads as the
+    // item you picked becoming the heading rather than as one label
+    // being swapped for another.
+    setCrumb: function (crumb, title, depth, animate) {
+      var text = truncate(title || '', CRUMB_MAX_CHARS);
+      if (crumb.title === text) return;
+      var previous = crumb.title;
+      crumb.title = text;
+
+      var data = this.data;
+      var advance = (data.width * 0.92) / CRUMB_WRAP;
+      var opacity = FADE[Math.min(depth, FADE.length - 1)];
+      var fly = animate && data.titleMotion === 'fly';
+      var now = (this.el.sceneEl && this.el.sceneEl.time) || performance.now();
+
+      // Where the letters come from and return to: the focused row,
+      // expressed in this rail's own space.
+      var origin = null;
+      if (fly) {
+        var focusedRow = this.rows.length ? this.rows[(this.rows.length - 1) / 2 | 0] : null;
+        if (focusedRow) {
+          focusedRow.el.object3D.getWorldPosition(this._handPosition);
+          crumb.el.object3D.updateMatrixWorld(true);
+          origin = crumb.el.object3D.worldToLocal(this._handPosition.clone());
+        }
+      }
+
+      for (var i = 0; i < crumb.chars.length; i++) {
+        var charEl = crumb.chars[i];
+        var glyph = text.charAt(i);
+        var targetX = (i - (text.length - 1) / 2) * advance;
+
+        if (!glyph) {
+          // Letters that are no longer part of the title fly back out
+          // rather than blinking off.
+          if (previous.charAt(i) && fly && origin) {
+            this.animateChar(charEl, now, i, charEl.object3D.position.clone(),
+              origin, charEl._opacity || opacity, 0, true);
+          } else {
+            charEl.object3D.visible = false;
+            charEl._anim = null;
+          }
           continue;
         }
-        crumbEl.object3D.visible = true;
-        crumbEl.setAttribute('text', {
-          value: crumb.title,
-          opacity: FADE[Math.min(c, FADE.length - 1)],
-          wrapCount: Math.max(16, crumb.title.length),
-        });
+
+        charEl.setAttribute('value', glyph);
+        charEl.object3D.visible = true;
+        if (!fly || !origin) {
+          charEl.object3D.position.set(targetX, 0, 0);
+          this.setCharOpacity(charEl, opacity);
+          charEl._anim = null;
+          continue;
+        }
+        var from = previous.charAt(i) ? charEl.object3D.position.clone() : origin.clone();
+        this.animateChar(charEl, now, i, from, new THREE.Vector3(targetX, 0, 0),
+          previous.charAt(i) ? (charEl._opacity || 0) : 0, opacity, false);
+      }
+    },
+
+    animateChar: function (charEl, now, index, from, to, fromOpacity, toOpacity, hideAfter) {
+      charEl._anim = {
+        t0: now,
+        delay: index * CRUMB_STAGGER_MS,
+        from: from,
+        to: to.clone ? to.clone() : to,
+        o0: fromOpacity,
+        o1: toOpacity,
+        hideAfter: hideAfter,
+      };
+      charEl.object3D.position.copy(from);
+      this.setCharOpacity(charEl, fromOpacity);
+    },
+
+    // Straight at the material, not through setAttribute: this runs for
+    // every letter every frame while a title is moving, and a-text's
+    // update path does more work than assigning a uniform.
+    setCharOpacity: function (charEl, value) {
+      charEl._opacity = value;
+      var mesh = charEl.getObject3D('mesh');
+      if (mesh && mesh.material) mesh.material.opacity = value;
+    },
+
+    tick: function (time) {
+      if (!this.crumbs.length) return;
+      for (var c = 0; c < this.crumbs.length; c++) {
+        var chars = this.crumbs[c].chars;
+        for (var i = 0; i < chars.length; i++) {
+          var charEl = chars[i];
+          var anim = charEl._anim;
+          if (!anim) continue;
+          var progress = (time - anim.t0 - anim.delay) / CRUMB_FLY_MS;
+          if (progress < 0) continue;
+          if (progress >= 1) {
+            progress = 1;
+            charEl._anim = null;
+            if (anim.hideAfter) charEl.object3D.visible = false;
+          }
+          var eased = 1 - Math.pow(1 - progress, 3);
+          charEl.object3D.position.lerpVectors(anim.from, anim.to, eased);
+          this.setCharOpacity(charEl, anim.o0 + (anim.o1 - anim.o0) * eased);
+        }
       }
     },
 
@@ -485,12 +634,6 @@ if (typeof AFRAME !== 'undefined') {
         this.glowEl.object3D.visible = locked || Boolean(this.engagedHand);
         this.glowEl.setAttribute('material', 'opacity', locked ? 0.75 : 0.3);
       }
-      if (this.backingEl) {
-        this.backingEl.setAttribute('material', 'opacity', locked ? 0.82 : 0.55);
-      }
-      if (this.titleEl) {
-        this.titleEl.setAttribute('text', 'opacity', locked ? 1 : 0.6);
-      }
       if (this.footerEl) {
         this.footerEl.setAttribute('value', 'W/S move   D enter   A back   E exit');
         this.footerEl.object3D.visible = locked;
@@ -499,6 +642,7 @@ if (typeof AFRAME !== 'undefined') {
       // says how to leave instead.
       this.el.setAttribute('hint-zone', 'desktopLabel', locked ? 'Exit menu' : this.data.hintLabel);
       this.el.emit(locked ? 'crossbar-menu-locked' : 'crossbar-menu-unlocked', {}, false);
+      this.render();
     },
 
     setEngagedHand: function (handEl) {
@@ -624,6 +768,9 @@ if (typeof AFRAME !== 'undefined') {
       for (var m = 0; m < this.menus.length; m++) {
         if (this.menus[m].menu.isOpen) menus.push(this.menus[m]);
       }
+      // Closing the menu you are holding hands the controls straight
+      // back, whether it collapsed or vanished.
+      if (this.lockedMenu && !this.lockedMenu.menu.isOpen) this.unlock();
 
       // Off a headset there are no thumbsticks to take, so hands never
       // engage — a simulated desktop hand drifting near a panel would
@@ -745,14 +892,22 @@ if (typeof AFRAME !== 'undefined') {
       var candidate = hints.getDesktopCandidate('menu');
       if (!candidate || !candidate.zone) return null;
       var component = candidate.zone.el.components['crossbar-menu'];
-      return component && component.menu.isOpen ? component : null;
+      if (!component) return null;
+      // A collapsed panel is still offerable — that is the whole point
+      // of collapsing rather than vanishing. Entering it opens it.
+      return (component.menu.isOpen || component.data.closeBehavior === 'collapse')
+        ? component
+        : null;
     },
 
     lock: function (component) {
       if (this.lockedMenu === component) return;
       if (this.lockedMenu) this.lockedMenu.setLocked(false);
       this.lockedMenu = component || null;
-      if (component) component.setLocked(true);
+      if (component) {
+        if (!component.menu.isOpen) component.menu.open();
+        component.setLocked(true);
+      }
       // Both the keyboard path (desktop-controls' own tick) and the
       // joystick path (locomotion) check this, so entering a menu
       // suspends walking without either of them needing to know what a
