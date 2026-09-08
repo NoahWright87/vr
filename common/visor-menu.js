@@ -1,0 +1,363 @@
+// ============================================================
+// VISOR MENU — the third surface of the shared menu system.
+//
+// A crossbar menu anchored to one side of your view and locked to your
+// head, the way a helmet display would be. It is the same
+// `crossbar-menu` as the watch and the wall panels, with four schema
+// values turned on: a curve, inboard text alignment, a one-sided
+// scrim, and (optionally) a single eye.
+//
+// What is new here is only how it OPENS, which is different on each
+// device for the same reason the watch is:
+//
+//   XR       hold an empty hand beside your head. A pip at the edge of
+//            vision lights and fills while you hold; when it is full
+//            the menu opens on that side, and that hand drives it.
+//   Desktop  backtick, next to Tab, which is the watch. A soft hint in
+//            the corner says so.
+//   Touch    the same hint, tapped.
+//
+// The side is chosen by which side of your head your hand is on, not
+// by which hand it is, so reaching across works. Only one visor menu is
+// open at a time.
+// ============================================================
+
+import './menu-crossbar.js';
+
+if (typeof AFRAME !== 'undefined') {
+  var THREE = AFRAME.THREE;
+
+  // The temple zone, in head-local metres. Beside and slightly BEHIND
+  // the eyes on purpose: that keeps it out of the volume where you hold
+  // something up to aim, which in Pistols is most of the time.
+  var TEMPLE = {
+    xMin: 0.13, xMax: 0.32,
+    yMin: -0.14, yMax: 0.12,
+    zMin: -0.08, zMax: 0.24,
+  };
+  // Leaving takes more room than arriving, so a hand resting on the
+  // boundary doesn't flicker the pip.
+  var TEMPLE_EXIT_MARGIN = 0.05;
+  // A hand swung past your ear is not a menu press.
+  var TEMPLE_MAX_SPEED = 0.7;
+
+  function insideTemple(local, margin) {
+    var m = margin || 0;
+    var x = Math.abs(local.x);
+    return x >= TEMPLE.xMin - m && x <= TEMPLE.xMax + m &&
+      local.y >= TEMPLE.yMin - m && local.y <= TEMPLE.yMax + m &&
+      local.z >= TEMPLE.zMin - m && local.z <= TEMPLE.zMax + m;
+  }
+
+  // ============================================================
+  // SYSTEM: visor-menu
+  // ============================================================
+  AFRAME.registerSystem('visor-menu', {
+    schema: {
+      leftPage: { type: 'string', default: '' },
+      rightPage: { type: 'string', default: '' },
+      // How long a hand has to stay at your temple. Long enough that
+      // brushing past your ear doesn't open anything, short enough that
+      // it doesn't feel like waiting.
+      dwellMs: { default: 1200 },
+      distance: { default: 1.8 },
+      key: { type: 'string', default: 'Backquote' },
+      hint: { default: true },
+    },
+
+    init: function () {
+      this.panels = {};
+      this.pips = {};
+      this.openSide = null;
+      this.hands = [];
+      // A hand has to leave the temple zone before it can open or close
+      // anything again. Without this, closing the menu with your hand
+      // still up simply reopens it a beat later, which reads as the
+      // menu refusing to close. Same re-arm shape as the stick detent
+      // and the punch tracker's hold-for-reset.
+      this.armedFor = {};
+      this._local = new THREE.Vector3();
+      this._previous = {};
+      this.onKeyDown = this.onKeyDown.bind(this);
+      window.addEventListener('keydown', this.onKeyDown);
+
+      var self = this;
+      this.sceneEl.addEventListener('loaded', function () {
+        self.build();
+      });
+    },
+
+    build: function () {
+      var data = this.data;
+      if (!data.leftPage && !data.rightPage) return;
+      var cameraEl = this.sceneEl.camera && this.sceneEl.camera.el;
+      if (!cameraEl) return;
+      this.cameraEl = cameraEl;
+
+      if (data.leftPage) this.buildSide('left', data.leftPage);
+      if (data.rightPage) this.buildSide('right', data.rightPage);
+
+      this.hands = Array.prototype.slice.call(document.querySelectorAll('[semantic-hand]'));
+      if (data.hint) this.buildFlatHint();
+    },
+
+    buildSide: function (side, page) {
+      var data = this.data;
+      var sign = side === 'left' ? -1 : 1;
+
+      // Head-locked: a child of the camera, at a fixed distance. The
+      // numbers come from the wireframes — a 1.8m focal distance,
+      // pitched a little below the horizon because resting gaze is not
+      // the horizon, and anchored so the rows sit 15-19 degrees off
+      // centre where they are readable without covering the middle.
+      var panel = document.createElement('a-entity');
+      panel.setAttribute('id', 'visor-menu-' + side);
+      // Placed by angle, not by eye. The wireframes put a visor menu's
+      // inboard edge at about 15 degrees off centre — outside the aim
+      // core, inside the readable band — and its outboard edge at about
+      // 32, where the glance band ends. For a panel 0.36 of the focal
+      // distance wide, that puts its centre at 0.45 of the distance to
+      // the side. Yawed to roughly face the eye rather than lying flat
+      // across the view.
+      panel.setAttribute('position', {
+        x: sign * data.distance * 0.45,
+        y: -data.distance * 0.035,
+        z: -data.distance,
+      });
+      panel.setAttribute('rotation', { x: 0, y: -sign * 22, z: 0 });
+      panel.setAttribute('crossbar-menu', {
+        page: page,
+        side: side,
+        align: 'inboard',
+        // The focused row bulges outboard; see FIG 05 in the design
+        // notes. 3.5 degrees at 1.8m.
+        curve: 0.11,
+        scrim: 0.7,
+        plate: false,
+        width: data.distance * 0.36,
+        rowHeight: data.distance * 0.078,
+        maxChars: 14,
+        windowSize: 5,
+        breadcrumbDepth: 1,
+        open: false,
+        closeBehavior: 'hide',
+        // The visor is transient — it should not strand you three
+        // levels deep because you closed it to shoot someone.
+        memory: 'temporary',
+        // A head-locked panel is never something you walk up to.
+        stickRange: 0,
+        hintLabel: '',
+      });
+      panel.setAttribute('crossbar-menu-registration', '');
+      this.cameraEl.appendChild(panel);
+      this.panels[side] = panel;
+
+      // The pip: a small bracket at the edge of vision on that side,
+      // dim until your hand is at your temple, then filling as you
+      // hold. Without it the gesture is invisible — you would be
+      // holding your hand next to your head hoping something happens.
+      var pip = document.createElement('a-entity');
+      // Just beyond the menu's outboard edge, so it is visible whether
+      // or not the menu is open and never sits under the rows.
+      pip.setAttribute('position', {
+        x: sign * data.distance * 0.68,
+        y: -data.distance * 0.035,
+        z: -data.distance,
+      });
+      pip.setAttribute('rotation', { x: 0, y: -sign * 30, z: 0 });
+
+      var track = document.createElement('a-entity');
+      track.setAttribute('geometry', 'primitive: plane; width: ' + data.distance * 0.022 + '; height: ' + data.distance * 0.17);
+      track.setAttribute('material', 'color: #7fe3ff; shader: flat; transparent: true; opacity: 0.16; depthWrite: false');
+      pip.appendChild(track);
+
+      var fill = document.createElement('a-entity');
+      fill.setAttribute('geometry', 'primitive: plane; width: ' + data.distance * 0.022 + '; height: ' + data.distance * 0.17);
+      fill.setAttribute('material', 'color: #7fe3ff; shader: flat; transparent: true; opacity: 0.95; depthWrite: false');
+      fill.object3D.scale.y = 0.001;
+      pip.appendChild(fill);
+
+      this.cameraEl.appendChild(pip);
+      this.pips[side] = { el: pip, trackEl: track, fillEl: fill, height: data.distance * 0.17 };
+    },
+
+    // A corner hint off a headset, so the key is discoverable rather
+    // than something you have to be told. Tappable, which is also the
+    // whole touch story.
+    buildFlatHint: function () {
+      var self = this;
+      var hint = document.createElement('button');
+      hint.type = 'button';
+      hint.className = 'visor-menu-hint';
+      hint.innerHTML = '<span class="visor-menu-key">`</span><span class="visor-menu-label">Visor</span>';
+      hint.setAttribute('aria-label', 'Open the visor menu');
+      var style = document.createElement('style');
+      style.textContent = [
+        '.visor-menu-hint{position:fixed;left:1rem;bottom:1rem;z-index:2;display:flex;align-items:center;gap:0.45rem;',
+        'padding:0.4rem 0.7rem;border-radius:6px;border:1px solid rgba(127,227,255,0.5);',
+        'background:rgba(8,16,26,0.72);color:#dff3ff;font:600 0.78rem/1 system-ui,sans-serif;',
+        'letter-spacing:0.06em;text-transform:uppercase;cursor:pointer}',
+        '.visor-menu-hint[hidden]{display:none}',
+        '.visor-menu-hint.is-open{background:rgba(127,227,255,0.22);border-color:#7fe3ff}',
+        '.visor-menu-key{display:inline-flex;align-items:center;justify-content:center;min-width:1.25rem;height:1.25rem;',
+        'border:1px solid rgba(127,227,255,0.7);border-radius:3px;font-size:0.85rem;line-height:1}',
+      ].join('');
+      document.head.appendChild(style);
+      hint.addEventListener('click', function (evt) {
+        evt.preventDefault();
+        self.toggle(self.openSide || 'left');
+      });
+      document.body.appendChild(hint);
+      this.hintEl = hint;
+
+      this.sceneEl.addEventListener('enter-vr', function () { hint.hidden = true; });
+      this.sceneEl.addEventListener('exit-vr', function () { hint.hidden = false; });
+    },
+
+    // ---------- opening and closing ----------
+
+    isOpen: function (side) {
+      var panel = this.panels[side];
+      return Boolean(panel && panel.components['crossbar-menu'] &&
+        panel.components['crossbar-menu'].menu.isOpen);
+    },
+
+    open: function (side, handEl) {
+      var panel = this.panels[side];
+      if (!panel) return false;
+      if (this.openSide && this.openSide !== side) this.close(this.openSide);
+      var component = panel.components['crossbar-menu'];
+      component.menu.open();
+      this.openSide = side;
+
+      var system = this.sceneEl.systems['menu-stick-control'];
+      if (system) {
+        // In XR the hand that opened it drives it, wherever that hand
+        // then goes: the panel is out in front of your face and the
+        // hand is beside your head, so proximity is meaningless here.
+        // Off a headset it is a keyboard lock like any other menu.
+        if (handEl) system.pinHand(component, handEl);
+        else system.lock(component);
+      }
+      if (this.hintEl) this.hintEl.classList.add('is-open');
+      this.sceneEl.emit('visor-menu-opened', { side: side, handEl: handEl || null }, false);
+      return true;
+    },
+
+    close: function (side) {
+      var panel = this.panels[side || this.openSide];
+      if (!panel) return false;
+      var component = panel.components['crossbar-menu'];
+      component.menu.close();
+      var system = this.sceneEl.systems['menu-stick-control'];
+      if (system) {
+        system.unpinHand(component);
+        if (system.lockedMenu === component) system.unlock();
+      }
+      if (this.openSide === (side || this.openSide)) this.openSide = null;
+      if (this.hintEl) this.hintEl.classList.remove('is-open');
+      this.sceneEl.emit('visor-menu-closed', { side: side }, false);
+      return true;
+    },
+
+    toggle: function (side, handEl) {
+      if (this.isOpen(side)) return this.close(side);
+      return this.open(side, handEl);
+    },
+
+    onKeyDown: function (evt) {
+      if (evt.code !== this.data.key) return;
+      // Never steal a keystroke from a text field.
+      var active = document.activeElement;
+      if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) return;
+      evt.preventDefault();
+      this.toggle(this.openSide || (this.data.leftPage ? 'left' : 'right'));
+    },
+
+    // ---------- the temple gesture ----------
+
+    tick: function (time, delta) {
+      var mode = this.sceneEl.systems['control-mode'];
+      if (!mode || !mode.isMode('xr') || !this.cameraEl) return;
+      if (!this.hands.length) return;
+
+      var candidate = null;
+      for (var i = 0; i < this.hands.length; i++) {
+        var handEl = this.hands[i];
+        var side = this.templeSideFor(handEl, delta);
+        if (side && this.panels[side]) {
+          candidate = { handEl: handEl, side: side };
+          break;
+        }
+      }
+
+      // Holding at your temple while that side is already open is how
+      // you close it again — the same gesture both ways, like the key.
+      var progressSide = candidate ? candidate.side : null;
+      for (var s in this.pips) {
+        if (s !== progressSide) this.setPipProgress(s, 0);
+      }
+      if (!candidate) {
+        this.dwellFor = null;
+        this.dwellMs = 0;
+        return;
+      }
+
+      if (this.dwellFor !== candidate.side) {
+        this.dwellFor = candidate.side;
+        this.dwellMs = 0;
+      }
+      this.dwellMs += delta;
+      var progress = Math.min(1, this.dwellMs / this.data.dwellMs);
+      this.setPipProgress(candidate.side, progress);
+
+      if (progress >= 1) {
+        this.dwellMs = 0;
+        this.dwellFor = null;
+        this.setPipProgress(candidate.side, 0);
+        this.armedFor[candidate.handEl.id] = false;
+        this.toggle(candidate.side, candidate.handEl);
+      }
+    },
+
+    templeSideFor: function (handEl, delta) {
+      var semantic = handEl.components['semantic-hand'];
+      if (semantic && semantic.heldEl) return null;
+
+      handEl.object3D.getWorldPosition(this._local);
+      var previous = this._previous[handEl.id];
+      var speed = 0;
+      if (previous && delta > 0) speed = previous.distanceTo(this._local) / (delta / 1000);
+      if (!previous) this._previous[handEl.id] = new THREE.Vector3();
+      this._previous[handEl.id].copy(this._local);
+      if (speed > TEMPLE_MAX_SPEED) return null;
+
+      this.cameraEl.object3D.updateMatrixWorld(true);
+      this.cameraEl.object3D.worldToLocal(this._local);
+
+      var engaged = this.dwellFor;
+      var margin = engaged ? TEMPLE_EXIT_MARGIN : 0;
+      if (!insideTemple(this._local, margin)) {
+        // Leaving the zone is what re-arms the gesture.
+        this.armedFor[handEl.id] = true;
+        return null;
+      }
+      if (this.armedFor[handEl.id] === false) return null;
+      // The side of your head the hand is on, not which hand it is.
+      return this._local.x < 0 ? 'left' : 'right';
+    },
+
+    setPipProgress: function (side, progress) {
+      var pip = this.pips[side];
+      if (!pip) return;
+      pip.fillEl.object3D.scale.y = Math.max(0.001, progress);
+      // Grows from the bottom rather than the middle.
+      pip.fillEl.object3D.position.y = -pip.height * (1 - progress) / 2;
+      pip.trackEl.setAttribute('material', 'opacity', progress > 0 ? 0.4 : 0.16);
+    },
+
+    remove: function () {
+      window.removeEventListener('keydown', this.onKeyDown);
+    },
+  });
+}

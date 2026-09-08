@@ -49,19 +49,23 @@ demo panel in `primitives/menus/`. Deliberately not done yet:
   `menu-item-select` in the shape `menu-item` uses, so existing
   handlers survive a page moving across.
 
-- **The visor surface.** The third renderer: curved, anchored to one
-  side, drawn for one eye. `crossbar-menu`'s `curve` and `side` schema
-  values exist and are exercised at 0; nothing yet opens a menu from a
-  hand held at the temple. Blocked on nothing but the eye test below.
+- **Give the temple pip a stronger presence.** It exists and fills, but
+  it is a thin bar at ~34° off centre, which is the edge of what a
+  Quest shows. If it turns out to be missable in a headset, the fix is
+  a larger or animated mark rather than moving it inboard, since
+  anything closer to centre is in the way during play.
 
-- **The one-eye test.** Whether a menu drawn for a single eye is
-  comfortable is not answerable from a diagram. three.js gives each eye
-  its own layer (`layers.enable(1)` / `enable(2)` are both in the
-  vendored A-Frame bundle), so `object.layers.set(1)` is a left-eye-only
-  object. Test three variants on one toggle in a preview build: mono
-  with a dark scrim (best contrast, worst case for binocular rivalry),
-  mono with no scrim (bright text only), and binocular with a scrim.
-  The answer decides how dark the visor's backing can be.
+- **The one-eye test, now runnable.** The visor ships defaulting to
+  BOTH eyes on purpose: per-eye rendering is a `layers.set(1|2)` call
+  that only means anything once WebXR's two cameras exist, and it has
+  never been run in a headset here — defaulting to it risked a menu
+  that is simply invisible on first try, which is a miserable thing to
+  diagnose while wearing one. So `Eyes: Both / One` is the first row of
+  the visor's own menu, with `Scrim: On / Off` under it. That covers
+  the three variants agreed earlier (mono + dark scrim, mono + no
+  scrim, binocular + scrim) as two menu selections rather than a
+  rebuild. The answer decides how dark the visor's backing can be, and
+  whether `eye: inboard` becomes the default.
 
 - **Text overflow options.** Long labels currently shrink to fit and
   then ellipsize. Agreed but not built: wrapping to a second line

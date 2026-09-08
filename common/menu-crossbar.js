@@ -81,6 +81,46 @@ if (typeof AFRAME !== 'undefined') {
   var CRUMB_FLY_MS = 260;
   var CRUMB_STAGGER_MS = 22;
 
+  // 'inboard' means "toward the centre of the view", which depends on
+  // which side of the head the surface is anchored to.
+  function resolveAlign(align, side) {
+    if (align !== 'inboard') return align;
+    return side === 'left' ? 'right' : 'left';
+  }
+
+  function eyeLayerFor(eye, side) {
+    var resolved = eye === 'inboard' ? side : eye;
+    if (resolved === 'left') return 1;
+    if (resolved === 'right') return 2;
+    return 0;
+  }
+
+  // A soft one-sided wash. Painted rather than a flat plane so the
+  // inboard edge fades out instead of cutting across your view — the
+  // same "generate the texture at runtime" approach the floor
+  // checkerboard and the blood splatter already use.
+  function buildScrimTexture(outward) {
+    var size = 128;
+    var canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = 4;
+    var ctx = canvas.getContext('2d');
+    var gradient = outward < 0
+      ? ctx.createLinearGradient(0, 0, size, 0)
+      : ctx.createLinearGradient(size, 0, 0, 0);
+    gradient.addColorStop(0, 'rgba(4,10,18,1)');
+    gradient.addColorStop(0.55, 'rgba(4,10,18,0.72)');
+    gradient.addColorStop(1, 'rgba(4,10,18,0)');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, size, 4);
+    return new THREE.CanvasTexture(canvas);
+  }
+
+  function edgeX(align, width, inset) {
+    if (align === 'center') return 0;
+    return align === 'right' ? width / 2 - inset : -width / 2 + inset;
+  }
+
   function truncate(text, maxChars) {
     if (!maxChars || text.length <= maxChars) return text;
     return text.slice(0, Math.max(1, maxChars - 1)) + '…';
@@ -103,7 +143,21 @@ if (typeof AFRAME !== 'undefined') {
       // Metres the focused row bulges outboard. 0 for anything flat;
       // the visor is the only surface that wants this.
       curve: { default: 0 },
-      align: { default: 'left', oneOf: ['left', 'center'] },
+      // 'inboard' resolves against `side`: a left-anchored menu aligns
+      // its text to its right edge, so the reading edge — the one
+      // nearest your gaze — is flush and labels grow outward into the
+      // periphery.
+      align: { default: 'left', oneOf: ['left', 'center', 'right', 'inboard'] },
+      // A one-sided wash behind the rows, painted as a gradient so it
+      // fades out toward view centre instead of ending on a hard line.
+      // Text over open sky needs it; text on a panel does not.
+      scrim: { default: 0 },
+      // Which eye draws this menu in XR. three.js gives the left eye
+      // layer 1 and the right eye layer 2, so a single-eye menu leaves
+      // the other eye a completely clear view of the world. Off a
+      // headset there is one camera on layer 0, so this only applies
+      // while presenting and is undone on exit.
+      eye: { default: 'both', oneOf: ['both', 'left', 'right', 'inboard'] },
       // Which way "outboard" points, for the curve and the breadcrumb
       // rail. A left-hand visor menu is anchored on the left.
       side: { default: 'left', oneOf: ['left', 'right'] },
@@ -143,6 +197,7 @@ if (typeof AFRAME !== 'undefined') {
     init: function () {
       this.rows = [];
       this.crumbs = [];
+      this.textAlign = resolveAlign(this.data.align, this.data.side);
       this.engagedHand = null;
       this._handPosition = new THREE.Vector3();
       this._panelPosition = new THREE.Vector3();
@@ -188,6 +243,39 @@ if (typeof AFRAME !== 'undefined') {
       this.build();
       if (this.data.open) this.menu.open();
       this.render();
+
+      // Per-eye rendering is a layer assignment, and layers only mean
+      // anything once WebXR's two cameras exist. Off a headset there is
+      // one camera on layer 0, so applying it early would simply hide
+      // the menu.
+      this.applyEyeLayer = this.applyEyeLayer.bind(this);
+      this.clearEyeLayer = this.clearEyeLayer.bind(this);
+      if (eyeLayerFor(this.data.eye, this.data.side)) {
+        this.el.sceneEl.addEventListener('enter-vr', this.applyEyeLayer);
+        this.el.sceneEl.addEventListener('exit-vr', this.clearEyeLayer);
+        if (this.el.sceneEl.is('vr-mode')) this.applyEyeLayer();
+      }
+    },
+
+    // ---------- one eye, or both ----------
+
+    setEye: function (eye) {
+      if (this.data.eye === eye) return;
+      this.el.setAttribute('crossbar-menu', 'eye', eye);
+      if (this.el.sceneEl.is('vr-mode')) {
+        if (eyeLayerFor(eye, this.data.side)) this.applyEyeLayer();
+        else this.clearEyeLayer();
+      }
+    },
+
+    applyEyeLayer: function () {
+      var layer = eyeLayerFor(this.data.eye, this.data.side);
+      if (!layer) return this.clearEyeLayer();
+      this.el.object3D.traverse(function (object) { object.layers.set(layer); });
+    },
+
+    clearEyeLayer: function () {
+      this.el.object3D.traverse(function (object) { object.layers.set(0); });
     },
 
     // ---------- construction ----------
@@ -230,9 +318,9 @@ if (typeof AFRAME !== 'undefined') {
       // renders wider than the surface it sits on.
       title.setAttribute('width', data.width * 0.92);
       title.setAttribute('wrapCount', 14);
-      title.setAttribute('align', data.align === 'center' ? 'center' : 'left');
+      title.setAttribute('align', this.textAlign === 'center' ? 'center' : this.textAlign);
       title.setAttribute('position', {
-        x: data.align === 'center' ? 0 : -data.width / 2 + 0.04,
+        x: edgeX(this.textAlign, data.width, 0.04),
         y: titleY,
         z: 0.001,
       });
@@ -284,10 +372,10 @@ if (typeof AFRAME !== 'undefined') {
 
         var text = document.createElement('a-text');
         text.setAttribute('color', data.color);
-        text.setAttribute('align', data.align === 'center' ? 'center' : 'left');
+        text.setAttribute('align', this.textAlign === 'center' ? 'center' : this.textAlign);
         text.setAttribute('width', data.width * 0.92);
         text.setAttribute('position', {
-          x: data.align === 'center' ? 0 : -data.width * 0.44,
+          x: edgeX(this.textAlign, data.width, data.width * 0.06),
           y: 0,
           z: 0.004,
         });
@@ -355,13 +443,51 @@ if (typeof AFRAME !== 'undefined') {
         this.crumbs.push({ el: crumb, chars: chars, targetEl: crumbTarget, title: '' });
       }
 
-      // The engaged-panel outline. Its whole job is to answer "is my
-      // thumbstick driving this right now?" before you touch anything.
-      var glow = document.createElement('a-plane');
-      glow.setAttribute('width', data.width + 0.05);
-      glow.setAttribute('height', data.rowHeight * (data.windowSize + 2) + 0.05);
-      glow.setAttribute('material', 'color: ' + data.accent + '; shader: flat; opacity: 0.3; transparent: true; side: double');
-      glow.setAttribute('position', '0 0 -0.02');
+      if (data.scrim > 0) {
+        var scrim = document.createElement('a-entity');
+        scrim.setAttribute('geometry', 'primitive: plane; width: ' + data.width * 2.1 + '; height: ' + data.rowHeight * (data.windowSize + 3));
+        // The colour is set explicitly rather than left to the texture:
+        // an unset a-frame material is white, so a scrim whose map has
+        // not applied yet flashes as a bright slab across your view.
+        scrim.setAttribute('material', 'color: #040a12; shader: flat; transparent: true; depthWrite: false; opacity: ' + data.scrim);
+        // The wash sits outboard of the rows and fades toward centre.
+        scrim.setAttribute('position', { x: outward * data.width * 0.55, y: 0, z: -0.03 });
+        this.el.appendChild(scrim);
+        this.scrimEl = scrim;
+        var self2 = this;
+        var applyScrim = function () {
+          var mesh = scrim.getObject3D('mesh');
+          if (!mesh || !mesh.material) return;
+          mesh.material.map = buildScrimTexture(self2.outward);
+          mesh.material.needsUpdate = true;
+        };
+        if (scrim.getObject3D('mesh')) applyScrim();
+        else scrim.addEventListener('loaded', applyScrim, { once: true });
+      }
+
+      // The engaged-panel outline. Four bars rather than one plane: a
+      // filled plane only reads as an outline while an opaque backing
+      // sits in front of it, so on a plateless surface like the visor
+      // it washes the whole panel pale instead of framing it.
+      var glowWidth = data.width + 0.05;
+      var glowHeight = data.rowHeight * (data.windowSize + 2) + 0.05;
+      var bar = 0.008;
+      var glow = document.createElement('a-entity');
+      var edges = [
+        { w: glowWidth, h: bar, x: 0, y: glowHeight / 2 },
+        { w: glowWidth, h: bar, x: 0, y: -glowHeight / 2 },
+        { w: bar, h: glowHeight, x: -glowWidth / 2, y: 0 },
+        { w: bar, h: glowHeight, x: glowWidth / 2, y: 0 },
+      ];
+      this.glowBars = edges.map(function (edge) {
+        var edgeEl = document.createElement('a-entity');
+        edgeEl.setAttribute('geometry', 'primitive: plane; width: ' + edge.w + '; height: ' + edge.h);
+        edgeEl.setAttribute('material', 'color: ' + data.accent + '; shader: flat; opacity: 0.55; transparent: true; depthWrite: false; side: double');
+        edgeEl.setAttribute('position', { x: edge.x, y: edge.y, z: 0 });
+        glow.appendChild(edgeEl);
+        return edgeEl;
+      });
+      glow.setAttribute('position', '0 0 -0.005');
       glow.object3D.visible = false;
       this.el.appendChild(glow);
       this.glowEl = glow;
@@ -371,12 +497,12 @@ if (typeof AFRAME !== 'undefined') {
       // complaint; a border alone did not carry it.
       var footer = document.createElement('a-text');
       footer.setAttribute('value', '');
-      footer.setAttribute('align', data.align === 'center' ? 'center' : 'left');
+      footer.setAttribute('align', this.textAlign === 'center' ? 'center' : this.textAlign);
       footer.setAttribute('color', data.accent);
       footer.setAttribute('width', data.width * 0.92);
       footer.setAttribute('wrapCount', 46);
       footer.setAttribute('position', {
-        x: data.align === 'center' ? 0 : -data.width / 2 + 0.04,
+        x: edgeX(this.textAlign, data.width, 0.04),
         y: -data.rowHeight * (data.windowSize / 2 + 0.45),
         z: 0.002,
       });
@@ -632,7 +758,9 @@ if (typeof AFRAME !== 'undefined') {
       this.locked = locked;
       if (this.glowEl) {
         this.glowEl.object3D.visible = locked || Boolean(this.engagedHand);
-        this.glowEl.setAttribute('material', 'opacity', locked ? 0.75 : 0.3);
+        (this.glowBars || []).forEach(function (edgeEl) {
+          edgeEl.setAttribute('material', 'opacity', locked ? 0.95 : 0.5);
+        });
       }
       if (this.footerEl) {
         this.footerEl.setAttribute('value', 'W/S move   D enter   A back   E exit');
@@ -665,6 +793,8 @@ if (typeof AFRAME !== 'undefined') {
 
     remove: function () {
       this.setEngagedHand(null);
+      this.el.sceneEl.removeEventListener('enter-vr', this.applyEyeLayer);
+      this.el.sceneEl.removeEventListener('exit-vr', this.clearEyeLayer);
     },
   });
 
@@ -700,6 +830,11 @@ if (typeof AFRAME !== 'undefined') {
       // be locked at a time, which is what makes "only this menu moves"
       // true by construction rather than by careful bookkeeping.
       this.lockedMenu = null;
+      // Explicit hand bindings, for surfaces where proximity is
+      // meaningless: the visor's panel floats in front of your face
+      // while the hand that opened it is beside your head, so the hand
+      // is bound on purpose rather than resolved by distance.
+      this.pinned = [];
       this.bindings = [];
       this.onKeyDown = this.onKeyDown.bind(this);
       window.addEventListener('keydown', this.onKeyDown);
@@ -802,9 +937,21 @@ if (typeof AFRAME !== 'undefined') {
       // Pass one: what would each hand like to drive, and how near is
       // it? A hand that is pointing, or holding something, wants
       // nothing.
+      // A pinned hand's menu was chosen deliberately; proximity must
+      // not take it away again.
+      for (var pi = this.pinned.length - 1; pi >= 0; pi--) {
+        var pin = this.pinned[pi];
+        if (!pin.component.menu.isOpen || !this.handIsAvailable(pin.state.el)) {
+          this.unpinHand(pin.component);
+          continue;
+        }
+        this.pumpStick(pin.state, time);
+      }
+
       var h;
       for (h = 0; h < this.hands.length; h++) {
         var state = this.hands[h];
+        if (this.isPinned(state)) continue;
         var best = null;
         var bestDistance = Infinity;
 
@@ -817,6 +964,7 @@ if (typeof AFRAME !== 'undefined') {
             // Once engaged, a little extra room before letting go.
             var range = component.data.stickRange +
               (component.engagedHand === state.el ? RELEASE_MARGIN : 0);
+            if (component.data.stickRange <= 0) continue;
             if (distance <= range && distance < bestDistance) {
               best = component;
               bestDistance = distance;
@@ -860,6 +1008,7 @@ if (typeof AFRAME !== 'undefined') {
 
       for (h = 0; h < this.hands.length; h++) {
         var hand = this.hands[h];
+        if (this.isPinned(hand)) continue;
         if (!hand.settled) {
           if (hand.menu) this.pumpStick(hand, time);
           continue;
@@ -898,6 +1047,38 @@ if (typeof AFRAME !== 'undefined') {
       return (component.menu.isOpen || component.data.closeBehavior === 'collapse')
         ? component
         : null;
+    },
+
+    pinHand: function (component, handEl) {
+      this.unpinHand(component);
+      var state = this.hands.filter(function (h) { return h.el === handEl; })[0];
+      if (!state) return false;
+      if (state.menu && state.menu !== component) state.menu.setEngagedHand(null);
+      state.menu = component;
+      state.armed = true;
+      state.armedX = true;
+      component.setEngagedHand(handEl);
+      this.pinned.push({ component: component, state: state });
+      return true;
+    },
+
+    unpinHand: function (component) {
+      for (var i = this.pinned.length - 1; i >= 0; i--) {
+        if (component && this.pinned[i].component !== component) continue;
+        var entry = this.pinned[i];
+        if (entry.state.menu === entry.component) {
+          entry.component.setEngagedHand(null);
+          entry.state.menu = null;
+        }
+        this.pinned.splice(i, 1);
+      }
+    },
+
+    isPinned: function (state) {
+      for (var i = 0; i < this.pinned.length; i++) {
+        if (this.pinned[i].state === state) return true;
+      }
+      return false;
     },
 
     lock: function (component) {

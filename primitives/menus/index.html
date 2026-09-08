@@ -304,7 +304,15 @@
          this repo) — it collides with desktop-controls' own "F" for
          grab, added above. Disabling just that half leaves Escape
          still exiting VR normally. -->
-    <a-scene keyboard-shortcuts="enterVR: false">
+    <!-- The visor menu is head-locked rather than placed, so it is
+         configured on the scene rather than positioned in markup: the
+         system builds both sides as children of the camera. Backtick
+         opens it off a headset (Tab is the watch); in XR, hold an empty
+         hand beside your head until the edge-of-vision pip fills. -->
+    <a-scene
+      keyboard-shortcuts="enterVR: false"
+      visor-menu="leftPage: visor-system; rightPage: visor-game; dwellMs: 1200"
+    >
       <a-light type="ambient" color="#fff" intensity="0.7"></a-light>
       <a-light type="directional" position="2 3 2" intensity="0.7"></a-light>
       <a-sky color="#0d1526"></a-sky>
@@ -1080,6 +1088,58 @@
 
       var LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
 
+      // The visor's own two pages. Left is the system side — the
+      // contract proposed in the design notes is that comfort, HUD and
+      // Exit VR live at your left temple in every prototype, so a
+      // player who has bailed out of one knows how to bail out of all
+      // of them. Right belongs to the game.
+      registerMenuPage('visor-system', {
+        title: 'VISOR',
+        items: [
+          // First on purpose: whether the visor draws to one eye is the
+          // open question, and this is how it gets answered in a
+          // headset rather than from a rebuild.
+          {
+            kind: 'select', id: 'visor-eyes', label: 'Eyes', value: 'both',
+            options: [
+              { value: 'both', label: 'Both' },
+              { value: 'inboard', label: 'One (this side)' },
+            ],
+          },
+          {
+            kind: 'select', id: 'visor-scrim', label: 'Scrim', value: 'on',
+            options: [{ value: 'on', label: 'On' }, { value: 'off', label: 'Off' }],
+          },
+          {
+            kind: 'number', id: 'visor-curve', label: 'Curve',
+            value: 0.11, min: 0, max: 0.24, step: 0.01,
+            format: function (value) { return (Math.atan(value / 1.8) * 180 / Math.PI).toFixed(1) + '\u00b0'; },
+          },
+          {
+            kind: 'submenu', id: 'visor-comfort', label: 'Comfort',
+            items: [
+              { kind: 'toggle', id: 'visor-vignette', label: 'Vignette', value: false },
+              { kind: 'action', id: 'visor-recenter', label: 'Recenter' },
+            ],
+          },
+          { kind: 'action', id: 'visor-exit', label: 'Exit VR' },
+        ],
+      });
+
+      registerMenuPage('visor-game', {
+        title: 'GAME',
+        items: [
+          { kind: 'action', id: 'spawn-box', label: 'Spawn box' },
+          { kind: 'toggle', id: 'visor-grid', label: 'Floor grid', value: true },
+          {
+            kind: 'submenu', id: 'visor-destinations', label: 'Destinations',
+            items: TOWNS.map(function (name, i) {
+              return { kind: 'action', id: 'visor-teleport-' + i, label: name };
+            }),
+          },
+        ],
+      });
+
       registerMenuPage('showcase-crossbar-b', {
         title: 'RANGE',
         items: [
@@ -1159,6 +1219,37 @@
       });
     </script>
 
+    <script type="module">
+      // The visor adjusting itself: the Eyes/Scrim/Curve rows above are
+      // ordinary menu items, and this turns their commits into schema
+      // changes on the two visor panels. That is the whole in-headset
+      // test for the one-eye question -- no rebuild, no flag file.
+      var sceneEl = document.querySelector('a-scene');
+      sceneEl.addEventListener('menu-commit', function (evt) {
+        var visor = sceneEl.systems['visor-menu'];
+        if (!visor) return;
+        var sides = ['left', 'right'];
+        sides.forEach(function (side) {
+          var panel = visor.panels[side];
+          var component = panel && panel.components['crossbar-menu'];
+          if (!component) return;
+          if (evt.detail.id === 'visor-eyes') component.setEye(evt.detail.value);
+          if (evt.detail.id === 'visor-scrim') {
+            panel.setAttribute('crossbar-menu', 'scrim', evt.detail.value === 'on' ? 0.7 : 0);
+            if (component.scrimEl) component.scrimEl.setAttribute('material', 'opacity', evt.detail.value === 'on' ? 0.7 : 0);
+          }
+          if (evt.detail.id === 'visor-curve') {
+            panel.setAttribute('crossbar-menu', 'curve', evt.detail.value);
+            component.render();
+          }
+        });
+      });
+      sceneEl.addEventListener('menu-action', function (evt) {
+        if (evt.detail.id === 'visor-exit' && sceneEl.is('vr-mode')) sceneEl.exitVR();
+      });
+    </script>
+
+    <script type="module" src="../../common/visor-menu.js"></script>
     <script type="module" src="../../common/watch-menu.js"></script>
     <script type="module" src="../../common/menu-crossbar.js"></script>
     <script type="module" src="../../common/room-code-entry.js"></script>
