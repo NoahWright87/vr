@@ -13,7 +13,7 @@ globalThis.registerComponent = (name, definition) => { definitions[name] = defin
 await import('../games/pistols-at-dawn/js/world-menu.js');
 
 test('hot interaction lists use the mutation-invalidated scene index', () => {
-  assert.match(page, /<a-scene pistols-watch-menu area-manager scene-index day-night-cycle weather-clouds hotbar-equip shadow="enabled: true; type: pcfsoft">/);
+  assert.match(page, /<a-scene pistols-watch-menu area-manager scene-index day-night-cycle weather-clouds hotbar-equip light="defaultLightsEnabled: false" shadow="enabled: true; type: pcfsoft">/);
   assert.match(core, /registerComponent\('scene-index'/);
   assert.match(core, /function sceneElements\(selector\)/);
   assert.doesNotMatch(hands, /document\.querySelectorAll\('\.grabbable'\)/);
@@ -29,6 +29,18 @@ test('performance counters are opt-in from the watch', () => {
   assert.match(page, /id="performance-text"[\s\S]*performance-monitor[\s\S]*visible="false"/);
   assert.match(menu, /if \(!this\.data\.enabled\) return/);
   assert.match(menu, /render\.calls/);
+});
+
+test('environment lighting replaces A-Frame defaults and shadows only world geometry', () => {
+  assert.match(page, /light="defaultLightsEnabled: false"/);
+  assert.match(dayNight, /this\.findOwnerElement\(object\)/);
+  assert.match(dayNight, /this\.sun\.visible = sunAboveHorizon/);
+  assert.match(dayNight, /this\.moon\.visible = moonAboveHorizon/);
+  assert.match(dayNight, /owner\.closest\('#player-rig'\)/);
+  assert.match(dayNight, /object\.castShadow = any && this\.shouldCastShadow/);
+  assert.match(dayNight, /object\.receiveShadow = any && this\.shouldReceiveShadow/);
+  assert.match(dayNight, /tag === 'A-PLANE' \|\| tag === 'A-TEXT'/);
+  assert.match(dayNight, /this\.hasTransparentMaterial\(object\)/);
 });
 
 test('performance monitor stays idle until enabled and then reports renderer counters', () => {

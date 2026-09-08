@@ -373,7 +373,7 @@
       </a-entity>
     </template>
 
-    <a-scene pistols-watch-menu area-manager scene-index day-night-cycle weather-clouds hotbar-equip shadow="enabled: true; type: pcfsoft">
+    <a-scene pistols-watch-menu area-manager scene-index day-night-cycle weather-clouds hotbar-equip light="defaultLightsEnabled: false" shadow="enabled: true; type: pcfsoft">
       <!-- Keep the star sphere far behind the daytime layer. Coplanar skies
            z-fight, producing the circular black jitter seen in some drivers. -->
       <a-sky id="night-sky" radius="650" src="assets/textures/desert-stars-skybox-v1.png" material="transparent: true; opacity: 1; depthWrite: false" data-area-persistent></a-sky>

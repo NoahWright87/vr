@@ -17,7 +17,7 @@ test('destinations are lazy fragments instead of simultaneous scene entities', (
   }
   assert.match(page, /<a-entity id="area-host" data-area-persistent><\/a-entity>/);
   assert.match(page, /id="carried-items" data-area-persistent/);
-  assert.match(page, /<a-scene pistols-watch-menu area-manager scene-index day-night-cycle weather-clouds hotbar-equip shadow="enabled: true; type: pcfsoft">/);
+  assert.match(page, /<a-scene pistols-watch-menu area-manager scene-index day-night-cycle weather-clouds hotbar-equip light="defaultLightsEnabled: false" shadow="enabled: true; type: pcfsoft">/);
   assert.match(dayNight, /FAST_FORWARD_TIME_SCALE = 20/);
   assert.match(dayNight, /LUNAR_SYNODIC_DAYS = 29\.53059/);
   assert.match(dayNight, /this\.elapsedGameMs \+= Math\.min\(delta \|\| 16, 100\) \* this\.timeScale/);

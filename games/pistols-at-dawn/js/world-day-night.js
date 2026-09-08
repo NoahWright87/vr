@@ -191,29 +191,54 @@ registerComponent('day-night-cycle', {
     // freshly loaded area needs its one-time caster assignment.
     if (!force && !stateChanged && !root) return;
     (root || this.scene).traverse(function (object) {
-      var owner = object.el;
+      var owner = this.findOwnerElement(object);
       var isSky = owner && (owner.id === 'night-sky' || owner.id === 'day-sky' || owner.id === 'sunset-gradient');
       if (!object.isMesh || object.userData.dayNightCelestial || object.userData.weatherCloud || object.userData.weatherCloudShadow || object.userData.lowPriorityShadow || isSky) return;
       object.castShadow = any && this.shouldCastShadow(object, owner);
-      object.receiveShadow = any;
+      object.receiveShadow = any && this.shouldReceiveShadow(object, owner);
     }.bind(this));
   },
 
-  shouldCastShadow: function (object, owner) {
-    if (!this.lowPowerShadows) return true;
-    if (!owner) return false;
-    var tag = owner.tagName;
-    if (tag === 'A-PLANE' || tag === 'A-TEXT' || tag === 'A-SKY' || tag === 'A-CIRCLE' || tag === 'A-RING') return false;
+  findOwnerElement: function (object) {
+    var node = object;
+    while (node) {
+      if (node.el) return node.el;
+      node = node.parent;
+    }
+    return null;
+  },
+
+  isPlayerVisual: function (owner) {
+    return Boolean(owner && owner.closest && owner.closest('#player-rig'));
+  },
+
+  hasTransparentMaterial: function (object) {
     var materials = Array.isArray(object.material) ? object.material : [object.material];
     for (var i = 0; i < materials.length; i += 1) {
-      if (materials[i] && materials[i].transparent && materials[i].opacity < 0.98) return false;
+      if (materials[i] && materials[i].transparent && materials[i].opacity < 0.98) return true;
     }
+    return false;
+  },
+
+  shouldCastShadow: function (object, owner) {
+    if (!owner) return false;
+    if (this.isPlayerVisual(owner)) return false;
+    var tag = owner.tagName;
+    if (tag === 'A-PLANE' || tag === 'A-TEXT' || tag === 'A-SKY' || tag === 'A-CIRCLE' || tag === 'A-RING') return false;
+    if (this.hasTransparentMaterial(object)) return false;
     if (!object.geometry) return false;
     if (!object.geometry.boundingSphere) object.geometry.computeBoundingSphere();
     var radius = object.geometry.boundingSphere ? object.geometry.boundingSphere.radius : 0;
     var scale = object.scale;
     radius *= Math.max(Math.abs(scale.x), Math.abs(scale.y), Math.abs(scale.z));
-    return radius >= 0.55;
+    return radius >= (this.lowPowerShadows ? 0.55 : 0.18);
+  },
+
+  shouldReceiveShadow: function (object, owner) {
+    if (!owner || this.isPlayerVisual(owner)) return false;
+    var tag = owner.tagName;
+    if (tag === 'A-TEXT' || tag === 'A-SKY' || tag === 'A-CIRCLE' || tag === 'A-RING') return false;
+    return !this.hasTransparentMaterial(object);
   },
 
   applyLighting: function () {
@@ -229,6 +254,8 @@ registerComponent('day-night-cycle', {
     this.syncCelestialPositions(sunDir, directions);
     this.sun.intensity = sunAboveHorizon ? smoothStep(0, 0.2, sunDir.y) * 2.15 : 0;
     this.moon.intensity = moonAboveHorizon ? smoothStep(0, 0.2, moonDir.y) * 0.32 * directions.moonBrightness : 0;
+    this.sun.visible = sunAboveHorizon;
+    this.moon.visible = moonAboveHorizon;
     this.sun.castShadow = this.sunShadows && sunAboveHorizon;
     this.moon.castShadow = this.moonShadows && moonAboveHorizon;
     this.ambient.intensity = 0.07 + daylight * 0.5 + moonlight * 0.12 + twilight * 0.12;
