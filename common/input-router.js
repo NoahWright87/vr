@@ -16,7 +16,7 @@ export function createStandardGamepadButtonBindings(actions) {
     3: actions.watch,
     4: actions.grab,
     5: actions.secondary,
-    6: actions.secondary,
+    6: actions.aim || actions.secondary,
     7: actions.primary,
     9: actions.watch,
     10: actions.sprint || actions.crouch,
@@ -223,6 +223,7 @@ if (typeof AFRAME !== 'undefined') {
       backAction: { default: 'back' },
       crouchAction: { default: 'crouch' },
       sprintAction: { default: 'none' },
+      aimAction: { default: 'none' },
       deadzone: { default: 0.18 },
       chargeMs: { default: 900 },
       minimumStrength: { default: 0.35 },
@@ -241,6 +242,7 @@ if (typeof AFRAME !== 'undefined') {
         back: this.data.backAction,
         crouch: this.data.crouchAction,
         sprint: this.data.sprintAction,
+        aim: this.data.aimAction,
       });
     },
 
@@ -353,19 +355,34 @@ if (typeof AFRAME !== 'undefined') {
       watchLabel: { default: 'MENU' },
       crouchAction: { default: 'none' },
       crouchLabel: { default: 'CROUCH' },
+      hotbar1Action: { default: 'none' },
+      hotbar1Label: { default: '1' },
+      hotbar2Action: { default: 'none' },
+      hotbar2Label: { default: '2' },
+      hotbar3Action: { default: 'none' },
+      hotbar3Label: { default: '3' },
+      hotbar4Action: { default: 'none' },
+      hotbar4Label: { default: '4' },
+      hotbar5Action: { default: 'none' },
+      hotbar5Label: { default: '5' },
+      aimAction: { default: 'none' },
+      aimLabel: { default: 'AIM' },
       chargeMs: { default: 900 },
       minimumStrength: { default: 0.35 },
     },
 
     init: function () {
       this.router = this.el.sceneEl.systems['input-router'];
+      this.hintSystem = this.el.sceneEl.systems['interaction-hints'];
       this.move = { x: 0, z: 0 };
       this.joystickPointer = null;
       this.lookPointer = null;
       this.lookLast = null;
       this.activeActions = new Map();
+      this.buttonsByAction = {};
       this.nextHand = this.data.dominantHand;
       this.interactionMode = 'normal';
+      this.hintedButtonAction = null;
       this.onFamilyChanged = this.updateVisibility.bind(this);
       this.onInteractionModeChanged = this.handleInteractionModeChanged.bind(this);
       this.el.sceneEl.addEventListener('input-family-changed', this.onFamilyChanged);
@@ -384,7 +401,8 @@ if (typeof AFRAME !== 'undefined') {
       root.className = 'semantic-touch-controls';
       root.innerHTML = '<div class="semantic-touch-look" aria-label="Look area"></div>' +
         '<div class="semantic-touch-stick" aria-label="Movement joystick"><div class="semantic-touch-stick-knob"></div></div>' +
-        '<div class="semantic-touch-actions"></div>';
+        '<div class="semantic-touch-actions"></div>' +
+        '<div class="semantic-touch-hotbar"></div>';
       var style = document.createElement('style');
       style.textContent = [
         '.semantic-touch-controls{position:fixed;inset:0;z-index:30;pointer-events:none;touch-action:none;user-select:none;-webkit-user-select:none}',
@@ -392,11 +410,35 @@ if (typeof AFRAME !== 'undefined') {
         '.semantic-touch-stick{position:absolute;left:max(22px,env(safe-area-inset-left));bottom:max(24px,env(safe-area-inset-bottom));width:112px;height:112px;border-radius:50%;border:2px solid rgba(255,255,255,.65);background:rgba(10,15,25,.38);pointer-events:auto;touch-action:none}',
         '.semantic-touch-stick-knob{position:absolute;left:31px;top:31px;width:50px;height:50px;border-radius:50%;background:rgba(255,255,255,.72);box-shadow:0 2px 8px #0008;transform:translate(0,0)}',
         '.semantic-touch-actions{position:absolute;right:max(18px,env(safe-area-inset-right));bottom:max(72px,calc(env(safe-area-inset-bottom) + 12px));display:grid;grid-template-columns:repeat(2,74px);gap:12px;pointer-events:none}',
+        // A single row along the bottom for numbered hotbar slots
+        // specifically (Pistols' holster/equipment keys) — kept apart
+        // from the general action grid above and sized smaller, since a
+        // whole hand's worth of slots reads better as one compact strip
+        // than folded into the same grid as watch/crouch/interact/etc.
+        '.semantic-touch-hotbar{position:absolute;left:50%;bottom:max(14px,env(safe-area-inset-bottom));transform:translateX(-50%);display:flex;gap:8px;pointer-events:none}',
+        '.semantic-touch-hotbar .semantic-touch-button{width:44px;height:40px;border-radius:12px;font-size:11px}',
         '.semantic-touch-button{width:74px;height:56px;border:2px solid #fff;border-radius:18px;background:rgba(12,18,30,.7);color:#fff;font:700 12px system-ui;letter-spacing:.03em;pointer-events:auto;touch-action:none;box-shadow:0 2px 9px #0008}',
+        // The hotbar row is persistent loadout state, not a touch-only
+        // affordance -- it stays up (see updateVisibility) as a
+        // display-only HUD on keyboard, reusing these exact same
+        // buttons/colors rather than a second parallel UI. Non-touch
+        // hotbar buttons are never real tap targets, so they default to
+        // pointer-events:none, overriding the general button rule above
+        // -- only re-enabled while touch is the family actually driving
+        // this root (is-touch-input, set in updateVisibility).
+        '.semantic-touch-hotbar .semantic-touch-button{pointer-events:none}',
+        '.semantic-touch-controls.is-touch-input .semantic-touch-hotbar .semantic-touch-button{pointer-events:auto}',
         '.semantic-touch-button[data-primary="true"]{height:74px;border-radius:50%;background:rgba(20,105,155,.78)}',
         '.semantic-touch-button.is-held{transform:scale(.94);background:rgba(38,170,225,.88)}',
+        // Contextual coloring (setButtonState) — a holster button reads
+        // differently depending on what it currently means: "empty" (dim,
+        // there's nothing there to draw), "holstered" (default look,
+        // ready to draw) and "held" (highlighted, this is what pressing it
+        // again puts away).
+        '.semantic-touch-button[data-state="empty"]{opacity:.45}',
+        '.semantic-touch-button[data-state="held"]{background:rgba(210,150,40,.85);border-color:#ffd48a}',
         'html[data-input-family="touch"] #debug-controls,html[data-input-family="touch"] #reset-button-html{display:none!important}',
-        '@media (orientation:portrait){.semantic-touch-stick{width:96px;height:96px}.semantic-touch-stick-knob{left:27px;top:27px;width:42px;height:42px}.semantic-touch-actions{grid-template-columns:repeat(2,66px)}.semantic-touch-button{width:66px}}',
+        '@media (orientation:portrait){.semantic-touch-stick{width:96px;height:96px}.semantic-touch-stick-knob{left:27px;top:27px;width:42px;height:42px}.semantic-touch-actions{grid-template-columns:repeat(2,66px)}.semantic-touch-button{width:66px}.semantic-touch-hotbar .semantic-touch-button{width:38px;height:34px}}',
       ].join('');
       document.head.appendChild(style);
       document.body.appendChild(root);
@@ -406,13 +448,40 @@ if (typeof AFRAME !== 'undefined') {
       this.knobEl = root.querySelector('.semantic-touch-stick-knob');
       this.lookEl = root.querySelector('.semantic-touch-look');
       this.actionsEl = root.querySelector('.semantic-touch-actions');
+      this.hotbarEl = root.querySelector('.semantic-touch-hotbar');
       this.bindJoystick();
       this.bindLook();
       this.addActionButton(this.data.watchAction, this.data.watchLabel, false);
       this.crouchButtonEl = this.addActionButton(this.data.crouchAction, this.data.crouchLabel, false);
-      this.addActionButton(this.data.interactAction, this.data.interactLabel, false);
-      this.addActionButton(this.data.grabAction, this.data.grabLabel, false);
+      // Interact/grab start hidden -- they're the touch equivalent of the
+      // flat corner hint (interaction-hints.js's own system), appearing
+      // only once a matching hint-zone is actually in reach, instead of
+      // that corner hint (see updateHintedButtons below). Aim starts
+      // hidden too -- there's nothing to aim with empty hands -- but
+      // unlike the other two it has no proximity signal of its own to
+      // key off; a game shows it via setButtonVisible once it knows
+      // (e.g. Pistols' hotbar-equip, core-equip.js, toggling it with
+      // whether either hand currently holds a firearm). Hotbar slots
+      // and every other button here are persistent actions unrelated to
+      // proximity or what's in hand, and stay visible as before.
+      var interactButton = this.addActionButton(this.data.interactAction, this.data.interactLabel, false);
+      if (interactButton) interactButton.hidden = true;
+      var grabButton = this.addActionButton(this.data.grabAction, this.data.grabLabel, false);
+      if (grabButton) grabButton.hidden = true;
+      this.addActionButton(this.data.hotbar1Action, this.data.hotbar1Label, false, true);
+      this.addActionButton(this.data.hotbar2Action, this.data.hotbar2Label, false, true);
+      this.addActionButton(this.data.hotbar3Action, this.data.hotbar3Label, false, true);
+      this.addActionButton(this.data.hotbar4Action, this.data.hotbar4Label, false, true);
+      this.addActionButton(this.data.hotbar5Action, this.data.hotbar5Label, false, true);
+      var aimButton = this.addActionButton(this.data.aimAction, this.data.aimLabel, false);
+      if (aimButton) aimButton.hidden = true;
       this.addActionButton(this.data.secondaryAction, this.data.secondaryLabel, true);
+      // addActionButton no-ops for 'none' -- a game with no more use for
+      // a dedicated FIRE button (e.g. Pistols, once a plain tap already
+      // fires on its own -- see onSemanticTap's trigger-fallback branch,
+      // desktop-controls.js, the same way a plain PC click does) just
+      // sets primaryAction: none in its own markup instead of this file
+      // needing to know that; other games keep using this normally.
       this.addActionButton(this.data.primaryAction, this.data.primaryLabel, true);
     },
 
@@ -497,7 +566,7 @@ if (typeof AFRAME !== 'undefined') {
       return handEl;
     },
 
-    addActionButton: function (action, label, primary) {
+    addActionButton: function (action, label, primary, hotbar) {
       if (!action || action === 'none') return null;
       var self = this;
       var button = document.createElement('button');
@@ -507,6 +576,7 @@ if (typeof AFRAME !== 'undefined') {
       button.dataset.action = action;
       button.dataset.primary = primary ? 'true' : 'false';
       button.setAttribute('aria-label', label);
+      this.buttonsByAction[action] = button;
       button.addEventListener('pointerdown', function (evt) {
         evt.preventDefault(); evt.stopPropagation();
         button.setPointerCapture(evt.pointerId);
@@ -526,8 +596,44 @@ if (typeof AFRAME !== 'undefined') {
       button.addEventListener('pointerup', function (evt) { finish(evt, 'perform'); });
       button.addEventListener('pointercancel', function (evt) { finish(evt, 'cancel'); });
       button.addEventListener('lostpointercapture', function (evt) { finish(evt, 'cancel'); });
-      this.actionsEl.appendChild(button);
+      (hotbar ? this.hotbarEl : this.actionsEl).appendChild(button);
       return button;
+    },
+
+    // Lets a game show/hide one of its own action buttons based on
+    // context this file has no way to know on its own (e.g. Pistols'
+    // AIM button, which only means something once a hand actually
+    // holds a firearm — see hotbar-equip, core-equip.js). A no-op if
+    // that action's button doesn't exist (action disabled, or a family
+    // other than touch active).
+    setButtonVisible: function (action, visible) {
+      var button = this.buttonsByAction[action];
+      if (button) button.hidden = !visible;
+    },
+
+    // Lets a game color one of its own action buttons contextually (e.g.
+    // Pistols' numbered holster buttons: empty/holstered/held) without
+    // this file needing to know what any of that means — it just tags the
+    // button `data-state`, and the CSS above (or a game's own added rules)
+    // decides what each state looks like. A no-op if that action's button
+    // doesn't exist (action disabled, or a family other than touch active).
+    setButtonState: function (action, state) {
+      var button = this.buttonsByAction[action];
+      if (!button) return;
+      if (state) button.dataset.state = state;
+      else delete button.dataset.state;
+    },
+
+    // For a button whose meaning flips with context (GRAB vs. DROP,
+    // say) rather than just its visual state — see hotbar-equip
+    // (Pistols' own core-equip.js), which keeps the grab button's label
+    // in sync with whether the dominant hand is currently holding
+    // anything.
+    setButtonLabel: function (action, label) {
+      var button = this.buttonsByAction[action];
+      if (!button || button.textContent === label) return;
+      button.textContent = label;
+      button.setAttribute('aria-label', label);
     },
 
     emitAction: function (pending, phase, heldMs) {
@@ -546,9 +652,34 @@ if (typeof AFRAME !== 'undefined') {
       if (!this.root) return;
       var flat = !this.el.sceneEl.systems['control-mode'].isMode('xr');
       var family = this.router.getActiveFamily();
-      var active = flat && this.router.hasTouch && family === 'touch';
-      this.root.style.display = active ? 'block' : 'none';
-      if (!active) return;
+      var touchActive = flat && this.router.hasTouch && family === 'touch';
+      // The numbered hotbar is persistent loadout state (what's in each
+      // slot right now), not a touch-only affordance the way the
+      // joystick/look-area/action-grid below are -- so unlike those, it
+      // stays up as a display-only HUD on keyboard too, reusing the
+      // exact same buttons and colors Pistols' own hotbar-equip
+      // (core-equip.js) already keeps in sync via setButtonState/
+      // setButtonLabel, just non-interactive there (see the CSS above).
+      // Gamepad has no hotbar bindings yet
+      // (createStandardGamepadButtonBindings above), so showing it
+      // there would advertise slots there's no way to actually press.
+      var hotbarActive = flat && (touchActive || family === 'keyboard');
+      this.root.style.display = (touchActive || hotbarActive) ? 'block' : 'none';
+      this.root.classList.toggle('is-touch-input', touchActive);
+      if (this.hotbarEl) this.hotbarEl.style.display = hotbarActive ? '' : 'none';
+      if (!touchActive) {
+        if (this.stickEl) this.stickEl.style.display = 'none';
+        if (this.actionsEl) this.actionsEl.style.display = 'none';
+        // The look area covers most of the screen and is pointer-events:
+        // auto unconditionally in its own CSS -- harmless while the
+        // whole root was display:none for a flat family, but the root
+        // now stays up on keyboard for the hotbar HUD above, so this
+        // needs its own explicit hide or it silently swallows the click
+        // a desktop player needs to acquire pointer lock with.
+        if (this.lookEl) this.lookEl.style.display = 'none';
+        return;
+      }
+      if (this.lookEl) this.lookEl.style.display = '';
       // Movement and crouch still work while the watch is open
       // (desktop-controls.js/locomotion.js), so the joystick and crouch
       // button stay up. Everything else hides: the watch button is
@@ -565,7 +696,32 @@ if (typeof AFRAME !== 'undefined') {
       });
     },
 
+    // The touch counterpart to interaction-hints.js's own flat corner
+    // hint: interact/grab only ever mean something when a matching
+    // hint-zone is actually in reach (see common/desktop-controls.js's
+    // identical 'interact'->'mounted', 'grab'->'grab' mapping for why
+    // those two specific action/zone names pair up), so their buttons
+    // stay hidden (see createUi's initial .hidden = true) until
+    // interaction-hints' own desktopCandidate says otherwise. Uses the
+    // plain `hidden` attribute rather than style.display so it composes
+    // safely with updateVisibility's own display toggling above (an
+    // empty inline style never overrides an attribute-driven `[hidden]`
+    // rule) instead of the two fighting over the same property.
+    updateHintedButtons: function () {
+      if (!this.hintSystem) return;
+      var candidate = this.hintSystem.desktopCandidate;
+      var action = candidate ? candidate.zone.data.action : null;
+      if (action === this.hintedButtonAction) return;
+      this.hintedButtonAction = action;
+
+      var interactButton = this.buttonsByAction[this.data.interactAction];
+      if (interactButton) interactButton.hidden = action !== 'mounted';
+      var grabButton = this.buttonsByAction[this.data.grabAction];
+      if (grabButton) grabButton.hidden = action !== 'grab';
+    },
+
     tick: function (time, delta) {
+      this.updateHintedButtons();
       if (!this.root || this.root.style.display === 'none' || (!this.move.x && !this.move.z)) return;
       this.el.emit('semantic-move', {
         x: this.move.x,

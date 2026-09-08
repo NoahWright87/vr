@@ -17,7 +17,7 @@ test('destinations are lazy fragments instead of simultaneous scene entities', (
   }
   assert.match(page, /<a-entity id="area-host" data-area-persistent><\/a-entity>/);
   assert.match(page, /id="carried-items" data-area-persistent/);
-  assert.match(page, /<a-scene pistols-watch-menu area-manager scene-index day-night-cycle weather-clouds shadow="enabled: true; type: pcfsoft">/);
+  assert.match(page, /<a-scene pistols-watch-menu area-manager scene-index day-night-cycle weather-clouds hotbar-equip shadow="enabled: true; type: pcfsoft">/);
   assert.match(dayNight, /FAST_FORWARD_TIME_SCALE = 20/);
   assert.match(dayNight, /LUNAR_SYNODIC_DAYS = 29\.53059/);
   assert.match(dayNight, /this\.elapsedGameMs \+= Math\.min\(delta \|\| 16, 100\) \* this\.timeScale/);
@@ -130,7 +130,7 @@ test('the Shooting Gallery facade leads to an intentionally oversized indoor tar
 test('the Saloon door uses the shared semantic controls to enter the Saloon', () => {
   assert.match(page, /src="\.\.\/\.\.\/common\/locomotion\.js"/);
   assert.match(page, /src="\.\.\/\.\.\/common\/desktop-controls\.js"/);
-  assert.match(page, /gamepad-input="leftHand: #left-hand; rightHand: #right-hand; sprintAction: sprint"/);
+  assert.match(page, /gamepad-input="leftHand: #left-hand; rightHand: #right-hand; sprintAction: sprint; aimAction: aim"/);
   assert.match(page, /touch-controls="leftHand: #left-hand; rightHand: #right-hand/);
   assert.match(page, /desktop-controls="camera: #head-camera; leftHand: #left-hand; rightHand: #right-hand; sprintEnabled: true"/);
   assert.match(ghostTown, /class="ghost-town-building ghost-town-saloon"/);

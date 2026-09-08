@@ -674,13 +674,18 @@
         VICES.nicotine = Math.min(VICES.nicotine + amount, 1);
       }
 
+      var EXERTION_RISE_PER_S = 0.5; // reaches full exertion after ~2s of continuous sprinting
+      var EXERTION_FALL_PER_S = 0.2; // and takes ~5s to fully recover once you stop -- breathlessness lingers a bit
+
       registerComponent('vice-meter', {
         init: function () {
           VICES.alcohol = 0;
           VICES.nicotine = 0;
+          EXERTION.level = 0;
 
           this.hud = document.querySelector('#vice-text');
           this.sky = document.querySelector('a-sky');
+          this.playerRig = document.querySelector('#player-rig');
           this.refreshTimer = 0;
 
           this._soberColor = new THREE.Color(SOBER_SKY);
@@ -692,6 +697,11 @@
           var dtSeconds = Math.min((dt || 16) / 1000, 0.05);
           VICES.alcohol = Math.max(VICES.alcohol - ALCOHOL_DECAY_PER_S * dtSeconds, 0);
           VICES.nicotine = Math.max(VICES.nicotine - NICOTINE_DECAY_PER_S * dtSeconds, 0);
+
+          var locomotion = this.playerRig && this.playerRig.components['locomotion-demo'];
+          var sprinting = Boolean(locomotion && locomotion.isSprinting);
+          var exertionRate = sprinting ? EXERTION_RISE_PER_S : -EXERTION_FALL_PER_S;
+          EXERTION.level = Math.max(0, Math.min(1, EXERTION.level + exertionRate * dtSeconds));
 
           this.refreshTimer -= dt || 16;
           if (this.refreshTimer > 0) return;
