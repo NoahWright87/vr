@@ -14,10 +14,13 @@ npm install, no build step — this is just a file in the repo.
 
 ```
 vendor/aframe-1.6.0/
-  aframe-v1.6.0.min.js         the library itself
-  fonts/Roboto-msdf.json       default font used by every <a-text>
-  fonts/Roboto-msdf.png        (A-Frame fetches these at runtime, not bundled)
-  controllers/hands/*.glb      hand-controls' low-poly hand meshes
+  aframe-v1.6.0.min.js                     the library itself
+  fonts/Roboto-msdf.json                   default font used by every <a-text>
+  fonts/Roboto-msdf.png                    (A-Frame fetches these at runtime, not bundled)
+  controllers/hands/*.glb                  hand-controls' low-poly hand meshes
+  controllers/oculus-hands/v4/*.glb        hand-tracking-controls' rigged low-poly hand
+                                            meshes (modelStyle: 'mesh'), used decoratively
+                                            alongside common/hand-tracking.js's own tracking
 ```
 
 A-Frame doesn't bundle its default font or its controller/hand models —
@@ -34,11 +37,15 @@ that loads A-Frame sets this **before** the A-Frame `<script>` tag:
 ```
 
 Only the assets our demos actually use are vendored (default font,
-low-poly hands). If a future primitive uses something else CDN-backed —
-another font, a Vive/Windows Motion controller model, hand-tracking
-models — fetch it the same way and add it under the matching path here
-(the path after `AFRAME_CDN_ROOT` must match `cdn.aframe.io`'s layout
-exactly, e.g. `controllers/hands/leftHandLow.glb`).
+low-poly hands, low-poly hand-tracking meshes). If a future primitive uses
+something else CDN-backed — another font, a Vive/Windows Motion controller
+model — fetch it the same way and add it under the matching path here (the
+path after `AFRAME_CDN_ROOT` must match `cdn.aframe.io`'s layout exactly,
+e.g. `controllers/hands/leftHandLow.glb`). `cdn.aframe.io` itself mirrors
+[`aframevr/assets`](https://github.com/aframevr/assets) on GitHub, which is
+a fine fallback source for a given path if `cdn.aframe.io` is ever
+unreachable from wherever you're fetching from — that's where the
+`oculus-hands/v4/*.glb` files above came from.
 
 ## Bumping the A-Frame version
 

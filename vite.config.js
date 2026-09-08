@@ -52,6 +52,7 @@ export default defineConfig({
         punchPop: resolve(root, 'games/punch-pop/index.html'),
         pistolsAtDawn: resolve(root, 'games/pistols-at-dawn/index.html'),
         menuShowcase: resolve(root, 'primitives/menus/index.html'),
+        handTracking: resolve(root, 'primitives/hand-tracking/index.html'),
       },
     },
   },

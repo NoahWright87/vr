@@ -50,7 +50,9 @@ export function App() {
         <Text align="center" tone="muted">
           Also here: a{' '}
           <Link href="/primitives/menus/">showcase of the interaction building blocks</Link>{' '}
-          these games are made from.
+          these games are made from, and a{' '}
+          <Link href="/primitives/hand-tracking/">basic hand-tracking demo</Link>{' '}
+          — no controllers, just pinch to pick things up.
         </Text>
       </Container>
     </Layout>
