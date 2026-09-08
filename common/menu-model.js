@@ -364,11 +364,21 @@ MenuModel.prototype.activate = function () {
   // Inside a value level, inward means the same as outward: take this
   // one. Otherwise picking a number would need a verb of its own.
   if (level.kind === 'number' || (level.source && level.source.kind === 'select')) {
+    this.emit('activate', { row: row, item: level.source });
     return this.back();
   }
 
   var item = row.item;
   if (!item) return false;
+
+  // Announced for every kind, before any of them acts. Most kinds leave
+  // something visibly different behind — a toggle flips its label, a
+  // submenu pushes a new list — but an action's whole effect happens
+  // somewhere else in the game, so without a signal here, confirming
+  // "Reset Boxes" is indistinguishable from a press that was dropped.
+  // A surface can answer this however it likes; what the model is
+  // saying is only that a row fired.
+  this.emit('activate', { row: row, item: item });
 
   if (item.kind === 'toggle') {
     // Toggles are the one kind that would be silly as a submenu.

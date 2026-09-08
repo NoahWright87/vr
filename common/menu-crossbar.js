@@ -81,6 +81,32 @@ if (typeof AFRAME !== 'undefined') {
   var CRUMB_FLY_MS = 260;
   var CRUMB_STAGGER_MS = 22;
 
+  // The confirm flash: the focused row's plate jumps to full and falls
+  // back to its resting highlight. Short enough to read as a press
+  // rather than an animation, and long enough to survive a frame or
+  // two of jank — a signal you can miss is no signal.
+  var FLASH_MS = 240;
+  var FLASH_HOLD = 0.35;
+  var FLASH_OPACITY = 0.8;
+  // The label inverts for the duration. A plate this bright is the
+  // accent colour the label is already drawn in, so left alone the text
+  // disappears into it and the flash reads as the row blanking out.
+  var FLASH_TEXT = '#0b1220';
+
+  // The one writer of a row plate's opacity, and it has to stay the one
+  // writer. The flash drives this value every frame, which has to go
+  // straight at the material — but A-Frame's material component caches
+  // the data it was last given, so a setAttribute back to a value it
+  // already believes is current is silently dropped. Mix the two and
+  // the plate sticks at whatever the last animated frame wrote. Before
+  // the geometry has built its mesh there is nothing to write to, so
+  // that one case still goes through the component.
+  function setPlateOpacity(el, value) {
+    var mesh = el.getObject3D('mesh');
+    if (mesh && mesh.material) mesh.material.opacity = value;
+    else el.setAttribute('material', 'opacity', value);
+  }
+
   // 'inboard' means "toward the centre of the view", which depends on
   // which side of the head the surface is anchored to.
   function resolveAlign(align, side) {
@@ -221,7 +247,9 @@ if (typeof AFRAME !== 'undefined') {
       });
 
       var self = this;
+      this.flashT0 = 0;
       this.menu.on('change', function () { self.render(); });
+      this.menu.on('activate', function () { self.beginFlash(); });
       this.menu.on('close', function () { self.el.emit('crossbar-menu-close', {}, false); });
       this.menu.on('action', function (detail) {
         // Bubbles, so a game can listen on the scene rather than on
@@ -556,6 +584,7 @@ if (typeof AFRAME !== 'undefined') {
 
       var half = (data.windowSize - 1) / 2;
       var inChrome = this.menu.inChrome();
+      var frameTime = this.now();
       var windowRows = this.menu.getWindow();
       var bySlot = {};
       for (var w = 0; w < windowRows.length; w++) {
@@ -600,10 +629,18 @@ if (typeof AFRAME !== 'undefined') {
           // letting them run off the edge.
           wrapCount: Math.max(data.maxChars, label.length),
         });
-        slot.textEl.setAttribute('color', model.focused ? data.accent : data.color);
+        // The flash owns the focused row's plate and label while it
+        // runs, so a render triggered part-way through it — a toggle
+        // rewriting its own label, a push swapping the whole list —
+        // neither dims the plate for a frame nor puts the text back to
+        // accent on top of a bright one.
+        var resting = (model.focused && !inChrome) ? PLATE_OPACITY : 0;
+        var flashed = offset === 0 ? this.flashOpacity(frameTime, resting) : null;
+        slot.textEl.setAttribute('color', flashed !== null ? FLASH_TEXT
+          : (model.focused ? data.accent : data.color));
         slot.chevronEl.object3D.visible = Boolean(model.hasChildren);
         slot.chevronEl.setAttribute('text', 'opacity', opacity);
-        slot.el.setAttribute('material', 'opacity', (model.focused && !inChrome) ? PLATE_OPACITY : 0);
+        setPlateOpacity(slot.el, flashed === null ? resting : flashed);
       }
 
       // While the title bar has the focus the list shows none, so there
@@ -642,7 +679,7 @@ if (typeof AFRAME !== 'undefined') {
       // expressed in this rail's own space.
       var origin = null;
       if (fly) {
-        var focusedRow = this.rows.length ? this.rows[(this.rows.length - 1) / 2 | 0] : null;
+        var focusedRow = this.focusedSlot();
         if (focusedRow) {
           focusedRow.el.object3D.getWorldPosition(this._handPosition);
           crumb.el.object3D.updateMatrixWorld(true);
@@ -705,7 +742,68 @@ if (typeof AFRAME !== 'undefined') {
       if (mesh && mesh.material) mesh.material.opacity = value;
     },
 
+    // tick() is handed the scene clock, so anything scheduling against
+    // it has to read that same clock rather than performance.now().
+    now: function () {
+      var sceneEl = this.el.sceneEl;
+      return (sceneEl && typeof sceneEl.time === 'number') ? sceneEl.time : performance.now();
+    },
+
+    // The plate under the focused row, ramped to full and eased back
+    // down to whatever the current state says it should rest at — which
+    // after a submenu push is a different row than the one pressed.
+    focusedSlot: function () {
+      return this.rows.length ? this.rows[(this.rows.length - 1) / 2 | 0] : null;
+    },
+
+    // Called before the activation acts, so this paints the row you
+    // actually pressed. Whatever the row then does — pushing a level,
+    // rewriting its own label — renders over the top with the flash
+    // still on, which is why a category flashes while its letters fly
+    // off to the breadcrumb rail. Lit on this frame rather than the
+    // next, so a confirm and a dropped frame do not look the same.
+    beginFlash: function () {
+      if (!this.focusedSlot()) return;
+      this.flashT0 = this.now();
+      this.render();
+    },
+
+    // What the flash wants the focused plate to be right now, or null
+    // when it is not running. render() asks too, not just the tick: a
+    // push renders after the flash has been lit, and painting the
+    // resting value over the top of it drops a frame out of the flash.
+    flashOpacity: function (time, resting) {
+      if (!this.flashT0) return null;
+      var progress = (time - this.flashT0) / FLASH_MS;
+      if (progress >= 1 || progress < 0) return null;
+      // On instantly, held, then eased off — the shape of a button being
+      // pressed. A symmetric fade from the first frame reads as a light
+      // pulsing instead, and at speed you mostly miss the bright part.
+      var fade = progress < FLASH_HOLD ? 0
+        : Math.pow((progress - FLASH_HOLD) / (1 - FLASH_HOLD), 2);
+      return FLASH_OPACITY + (resting - FLASH_OPACITY) * fade;
+    },
+
+    tickFlash: function (time) {
+      if (!this.flashT0) return;
+      var slot = this.focusedSlot();
+      if (!slot) { this.flashT0 = 0; return; }
+
+      var resting = (slot.row && slot.row.focused && !this.menu.inChrome()) ? PLATE_OPACITY : 0;
+      var value = this.flashOpacity(time, resting);
+      if (value === null) {
+        this.flashT0 = 0;
+        // A full render rather than just dropping the opacity back: it
+        // puts the label's colour right too, and after a submenu push
+        // this slot is showing a different row than the one pressed.
+        this.render();
+        return;
+      }
+      setPlateOpacity(slot.el, value);
+    },
+
     tick: function (time) {
+      this.tickFlash(time);
       if (!this.crumbs.length) return;
       for (var c = 0; c < this.crumbs.length; c++) {
         var chars = this.crumbs[c].chars;

@@ -115,6 +115,44 @@ test('an action fires without changing level', () => {
   assert.equal(menu.depth(), 0);
 });
 
+// A surface needs something to flash on a press, and an action is the
+// one kind that leaves nothing else visibly different behind — so the
+// signal has to come from every kind, not just from 'action'.
+test('every kind of activation announces itself', () => {
+  const menu = createMenu(samplePage());
+  const announced = [];
+  menu.on('activate', (detail) => announced.push(detail.item.id));
+
+  menu.activate();                          // action
+  menu.moveFocus(1); menu.activate();       // toggle, flips in place
+  menu.moveFocus(1); menu.activate();       // select, pushes options
+  menu.activate();                          // and picking one pops back
+  assert.deepEqual(announced, ['resume', 'hud', 'targets', 'targets']);
+  assert.equal(menu.depth(), 0);
+});
+
+test('a row that cannot fire announces nothing', () => {
+  const menu = createMenu({ title: 'T', items: [
+    { kind: 'action', id: 'nope', label: 'Nope', disabled: true },
+  ] });
+  const announced = [];
+  menu.on('activate', (detail) => announced.push(detail.item.id));
+  assert.equal(menu.activate(), false);
+  assert.deepEqual(announced, []);
+});
+
+test('the close button is not an activation to flash', () => {
+  const menu = createMenu(samplePage());
+  menu.open();
+  const announced = [];
+  menu.on('activate', () => announced.push(true));
+  menu.back();          // left at the root moves to the close button
+  assert.equal(menu.inChrome(), true);
+  menu.activate();
+  assert.deepEqual(announced, []);
+  assert.equal(menu.isOpen, false);
+});
+
 test('an action can close the menu on activation', () => {
   const menu = createMenu({ title: 'T', items: [
     { kind: 'action', id: 'go', label: 'Go', closeOnActivate: true },
