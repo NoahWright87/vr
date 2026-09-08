@@ -308,31 +308,29 @@
 
       // ==============================================================
       // COMPONENT: teleport-hub
-      // Lives on #player-rig. Builds the flat HTML button row from
-      // TOWN_LOCATIONS (so a new location is one array entry, not a new
-      // button to remember to add) and does the actual move: fade to
-      // black, jump position/rotation while nothing is visible, fade
-      // back in. No tick — it only ever does anything in response to a
-      // button click or a watch menu selection.
+      // Lives on #player-rig. Does the actual move: fade to black, jump
+      // position/rotation while nothing is visible, fade back in. No
+      // tick — it only ever does anything in response to a watch menu
+      // selection.
       //
       // The watch (common/watch-menu.js, wired up in index.html's
-      // hand-with-watch markup) is the in-headset half of teleport —
-      // the flat HTML buttons are a desktop/phone convenience, same as
-      // the reticle fallback elsewhere in this file, and were never
-      // reachable by hand in a headset. Both hands sit inside
-      // #player-rig (see index.html's own comment on that), so a
-      // menu-item-select from either watch's panel bubbles up through
-      // this.el on its way to <a-scene> — no separate listener needed
-      // on the watch's own markup. The template (index.html's TELEPORT
-      // page) names each destination "teleport-<id>"; this only needs
-      // to strip that prefix and hand the id to the exact same
-      // teleportTo() the buttons already call.
+      // hand-with-watch markup) is the only front end for this now — an
+      // earlier flat HTML button row here (a desktop/phone convenience
+      // for testing without a headset) was dropped once the watch's own
+      // TELEPORT page covered the same ground and the flat list had
+      // nothing left to justify the screen space it took on mobile.
+      // Both hands sit inside #player-rig (see index.html's own comment
+      // on that), so a menu-item-select from either watch's panel
+      // bubbles up through this.el on its way to <a-scene> — no
+      // separate listener needed on the watch's own markup. The
+      // template (index.html's TELEPORT page) names each destination
+      // "teleport-<id>"; this only needs to strip that prefix and hand
+      // the id to teleportTo().
       // ==============================================================
       registerComponent('teleport-hub', {
         init: function () {
           this.fadeEl = document.querySelector('#teleport-fade');
           this.fading = false;
-          this.buildButtons();
 
           this.onMenuSelect = this.onMenuSelect.bind(this);
           this.el.addEventListener('menu-item-select', this.onMenuSelect);
@@ -346,21 +344,6 @@
           var value = evt.detail.value;
           if (value.indexOf('teleport-') !== 0) return;
           this.teleportTo(value.slice('teleport-'.length));
-        },
-
-        buildButtons: function () {
-          var container = document.querySelector('#teleport-buttons');
-          if (!container) return;
-
-          var self = this;
-          TOWN_LOCATIONS.forEach(function (loc) {
-            var btn = document.createElement('button');
-            btn.textContent = loc.label;
-            btn.addEventListener('click', function () {
-              self.teleportTo(loc.id);
-            });
-            container.appendChild(btn);
-          });
         },
 
         teleportTo: function (id, arrival) {

@@ -12,6 +12,10 @@ var HAND_MODELS = {
 };
 var FINGERTIP_OFFSET = { x: 0.038, y: 0.026, z: -0.089 };
 var FINGER_POINT_DIR = { x: 0.0649, y: 0.0816, z: -0.9946 };
+// Shared by hint-zone's own in-world card and the system's 2D corner
+// hint below, so a gamepad player sees the same glyph in both places
+// for a zone that never bothered to set its own gamepadKey.
+var GAMEPAD_ACTION_KEY_DEFAULTS = { mounted: 'X', grab: 'RB' };
 
 function xrIsPresenting(sceneEl) {
   var controlMode = sceneEl && sceneEl.systems && sceneEl.systems['control-mode'];
@@ -48,6 +52,72 @@ AFRAME.registerSystem('interaction-hints', {
     this.zonePosition = new THREE.Vector3();
     this.shoulderPosition = new THREE.Vector3();
     this.handPosition = new THREE.Vector3();
+    this.createCornerHint();
+    this.cornerHintKey = null;
+    this.cornerHintLabel = null;
+    this.cornerHintVisible = false;
+  },
+
+  // A small, always-current 2D nudge in the corner of the screen --
+  // the flat-input (keyboard/gamepad) equivalent of the in-world hint
+  // card, but with no dwell delay: it reflects whatever's reachable
+  // right now, the instant it becomes reachable, since it's small and
+  // out of the way rather than a 3D element competing for attention in
+  // the middle of the view. Touch gets a virtual button in this same
+  // corner instead (see touch-controls' own hint-driven visibility in
+  // input-router.js) -- the two are mutually exclusive by construction,
+  // since this only ever shows for a non-touch, non-XR active family.
+  createCornerHint: function () {
+    var el = document.createElement('div');
+    el.className = 'interaction-corner-hint';
+    el.hidden = true;
+    el.innerHTML = '<span class="interaction-corner-hint-key"></span><span class="interaction-corner-hint-label"></span>';
+    var style = document.createElement('style');
+    style.textContent = [
+      '.interaction-corner-hint{position:fixed;right:max(14px,env(safe-area-inset-right));bottom:max(14px,env(safe-area-inset-bottom));z-index:25;display:flex;align-items:center;gap:8px;background:rgba(8,11,18,.78);color:#cbd5e1;font:600 12px system-ui;padding:6px 10px 6px 6px;border-radius:8px;pointer-events:none;box-shadow:0 2px 8px #0006}',
+      '.interaction-corner-hint-key{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 5px;border-radius:4px;background:#fff;color:#111722;font:700 11px system-ui}',
+      '.interaction-corner-hint-key:empty{display:none}',
+    ].join('');
+    document.head.appendChild(style);
+    document.body.appendChild(el);
+    this.cornerHintEl = el;
+    this.cornerHintKeyEl = el.querySelector('.interaction-corner-hint-key');
+    this.cornerHintLabelEl = el.querySelector('.interaction-corner-hint-label');
+  },
+
+  // Called once per tick from this system's own tick() below, after
+  // desktopCandidate has been resolved -- flat input only (XR has no
+  // 2D screen), and only for keyboard/gamepad, never touch (which
+  // shows a button in this corner instead).
+  updateCornerHint: function (isXr) {
+    var family = this.sceneEl.systems['input-router'].getActiveFamily();
+    var candidate = (!isXr && family !== 'touch') ? this.desktopCandidate : null;
+    if (!candidate) {
+      if (this.cornerHintVisible) {
+        this.cornerHintEl.hidden = true;
+        this.cornerHintVisible = false;
+      }
+      return;
+    }
+    var zone = candidate.zone;
+    var key = family === 'gamepad'
+      ? (zone.data.gamepadKey || GAMEPAD_ACTION_KEY_DEFAULTS[zone.data.action] || 'A')
+      : zone.data.desktopKey;
+    var label = family === 'gamepad'
+      ? (zone.dynamicDesktopLabel || zone.data.gamepadLabel || zone.data.desktopLabel)
+      : (zone.dynamicDesktopLabel || zone.data.desktopLabel);
+    if (key !== this.cornerHintKey) {
+      this.cornerHintKeyEl.textContent = key || '';
+      this.cornerHintKey = key;
+    }
+    if (label !== this.cornerHintLabel) {
+      this.cornerHintLabelEl.textContent = label || '';
+      this.cornerHintLabel = label;
+    }
+    if (!this.cornerHintVisible) {
+      this.cornerHintEl.hidden = false;
+      this.cornerHintVisible = true;
+    }
   },
 
   registerZone: function (zone) {
@@ -290,6 +360,7 @@ AFRAME.registerSystem('interaction-hints', {
       this.desktopCandidate = this.resolveDesktop(cameraEl);
       this.updateSelections([this.desktopCandidate], false, time);
     }
+    this.updateCornerHint(isXr);
   },
 });
 
@@ -377,6 +448,8 @@ AFRAME.registerComponent('hint-zone', {
 
     this.el.sceneEl.appendChild(card);
     this.cardEl = card;
+    this.keyOutlineEl = keyOutline;
+    this.keyFillEl = keyFill;
     this.keyTextEl = keyText;
     this.labelTextEl = labelText;
   },
@@ -513,12 +586,17 @@ AFRAME.registerComponent('hint-zone', {
 
     var isXr = context.isXr;
     var family = context.inputFamily || (isXr ? 'xr' : 'keyboard');
-    var gamepadDefaults = { mounted: 'X', grab: 'RB' };
+    // Touch has no physical key to show a glyph for -- the affordance
+    // there is the virtual button itself (see touch-controls' own
+    // hint-driven show/hide), so this card goes label-only on touch
+    // rather than displaying a meaningless "TAP" tile. A gamepad
+    // that's actually connected and active reports its own family
+    // (input-router.js), so it still gets a real glyph here.
     var key = isXr
       ? this.data.xrKey
       : (family === 'gamepad'
-        ? (this.data.gamepadKey || gamepadDefaults[this.data.action] || 'A')
-        : (family === 'touch' ? (this.data.touchKey || 'TAP') : this.data.desktopKey));
+        ? (this.data.gamepadKey || GAMEPAD_ACTION_KEY_DEFAULTS[this.data.action] || 'A')
+        : (family === 'touch' ? '' : this.data.desktopKey));
     var label = isXr
       ? (this.dynamicXrLabel || this.data.xrLabel)
       : (family === 'gamepad'
@@ -528,6 +606,11 @@ AFRAME.registerComponent('hint-zone', {
           : (this.dynamicDesktopLabel || this.data.desktopLabel)));
     this.keyTextEl.setAttribute('text', 'value', key || '');
     this.labelTextEl.setAttribute('text', 'value', label || '');
+
+    var showKey = Boolean(key);
+    this.keyOutlineEl.setAttribute('visible', showKey);
+    this.keyFillEl.setAttribute('visible', showKey);
+    this.labelTextEl.setAttribute('position', showKey ? '0.13 0 0.006' : '0 0 0.006');
 
     this.updateHintTransform();
   },
@@ -628,6 +711,7 @@ AFRAME.registerComponent('semantic-hand', {
     this.desiredQuaternion = this.el.object3D.quaternion.clone();
     this.desktopPose = 'Open';
     this.heldEl = null;
+    this.isAiming = false; // desktop/mobile/gamepad ADS state -- see setAiming, common/desktop-controls.js
     this.mixer = null;
     this.actions = {};
     this.currentAction = null;
@@ -676,6 +760,7 @@ AFRAME.registerComponent('semantic-hand', {
     this._fingerDirectionLocal = new THREE.Vector3();
     this._fingertipParentQuaternion = new THREE.Quaternion();
     this._moveDelta = new THREE.Vector3();
+    this._bezierControl = new THREE.Vector3();
 
     if (watchComponent && watchComponent.fingertipEl) {
       watchComponent.fingertipEl.addEventListener('raycaster-intersection', function (evt) {
@@ -726,6 +811,15 @@ AFRAME.registerComponent('semantic-hand', {
     this.playPose(el ? 'Hold' : 'Open');
   },
 
+  // Desktop/mobile/gamepad input sets this while this hand's ADS button
+  // is held (common/desktop-controls.js) -- never from any XR path,
+  // since a real hand is already as steady/aimed as the player actually
+  // holds it. A game's own recoil/wobble math just reads the field
+  // directly (e.g. Pistols' hand-rig.isAiming()).
+  setAiming: function (aiming) {
+    this.isAiming = Boolean(aiming);
+  },
+
   getInteractionWorldPosition: function (target) {
     var watch = this.el.components['hand-with-watch'];
     if (watch && watch.fingertipEl) return watch.fingertipEl.object3D.getWorldPosition(target);
@@ -762,6 +856,21 @@ AFRAME.registerComponent('semantic-hand', {
   // Runs a short, semantic hand gesture through real hand transforms. The
   // gameplay system still observes an ordinary moving hand; desktop input
   // never has to manufacture a controller or bypass collision/gesture code.
+  //
+  // Two optional per-keyframe knobs, both dormant unless a caller sets
+  // them, so every existing caller (watch pointing, mounted-interaction,
+  // a punch's windup/strike) keeps its exact original straight-line/
+  // smoothstep feel with zero behavior change:
+  //   - curveOffset (world-space Vector3): bows the path into a quadratic
+  //     bezier instead of a straight line, offsetting the midpoint by
+  //     this much. Converted to the same parent-local space as
+  //     frame.quaternion below, since it's a direction, not a point.
+  //   - ease (function(t) -> t'): replaces the hardcoded smoothstep for
+  //     this keyframe's timing curve.
+  // Deliberately NOT the place for overshoot -- see
+  // core-hand-rig.js's flourish helpers for why that lives one level up,
+  // as a post-arrival cosmetic decay instead of a change to this
+  // function's own completion timing.
   runWorldMotion: function (keyframes, detail) {
     if (!keyframes || !keyframes.length) return;
     var parent = this.el.object3D.parent;
@@ -775,6 +884,8 @@ AFRAME.registerComponent('semantic-hand', {
         quaternion: parentQuaternion.clone().multiply(frame.quaternion),
         pose: frame.pose || 'Hold',
         duration: Math.max(1, frame.duration || 1),
+        curveOffset: frame.curveOffset ? frame.curveOffset.clone().applyQuaternion(parentQuaternion) : null,
+        ease: frame.ease || null,
       };
     });
     this.activeMotion = {
@@ -805,8 +916,19 @@ AFRAME.registerComponent('semantic-hand', {
       motion.elapsed += consumed;
       remaining -= consumed;
       var progress = Math.min(1, motion.elapsed / frame.duration);
-      var eased = progress * progress * (3 - 2 * progress);
-      this.el.object3D.position.lerpVectors(motion.startPosition, frame.position, eased);
+      var eased = frame.ease ? frame.ease(progress) : progress * progress * (3 - 2 * progress);
+      if (frame.curveOffset) {
+        // Quadratic bezier through a control point offset from the
+        // straight-line midpoint, instead of lerpVectors' straight line.
+        var inv = 1 - eased;
+        this._bezierControl.copy(motion.startPosition).add(frame.position).multiplyScalar(0.5).add(frame.curveOffset);
+        this.el.object3D.position
+          .copy(motion.startPosition).multiplyScalar(inv * inv)
+          .addScaledVector(this._bezierControl, 2 * inv * eased)
+          .addScaledVector(frame.position, eased * eased);
+      } else {
+        this.el.object3D.position.lerpVectors(motion.startPosition, frame.position, eased);
+      }
       this.el.object3D.quaternion.copy(motion.startQuaternion).slerp(frame.quaternion, eased);
       if (progress < 1) break;
 

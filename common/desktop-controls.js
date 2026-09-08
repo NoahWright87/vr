@@ -3,6 +3,9 @@ import './interaction-hints.js';
 
 var THREE = AFRAME.THREE;
 var PREFERENCES_KEY = 'vr-showcase-player-preferences-v1';
+var AIM_PITCH_LIMIT_DEG = 55; // see aimLookQuaternion -- a plausible wrist range, not a camera-comfort limit
+var ADS_HAND_OFFSET = { x: 0.06, y: -0.09, z: -0.32 }; // camera-relative ADS hand position (dominant side), before a weapon's own aimOffset -- tune by feel per DESIGN.md; z is forward (camera-local -Z), matching every other offset in this file
+var TWO_HAND_SPAN_FALLBACK = 0.4; // meters, only used if a supported weapon somehow declares heldPosition/supportGrip at the same point
 
 function xrIsPresenting(sceneEl) {
   var controlMode = sceneEl && sceneEl.systems && sceneEl.systems['control-mode'];
@@ -17,11 +20,14 @@ function visibleInHierarchy(object3D) {
 }
 
 function readPreferences() {
-  var fallback = { handedness: 'right', hintMode: 'delayed' };
+  // Toggle is the default: it's the more accessible option (no button
+  // needs to be held down for the whole time you're aiming).
+  var fallback = { handedness: 'right', hintMode: 'delayed', aimMode: 'toggle' };
   try {
     var saved = JSON.parse(localStorage.getItem(PREFERENCES_KEY));
     if (saved && (saved.handedness === 'left' || saved.handedness === 'right')) fallback.handedness = saved.handedness;
     if (saved && ['always', 'delayed', 'never'].indexOf(saved.hintMode) !== -1) fallback.hintMode = saved.hintMode;
+    if (saved && (saved.aimMode === 'hold' || saved.aimMode === 'toggle')) fallback.aimMode = saved.aimMode;
   } catch (err) {
     // Storage can be disabled in private or embedded browsers. Defaults are fine.
   }
@@ -120,6 +126,14 @@ AFRAME.registerComponent('desktop-controls', {
     this.onKeyDown = this.onKeyDown.bind(this);
     this.onKeyUp = this.onKeyUp.bind(this);
     this.onPointerDown = this.onPointerDown.bind(this);
+    this.onPointerUp = this.onPointerUp.bind(this);
+    this.onContextMenu = this.onContextMenu.bind(this);
+    this._aimKeyHeld = false; // raw right mouse button -- see onPointerDown/onPointerUp
+    this._aimActionHeld = false; // touch/gamepad's semantic 'aim' action -- see onSemanticAction
+    // Both are literally "is the button down" in hold mode, and a
+    // press-triggered flip-flop in toggle mode (this.preferences.aimMode,
+    // default 'toggle' -- see readPreferences/the aim-mode menu-option).
+    this.isAiming = false; // the two above, combined -- see updateAiming
     this.onSemanticTap = this.onSemanticTap.bind(this);
     this.onMountedRequest = this.onMountedRequest.bind(this);
     this.onActiveMenuClosed = this.onActiveMenuClosed.bind(this);
@@ -130,6 +144,8 @@ AFRAME.registerComponent('desktop-controls', {
     document.addEventListener('keydown', this.onKeyDown, true);
     document.addEventListener('keyup', this.onKeyUp, true);
     document.addEventListener('pointerdown', this.onPointerDown, true);
+    document.addEventListener('pointerup', this.onPointerUp, true);
+    document.addEventListener('contextmenu', this.onContextMenu, true);
     this.sceneEl.addEventListener('mounted-interaction-request', this.onMountedRequest);
     this.sceneEl.addEventListener('menu-option-change', this.onPreferenceChange);
     this.sceneEl.addEventListener('watch-menu-ready', this.onWatchReady);
@@ -161,6 +177,8 @@ AFRAME.registerComponent('desktop-controls', {
       this.preferences.handedness = detail.value;
     } else if (detail.key === 'interaction-hints' && ['always', 'delayed', 'never'].indexOf(detail.value) !== -1) {
       this.preferences.hintMode = detail.value;
+    } else if (detail.key === 'aim-mode' && (detail.value === 'hold' || detail.value === 'toggle')) {
+      this.preferences.aimMode = detail.value;
     } else {
       return;
     }
@@ -177,6 +195,7 @@ AFRAME.registerComponent('desktop-controls', {
       if (!component) return;
       if (component.data.key === 'handedness') component.setValue(preferences.handedness);
       if (component.data.key === 'interaction-hints') component.setValue(preferences.hintMode);
+      if (component.data.key === 'aim-mode') component.setValue(preferences.aimMode);
     });
   },
 
@@ -218,6 +237,9 @@ AFRAME.registerComponent('desktop-controls', {
     } else if (evt.code === 'KeyF') {
       evt.preventDefault();
       this.handleGrabKey();
+    } else if (evt.code === 'Digit1' || evt.code === 'Digit2' || evt.code === 'Digit3' || evt.code === 'Digit4' || evt.code === 'Digit5') {
+      evt.preventDefault();
+      if (this.mode === 'normal') this.emitHotbarFallback(Number(evt.code.slice(-1)));
     }
   },
 
@@ -237,7 +259,25 @@ AFRAME.registerComponent('desktop-controls', {
   // instead (see activateMenuSelection) — a tap here or via onSemanticTap
   // below only ever activates whatever it's currently pointing at.
   onPointerDown: function (evt) {
-    if (this.mode === 'normal' || !this.activePointerHand || xrIsPresenting(this.sceneEl)) return;
+    if (xrIsPresenting(this.sceneEl)) return;
+    if (this.mode === 'normal') {
+      // Touch gets its own explicit FIRE button (routed through
+      // onSemanticAction's 'activate' fallback below) rather than a raw
+      // tap here: the touch look-area covers most of the screen for
+      // free-look dragging, and a raw pointerdown fires at the very start
+      // of every drag, before touch-controls' own tap-vs-drag
+      // disambiguation has a chance to rule it out — so a tap-to-fire here
+      // would also fire on every look-drag, not just a deliberate tap.
+      if (evt.pointerType === 'mouse' && evt.button === 0) this.emitTriggerFallback();
+      else if (evt.pointerType === 'mouse' && evt.button === 2) {
+        // Toggle mode only reacts to the press -- release is a no-op,
+        // handled below in onPointerUp.
+        this._aimKeyHeld = this.preferences.aimMode === 'toggle' ? !this._aimKeyHeld : true;
+        this.updateAiming();
+      }
+      return;
+    }
+    if (!this.activePointerHand) return;
     if (evt.pointerType === 'touch') {
       if (this.mode === 'watch' && evt.target !== this.sceneEl.canvas) return;
     } else if (evt.pointerType === 'mouse' && evt.button !== 0) {
@@ -245,6 +285,72 @@ AFRAME.registerComponent('desktop-controls', {
     }
     evt.preventDefault();
     this.activateMenuSelection();
+  },
+
+  // No pointerup listener existed in this file before ADS needed one --
+  // every other mouse/touch interaction here is a one-shot tap, not a
+  // hold. Right mouse button only; left-button release needs no handling
+  // since fire is already a tap (emitTriggerFallback), not a hold.
+  onPointerUp: function (evt) {
+    if (evt.pointerType === 'mouse' && evt.button === 2 && this.preferences.aimMode !== 'toggle') {
+      this._aimKeyHeld = false;
+      this.updateAiming();
+    }
+  },
+
+  // Right-click drives ADS (see onPointerDown/onPointerUp) instead of the
+  // browser's own context menu while playing.
+  onContextMenu: function (evt) {
+    evt.preventDefault();
+  },
+
+  // Combines mouse (onPointerDown/onPointerUp) and touch/gamepad
+  // (onSemanticAction's 'aim' branch) into one flag per hand, mirroring
+  // how sprint is already split between this file's own key-polling and
+  // locomotion.js's separate gamepadSprinting. Every hand gets the same
+  // flag rather than just the dominant one, since a drawn firearm can end
+  // up in either hand (see core-equip.js's hotbar system) and each
+  // hand's own placeHeldHand only acts on it while actually holding one.
+  updateAiming: function () {
+    this.isAiming = Boolean(this._aimKeyHeld || this._aimActionHeld);
+    var aiming = this.isAiming;
+    ['left', 'right'].forEach(function (side) {
+      var hand = this.hands[side];
+      if (hand) hand.setAiming(aiming);
+    }, this);
+  },
+
+  // Public: a game can call this whenever whatever's in hand changes out
+  // from under an active aim (e.g. Pistols' hotbar swapping weapons) so
+  // ADS never silently carries over onto a different gun -- most
+  // noticeable in toggle mode, where there'd otherwise be no button
+  // press to naturally end it.
+  stopAiming: function () {
+    this._aimKeyHeld = false;
+    this._aimActionHeld = false;
+    this.updateAiming();
+  },
+
+  // The 'normal' mode mirror of emitGrabFallback: no menu/mounted/watch
+  // interaction is active, so a primary click/tap here isn't claimed by
+  // anything in this file. Left deliberately non-preventDefault()'d so
+  // A-Frame's own `cursor` component (the reticle+.shootable click
+  // fallback some games use) keeps working exactly as before for anyone
+  // not listening for this.
+  // Both hands, not just the dominant one: a weapon can now end up in
+  // either hand (Pistols' numbered holster keys draw the left hip
+  // holster into the left hand specifically, regardless of handedness
+  // preference — see core-equip.js's activateHotbarSlot), so firing
+  // can't assume it's always the dominant hand holding something.
+  // Whichever hand's own listener actually has a firearm decides for
+  // itself; the other silently no-ops, the same way it already does
+  // for an empty-handed dominant hand today.
+  emitTriggerFallback: function () {
+    var self = this;
+    ['left', 'right'].forEach(function (side) {
+      var hand = self.hands[side];
+      if (hand) hand.el.emit('desktop-trigger-attempt', { source: 'desktop' }, false);
+    });
   },
 
   // Mobile's look-drag area (common/input-router.js's touch-controls)
@@ -260,7 +366,13 @@ AFRAME.registerComponent('desktop-controls', {
   onSemanticTap: function () {
     if (xrIsPresenting(this.sceneEl)) return;
     if (this.mode !== 'watch' && this.mode !== 'normal') return;
-    this.activateMenuSelection();
+    // Mirrors onSemanticAction's 'activate' branch: a tap that isn't
+    // claimed by a menu target (Pistols has none) falls through to a
+    // shot, the same way a plain mouse click already does -- this is
+    // what lets a bare tap fire without a dedicated FIRE button. Watch
+    // mode has its own real fingertip laser/cursor for selection and
+    // never fires from here.
+    if (!this.activateMenuSelection() && this.mode === 'normal') this.emitTriggerFallback();
   },
 
   // Watch mode always goes through the real fingertip laser/cursor —
@@ -290,6 +402,22 @@ AFRAME.registerComponent('desktop-controls', {
 
   onSemanticAction: function (evt) {
     var detail = evt.detail || {};
+    // 'aim' is a hold, not a one-shot tap -- it needs the 'start'/'cancel'
+    // phases the blanket perform-only guard below exists to ignore for
+    // every other (one-shot) action here, so it's handled before that
+    // guard, the same way semantic-punch-controls' own onIntent reacts to
+    // phases other than 'perform' on this identical event.
+    if (detail.action === 'aim') {
+      if (!xrIsPresenting(this.sceneEl)) {
+        if (this.preferences.aimMode === 'toggle') {
+          if (detail.phase === 'start') this._aimActionHeld = !this._aimActionHeld;
+        } else {
+          this._aimActionHeld = detail.phase === 'start';
+        }
+        this.updateAiming();
+      }
+      return;
+    }
     if (detail.phase !== 'perform' || xrIsPresenting(this.sceneEl)) return;
     var source = detail.source || 'desktop';
     if (detail.action === 'watch') {
@@ -309,7 +437,24 @@ AFRAME.registerComponent('desktop-controls', {
     } else if (detail.action === 'crouch') {
       if (this.mode === 'normal' || this.mode === 'watch') this.toggleManualCrouch();
     } else if (detail.action === 'activate') {
-      this.activateMenuSelection();
+      // activateMenuSelection() claims this in 'watch'/'mounted' mode, or
+      // in 'normal' mode for a game that actually has .menu-target
+      // elements (the Showcase's always-open panel). Nothing here claims
+      // it for Pistols, so it falls through to the same trigger-fallback
+      // mechanism the mouse-click path uses (onPointerDown) — this is what
+      // gives gamepad's primary button and touch's FIRE button a working
+      // shot, for free, via the exact same desktop-trigger-attempt event.
+      if (!this.activateMenuSelection()) this.emitTriggerFallback();
+    } else if (detail.action === 'hotbar1') {
+      this.emitHotbarFallback(1, source);
+    } else if (detail.action === 'hotbar2') {
+      this.emitHotbarFallback(2, source);
+    } else if (detail.action === 'hotbar3') {
+      this.emitHotbarFallback(3, source);
+    } else if (detail.action === 'hotbar4') {
+      this.emitHotbarFallback(4, source);
+    } else if (detail.action === 'hotbar5') {
+      this.emitHotbarFallback(5, source);
     }
   },
 
@@ -400,10 +545,20 @@ AFRAME.registerComponent('desktop-controls', {
 
   handleGrabKey: function (source) {
     if (this.mode !== 'normal' || this.autoCrouch) return;
+    // Only a simple-grabbable (the Showcase's own held box) short-
+    // circuits here -- semantic-hand.heldEl is also set for a held
+    // Pistols-style holsterable prop (any hand-rig grab sets it, so its
+    // own desktop hand placement recognizes a held pose), and that kind
+    // of held item needs to keep going below: to a hint-zone-driven
+    // release (see core-equip.js's slot-reach-grab) or, failing that,
+    // emitGrabFallback's own plain toggle-release. Checking findHeldHand()
+    // alone used to swallow the keypress here regardless of which kind
+    // of item it was, silently breaking F's release for every ordinary
+    // held prop.
     var heldHand = this.findHeldHand();
-    if (heldHand) {
-      var held = heldHand.heldEl.components['simple-grabbable'];
-      if (held) held.release(heldHand.el);
+    var held = heldHand && heldHand.heldEl.components['simple-grabbable'];
+    if (held) {
+      held.release(heldHand.el);
       return;
     }
     var grabCandidate = this.hintSystem.getDesktopCandidate('grab');
@@ -412,11 +567,36 @@ AFRAME.registerComponent('desktop-controls', {
       else this.activateGrabCandidate(grabCandidate, source);
       return;
     }
-    if (this.manualCrouched) return;
-    var shoulderYOffset = this.data.crouchHeight - this.cameraEl.object3D.position.y;
-    var crouchCandidate = this.hintSystem.getDesktopCrouchCandidate('grab', shoulderYOffset);
-    if (!crouchCandidate) return;
-    this.beginAutoCrouch(crouchCandidate, source);
+    if (!this.manualCrouched) {
+      var shoulderYOffset = this.data.crouchHeight - this.cameraEl.object3D.position.y;
+      var crouchCandidate = this.hintSystem.getDesktopCrouchCandidate('grab', shoulderYOffset);
+      if (crouchCandidate) {
+        this.beginAutoCrouch(crouchCandidate, source);
+        return;
+      }
+    }
+    this.emitGrabFallback(source);
+  },
+
+  // Nothing in the hint-zone/simple-grabbable candidate system claimed this
+  // grab. This file has no idea what a physically-grabbed prop (a
+  // Pistols-style holsterable gun, say) looks like — that's game-specific —
+  // so it just announces "a grab was attempted by this hand" on the hand
+  // element itself and leaves it to whoever else is listening. A no-op for
+  // any scene where nothing listens for it.
+  emitGrabFallback: function (source) {
+    var dominant = this.getDominantHand();
+    if (dominant) dominant.el.emit('desktop-grab-attempt', { source: source || 'desktop' }, false);
+  },
+
+  // The numbered-holster equivalent of emitGrabFallback. Unlike grab/
+  // trigger there's no per-hand ambiguity to resolve here (the whole point
+  // of a fixed slot is that it already says which hand it wants), so this
+  // fires once at the scene level rather than on a specific hand element —
+  // this file still has no idea what slot 1/2/3 mean, only Pistols does
+  // (see core-equip.js's activateHotbarSlot).
+  emitHotbarFallback: function (slot, source) {
+    this.sceneEl.emit('desktop-hotbar-attempt', { slot: slot, source: source || 'desktop' }, false);
   },
 
   beginAutoCrouch: function (candidate, source) {
@@ -807,6 +987,22 @@ AFRAME.registerComponent('desktop-controls', {
     return new THREE.Quaternion().setFromAxisAngle(this._up, yaw);
   },
 
+  // A held firearm's aim direction should track where the camera is
+  // actually looking, not just its yaw (that's cameraYawQuaternion, used
+  // for every other held/resting pose) -- otherwise a desktop/mobile
+  // player can never aim up or down at all. Clamped to a plausible aim
+  // cone rather than the camera's full look-controls-clamped pitch range
+  // (enforcePitchLimit's own ~89deg is a gimbal-lock guard, not a
+  // "can your wrist actually point this far" one), and roll is always
+  // dropped -- a gun doesn't twist with a mobile magic-window wobble.
+  aimLookQuaternion: function () {
+    this.cameraEl.object3D.getWorldQuaternion(this._cameraQuaternion);
+    var euler = new THREE.Euler().setFromQuaternion(this._cameraQuaternion, 'YXZ');
+    var pitchLimit = THREE.MathUtils.degToRad(AIM_PITCH_LIMIT_DEG);
+    var pitch = THREE.MathUtils.clamp(euler.x, -pitchLimit, pitchLimit);
+    return new THREE.Quaternion().setFromEuler(new THREE.Euler(pitch, euler.y, 0, 'YXZ'));
+  },
+
   currentAimDirection: function (pointerOrigin) {
     this.cameraEl.object3D.getWorldPosition(this._cameraPosition);
     var rayDirection = new THREE.Vector3(this.cursorNdc.x, this.cursorNdc.y, 0.5)
@@ -838,9 +1034,115 @@ AFRAME.registerComponent('desktop-controls', {
   },
 
   placeHeldHand: function (hand) {
+    var firearm = hand.heldEl && hand.heldEl.components && hand.heldEl.components.firearm;
+    if (firearm && hand.isAiming) return this.placeAimedHand(hand, firearm);
     var sideX = hand.data.hand === 'left' ? -0.2 : 0.2;
     var position = this.cameraOffsetToWorld(new THREE.Vector3(sideX, -0.25, -0.48), true);
-    hand.setWorldTransform(position, this.cameraYawQuaternion(), 'Hold');
+    var orientation = firearm ? this.firearmAimQuaternion(hand.heldEl) : this.cameraYawQuaternion();
+    hand.setWorldTransform(position, orientation, 'Hold');
+  },
+
+  // The hand orientation that makes a held firearm's muzzle point exactly
+  // along the camera's look direction (aimLookQuaternion) -- used for
+  // both loose hip-fire tracking above and precise ADS below, since the
+  // target DIRECTION is identical in both; only the hand's target
+  // position (hip-level vs. near the eye) and how much wobble rides on
+  // top of it differ. The held item is a rigid child of the hand's grip
+  // point at a fixed local heldRotation (holsterable's own per-weapon
+  // correction -- see items-guns.js's comment above the pistol's
+  // declaration: it's tuned against a REAL tracked controller's own raw
+  // grip-pose convention, which does NOT put "forward" on the hand's own
+  // local -Z, so this has to invert it rather than skip it). Pointing the
+  // muzzle at camera-forward means solving for the one hand orientation
+  // that, once heldRotation is applied on top of it, lands exactly there:
+  // hand = cameraLook * heldRotation^-1.
+  firearmAimQuaternion: function (heldEl) {
+    var heldRotation = heldEl.components.holsterable.data.heldRotation;
+    var heldRotationQuat = new THREE.Quaternion().setFromEuler(new THREE.Euler(
+      THREE.MathUtils.degToRad(heldRotation.x),
+      THREE.MathUtils.degToRad(heldRotation.y),
+      THREE.MathUtils.degToRad(heldRotation.z)
+    ));
+    var quat = this.aimLookQuaternion();
+    quat.multiply(heldRotationQuat.invert());
+    return quat;
+  },
+
+  // ADS: same aim direction as hip-fire (firearmAimQuaternion), but the
+  // hand itself moves to a near-eye position (per weapon --
+  // firearm.aimOffset) instead of staying at hip level. Wobble (hand-
+  // rig's grip child) still rides on top of this every tick, same as any
+  // other pose -- this only computes the base, steadied-but-not-zeroed
+  // target.
+  //
+  // Dual-wielding is the one case that keeps the old side offset: two
+  // pistols held symmetrically out to each side, both pointed at
+  // camera-forward, already reads as a natural akimbo aim ("works
+  // beautifully" per the request) and both hands are equally busy, so
+  // there's no third hand to bring in. Single-wielding centers the gun
+  // instead -- the camera should look straight over the top of it,
+  // through the sights, not off to one side -- and brings the idle off
+  // hand in close (placeSupportingHand) for a supported-looking stance.
+  placeAimedHand: function (hand, firearm) {
+    var otherHand = hand.data.hand === 'left' ? this.hands.right : this.hands.left;
+    var dualWielding = Boolean(otherHand && otherHand.heldEl && otherHand.heldEl.components.firearm);
+    var aimOffset = firearm.data.aimOffset;
+    var sideX = dualWielding ? (hand.data.hand === 'left' ? -ADS_HAND_OFFSET.x : ADS_HAND_OFFSET.x) : 0;
+    var position = this.cameraOffsetToWorld(new THREE.Vector3(
+      sideX + aimOffset.x,
+      ADS_HAND_OFFSET.y + aimOffset.y,
+      ADS_HAND_OFFSET.z + aimOffset.z
+    ), true);
+    var quat = this.firearmAimQuaternion(hand.heldEl);
+    hand.setWorldTransform(position, quat, 'Hold');
+
+    if (!dualWielding && otherHand && !otherHand.heldEl) this.placeSupportingHand(otherHand, position, quat);
+  },
+
+  // Cosmetic only -- see findCosmeticSupportHand for why. Cups in close
+  // to the shooting hand roughly where a real supporting hand would sit,
+  // rather than actually attaching to anything.
+  placeSupportingHand: function (hand, primaryPosition, primaryQuat) {
+    var side = hand.data.hand === 'left' ? -1 : 1;
+    var offset = new THREE.Vector3(side * 0.035, -0.03, 0.05).applyQuaternion(primaryQuat);
+    hand.setWorldTransform(primaryPosition.clone().add(offset), primaryQuat, 'Hold');
+  },
+
+  // A real two-handed grip: the gun's own orientation is entirely
+  // derived (by holsterable.applyTwoHandedPose, core-equip.js) from the
+  // vector between the dominant hand's grip and the support hand's grip,
+  // so getting the aim right here means placing the SUPPORT hand along
+  // the desired barrel direction from the dominant hand, not computing
+  // any quaternion for the gun directly -- that math already exists and
+  // this only has to feed it correct hand positions. Both hands share
+  // one orientation (aiming direction, yaw-only at rest) so their
+  // averaged "up" -- what applyTwoHandedPose reads for roll -- comes out
+  // level, matching "looking down the sights, across the top."
+  placeTwoHandedFirearm: function (dominantHand, supportHand, heldEl) {
+    var holsterable = heldEl.components.holsterable;
+    var aiming = dominantHand.isAiming;
+    var handQuat = aiming ? this.aimLookQuaternion() : this.cameraYawQuaternion();
+
+    var dominantPosition;
+    if (aiming) {
+      var firearm = heldEl.components.firearm;
+      var aimOffset = firearm.data.aimOffset;
+      dominantPosition = this.cameraOffsetToWorld(new THREE.Vector3(
+        aimOffset.x,
+        ADS_HAND_OFFSET.y + aimOffset.y,
+        ADS_HAND_OFFSET.z + aimOffset.z
+      ), true);
+    } else {
+      dominantPosition = this.cameraOffsetToWorld(new THREE.Vector3(0, -0.25, -0.48), true);
+    }
+    dominantHand.setWorldTransform(dominantPosition, handQuat, 'Hold');
+
+    var hp = holsterable.data.heldPosition;
+    var sg = holsterable.data.supportGrip;
+    var handSpan = Math.hypot(sg.x - hp.x, sg.y - hp.y, sg.z - hp.z) || TWO_HAND_SPAN_FALLBACK;
+    var forward = new THREE.Vector3(0, 0, -1).applyQuaternion(handQuat);
+    var supportPosition = dominantPosition.clone().addScaledVector(forward, handSpan);
+    supportHand.setWorldTransform(supportPosition, handQuat, 'Hold');
   },
 
   placeCandidatePreview: function (candidate) {
@@ -966,16 +1268,70 @@ AFRAME.registerComponent('desktop-controls', {
   },
 
   updateNormalHands: function () {
+    var twoHanded = this.findTwoHandedFirearm();
+    if (twoHanded) {
+      this.placeTwoHandedFirearm(twoHanded.dominant, twoHanded.support, twoHanded.heldEl);
+      return;
+    }
+
+    var cosmeticSupport = this.findCosmeticSupportHand();
     var candidate = this.autoCrouch && this.autoCrouch.phase === 'down'
       ? this.autoCrouch.candidate
       : this.hintSystem.desktopCandidate;
     ['left', 'right'].forEach(function (side) {
       var hand = this.hands[side];
       if (!hand) return;
+      // Already placed by placeAimedHand below, as part of the hand it's
+      // supporting -- see findCosmeticSupportHand/placeSupportingHand.
+      if (cosmeticSupport === hand) return;
       if (hand.heldEl) this.placeHeldHand(hand);
       else if (candidate && candidate.hand === hand) this.placeCandidatePreview(candidate);
       else this.placeRestHand(hand);
     }, this);
+  },
+
+  // A real two-handed grip (holsterable.supportHand actually set — see
+  // core-hand-rig.js's autoGrabSupport, the desktop/mobile equivalent of
+  // a VR player physically reaching to a shotgun's forend): both hands
+  // need to be positioned as a pair every tick, since the gun's own
+  // orientation is entirely derived from the vector between them
+  // (holsterable.applyTwoHandedPose, core-equip.js) — placing them
+  // independently the way a single-hand weapon's hands are placed would
+  // fight that derivation instead of feeding it.
+  findTwoHandedFirearm: function () {
+    var hands = [this.hands.left, this.hands.right];
+    for (var i = 0; i < hands.length; i++) {
+      var hand = hands[i];
+      if (!hand || !hand.heldEl) continue;
+      var holsterable = hand.heldEl.components.holsterable;
+      if (!holsterable || !holsterable.supportHand || !holsterable.data.supportAims) continue;
+      var otherHand = hands[1 - i];
+      if (!otherHand || otherHand.el !== holsterable.supportHand) continue;
+      return { dominant: hand, support: otherHand, heldEl: hand.heldEl };
+    }
+    return null;
+  },
+
+  // No real two-handed grab exists for a single pistol (holsterable.
+  // supportRadius is 0 by schema default, and no pistol overrides it) —
+  // per the request, bringing the idle off hand in close while aiming
+  // one-handed is purely cosmetic. Only when NOT dual-wielding (the
+  // other hand isn't also holding a firearm, which already has its own
+  // good-looking symmetric aim -- see placeAimedHand) and the other hand
+  // is otherwise completely empty.
+  findCosmeticSupportHand: function () {
+    var hands = [this.hands.left, this.hands.right];
+    for (var i = 0; i < hands.length; i++) {
+      var hand = hands[i];
+      if (!hand || !hand.heldEl || !hand.isAiming) continue;
+      if (!hand.heldEl.components.firearm) continue;
+      var holsterable = hand.heldEl.components.holsterable;
+      if (holsterable && holsterable.supportHand) continue; // real two-handed grip already covers this
+      var otherHand = hands[1 - i];
+      if (!otherHand || otherHand.heldEl) continue;
+      return otherHand;
+    }
+    return null;
   },
 
   applyMovement: function (delta) {
@@ -985,7 +1341,7 @@ AFRAME.registerComponent('desktop-controls', {
     if (!x && !z) return;
     var locomotion = this.el.components['locomotion-demo'];
     var sprint = this.data.sprintEnabled && Boolean(this.keys.ShiftLeft || this.keys.ShiftRight);
-    if (locomotion && locomotion.applyDesktopMove) locomotion.applyDesktopMove(x, z, delta, sprint);
+    if (locomotion && locomotion.applyDesktopMove) locomotion.applyDesktopMove(x, z, delta, sprint, this.isAiming);
   },
 
   tick: function (time, delta) {
@@ -1030,6 +1386,8 @@ AFRAME.registerComponent('desktop-controls', {
     document.removeEventListener('keydown', this.onKeyDown, true);
     document.removeEventListener('keyup', this.onKeyUp, true);
     document.removeEventListener('pointerdown', this.onPointerDown, true);
+    document.removeEventListener('pointerup', this.onPointerUp, true);
+    document.removeEventListener('contextmenu', this.onContextMenu, true);
     this.sceneEl.removeEventListener('mounted-interaction-request', this.onMountedRequest);
     this.sceneEl.removeEventListener('menu-option-change', this.onPreferenceChange);
     this.sceneEl.removeEventListener('watch-menu-ready', this.onWatchReady);

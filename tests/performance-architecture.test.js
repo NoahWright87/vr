@@ -12,7 +12,7 @@ globalThis.registerComponent = (name, definition) => { definitions[name] = defin
 await import('../games/pistols-at-dawn/js/world-menu.js');
 
 test('hot interaction lists use the mutation-invalidated scene index', () => {
-  assert.match(page, /<a-scene pistols-watch-menu area-manager scene-index>/);
+  assert.match(page, /<a-scene pistols-watch-menu area-manager scene-index hotbar-equip>/);
   assert.match(core, /registerComponent\('scene-index'/);
   assert.match(core, /function sceneElements\(selector\)/);
   assert.doesNotMatch(hands, /document\.querySelectorAll\('\.grabbable'\)/);
