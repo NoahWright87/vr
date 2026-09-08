@@ -67,13 +67,26 @@ test('future models use a simple proxy while visual meshes skip raycasts', () =>
   assert.match(core, /object\.raycast = ignoreModelRaycast/);
 });
 
-test('weather clouds use one opaque, very-low-poly instanced batch', () => {
+test('weather clouds default to one alpha-tested sprite card per group', () => {
+  assert.match(dayNight, /quality: \{ type: 'string', default: 'sprites' \}/);
+  assert.match(dayNight, /this\.cloudSpriteGeometry = new THREE\.BufferGeometry\(\)/);
+  assert.match(dayNight, /var vertexCount = groupCount \* 6/);
+  assert.match(dayNight, /alphaTest: 0\.2/);
+  assert.match(dayNight, /transparent: false/);
+  assert.match(dayNight, /geometry\.setDrawRange\(0, visibleCount \* 6\)/);
+  assert.match(dayNight, /this\.cloudSpriteMesh\.castShadow = false/);
+  assert.match(dayNight, /this\.cloudSpriteMesh\.receiveShadow = false/);
+  assert.match(page, /menu-option="key: cloud-quality; label: Clouds; values: off\|sprites\|3d; labels: Off\|Sprites\|3D; value: sprites"/);
+  assert.match(menu, /weather\.setQuality\(evt\.detail\.value\)/);
+});
+
+test('optional 3D clouds remain one opaque, very-low-poly instanced batch', () => {
   assert.match(dayNight, /new THREE\.DodecahedronGeometry\(0\.5, 0\)/);
   assert.match(dayNight, /this\.cloudMesh = new THREE\.InstancedMesh/);
   assert.match(dayNight, /maxCloudSlots = this\.data\.groupCount \* this\.data\.maxCloudsPerGroup/);
   assert.doesNotMatch(dayNight, /instanceOpacity|cloudOpacity/);
   assert.doesNotMatch(dayNight, /new THREE\.MeshLambertMaterial\(\{[\s\S]{0,160}transparent: true/);
-  assert.doesNotMatch(dayNight, /cloudMeshes|cloud-atlas-tile/);
+  assert.doesNotMatch(dayNight, /cloudMeshes/);
 });
 
 test('Pistols texture assets stay within the standalone-headset budget', () => {

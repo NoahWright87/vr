@@ -129,6 +129,11 @@
       // Debug-only and unrelated to the gallery -- handled here anyway
       // since this component already owns the scene's menu-option-change
       // listener, same as target-kind etc. below.
+      if (evt.detail.key === 'cloud-quality') {
+        var weather = this.el.components['weather-clouds'];
+        if (weather) weather.setQuality(evt.detail.value);
+        return;
+      }
       if (evt.detail.key === 'laser-sight') {
         LASER_SIGHT = evt.detail.value;
         return;

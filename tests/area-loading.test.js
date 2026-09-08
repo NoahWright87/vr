@@ -62,7 +62,10 @@ test('destinations are lazy fragments instead of simultaneous scene entities', (
   assert.doesNotMatch(dayNight, /spawnCell/);
   assert.doesNotMatch(dayNight, /setFromUnitVectors/);
   assert.match(dayNight, /this\.sunOrb\.renderOrder = -10/);
-  assert.doesNotMatch(dayNight, /weather-cloud-underside-atlas-v1\.png/);
+  assert.match(dayNight, /weather-cloud-underside-atlas-v1\.png/);
+  assert.match(dayNight, /var vertexCount = groupCount \* 6/);
+  assert.match(dayNight, /alphaTest: 0\.2/);
+  assert.match(dayNight, /transparent: false/);
   assert.doesNotMatch(dayNight, /this\.cloudMeshes|cloudOrientation\.makeBasis/);
   assert.doesNotMatch(dayNight, /new THREE\.BoxGeometry\(1, 0\.18, 0\.62\)/);
   assert.match(dayNight, /evt\.code !== 'Backslash'/);
@@ -254,4 +257,13 @@ test('HUD visibility is exposed through the watch menu', () => {
   assert.match(page, /id="player-hud"/);
   assert.match(menu, /PLAYER_HUD_VISIBLE = this\.hudVisible/);
   assert.match(page, /menu-item="value: toggle-performance; label: Show Performance"/);
+});
+
+test('cloud rendering quality is exposed through the debug watch menu', () => {
+  assert.match(page, /menu-option="key: cloud-quality; label: Clouds; values: off\|sprites\|3d; labels: Off\|Sprites\|3D; value: sprites"/);
+  assert.match(dayNight, /quality: \{ type: 'string', default: 'sprites' \}/);
+  assert.match(dayNight, /if \(this\.quality !== 'sprites'\)/);
+  assert.match(dayNight, /if \(this\.quality !== '3d'\)/);
+  assert.match(dayNight, /if \(this\.quality === 'off'/);
+  assert.match(menu, /evt\.detail\.key === 'cloud-quality'/);
 });
