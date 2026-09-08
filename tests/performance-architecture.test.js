@@ -67,11 +67,12 @@ test('future models use a simple proxy while visual meshes skip raycasts', () =>
   assert.match(core, /object\.raycast = ignoreModelRaycast/);
 });
 
-test('weather clouds use one very-low-poly instanced batch with per-instance fades', () => {
+test('weather clouds use one opaque, very-low-poly instanced batch', () => {
   assert.match(dayNight, /new THREE\.DodecahedronGeometry\(0\.5, 0\)/);
   assert.match(dayNight, /this\.cloudMesh = new THREE\.InstancedMesh/);
   assert.match(dayNight, /maxCloudSlots = this\.data\.groupCount \* this\.data\.maxCloudsPerGroup/);
-  assert.match(dayNight, /setAttribute\('instanceOpacity', this\.cloudOpacity\)/);
+  assert.doesNotMatch(dayNight, /instanceOpacity|cloudOpacity/);
+  assert.doesNotMatch(dayNight, /new THREE\.MeshLambertMaterial\(\{[\s\S]{0,160}transparent: true/);
   assert.doesNotMatch(dayNight, /cloudMeshes|cloud-atlas-tile/);
 });
 

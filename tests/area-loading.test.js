@@ -46,9 +46,7 @@ test('destinations are lazy fragments instead of simultaneous scene entities', (
   assert.match(dayNight, /flatShading: true/);
   assert.match(dayNight, /this\.cloudMesh\.castShadow = false/);
   assert.match(dayNight, /this\.cloudMesh\.receiveShadow = false/);
-  assert.match(dayNight, /new THREE\.InstancedBufferAttribute/);
-  assert.match(dayNight, /this\.cloudGeometry\.setAttribute\('instanceOpacity', this\.cloudOpacity\)/);
-  assert.match(dayNight, /diffuseColor\.a \*= vCloudOpacity/);
+  assert.doesNotMatch(dayNight, /instanceOpacity|cloudOpacity|minOpacity|maxOpacity/);
   assert.match(dayNight, /thickness: size \* this\.randomBetween\(0\.38, 0\.92\)/);
   assert.match(dayNight, /dummy\.rotation\.set\(cloud\.rotationX, cloud\.rotationY, cloud\.rotationZ\)/);
   assert.match(dayNight, /sizeCeiling = this\.data\.minSize/);

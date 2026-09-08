@@ -339,8 +339,6 @@ registerComponent('weather-clouds', {
     verticalSpread: { type: 'number', default: 8 },
     minShade: { type: 'number', default: 0.72 },
     maxShade: { type: 'number', default: 1 },
-    minOpacity: { type: 'number', default: 0.72 },
-    maxOpacity: { type: 'number', default: 1 },
     fieldRadius: { type: 'number', default: 360 },
     formationDistance: { type: 'number', default: 120 },
     shadowOpacity: { type: 'number', default: 0.16 },
@@ -388,36 +386,12 @@ registerComponent('weather-clouds', {
     // shading gives each puff a deliberately faceted silhouette while it still
     // responds to the shared sun, moon, and ambient environment lights.
     this.cloudGeometry = new THREE.DodecahedronGeometry(0.5, 0);
-    this.cloudOpacity = new THREE.InstancedBufferAttribute(
-      new Float32Array(this.maxCloudSlots),
-      1
-    );
-    this.cloudOpacity.setUsage(THREE.DynamicDrawUsage);
-    this.cloudGeometry.setAttribute('instanceOpacity', this.cloudOpacity);
     this.cloudMaterial = new THREE.MeshLambertMaterial({
       color: '#ffffff',
       flatShading: true,
-      transparent: true,
-      opacity: 1,
       depthWrite: true,
       depthTest: true,
     });
-    // THREE's built-in instanceColor carries RGB only. Add one tiny per-instance
-    // attribute so a whole cloud system can fade without splitting the puffs
-    // into additional draw calls.
-    this.cloudMaterial.onBeforeCompile = function (shader) {
-      shader.vertexShader = 'attribute float instanceOpacity; varying float vCloudOpacity;\n' +
-        shader.vertexShader.replace(
-          '#include <begin_vertex>',
-          '#include <begin_vertex>\nvCloudOpacity = instanceOpacity;'
-        );
-      shader.fragmentShader = 'varying float vCloudOpacity;\n' +
-        shader.fragmentShader.replace(
-          '#include <opaque_fragment>',
-          'diffuseColor.a *= vCloudOpacity;\n#include <opaque_fragment>'
-        );
-    };
-    this.cloudMaterial.customProgramCacheKey = function () { return 'weather-cloud-opacity-v1'; };
     this.cloudDummy = new THREE.Object3D();
     this.cloudTint = new THREE.Color();
     this.cloudMesh = new THREE.InstancedMesh(
@@ -496,7 +470,6 @@ registerComponent('weather-clouds', {
       wobblePhase: 0,
       wobblePeriodMs: this.data.wobbleFrequencyMs,
       wobbleRadians: this.data.wobbleAmount * Math.PI / 180,
-      opacity: 1,
       warmth: 0,
       spread: 1,
       boundsX: 1,
@@ -512,7 +485,6 @@ registerComponent('weather-clouds', {
     group.speed = this.randomBetween(this.data.minSpeed, this.data.maxSpeed);
     group.density = this.clamp(this.data.density + (Math.random() - 0.5) * 0.55, 0.12, 0.94);
     group.shade = this.randomBetween(this.data.minShade, this.data.maxShade);
-    group.opacity = this.randomBetween(this.data.minOpacity, this.data.maxOpacity);
     group.warmth = this.randomBetween(-0.035, 0.045);
     group.wobblePhase = Math.random() * Math.PI * 2;
     group.wobblePeriodMs = this.data.wobbleFrequencyMs * this.randomBetween(0.72, 1.35);
@@ -574,7 +546,6 @@ registerComponent('weather-clouds', {
         shadeVariation: this.randomBetween(0.82, 1.12),
         shadeTarget: this.randomBetween(0.82, 1.12),
         shadeRate: this.randomBetween(0.0025, 0.009),
-        opacityVariation: this.randomBetween(0.86, 1),
         minScale: minScale,
         maxScale: maxScale,
         sizeScale: this.randomBetween(minScale, maxScale),
@@ -676,17 +647,12 @@ registerComponent('weather-clouds', {
         dummy.updateMatrix();
         this.cloudMesh.setMatrixAt(instance, dummy.matrix);
         this.cloudMesh.setColorAt(instance, this.cloudTint);
-        this.cloudOpacity.setX(
-          instance,
-          this.clamp(presence * group.opacity * cloud.opacityVariation, 0, 1)
-        );
         this.cloudMesh.count = instance + 1;
       }
     }
     this.cloudMesh.visible = this.cloudMesh.count > 0;
     this.cloudMesh.instanceMatrix.needsUpdate = true;
     if (this.cloudMesh.instanceColor) this.cloudMesh.instanceColor.needsUpdate = true;
-    this.cloudOpacity.needsUpdate = true;
   },
 
   getGroupPresence: function (group) {
