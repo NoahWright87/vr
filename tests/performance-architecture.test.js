@@ -67,11 +67,12 @@ test('future models use a simple proxy while visual meshes skip raycasts', () =>
   assert.match(core, /object\.raycast = ignoreModelRaycast/);
 });
 
-test('weather clouds use one opaque, very-low-poly instanced batch', () => {
+test('weather clouds use one very-low-poly instanced batch with per-instance fades', () => {
   assert.match(dayNight, /new THREE\.DodecahedronGeometry\(0\.5, 0\)/);
   assert.match(dayNight, /this\.cloudMesh = new THREE\.InstancedMesh/);
   assert.match(dayNight, /maxCloudSlots = this\.data\.groupCount \* this\.data\.maxCloudsPerGroup/);
-  assert.doesNotMatch(dayNight, /cloudMeshes|cloud-atlas-tile|transparent: true,[\s\S]{0,100}flatShading/);
+  assert.match(dayNight, /setAttribute\('instanceOpacity', this\.cloudOpacity\)/);
+  assert.doesNotMatch(dayNight, /cloudMeshes|cloud-atlas-tile/);
 });
 
 test('Pistols texture assets stay within the standalone-headset budget', () => {

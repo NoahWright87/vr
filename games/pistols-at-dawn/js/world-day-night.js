@@ -239,7 +239,9 @@ registerComponent('day-night-cycle', {
       this.daySky.setAttribute('material', 'opacity', daylight);
     }
     if (this.nightSky) this.nightSky.object3D.visible = daylight < 0.997;
-    if (this.nightSky) this.nightSky.object3D.rotation.y = -(this.clock / DAY_NIGHT_CYCLE_MS) * Math.PI * 2;
+    if (this.nightSky) {
+      this.nightSky.object3D.rotation.y = -(this.elapsedGameMs / DAY_NIGHT_CYCLE_MS) * Math.PI * 2;
+    }
     if (this.gradient) {
       this.gradient.object3D.visible = twilight > 0.004;
       this.gradient.setAttribute('material', { opacity: twilight * 0.76, sunDirection: sunDir });
@@ -249,9 +251,11 @@ registerComponent('day-night-cycle', {
   },
 
   getCelestialDirections: function () {
-    var solarAngle = (this.clock / DAY_NIGHT_CYCLE_MS) * Math.PI * 2;
-    // Lunar state uses unbounded game time. Using the wrapped daily clock here
-    // reset the orbit at midnight and visibly teleported the Moon.
+    // All orbit angles use unbounded game time. Cosine and sine naturally wrap,
+    // while the slowly changing third axis stays continuous between 359° and
+    // 0°. Feeding a wrapped angle into that deviation visibly teleported both
+    // celestial hierarchies at sunrise.
+    var solarAngle = (this.elapsedGameMs / DAY_NIGHT_CYCLE_MS) * Math.PI * 2;
     var lunarPhase = (this.elapsedGameMs / (DAY_NIGHT_CYCLE_MS * LUNAR_SYNODIC_DAYS)) * Math.PI * 2;
     var anomaly = (this.elapsedGameMs / (DAY_NIGHT_CYCLE_MS * LUNAR_ANOMALISTIC_DAYS)) * Math.PI * 2;
     var node = (this.elapsedGameMs / (DAY_NIGHT_CYCLE_MS * LUNAR_NODAL_DAYS)) * Math.PI * 2;
@@ -306,22 +310,24 @@ registerComponent('day-night-cycle', {
     }
     var directions = this.getCelestialDirections();
     this.syncCelestialPositions(directions.sun, directions);
-    if (this.nightSky) this.nightSky.object3D.rotation.y = -(this.clock / DAY_NIGHT_CYCLE_MS) * Math.PI * 2;
+    if (this.nightSky) {
+      this.nightSky.object3D.rotation.y = -(this.elapsedGameMs / DAY_NIGHT_CYCLE_MS) * Math.PI * 2;
+    }
   },
 });
 
 // PS1-style weather. Twenty independently simulated cloud systems cross the
 // world-space field. Every visible puff is a 36-triangle dodecahedron in one
 // instanced draw; a second batch contains only the largest few shadow decals.
-// This avoids both transparent overdraw and the camera-angle artifacts of cards.
+// This avoids wide alpha-card overdraw and the camera-angle artifacts of cards.
 registerComponent('weather-clouds', {
   schema: {
     groupCount: { type: 'int', default: 20 },
-    minCloudsPerGroup: { type: 'int', default: 6 },
-    maxCloudsPerGroup: { type: 'int', default: 12 },
-    minSize: { type: 'number', default: 11 },
-    maxSize: { type: 'number', default: 28 },
-    sizeChangeRate: { type: 'number', default: 0.032 },
+    minCloudsPerGroup: { type: 'int', default: 5 },
+    maxCloudsPerGroup: { type: 'int', default: 13 },
+    minSize: { type: 'number', default: 8 },
+    maxSize: { type: 'number', default: 34 },
+    sizeChangeRate: { type: 'number', default: 0.028 },
     density: { type: 'number', default: 0.58 },
     minSpeed: { type: 'number', default: 0.62 },
     maxSpeed: { type: 'number', default: 1.2 },
@@ -331,8 +337,10 @@ registerComponent('weather-clouds', {
     minHeight: { type: 'number', default: 90 },
     maxHeight: { type: 'number', default: 165 },
     verticalSpread: { type: 'number', default: 8 },
-    minShade: { type: 'number', default: 0.86 },
+    minShade: { type: 'number', default: 0.72 },
     maxShade: { type: 'number', default: 1 },
+    minOpacity: { type: 'number', default: 0.72 },
+    maxOpacity: { type: 'number', default: 1 },
     fieldRadius: { type: 'number', default: 360 },
     formationDistance: { type: 'number', default: 120 },
     shadowOpacity: { type: 'number', default: 0.16 },
@@ -380,12 +388,36 @@ registerComponent('weather-clouds', {
     // shading gives each puff a deliberately faceted silhouette while it still
     // responds to the shared sun, moon, and ambient environment lights.
     this.cloudGeometry = new THREE.DodecahedronGeometry(0.5, 0);
+    this.cloudOpacity = new THREE.InstancedBufferAttribute(
+      new Float32Array(this.maxCloudSlots),
+      1
+    );
+    this.cloudOpacity.setUsage(THREE.DynamicDrawUsage);
+    this.cloudGeometry.setAttribute('instanceOpacity', this.cloudOpacity);
     this.cloudMaterial = new THREE.MeshLambertMaterial({
       color: '#ffffff',
       flatShading: true,
+      transparent: true,
+      opacity: 1,
       depthWrite: true,
       depthTest: true,
     });
+    // THREE's built-in instanceColor carries RGB only. Add one tiny per-instance
+    // attribute so a whole cloud system can fade without splitting the puffs
+    // into additional draw calls.
+    this.cloudMaterial.onBeforeCompile = function (shader) {
+      shader.vertexShader = 'attribute float instanceOpacity; varying float vCloudOpacity;\n' +
+        shader.vertexShader.replace(
+          '#include <begin_vertex>',
+          '#include <begin_vertex>\nvCloudOpacity = instanceOpacity;'
+        );
+      shader.fragmentShader = 'varying float vCloudOpacity;\n' +
+        shader.fragmentShader.replace(
+          '#include <opaque_fragment>',
+          'diffuseColor.a *= vCloudOpacity;\n#include <opaque_fragment>'
+        );
+    };
+    this.cloudMaterial.customProgramCacheKey = function () { return 'weather-cloud-opacity-v1'; };
     this.cloudDummy = new THREE.Object3D();
     this.cloudTint = new THREE.Color();
     this.cloudMesh = new THREE.InstancedMesh(
@@ -464,6 +496,9 @@ registerComponent('weather-clouds', {
       wobblePhase: 0,
       wobblePeriodMs: this.data.wobbleFrequencyMs,
       wobbleRadians: this.data.wobbleAmount * Math.PI / 180,
+      opacity: 1,
+      warmth: 0,
+      spread: 1,
       boundsX: 1,
       boundsZ: 1,
       radius: 1,
@@ -475,8 +510,10 @@ registerComponent('weather-clouds', {
   resetGroup: function (group, initial, index) {
     group.age = Math.random() * this.data.wobbleFrequencyMs;
     group.speed = this.randomBetween(this.data.minSpeed, this.data.maxSpeed);
-    group.density = this.clamp(this.data.density + (Math.random() - 0.5) * 0.2, 0.05, 0.98);
+    group.density = this.clamp(this.data.density + (Math.random() - 0.5) * 0.55, 0.12, 0.94);
     group.shade = this.randomBetween(this.data.minShade, this.data.maxShade);
+    group.opacity = this.randomBetween(this.data.minOpacity, this.data.maxOpacity);
+    group.warmth = this.randomBetween(-0.035, 0.045);
     group.wobblePhase = Math.random() * Math.PI * 2;
     group.wobblePeriodMs = this.data.wobbleFrequencyMs * this.randomBetween(0.72, 1.35);
     group.wobbleRadians = this.data.wobbleAmount * Math.PI / 180 * this.randomBetween(0.55, 1.15);
@@ -502,7 +539,8 @@ registerComponent('weather-clouds', {
   configureGroupClouds: function (group) {
     var count = this.data.minCloudsPerGroup + Math.floor(Math.random() *
       (this.data.maxCloudsPerGroup - this.data.minCloudsPerGroup + 1));
-    var spread = 5 + (1 - group.density) * 16;
+    var spread = 4 + (1 - group.density) * 32;
+    group.spread = spread;
     group.clouds.length = 0;
     var minX = Infinity;
     var maxX = -Infinity;
@@ -519,23 +557,34 @@ registerComponent('weather-clouds', {
       // irregular formation instead of scattering obvious individual objects.
       var distance = i === 0 ? 0 : spread * Math.pow(Math.random(), 0.72);
       var size = this.randomBetween(this.data.minSize, sizeCeiling);
-      var width = size * this.randomBetween(1, 1.38);
-      var depth = size * this.randomBetween(0.82, 1.2);
+      var width = size * this.randomBetween(0.78, 1.62);
+      var depth = size * this.randomBetween(0.65, 1.42);
+      var minScale = this.randomBetween(0.56, 0.88);
+      var maxScale = this.randomBetween(1.08, 1.52);
       var cloud = {
         offsetX: Math.cos(angle) * distance,
         offsetZ: Math.sin(angle) * distance,
         height: group.height + this.randomBetween(-this.data.verticalSpread, this.data.verticalSpread),
         width: width,
         depth: depth,
-        thickness: size * this.randomBetween(0.48, 0.82),
+        thickness: size * this.randomBetween(0.38, 0.92),
         rotationX: this.randomBetween(-0.12, 0.12),
         rotationY: Math.random() * Math.PI * 2,
         rotationZ: this.randomBetween(-0.1, 0.1),
-        shadeVariation: this.randomBetween(0.94, 1.04),
-        sizeScale: this.randomBetween(0.88, 1.12),
-        sizeVelocity: this.data.sizeChangeRate * this.randomBetween(0.55, 1.25) *
-          (Math.random() < 0.5 ? -1 : 1),
+        shadeVariation: this.randomBetween(0.82, 1.12),
+        shadeTarget: this.randomBetween(0.82, 1.12),
+        shadeRate: this.randomBetween(0.0025, 0.009),
+        opacityVariation: this.randomBetween(0.86, 1),
+        minScale: minScale,
+        maxScale: maxScale,
+        sizeScale: this.randomBetween(minScale, maxScale),
+        sizeTarget: this.randomBetween(minScale, maxScale),
+        sizeRate: this.data.sizeChangeRate * this.randomBetween(0.35, 1.35),
+        targetOffsetX: 0,
+        targetOffsetZ: 0,
+        offsetRate: this.randomBetween(0.04, 0.18),
       };
+      this.pickCloudOffsetTarget(group, cloud);
       group.clouds.push(cloud);
       minX = Math.min(minX, cloud.offsetX - width * 0.5);
       maxX = Math.max(maxX, cloud.offsetX + width * 0.5);
@@ -550,17 +599,48 @@ registerComponent('weather-clouds', {
   updateGroupShapes: function (group, shapeSeconds, forceShape) {
     for (var i = 0; i < group.clouds.length; i += 1) {
       var cloud = group.clouds[i];
-      if (forceShape || shapeSeconds > 0) {
-        cloud.sizeScale += cloud.sizeVelocity * shapeSeconds;
-        if (cloud.sizeScale > 1.18) {
-          cloud.sizeScale = 1.18;
-          cloud.sizeVelocity = -Math.abs(cloud.sizeVelocity);
-        } else if (cloud.sizeScale < 0.82) {
-          cloud.sizeScale = 0.82;
-          cloud.sizeVelocity = Math.abs(cloud.sizeVelocity);
-        }
+      if (!forceShape && shapeSeconds <= 0) continue;
+      var sizeStep = cloud.sizeRate * shapeSeconds;
+      var sizeDifference = cloud.sizeTarget - cloud.sizeScale;
+      if (Math.abs(sizeDifference) <= sizeStep) {
+        cloud.sizeScale = cloud.sizeTarget;
+        cloud.sizeTarget = this.randomBetween(cloud.minScale, cloud.maxScale);
+        cloud.sizeRate = this.data.sizeChangeRate * this.randomBetween(0.25, 1.5);
+      } else {
+        cloud.sizeScale += Math.sign(sizeDifference) * sizeStep;
+      }
+
+      var shadeStep = cloud.shadeRate * shapeSeconds;
+      var shadeDifference = cloud.shadeTarget - cloud.shadeVariation;
+      if (Math.abs(shadeDifference) <= shadeStep) {
+        cloud.shadeVariation = cloud.shadeTarget;
+        cloud.shadeTarget = this.randomBetween(0.82, 1.12);
+        cloud.shadeRate = this.randomBetween(0.0025, 0.009);
+      } else {
+        cloud.shadeVariation += Math.sign(shadeDifference) * shadeStep;
+      }
+
+      var offsetX = cloud.targetOffsetX - cloud.offsetX;
+      var offsetZ = cloud.targetOffsetZ - cloud.offsetZ;
+      var offsetDistance = Math.sqrt(offsetX * offsetX + offsetZ * offsetZ);
+      var offsetStep = cloud.offsetRate * shapeSeconds;
+      if (offsetDistance <= offsetStep) {
+        cloud.offsetX = cloud.targetOffsetX;
+        cloud.offsetZ = cloud.targetOffsetZ;
+        this.pickCloudOffsetTarget(group, cloud);
+        cloud.offsetRate = this.randomBetween(0.04, 0.18);
+      } else if (offsetDistance > 0) {
+        cloud.offsetX += offsetX / offsetDistance * offsetStep;
+        cloud.offsetZ += offsetZ / offsetDistance * offsetStep;
       }
     }
+  },
+
+  pickCloudOffsetTarget: function (group, cloud) {
+    var angle = Math.random() * Math.PI * 2;
+    var distance = group.spread * Math.pow(Math.random(), 0.72);
+    cloud.targetOffsetX = Math.cos(angle) * distance;
+    cloud.targetOffsetZ = Math.sin(angle) * distance;
   },
 
   updateCloudBatch: function () {
@@ -574,12 +654,16 @@ registerComponent('weather-clouds', {
       var group = this.cloudGroups[i];
       var presence = this.getGroupPresence(group);
       if (presence <= 0.01) continue;
-      var formationScale = 0.12 + presence * 0.88;
+      var formationScale = presence;
       for (var cloudIndex = 0; cloudIndex < group.clouds.length; cloudIndex += 1) {
         var cloud = group.clouds[cloudIndex];
         var instance = this.cloudMesh.count;
         var shade = group.shade * cloud.shadeVariation * nightFactor;
-        this.cloudTint.setRGB(shade * 0.96, shade * 0.98, Math.min(1, shade + 0.045));
+        this.cloudTint.setRGB(
+          this.clamp(shade * (0.96 + group.warmth), 0, 1),
+          this.clamp(shade * 0.98, 0, 1),
+          this.clamp(shade * (1.02 - group.warmth * 0.4) + 0.025, 0, 1)
+        );
         var worldX = group.x + cloud.offsetX;
         var worldZ = group.z + cloud.offsetZ;
         dummy.position.set(worldX, cloud.height, worldZ);
@@ -592,16 +676,29 @@ registerComponent('weather-clouds', {
         dummy.updateMatrix();
         this.cloudMesh.setMatrixAt(instance, dummy.matrix);
         this.cloudMesh.setColorAt(instance, this.cloudTint);
+        this.cloudOpacity.setX(
+          instance,
+          this.clamp(presence * group.opacity * cloud.opacityVariation, 0, 1)
+        );
         this.cloudMesh.count = instance + 1;
       }
     }
     this.cloudMesh.visible = this.cloudMesh.count > 0;
     this.cloudMesh.instanceMatrix.needsUpdate = true;
     if (this.cloudMesh.instanceColor) this.cloudMesh.instanceColor.needsUpdate = true;
+    this.cloudOpacity.needsUpdate = true;
   },
 
   getGroupPresence: function (group) {
-    return smoothStep(0, this.data.formationDistance, group.travelDistance);
+    var forward = group.x * this.windX + group.z * this.windZ;
+    var lateral = group.x * this.perpendicularX + group.z * this.perpendicularZ;
+    var lateralInside = Math.min(Math.abs(lateral), this.data.fieldRadius);
+    var boundary = Math.sqrt(Math.max(0,
+      this.data.fieldRadius * this.data.fieldRadius - lateralInside * lateralInside));
+    var exitDistance = boundary + group.radius - forward;
+    var fadeIn = smoothStep(0, this.data.formationDistance, group.travelDistance);
+    var fadeOut = smoothStep(0, this.data.formationDistance, exitDistance);
+    return fadeIn * fadeOut;
   },
 
   updateGroup: function (group, elapsed, shapeSeconds) {
@@ -672,7 +769,7 @@ registerComponent('weather-clouds', {
       if (!group) continue;
       presence = this.getGroupPresence(group);
       var projection = Math.min(130, group.height / Math.max(0.2, this.sunDirection.y));
-      var scale = (0.18 + presence * 0.82) * (0.5 + (1 - group.density) * 0.22);
+      var scale = presence * (0.5 + (1 - group.density) * 0.22);
       this.shadowDummy.position.set(
         group.x - this.sunDirection.x * projection,
         0.07,
