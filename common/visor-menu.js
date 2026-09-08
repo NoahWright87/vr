@@ -199,15 +199,25 @@ if (typeof AFRAME !== 'undefined') {
       hint.innerHTML = '<span class="visor-menu-key">`</span><span class="visor-menu-label">Visor</span>';
       hint.setAttribute('aria-label', 'Open the visor menu');
       var style = document.createElement('style');
+      // Styled to match interaction-hints' corner hint (dark pill, white
+      // key cap) rather than inventing a second look, and placed to dodge
+      // what touch-controls already owns: the movement joystick is
+      // bottom-left, the action grid bottom-right, the hotbar
+      // bottom-centre, and the shared corner hint bottom-right. That
+      // leaves the left edge -- but only above the joystick, so on touch
+      // this lifts clear of it. Below the touch overlay's z-index but
+      // outside the look area, which starts at 38% from the left.
       style.textContent = [
-        '.visor-menu-hint{position:fixed;left:1rem;bottom:1rem;z-index:2;display:flex;align-items:center;gap:0.45rem;',
-        'padding:0.4rem 0.7rem;border-radius:6px;border:1px solid rgba(127,227,255,0.5);',
-        'background:rgba(8,16,26,0.72);color:#dff3ff;font:600 0.78rem/1 system-ui,sans-serif;',
-        'letter-spacing:0.06em;text-transform:uppercase;cursor:pointer}',
+        '.visor-menu-hint{position:fixed;left:max(14px,env(safe-area-inset-left));',
+        'bottom:max(14px,env(safe-area-inset-bottom));z-index:26;display:flex;align-items:center;gap:8px;',
+        'background:rgba(8,11,18,.78);color:#cbd5e1;font:600 12px system-ui;padding:6px 10px 6px 6px;',
+        'border-radius:8px;cursor:pointer;border:0;box-shadow:0 2px 8px #0006}',
+        // Clear of the 112px joystick that sits in this corner on touch.
+        'html[data-input-family="touch"] .visor-menu-hint{bottom:max(152px,calc(env(safe-area-inset-bottom) + 148px))}',
         '.visor-menu-hint[hidden]{display:none}',
-        '.visor-menu-hint.is-open{background:rgba(127,227,255,0.22);border-color:#7fe3ff}',
-        '.visor-menu-key{display:inline-flex;align-items:center;justify-content:center;min-width:1.25rem;height:1.25rem;',
-        'border:1px solid rgba(127,227,255,0.7);border-radius:3px;font-size:0.85rem;line-height:1}',
+        '.visor-menu-hint.is-open{background:rgba(127,227,255,.22);color:#eaf9ff}',
+        '.visor-menu-key{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;',
+        'padding:0 5px;border-radius:4px;background:#fff;color:#111722;font:700 11px system-ui}',
       ].join('');
       document.head.appendChild(style);
       hint.addEventListener('click', function (evt) {

@@ -37,15 +37,54 @@ if (typeof AFRAME !== 'undefined') {
       this.sceneEl.addEventListener('exit-vr', this.onExitXr);
 
       this.syncModeFromRenderer();
+      this.suppressFlatFullscreenVrButton();
     },
 
+    // A-Frame's own default "Enter VR" button (xr-mode-ui in 1.6.0,
+    // formerly named vr-mode-ui -- on by default) does the right thing
+    // on an actual headset. But its fallback for "no headset, not
+    // mobile" fullscreens the bare <canvas> element directly (confirmed
+    // in the vendored build) -- and per the Fullscreen API spec, every
+    // OTHER page element stops rendering while that's active, this
+    // app's own DOM-based hint cards and touch controls included, until
+    // the browser's native Escape exits it again. There's no reason to
+    // offer that fallback at all: this app already has full native
+    // desktop/mobile controls that need no "entering" step, so hide the
+    // button unless a real XR session is actually available -- which is
+    // also exactly the one case where A-Frame's own internal check
+    // takes the working real-XR branch instead of the broken
+    // fullscreen one.
+    suppressFlatFullscreenVrButton: function () {
+      var sceneEl = this.sceneEl;
+      function disable() {
+        sceneEl.setAttribute('xr-mode-ui', 'enabled', false);
+      }
+      if (!navigator.xr || !navigator.xr.isSessionSupported) {
+        disable();
+        return;
+      }
+      navigator.xr.isSessionSupported('immersive-vr').then(function (supported) {
+        if (!supported) disable();
+      }).catch(disable);
+    },
+
+    // A bare window.requestAnimationFrame is not a safe way to re-check
+    // presentation state: once a real immersive XRSession owns the frame
+    // loop, browsers are not obligated to keep servicing the flat page's
+    // own top-level rAF at a useful rate (this is exactly why
+    // THREE.WebGLRenderer.setAnimationLoop transparently switches to
+    // XRSession.requestAnimationFrame instead). Every component that must
+    // keep working in real VR relies on that same A-Frame/XR-aware tick
+    // loop -- this system now does too (see tick()), so this method is a
+    // same-frame head start on enter-vr/exit-vr, not the only mechanism.
     syncModeFromRenderer: function () {
-      var self = this;
-      requestAnimationFrame(function () {
-        var renderer = self.sceneEl.renderer;
-        var presenting = Boolean(renderer && renderer.xr && renderer.xr.isPresenting);
-        self.setMode(presenting ? 'xr' : 'desktop');
-      });
+      var renderer = this.sceneEl.renderer;
+      var presenting = Boolean(renderer && renderer.xr && renderer.xr.isPresenting);
+      this.setMode(presenting ? 'xr' : 'desktop');
+    },
+
+    tick: function () {
+      this.syncModeFromRenderer();
     },
 
     setMode: function (mode) {
