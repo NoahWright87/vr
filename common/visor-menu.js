@@ -86,6 +86,12 @@ if (typeof AFRAME !== 'undefined') {
       // Switchable live so the difference can be judged in a headset
       // rather than argued about.
       draw: { default: 'world', oneOf: ['world', 'screen'] },
+      // 'both' draws to both eyes; 'inboard' draws each side's panel to
+      // the eye on that side only, so it sits in peripheral vision the
+      // way a helmet display would rather than floating in front of you.
+      // Composes with `draw`: one eye and screen space are independent
+      // choices, and the interesting one is both at once.
+      eyes: { default: 'both', oneOf: ['both', 'inboard'] },
       key: { type: 'string', default: 'Backquote' },
       hint: { default: true },
     },
@@ -101,6 +107,10 @@ if (typeof AFRAME !== 'undefined') {
       // menu refusing to close. Same re-arm shape as the stick detent
       // and the punch tracker's hold-for-reset.
       this.armedFor = {};
+      // The schema seeds these; from then on they are the truth (see
+      // setDraw for why they cannot live in the attribute).
+      this.drawMode = this.data.draw;
+      this.eyesMode = this.data.eyes;
       this._local = new THREE.Vector3();
       this._previous = {};
       this.onKeyDown = this.onKeyDown.bind(this);
@@ -110,6 +120,12 @@ if (typeof AFRAME !== 'undefined') {
       this.sceneEl.addEventListener('loaded', function () {
         self.build();
       });
+      // Entering and leaving a headset both change what the eye setting
+      // means — there are two cameras or there is one — so the whole
+      // surface is re-applied at each transition rather than assumed.
+      this.onXrChange = function () { self.applySurface(); };
+      this.sceneEl.addEventListener('enter-vr', this.onXrChange);
+      this.sceneEl.addEventListener('exit-vr', this.onXrChange);
     },
 
     build: function () {
@@ -179,7 +195,8 @@ if (typeof AFRAME !== 'undefined') {
         // it, which in a headset reads as the menu being broken rather
         // than as the world being in front of it. 'screen' goes further
         // and paints it onto the display; see setDraw.
-        overlay: data.draw,
+        overlay: this.drawMode,
+        eye: this.eyesMode,
         screenAnchor: { x: sign * 0.46, y: 0 },
         screenWidth: 0.34,
       });
@@ -221,7 +238,7 @@ if (typeof AFRAME !== 'undefined') {
       // panel between world and screen drawing.
       pip.dataset.pipWidth = String(data.distance * 0.022);
       pip.dataset.pipAnchorX = String(sign * 0.72);
-      var applyPip = function () { setPipDraw(pip, self.data.draw); };
+      var applyPip = function () { setPipDraw(pip, self.drawMode); };
       pip.addEventListener('object3dset', applyPip);
       applyPip();
       this.pips[side] = { el: pip, trackEl: track, fillEl: fill, height: data.distance * 0.17 };
@@ -274,17 +291,45 @@ if (typeof AFRAME !== 'undefined') {
     // "painted on the display", live, with the menu open. The pips move
     // with them: they are part of the same surface, and a gesture hint
     // drawn one way beside a menu drawn the other would be incoherent.
+    // Held as plain fields, not written back through the scene
+    // attribute. `visor-menu` is a system with no component of the same
+    // name, so setAttribute(name, property, value) does not merge a
+    // property into it the way it would on an entity — it falls through
+    // to the raw DOM attribute and replaces the whole thing with the
+    // property name, wiping leftPage, rightPage and the rest.
     setDraw: function (mode) {
+      this.drawMode = mode;
+      this.applySurface();
+    },
+
+    // Which eye, for both panels and both pips at once. Per surface
+    // rather than per panel: "the visor is in my left eye" is one
+    // decision, and a pip drawn to both eyes beside a panel drawn to one
+    // would read as a rendering fault.
+    setEyes: function (mode) {
+      this.eyesMode = mode;
+      this.applySurface();
+    },
+
+    applySurface: function () {
       var self = this;
-      this.el.setAttribute('visor-menu', 'draw', mode);
+      var inXr = this.sceneEl.is('vr-mode');
       ['left', 'right'].forEach(function (side) {
         var panel = self.panels[side];
-        if (panel) {
-          panel.setAttribute('crossbar-menu', 'overlay', mode);
+        if (panel && panel.components['crossbar-menu']) {
+          // A panel IS a component, so this one does merge properly.
+          panel.setAttribute('crossbar-menu', 'overlay', self.drawMode);
+          panel.components['crossbar-menu'].setEye(self.eyesMode);
           panel.components['crossbar-menu'].render();
         }
         var pip = self.pips[side];
-        if (pip) setPipDraw(pip.el, mode);
+        if (!pip) return;
+        setPipDraw(pip.el, self.drawMode);
+        // Layers only mean anything once WebXR's two cameras exist; off
+        // a headset everything has to be back on layer 0 or it is drawn
+        // for nobody.
+        var layer = (inXr && self.eyesMode === 'inboard') ? (side === 'left' ? 1 : 2) : 0;
+        pip.el.object3D.traverse(function (object) { object.layers.set(layer); });
       });
     },
 

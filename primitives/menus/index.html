@@ -1240,15 +1240,18 @@
       sceneEl.addEventListener('menu-commit', function (evt) {
         var visor = sceneEl.systems['visor-menu'];
         if (!visor) return;
-        // Not per-panel: which way the visor draws is a property of the
-        // surface, and both sides plus their pips move together.
+        // Not per-panel: which way the visor draws and which eye it
+        // draws to are properties of the surface, and both sides plus
+        // their pips move together. These two compose — one eye AND
+        // painted on the screen is a combination worth trying, and the
+        // point of having both as live rows is that it can be.
         if (evt.detail.id === 'visor-draw') { visor.setDraw(evt.detail.value); return; }
+        if (evt.detail.id === 'visor-eyes') { visor.setEyes(evt.detail.value); return; }
         var sides = ['left', 'right'];
         sides.forEach(function (side) {
           var panel = visor.panels[side];
           var component = panel && panel.components['crossbar-menu'];
           if (!component) return;
-          if (evt.detail.id === 'visor-eyes') component.setEye(evt.detail.value);
           if (evt.detail.id === 'visor-scrim') {
             panel.setAttribute('crossbar-menu', 'scrim', evt.detail.value === 'on' ? 0.7 : 0);
             if (component.scrimEl) component.scrimEl.setAttribute('material', 'opacity', evt.detail.value === 'on' ? 0.7 : 0);

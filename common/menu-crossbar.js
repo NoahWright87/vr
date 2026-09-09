@@ -463,15 +463,13 @@ if (typeof AFRAME !== 'undefined') {
 
       // Per-eye rendering is a layer assignment, and layers only mean
       // anything once WebXR's two cameras exist. Off a headset there is
-      // one camera on layer 0, so applying it early would simply hide
-      // the menu.
+      // one camera on layer 0, so a panel left on an eye layer would not
+      // be drawn at all — which is why leaving XR has to put it back,
+      // unconditionally and whatever `eye` currently says.
       this.applyEyeLayer = this.applyEyeLayer.bind(this);
-      this.clearEyeLayer = this.clearEyeLayer.bind(this);
-      if (eyeLayerFor(this.data.eye, this.data.side)) {
-        this.el.sceneEl.addEventListener('enter-vr', this.applyEyeLayer);
-        this.el.sceneEl.addEventListener('exit-vr', this.clearEyeLayer);
-        if (this.el.sceneEl.is('vr-mode')) this.applyEyeLayer();
-      }
+      this.el.sceneEl.addEventListener('enter-vr', this.applyEyeLayer);
+      this.el.sceneEl.addEventListener('exit-vr', this.applyEyeLayer);
+      this.applyEyeLayer();
     },
 
     // ---------- one eye, or both ----------
@@ -479,20 +477,29 @@ if (typeof AFRAME !== 'undefined') {
     setEye: function (eye) {
       if (this.data.eye === eye) return;
       this.el.setAttribute('crossbar-menu', 'eye', eye);
-      if (this.el.sceneEl.is('vr-mode')) {
-        if (eyeLayerFor(eye, this.data.side)) this.applyEyeLayer();
-        else this.clearEyeLayer();
-      }
+      this.applyEyeLayer();
     },
 
+    // Re-applied from render() as well as on the XR transitions, because
+    // a label's mesh does not exist until its font has loaded: a panel
+    // that went one-eyed before then would have kept some of its parts
+    // on layer 0, showing half a menu to the other eye.
     applyEyeLayer: function () {
-      var layer = eyeLayerFor(this.data.eye, this.data.side);
-      if (!layer) return this.clearEyeLayer();
+      var layer = this.el.sceneEl.is('vr-mode') ? eyeLayerFor(this.data.eye, this.data.side) : 0;
+      if (layer === this.eyeLayer) return;
+      this.eyeLayer = layer;
       this.el.object3D.traverse(function (object) { object.layers.set(layer); });
     },
 
-    clearEyeLayer: function () {
-      this.el.object3D.traverse(function (object) { object.layers.set(0); });
+    // Cheap enough to run per render, and it catches parts built late.
+    // The guard above only skips the traverse when the layer has not
+    // changed, so this still has to reach new objects — hence the
+    // separate pass rather than an early return.
+    syncEyeLayer: function () {
+      var layer = this.eyeLayer || 0;
+      this.el.object3D.traverse(function (object) {
+        if (object.layers.mask !== (1 << layer)) object.layers.set(layer);
+      });
     },
 
     // ---------- construction ----------
@@ -754,6 +761,7 @@ if (typeof AFRAME !== 'undefined') {
       var open = this.menu.isOpen;
       this.applyOverlay();
       this.applyScreenSpace();
+      this.syncEyeLayer();
 
       // Closed does not have to mean gone. A panel set to collapse keeps
       // its backing and title so it still reads as a thing in the room,
@@ -1115,7 +1123,7 @@ if (typeof AFRAME !== 'undefined') {
       this.el.sceneEl.removeEventListener('input-family-changed', this.onFamilyChanged);
       this.el.removeEventListener('object3dset', this.onObject3DSet);
       this.el.sceneEl.removeEventListener('enter-vr', this.applyEyeLayer);
-      this.el.sceneEl.removeEventListener('exit-vr', this.clearEyeLayer);
+      this.el.sceneEl.removeEventListener('exit-vr', this.applyEyeLayer);
     },
   });
 
