@@ -264,6 +264,11 @@
       if (!this.controlMode.isMode('xr')) {
         var desktopControls = this.el.components['desktop-controls'];
         if (desktopControls && desktopControls.mode !== 'normal' && desktopControls.mode !== 'watch') return;
+        // A crossbar menu entered off a headset holds the movement keys
+        // and the joystick, since it drives the list with them. Set and
+        // cleared by menu-stick-control, checked here and in
+        // desktop-controls' applyMovement.
+        if (this.el.sceneEl.getAttribute('data-menu-locked') === 'true') return;
       }
       this.applyDesktopMove(evt.detail.x || 0, evt.detail.z || 0, evt.detail.deltaMs || 0, !!evt.detail.sprint);
     },

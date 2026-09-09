@@ -304,7 +304,15 @@
          this repo) — it collides with desktop-controls' own "F" for
          grab, added above. Disabling just that half leaves Escape
          still exiting VR normally. -->
-    <a-scene keyboard-shortcuts="enterVR: false">
+    <!-- The visor menu is head-locked rather than placed, so it is
+         configured on the scene rather than positioned in markup: the
+         system builds both sides as children of the camera. Backtick
+         opens it off a headset (Tab is the watch); in XR, hold an empty
+         hand beside your head until the edge-of-vision pip fills. -->
+    <a-scene
+      keyboard-shortcuts="enterVR: false"
+      visor-menu="leftPage: visor-system; rightPage: visor-game; dwellMs: 1200"
+    >
       <a-light type="ambient" color="#fff" intensity="0.7"></a-light>
       <a-light type="directional" position="2 3 2" intensity="0.7"></a-light>
       <a-sky color="#0d1526"></a-sky>
@@ -1005,9 +1013,263 @@
         simple-grabbable="heldPosition: 0 0 -0.08; floorY: 0.13"
         hint-zone="action: grab; radius: 0.34; maxReach: 1.0; gazeThreshold: 0.93; priority: 10; desktopKey: F; desktopLabel: Grab; xrKey: GRIP; xrLabel: Grab; hintOffset: 0 0.32 0"
       ></a-box>
+      <!-- ============================================================
+           CROSSBAR MENU (new shared menu system)
+
+           An in-world panel driven by common/menu-model.js. Unlike
+           every other menu on this page, none of its content is
+           written here: the page is registered as data further down
+           and this entity only says how big the surface is and how
+           many rows it can hold. Adding a thirteenth destination to
+           it changes nothing about this markup, which is the entire
+           point — the watch's old teleport page is 12 hand-positioned
+           entities on a backing plane three times taller than the
+           panel it lives in.
+
+           Walk up to it. With an empty hand near the panel (and not
+           pointing — the finger laser takes precedence), the panel
+           and your hand both light up and that hand's thumbstick
+           drives the list: up/down to move, inward or a face button
+           to go deeper, outward or B/Y to come back. Drop your arm
+           and the stick is yours again immediately, with the menu
+           left exactly where it was.
+      ============================================================ -->
+      <a-entity
+        id="crossbar-panel"
+        position="-1.6 1.22 -2.2"
+        rotation="0 36 0"
+        crossbar-menu="page: showcase-crossbar; title: WORKSHOP; windowSize: 5; width: 1.1; rowHeight: 0.17; stickRange: 0.9"
+        crossbar-menu-registration
+      ></a-entity>
+      <a-text
+        value="CROSSBAR A — walk up for the E prompt, press E to take the controls&#10;W/S move, D enter, A back, E or Esc to leave"
+        align="center"
+        color="#7fe3ff"
+        width="1.1"
+        wrap-count="56"
+        position="-1.6 0.42 -2.2"
+        rotation="0 36 0"
+      ></a-text>
+
+      <!-- A second crossbar, deliberately. Two panels in one room is
+           the only way to be sure that entering one takes the controls
+           for that one alone: with both in view, W/S must move exactly
+           one list. -->
+      <a-entity
+        id="crossbar-panel-b"
+        position="1.6 1.22 -2.2"
+        rotation="0 -36 0"
+        crossbar-menu="page: showcase-crossbar-b; title: RANGE; windowSize: 5; width: 1.1; rowHeight: 0.17; stickRange: 0.9; side: right; hintLabel: Range menu"
+        crossbar-menu-registration
+      ></a-entity>
+      <a-text
+        value="CROSSBAR B — the same system, a different page.&#10;Only the one you entered should move."
+        align="center"
+        color="#7fe3ff"
+        width="1.1"
+        wrap-count="56"
+        position="1.6 0.42 -2.2"
+        rotation="0 -36 0"
+      ></a-text>
     </a-scene>
 
+    <script type="module">
+      // The crossbar demo page. Every item kind the model supports,
+      // plus two lists that are deliberately far longer than the
+      // window, since "the list got taller than the player" is the
+      // failure this system exists to fix.
+      import { registerMenuPage } from '../../common/menu-crossbar.js';
+
+      var TOWNS = [
+        'Ghost Town', 'The Range', 'The Saloon', "Sheriff's Office",
+        'General Store', 'The Bank', 'The Pharmacy', 'Post Office',
+        'Boots & Suits', 'Shooting Gallery', 'The Farm', 'The Stable',
+      ];
+
+      var LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+
+      // The visor's own two pages. Left is the system side — the
+      // contract proposed in the design notes is that comfort, HUD and
+      // Exit VR live at your left temple in every prototype, so a
+      // player who has bailed out of one knows how to bail out of all
+      // of them. Right belongs to the game.
+      registerMenuPage('visor-system', {
+        title: 'VISOR',
+        items: [
+          // First on purpose: whether the visor draws to one eye is the
+          // open question, and this is how it gets answered in a
+          // headset rather than from a rebuild.
+          {
+            kind: 'select', id: 'visor-eyes', label: 'Eyes', value: 'both',
+            options: [
+              { value: 'both', label: 'Both' },
+              { value: 'inboard', label: 'One (this side)' },
+            ],
+          },
+          {
+            kind: 'select', id: 'visor-scrim', label: 'Scrim', value: 'on',
+            options: [{ value: 'on', label: 'On' }, { value: 'off', label: 'Off' }],
+          },
+          // World: a real object at 1.8m drawn over everything, so both
+          // eyes converge where it actually is. Screen: painted onto the
+          // display, identical in both eyes, no depth or parallax. The
+          // second is the one that might feel wrong in a headset, which
+          // is exactly why it is a row you can flip while wearing one.
+          {
+            kind: 'select', id: 'visor-draw', label: 'Draw', value: 'world',
+            options: [
+              { value: 'world', label: 'In world (stereo)' },
+              { value: 'screen', label: 'On screen (flat)' },
+            ],
+          },
+          {
+            kind: 'number', id: 'visor-curve', label: 'Curve',
+            value: 0.11, min: 0, max: 0.24, step: 0.01,
+            format: function (value) { return (Math.atan(value / 1.8) * 180 / Math.PI).toFixed(1) + '\u00b0'; },
+          },
+          {
+            kind: 'submenu', id: 'visor-comfort', label: 'Comfort',
+            items: [
+              { kind: 'toggle', id: 'visor-vignette', label: 'Vignette', value: false },
+              { kind: 'action', id: 'visor-recenter', label: 'Recenter' },
+            ],
+          },
+          { kind: 'action', id: 'visor-exit', label: 'Exit VR' },
+        ],
+      });
+
+      registerMenuPage('visor-game', {
+        title: 'GAME',
+        items: [
+          { kind: 'action', id: 'spawn-box', label: 'Spawn box' },
+          { kind: 'toggle', id: 'visor-grid', label: 'Floor grid', value: true },
+          {
+            kind: 'submenu', id: 'visor-destinations', label: 'Destinations',
+            items: TOWNS.map(function (name, i) {
+              return { kind: 'action', id: 'visor-teleport-' + i, label: name };
+            }),
+          },
+        ],
+      });
+
+      registerMenuPage('showcase-crossbar-b', {
+        title: 'RANGE',
+        items: [
+          { kind: 'action', id: 'reset-boxes', label: 'Reset boxes' },
+          { kind: 'toggle', id: 'range-lights', label: 'Lights', value: true },
+          {
+            kind: 'select', id: 'difficulty', label: 'Difficulty', value: 'normal',
+            options: [
+              { value: 'easy', label: 'Easy' },
+              { value: 'normal', label: 'Normal' },
+              { value: 'hard', label: 'Hard' },
+            ],
+          },
+          {
+            kind: 'number', id: 'range-gravity', label: 'Gravity',
+            value: 9.8, min: 0, max: 20, step: 0.2,
+          },
+          {
+            kind: 'submenu', id: 'letter-b', label: 'Letter',
+            items: LETTERS.map(function (letter) {
+              return { kind: 'action', id: 'b-letter-' + letter, label: letter };
+            }),
+          },
+        ],
+      });
+
+      registerMenuPage('showcase-crossbar', {
+        title: 'WORKSHOP',
+        items: [
+          // Emits menu-item-select with value "spawn-box", the same
+          // shape the existing panel menu emits, so the showcase's own
+          // handler picks it up with no changes.
+          { kind: 'action', id: 'spawn-box', label: 'Spawn box' },
+          { kind: 'toggle', id: 'grid', label: 'Floor grid', value: true },
+          {
+            kind: 'select', id: 'targets', label: 'Targets', value: 6,
+            options: [
+              { value: 4, label: '4' }, { value: 6, label: '6' },
+              { value: 8, label: '8' }, { value: 12, label: '12' },
+              { value: 24, label: '24' },
+            ],
+          },
+          {
+            kind: 'number', id: 'move-speed', label: 'Move speed',
+            value: 1, min: 0.5, max: 2.5, step: 0.1, suffix: 'x',
+          },
+          {
+            // Twelve rows in a five-row window: this is the teleport
+            // page that used to be as tall as a person.
+            kind: 'submenu', id: 'destinations', label: 'Destinations',
+            items: TOWNS.map(function (name, i) {
+              return { kind: 'action', id: 'teleport-' + i, label: name };
+            }),
+          },
+          {
+            kind: 'submenu', id: 'comfort', label: 'Comfort',
+            items: [
+              { kind: 'toggle', id: 'vignette', label: 'Vignette', value: false },
+              {
+                kind: 'number', id: 'vignette-strength', label: 'Strength',
+                value: 1, min: 0, max: 2, step: 0.1,
+                format: function (value) { return Math.round(value * 100) + '%'; },
+              },
+              { kind: 'action', id: 'recenter', label: 'Recenter' },
+            ],
+          },
+          {
+            // The room-code idea, roughed in: 26 rows navigated by
+            // holding the stick. Tedious beats the cramped keyboard,
+            // and it tells us whether hold-to-repeat is fast enough.
+            kind: 'submenu', id: 'letter', label: 'Letter',
+            items: LETTERS.map(function (letter) {
+              return { kind: 'action', id: 'letter-' + letter, label: letter };
+            }),
+          },
+        ],
+      });
+    </script>
+
+    <script type="module">
+      // The visor adjusting itself: the Eyes/Scrim/Curve rows above are
+      // ordinary menu items, and this turns their commits into schema
+      // changes on the two visor panels. That is the whole in-headset
+      // test for the one-eye question -- no rebuild, no flag file.
+      var sceneEl = document.querySelector('a-scene');
+      sceneEl.addEventListener('menu-commit', function (evt) {
+        var visor = sceneEl.systems['visor-menu'];
+        if (!visor) return;
+        // Not per-panel: which way the visor draws and which eye it
+        // draws to are properties of the surface, and both sides plus
+        // their pips move together. These two compose — one eye AND
+        // painted on the screen is a combination worth trying, and the
+        // point of having both as live rows is that it can be.
+        if (evt.detail.id === 'visor-draw') { visor.setDraw(evt.detail.value); return; }
+        if (evt.detail.id === 'visor-eyes') { visor.setEyes(evt.detail.value); return; }
+        var sides = ['left', 'right'];
+        sides.forEach(function (side) {
+          var panel = visor.panels[side];
+          var component = panel && panel.components['crossbar-menu'];
+          if (!component) return;
+          if (evt.detail.id === 'visor-scrim') {
+            panel.setAttribute('crossbar-menu', 'scrim', evt.detail.value === 'on' ? 0.7 : 0);
+            if (component.scrimEl) component.scrimEl.setAttribute('material', 'opacity', evt.detail.value === 'on' ? 0.7 : 0);
+          }
+          if (evt.detail.id === 'visor-curve') {
+            panel.setAttribute('crossbar-menu', 'curve', evt.detail.value);
+            component.render();
+          }
+        });
+      });
+      sceneEl.addEventListener('menu-action', function (evt) {
+        if (evt.detail.id === 'visor-exit' && sceneEl.is('vr-mode')) sceneEl.exitVR();
+      });
+    </script>
+
+    <script type="module" src="../../common/visor-menu.js"></script>
     <script type="module" src="../../common/watch-menu.js"></script>
+    <script type="module" src="../../common/menu-crossbar.js"></script>
     <script type="module" src="../../common/room-code-entry.js"></script>
     <script type="module" src="../../common/locomotion.js"></script>
     <script type="module" src="../../common/desktop-controls.js"></script>
