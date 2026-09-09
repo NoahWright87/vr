@@ -22,7 +22,7 @@
 // open at a time.
 // ============================================================
 
-import { overlayAll } from './menu-crossbar.js';
+import { overlayAll, screenSpaceAll } from './menu-crossbar.js';
 
 if (typeof AFRAME !== 'undefined') {
   var THREE = AFRAME.THREE;
@@ -54,6 +54,19 @@ if (typeof AFRAME !== 'undefined') {
       local.z >= TEMPLE.zMin - m && local.z <= TEMPLE.zMax + m;
   }
 
+  // The pip belongs to the visor surface, so it is drawn the same way
+  // the panel is. Its own anchor sits just outboard of the panel's, so
+  // the two keep their relationship on the screen as well as in the
+  // world.
+  function setPipDraw(pipEl, mode) {
+    overlayAll(pipEl);
+    screenSpaceAll(pipEl, mode === 'screen' ? {
+      anchor: { x: Number(pipEl.dataset.pipAnchorX), y: 0 },
+      width: 0.02,
+      localWidth: Number(pipEl.dataset.pipWidth),
+    } : null);
+  }
+
   // ============================================================
   // SYSTEM: visor-menu
   // ============================================================
@@ -66,6 +79,13 @@ if (typeof AFRAME !== 'undefined') {
       // it doesn't feel like waiting.
       dwellMs: { default: 1200 },
       distance: { default: 1.8 },
+      // 'world' keeps the panel a real object at `distance`, drawn over
+      // everything — stereo-correct, so both eyes converge where it
+      // actually is. 'screen' paints it onto the display instead:
+      // identical in both eyes, no depth, no parallax, fixed size.
+      // Switchable live so the difference can be judged in a headset
+      // rather than argued about.
+      draw: { default: 'world', oneOf: ['world', 'screen'] },
       key: { type: 'string', default: 'Backquote' },
       hint: { default: true },
     },
@@ -108,6 +128,7 @@ if (typeof AFRAME !== 'undefined') {
 
     buildSide: function (side, page) {
       var data = this.data;
+      var self = this;
       var sign = side === 'left' ? -1 : 1;
 
       // Head-locked: a child of the camera, at a fixed distance. The
@@ -156,8 +177,11 @@ if (typeof AFRAME !== 'undefined') {
         // ordinary depth-tested geometry at 1.8m, so anything nearer —
         // a wall, a doorway, a table you are standing at — cuts through
         // it, which in a headset reads as the menu being broken rather
-        // than as the world being in front of it.
-        overlay: true,
+        // than as the world being in front of it. 'screen' goes further
+        // and paints it onto the display; see setDraw.
+        overlay: data.draw,
+        screenAnchor: { x: sign * 0.46, y: 0 },
+        screenWidth: 0.34,
       });
       panel.setAttribute('crossbar-menu-registration', '');
       this.cameraEl.appendChild(panel);
@@ -193,9 +217,13 @@ if (typeof AFRAME !== 'undefined') {
       this.cameraEl.appendChild(pip);
       // The pip is part of the same visor surface, so it is drawn over
       // the world for the same reason the panel is — a gesture hint you
-      // can lose behind a doorframe is not a hint.
-      pip.addEventListener('object3dset', function () { overlayAll(pip); });
-      overlayAll(pip);
+      // can lose behind a doorframe is not a hint — and it follows the
+      // panel between world and screen drawing.
+      pip.dataset.pipWidth = String(data.distance * 0.022);
+      pip.dataset.pipAnchorX = String(sign * 0.72);
+      var applyPip = function () { setPipDraw(pip, self.data.draw); };
+      pip.addEventListener('object3dset', applyPip);
+      applyPip();
       this.pips[side] = { el: pip, trackEl: track, fillEl: fill, height: data.distance * 0.17 };
     },
 
@@ -240,6 +268,24 @@ if (typeof AFRAME !== 'undefined') {
 
       this.sceneEl.addEventListener('enter-vr', function () { hint.hidden = true; });
       this.sceneEl.addEventListener('exit-vr', function () { hint.hidden = false; });
+    },
+
+    // Switch both panels between "a real object drawn on top" and
+    // "painted on the display", live, with the menu open. The pips move
+    // with them: they are part of the same surface, and a gesture hint
+    // drawn one way beside a menu drawn the other would be incoherent.
+    setDraw: function (mode) {
+      var self = this;
+      this.el.setAttribute('visor-menu', 'draw', mode);
+      ['left', 'right'].forEach(function (side) {
+        var panel = self.panels[side];
+        if (panel) {
+          panel.setAttribute('crossbar-menu', 'overlay', mode);
+          panel.components['crossbar-menu'].render();
+        }
+        var pip = self.pips[side];
+        if (pip) setPipDraw(pip.el, mode);
+      });
     },
 
     // ---------- opening and closing ----------

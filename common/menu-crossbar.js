@@ -41,6 +41,107 @@ export function getMenuPage(name) {
 // surface draws after the world's own transparent objects.
 export var OVERLAY_RENDER_ORDER = 9000;
 
+function eachMesh(el, fn) {
+  el.object3D.traverse(function (object) {
+    if (object.isMesh && object.material) fn(object);
+  });
+}
+
+// Scratch for the screen-space placement, which runs per mesh per eye
+// per frame. Shared at module scope rather than per surface because only
+// one mesh is ever mid-draw.
+var SCRATCH = null;
+function scratch() {
+  if (SCRATCH) return SCRATCH;
+  var T = AFRAME.THREE;
+  SCRATCH = {
+    ndc: new T.Vector3(), edge: new T.Vector3(), scale: new T.Vector3(),
+    screen: new T.Matrix4(), local: new T.Matrix4(),
+    // A screen-space surface faces the screen, full stop — its own
+    // anchoring rotation is exactly what "on the screen" discards.
+    noRotation: new T.Quaternion(),
+    identity: T.Object3D.prototype.onBeforeRender,
+  };
+  return SCRATCH;
+}
+
+// The point one unit in front of `camera` that fills the given NDC
+// position, through that camera's own projection — so the off-axis
+// frustum each eye actually has is respected.
+function viewPointAt(target, ndcX, ndcY, camera) {
+  target.set(ndcX, ndcY, 0.5).applyMatrix4(camera.projectionMatrixInverse);
+  return target.multiplyScalar(-1 / target.z);
+}
+
+// Where the surface lands, for the camera that is about to draw it.
+// Unprojecting through that camera's own projection keeps the off-axis
+// frustum each eye actually has, so the result is the same NDC rect in
+// both — which is what "on the screen" means and what world space cannot
+// express, since one object has one transform and the eyes are 64mm
+// apart.
+function screenMatrixFor(camera, options) {
+  var s = scratch();
+  // NDC straight to view space through the inverse projection alone,
+  // then normalized to one unit of depth. Note what this does NOT do:
+  // touch the camera. Vector3.unproject would go via world space, and
+  // coming back with camera.worldToLocal calls updateWorldMatrix — which
+  // recomposes matrixWorld from the camera's local transform. A WebXR
+  // eye camera's matrixWorld is written from the headset pose, not
+  // composed, so doing that mid-render would corrupt the eye.
+  var anchor = viewPointAt(s.ndc, options.anchor.x, options.anchor.y, camera);
+  var edge = viewPointAt(s.edge, options.anchor.x + options.width / 2, options.anchor.y, camera);
+
+  // The surface is authored `localWidth` metres wide; make that span the
+  // requested slice of the viewport.
+  var scale = (2 * (edge.x - anchor.x)) / Math.max(0.0001, options.localWidth);
+  s.screen.compose(anchor, s.noRotation, s.scale.setScalar(scale));
+  return s.screen.premultiply(camera.matrixWorld);
+}
+
+// Where this mesh sits within the surface — the layout's business, which
+// the placement carries along untouched. Accumulated from each node's
+// own `matrix` rather than read off matrixWorld, and that is not a
+// stylistic choice: matrixWorld is what the placement overwrites, and
+// three.js calls onBeforeRender once per eye with no matrix update in
+// between, so deriving the local transform from it would apply the
+// placement twice on the second eye. `matrix` is untouched by any of
+// this, so the handler stays idempotent however many times it runs.
+function localWithin(root, object) {
+  var m = scratch().local.identity();
+  for (var node = object; node && node !== root; node = node.parent) m.premultiply(node.matrix);
+  return m;
+}
+
+// Paint a surface onto the screen instead of standing it in the world.
+// Pass null for `options` to put it back.
+//
+// The placement is per rendering camera, not per object: each mesh gets
+// an onBeforeRender that rewrites its matrixWorld for whichever eye is
+// about to draw it. three.js recomputes modelViewMatrix from matrixWorld
+// *after* calling onBeforeRender (WebGLRenderer's renderObject), so this
+// lands — and it is transient, since the next frame's updateMatrixWorld
+// puts the real transform back. That real transform is what raycasting
+// and the hint system go on seeing, so in XR the panel is drawn on the
+// screen and pointed at where it really is. In a headset it is driven by
+// thumbstick, so nothing points at it; flat rendering has one camera, so
+// apparent and actual agree there anyway.
+export function screenSpaceAll(el, options) {
+  if (!el || !el.object3D) return;
+  var s = scratch();
+  var root = el.object3D;
+  var handler = options ? function (renderer, scene, camera) {
+    var local = localWithin(root, this);
+    this.matrixWorld.multiplyMatrices(screenMatrixFor(camera, options), local);
+  } : s.identity;
+
+  eachMesh(el, function (object) {
+    object.onBeforeRender = handler;
+    // Culling is decided from the real matrixWorld, which in screen mode
+    // is not where the mesh is about to be drawn.
+    object.frustumCulled = !options;
+  });
+}
+
 // "On top of everything" without leaving world space. The surface stays
 // a real object at a real distance, because that is what makes it
 // comfortable in a headset: both eyes converge where the panel actually
@@ -59,8 +160,7 @@ export var OVERLAY_RENDER_ORDER = 9000;
 // on sorting themselves out as before.
 export function overlayAll(el) {
   if (!el || !el.object3D) return;
-  el.object3D.traverse(function (object) {
-    if (!object.isMesh || !object.material) return;
+  eachMesh(el, function (object) {
     object.renderOrder = OVERLAY_RENDER_ORDER;
 
     // Where A-Frame's material component owns the material, this has to
@@ -274,12 +374,23 @@ if (typeof AFRAME !== 'undefined') {
       // the intended gesture anyway; mounted-interaction uses 0.75.
       hintRadius: { default: 1.2 },
       plate: { default: true },
-      // Draw over the world instead of standing in it. A panel bolted to
-      // a wall is part of the room and should be occluded by whatever is
-      // in front of it; a visor or watch menu is on your face, and being
-      // eaten by a doorway is a bug. See applyOverlay for what this
-      // actually does and why it stays at a real distance.
-      overlay: { default: false },
+      // Where this surface lives.
+      //
+      //   'none'   — a thing in the room. Depth-tested, occluded by
+      //              whatever stands in front of it, which is right for
+      //              a panel bolted to a wall.
+      //   'world'  — a real object at a real distance, drawn over
+      //              everything. Head-locked but still stereo: both eyes
+      //              converge where the panel actually is.
+      //   'screen' — painted onto the screen. Identical in both eyes, no
+      //              depth, no parallax, fixed size regardless of what is
+      //              around you. See applyScreenSpace.
+      overlay: { default: 'none', oneOf: ['none', 'world', 'screen'] },
+      // Where on the screen, when overlay is 'screen': the panel's
+      // centre in normalized device coordinates (-1..1, y up) and its
+      // width as a fraction of the viewport.
+      screenAnchor: { type: 'vec2', default: { x: -0.46, y: 0 } },
+      screenWidth: { default: 0.34 },
       color: { type: 'color', default: '#dff3ff' },
       accent: { type: 'color', default: '#7fe3ff' },
     },
@@ -312,6 +423,7 @@ if (typeof AFRAME !== 'undefined') {
 
       var self = this;
       this.flashT0 = 0;
+
       // Picking up a phone mid-session changes what the footer should
       // say, and a touch device reports 'keyboard' until the first
       // actual touch, so this is not just a theoretical swap.
@@ -641,6 +753,7 @@ if (typeof AFRAME !== 'undefined') {
       var data = this.data;
       var open = this.menu.isOpen;
       this.applyOverlay();
+      this.applyScreenSpace();
 
       // Closed does not have to mean gone. A panel set to collapse keeps
       // its backing and title so it still reads as a thing in the room,
@@ -831,7 +944,18 @@ if (typeof AFRAME !== 'undefined') {
     // down to whatever the current state says it should rest at — which
     // after a submenu push is a different row than the one pressed.
     applyOverlay: function () {
-      if (this.data.overlay) overlayAll(this.el);
+      if (this.data.overlay !== 'none') overlayAll(this.el);
+    },
+
+    // Re-applied on every render rather than only when the mode changes,
+    // because a label's mesh does not exist until its font has loaded.
+    applyScreenSpace: function () {
+      var data = this.data;
+      screenSpaceAll(this.el, data.overlay === 'screen' ? {
+        anchor: data.screenAnchor,
+        width: data.screenWidth,
+        localWidth: data.width,
+      } : null);
     },
 
     focusedSlot: function () {

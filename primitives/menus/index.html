@@ -1110,6 +1110,18 @@
             kind: 'select', id: 'visor-scrim', label: 'Scrim', value: 'on',
             options: [{ value: 'on', label: 'On' }, { value: 'off', label: 'Off' }],
           },
+          // World: a real object at 1.8m drawn over everything, so both
+          // eyes converge where it actually is. Screen: painted onto the
+          // display, identical in both eyes, no depth or parallax. The
+          // second is the one that might feel wrong in a headset, which
+          // is exactly why it is a row you can flip while wearing one.
+          {
+            kind: 'select', id: 'visor-draw', label: 'Draw', value: 'world',
+            options: [
+              { value: 'world', label: 'In world (stereo)' },
+              { value: 'screen', label: 'On screen (flat)' },
+            ],
+          },
           {
             kind: 'number', id: 'visor-curve', label: 'Curve',
             value: 0.11, min: 0, max: 0.24, step: 0.01,
@@ -1228,6 +1240,9 @@
       sceneEl.addEventListener('menu-commit', function (evt) {
         var visor = sceneEl.systems['visor-menu'];
         if (!visor) return;
+        // Not per-panel: which way the visor draws is a property of the
+        // surface, and both sides plus their pips move together.
+        if (evt.detail.id === 'visor-draw') { visor.setDraw(evt.detail.value); return; }
         var sides = ['left', 'right'];
         sides.forEach(function (side) {
           var panel = visor.panels[side];
