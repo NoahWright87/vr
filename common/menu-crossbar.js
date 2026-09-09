@@ -37,6 +37,63 @@ export function getMenuPage(name) {
   return PAGES[name];
 }
 
+// Past anything a scene is likely to set for itself, so an overlay
+// surface draws after the world's own transparent objects.
+export var OVERLAY_RENDER_ORDER = 9000;
+
+// "On top of everything" without leaving world space. The surface stays
+// a real object at a real distance, because that is what makes it
+// comfortable in a headset: both eyes converge where the panel actually
+// is, and the stereo agrees with what your eyes are doing. Drawing a HUD
+// at zero disparity instead — true screen space — is what gives you the
+// eye strain this whole surface is meant to avoid. What was wrong was
+// never the distance; it was that the panel took part in the depth test,
+// so a wall nearer than 1.8m won.
+//
+// With depthTest off, draw order alone decides what covers what, so the
+// surface's own parts still have to be ordered. They are all in the
+// transparent pass, which three.js sorts back-to-front by distance, and
+// the z offsets the parts are already built with (a backing at -0.012,
+// labels at +0.004) are exactly that ordering — so one renderOrder for
+// the whole surface lifts it clear of the world while its internals go
+// on sorting themselves out as before.
+export function overlayAll(el) {
+  if (!el || !el.object3D) return;
+  el.object3D.traverse(function (object) {
+    if (!object.isMesh || !object.material) return;
+    object.renderOrder = OVERLAY_RENDER_ORDER;
+
+    // Where A-Frame's material component owns the material, this has to
+    // go through the component. It re-applies its whole schema on every
+    // update — and depthTest/depthWrite are part of that schema, both
+    // defaulting to true — so a value poked straight onto three.js is
+    // silently undone by the next setAttribute('material', 'opacity'),
+    // of which this system does plenty: the dwell pip fills, the lock
+    // border brightens, a row plate flashes.
+    var owner = object.el;
+    if (owner && owner.components && owner.components.material) {
+      var data = owner.components.material.data;
+      if (data.depthTest !== false || data.depthWrite !== false) {
+        owner.setAttribute('material', { depthTest: false, depthWrite: false });
+      }
+      return;
+    }
+
+    // a-text has no material component — it draws through the text
+    // component's own shader material, which nothing overwrites.
+    var materials = Array.isArray(object.material) ? object.material : [object.material];
+    for (var i = 0; i < materials.length; i++) {
+      var material = materials[i];
+      if (material.depthTest === false && material.depthWrite === false) continue;
+      material.depthTest = false;
+      // Testing against nothing while still writing depth would let the
+      // surface punch a hole in whatever is drawn after it.
+      material.depthWrite = false;
+      material.needsUpdate = true;
+    }
+  });
+}
+
 if (typeof AFRAME !== 'undefined') {
   var THREE = AFRAME.THREE;
 
@@ -92,6 +149,7 @@ if (typeof AFRAME !== 'undefined') {
   // accent colour the label is already drawn in, so left alone the text
   // disappears into it and the flash reads as the row blanking out.
   var FLASH_TEXT = '#0b1220';
+
 
   // The one writer of a row plate's opacity, and it has to stay the one
   // writer. The flash drives this value every frame, which has to go
@@ -216,6 +274,12 @@ if (typeof AFRAME !== 'undefined') {
       // the intended gesture anyway; mounted-interaction uses 0.75.
       hintRadius: { default: 1.2 },
       plate: { default: true },
+      // Draw over the world instead of standing in it. A panel bolted to
+      // a wall is part of the room and should be occluded by whatever is
+      // in front of it; a visor or watch menu is on your face, and being
+      // eaten by a doorway is a bug. See applyOverlay for what this
+      // actually does and why it stays at a real distance.
+      overlay: { default: false },
       color: { type: 'color', default: '#dff3ff' },
       accent: { type: 'color', default: '#7fe3ff' },
     },
@@ -255,6 +319,12 @@ if (typeof AFRAME !== 'undefined') {
         if (self.locked && self.footerEl) self.footerEl.setAttribute('value', self.controlsHint());
       };
       this.el.sceneEl.addEventListener('input-family-changed', this.onFamilyChanged);
+      // A label's mesh does not exist until its font has loaded, which
+      // is after build and can be after the first render. setObject3D
+      // bubbles, so this catches every part as it appears rather than
+      // hoping they are all there by the time something re-renders.
+      this.onObject3DSet = function () { self.applyOverlay(); };
+      this.el.addEventListener('object3dset', this.onObject3DSet);
       this.menu.on('change', function () { self.render(); });
       this.menu.on('activate', function () { self.beginFlash(); });
       this.menu.on('close', function () { self.el.emit('crossbar-menu-close', {}, false); });
@@ -570,6 +640,7 @@ if (typeof AFRAME !== 'undefined') {
     render: function () {
       var data = this.data;
       var open = this.menu.isOpen;
+      this.applyOverlay();
 
       // Closed does not have to mean gone. A panel set to collapse keeps
       // its backing and title so it still reads as a thing in the room,
@@ -759,6 +830,10 @@ if (typeof AFRAME !== 'undefined') {
     // The plate under the focused row, ramped to full and eased back
     // down to whatever the current state says it should rest at — which
     // after a submenu push is a different row than the one pressed.
+    applyOverlay: function () {
+      if (this.data.overlay) overlayAll(this.el);
+    },
+
     focusedSlot: function () {
       return this.rows.length ? this.rows[(this.rows.length - 1) / 2 | 0] : null;
     },
@@ -914,6 +989,7 @@ if (typeof AFRAME !== 'undefined') {
     remove: function () {
       this.setEngagedHand(null);
       this.el.sceneEl.removeEventListener('input-family-changed', this.onFamilyChanged);
+      this.el.removeEventListener('object3dset', this.onObject3DSet);
       this.el.sceneEl.removeEventListener('enter-vr', this.applyEyeLayer);
       this.el.sceneEl.removeEventListener('exit-vr', this.clearEyeLayer);
     },

@@ -22,7 +22,7 @@
 // open at a time.
 // ============================================================
 
-import './menu-crossbar.js';
+import { overlayAll } from './menu-crossbar.js';
 
 if (typeof AFRAME !== 'undefined') {
   var THREE = AFRAME.THREE;
@@ -152,6 +152,12 @@ if (typeof AFRAME !== 'undefined') {
         // A head-locked panel is never something you walk up to.
         stickRange: 0,
         hintLabel: '',
+        // On your face, not in the room. Without this the panel is
+        // ordinary depth-tested geometry at 1.8m, so anything nearer —
+        // a wall, a doorway, a table you are standing at — cuts through
+        // it, which in a headset reads as the menu being broken rather
+        // than as the world being in front of it.
+        overlay: true,
       });
       panel.setAttribute('crossbar-menu-registration', '');
       this.cameraEl.appendChild(panel);
@@ -185,6 +191,11 @@ if (typeof AFRAME !== 'undefined') {
       pip.object3D.visible = false;
       fill.object3D.visible = false;
       this.cameraEl.appendChild(pip);
+      // The pip is part of the same visor surface, so it is drawn over
+      // the world for the same reason the panel is — a gesture hint you
+      // can lose behind a doorframe is not a hint.
+      pip.addEventListener('object3dset', function () { overlayAll(pip); });
+      overlayAll(pip);
       this.pips[side] = { el: pip, trackEl: track, fillEl: fill, height: data.distance * 0.17 };
     },
 
