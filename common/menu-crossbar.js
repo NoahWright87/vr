@@ -248,6 +248,13 @@ if (typeof AFRAME !== 'undefined') {
 
       var self = this;
       this.flashT0 = 0;
+      // Picking up a phone mid-session changes what the footer should
+      // say, and a touch device reports 'keyboard' until the first
+      // actual touch, so this is not just a theoretical swap.
+      this.onFamilyChanged = function () {
+        if (self.locked && self.footerEl) self.footerEl.setAttribute('value', self.controlsHint());
+      };
+      this.el.sceneEl.addEventListener('input-family-changed', this.onFamilyChanged);
       this.menu.on('change', function () { self.render(); });
       this.menu.on('activate', function () { self.beginFlash(); });
       this.menu.on('close', function () { self.el.emit('crossbar-menu-close', {}, false); });
@@ -847,6 +854,21 @@ if (typeof AFRAME !== 'undefined') {
 
     // ---------- stick control ----------
 
+    // What this menu is telling you that you can press. Naming keys is
+    // only right for the family that has keys — a phone entered the menu
+    // with the INTERACT button and drives rows by tapping them, so
+    // spelling out W/S/A/D there is instructions for a keyboard nobody
+    // is holding. Touch has no stepping buttons of its own yet; see
+    // TODO.md.
+    controlsHint: function () {
+      var router = this.el.sceneEl.systems['input-router'];
+      var family = router && typeof router.getActiveFamily === 'function'
+        ? router.getActiveFamily() : null;
+      return family === 'touch'
+        ? 'Tap a row, tap again to pick   INTERACT leaves'
+        : 'W/S move   D enter   A back   E exit';
+    },
+
     // Off a headset there is no hand to light up, so the panel has to
     // carry the whole "your keys are going here" signal by itself: a
     // bright border, a brighter title, and the controls spelled out
@@ -861,7 +883,7 @@ if (typeof AFRAME !== 'undefined') {
         });
       }
       if (this.footerEl) {
-        this.footerEl.setAttribute('value', 'W/S move   D enter   A back   E exit');
+        this.footerEl.setAttribute('value', this.controlsHint());
         this.footerEl.object3D.visible = locked;
       }
       // While a menu holds the keys it stops advertising itself, and
@@ -891,6 +913,7 @@ if (typeof AFRAME !== 'undefined') {
 
     remove: function () {
       this.setEngagedHand(null);
+      this.el.sceneEl.removeEventListener('input-family-changed', this.onFamilyChanged);
       this.el.sceneEl.removeEventListener('enter-vr', this.applyEyeLayer);
       this.el.sceneEl.removeEventListener('exit-vr', this.clearEyeLayer);
     },
@@ -936,6 +959,10 @@ if (typeof AFRAME !== 'undefined') {
       this.bindings = [];
       this.onKeyDown = this.onKeyDown.bind(this);
       window.addEventListener('keydown', this.onKeyDown);
+      this.onActionIntent = this.onActionIntent.bind(this);
+      // Emitted on the rig and bubbled, so the scene is where every
+      // input family's buttons can be heard in one place.
+      this.el.addEventListener('semantic-action-intent', this.onActionIntent);
       var self = this;
       this.el.addEventListener('loaded', function () { self.collectHands(); });
     },
@@ -1198,15 +1225,38 @@ if (typeof AFRAME !== 'undefined') {
       this.lock(null);
     },
 
+    // The flat "enter or leave this menu" verb, wherever it came from:
+    // E on a keyboard, the INTERACT button on a phone, the same button
+    // on a gamepad. Answers whether a menu actually took it, so a
+    // keyboard caller knows whether to swallow the key.
+    toggleFlatLock: function () {
+      var mode = this.el.systems['control-mode'];
+      if (mode && mode.isMode('xr')) return false;
+      if (this.lockedMenu) { this.unlock(); return true; }
+      var prompted = this.getPromptedMenu();
+      if (!prompted) return false;
+      this.lock(prompted);
+      return true;
+    },
+
+    // Touch and gamepad publish their buttons as intents rather than as
+    // keys, so this is the same verb arriving by the other route. No
+    // need to stop it reaching desktop-controls, which answers
+    // 'interact' only when a *mounted* zone is the prompted one — and
+    // the hint system offers exactly one zone at a time.
+    onActionIntent: function (evt) {
+      var detail = evt.detail;
+      if (!detail || detail.phase !== 'perform' || detail.action !== 'interact') return;
+      this.toggleFlatLock();
+    },
+
     onKeyDown: function (evt) {
       var mode = this.el.systems['control-mode'];
       if (mode && mode.isMode('xr')) return;
       var locked = this.lockedMenu;
 
       if (evt.code === 'KeyE') {
-        if (locked) { this.unlock(); evt.preventDefault(); return; }
-        var prompted = this.getPromptedMenu();
-        if (prompted) { this.lock(prompted); evt.preventDefault(); }
+        if (this.toggleFlatLock()) evt.preventDefault();
         return;
       }
       if (!locked) return;
@@ -1250,6 +1300,7 @@ if (typeof AFRAME !== 'undefined') {
 
     remove: function () {
       window.removeEventListener('keydown', this.onKeyDown);
+      this.el.removeEventListener('semantic-action-intent', this.onActionIntent);
     },
 
     pumpStick: function (state, time) {

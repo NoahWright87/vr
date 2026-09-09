@@ -137,11 +137,16 @@ demo panel in `primitives/menus/`. Deliberately not done yet:
   tap raycasts from the touch point. Small, but it changes mobile
   behaviour for every existing menu, so it wants its own pass.
 
-- **The on-screen action buttons don't drive menus.** `touch-controls`
-  publishes `semantic-action-intent` on the rig; the crossbar listens for
-  controller button events on hands. So USE/INTERACT do nothing to an
-  open menu on mobile. Same shape of gap as the desktop gamepad above,
-  and probably the same fix.
+- **The on-screen action buttons can enter a menu but not step it.**
+  INTERACT now appears next to a crossbar panel and enters/leaves it —
+  `menu-stick-control` answers the same `semantic-action-intent`
+  `touch-controls` publishes, and `input-router`'s `INTERACT_ZONES` lists
+  the `menu` zone alongside `mounted`. What is still missing is moving
+  the focus: there is no on-screen equivalent of W/S, so once entered you
+  drive the list by tapping rows, which works whether or not you entered
+  (and which the entered footer now says instead of naming keys). Worth
+  adding a small up/down pair to the action grid while a menu is entered,
+  which would also give the desktop gamepad above somewhere to point.
 
 - **Grip should stop meaning "point".** The fingertip laser enables on
   `gripdown` (`common/watch-menu.js`), which is why reaching for the
