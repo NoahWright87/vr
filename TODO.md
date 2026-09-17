@@ -213,3 +213,53 @@ yet:
   restructuring anything.
 - **Player names.** The roster only has peerId + color right now —
   there's no name entry or display anywhere.
+
+## The Rainbow Hotel (impossible spaces POC)
+
+Built to answer one question — does a small physical room convincingly
+disguise itself as a multi-floor building — and deliberately stopped
+there. Everything below was considered and put off on purpose, not
+missed. See README.md's "The Rainbow Hotel: how it works" and DESIGN.md's
+"Impossible spaces" section for how the built part works.
+
+- **The hallway's depth comes out of every room's depth, and nothing in
+  the current design avoids that.** At a 2.4m Guardian the rooms end up
+  1.2m deep. The idea that would break the tie: give each doorway a
+  *local* recess that pokes south into the room's plan — a doorway-wide,
+  full-height slot in the shared wall — so the doorway sits deeper
+  without the whole strip getting wider. Deeper recesses measured as the
+  single biggest win for the occlusion margin, so this is worth real
+  effort if the rooms feel cramped in a headset. The catch is that the
+  slot is open at every height, so the hallway would have to carry
+  blanking panels above and below its own opening to fill it as it
+  passes; that's a moving-parts change, not a parameter change.
+- **No collision, anywhere.** The piers and walls are virtual only, so a
+  player who walks through one can stand somewhere the occlusion
+  analysis never considered and catch a misaligned doorway. Deliberate:
+  pushing a real body back is worse than letting them cheat. If it turns
+  out to matter, the cheap fix is a comfort fade when the head is inside
+  solid geometry, not a physics response.
+- **`fitSafeRect` is centre-anchored.** It grows a rectangle about the
+  boundary's centroid, so a U-shaped Guardian (a pillar in the middle of
+  the room) yields a small rectangle rather than a large off-centre one.
+  It refuses rather than guessing, which is the right failure, but
+  sliding the rectangle to find a bigger fit is a fair improvement and
+  the tests already document the limitation.
+- **No audio.** Footsteps in the hallway would do the same job the
+  pilasters do — telling you that you are walking — and reverb changing
+  between a small room and a corridor is most of what sells an interior.
+  Left out because the POC is about vision and vestibular comfort, and
+  adding audio before knowing whether the visual trick holds would make
+  it harder to tell which one was doing the work.
+- **The alternate hallway layout from the spec** (doorway in the centre
+  of one wall, sharp turn, run to the edge, turn, run along it, turn,
+  arrive at the centre of the opposite wall) is approximated by the
+  "extra turns" dial rather than built as its own shape. The dial gets
+  the *effect* — more turns, longer walk, bigger safe stretch — within
+  one reusable piece. A genuinely different door placement is a
+  `doorSpread` of less than 1 plus a layout function; nobody has needed
+  it yet.
+- **Six floors is hardcoded to six colours.** `ROOMS` in
+  `hotel-layout.js` is the whole list and everything else counts off it,
+  so a seventh floor is one entry — but the exterior's height bands were
+  chosen against a six-floor building and would want revisiting.
