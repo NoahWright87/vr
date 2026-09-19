@@ -10,6 +10,8 @@ import {
   rectsAgree,
   transformPoints,
   rectArea,
+  polygonExtent,
+  describeError,
 } from '../common/guardian-bounds.js';
 
 function square (halfX, halfZ, centerX, centerZ) {
@@ -151,4 +153,28 @@ test('the fallback rectangles are sized for who they are for', () => {
   assert.ok(rectArea(DESKTOP_SAFE_RECT) > rectArea(DEFAULT_SAFE_RECT));
   assert.equal(DEFAULT_SAFE_RECT.source, 'fallback');
   assert.equal(DESKTOP_SAFE_RECT.source, 'desktop');
+});
+
+test('the raw boundary extent is reported separately from the fitted rectangle', () => {
+  // "I can see a 3.4 x 2.9 boundary but cannot fit a rectangle in it" and
+  // "I never saw a boundary" need different fixes, and from inside a
+  // headset they look identical unless both numbers are shown.
+  var polygon = square(1.7, 1.45);
+  var extent = polygonExtent(polygon);
+  assert.ok(Math.abs(extent.sizeX - 3.4) < 1e-9);
+  assert.ok(Math.abs(extent.sizeZ - 2.9) < 1e-9);
+  assert.equal(polygonExtent([]), null);
+  assert.equal(polygonExtent(null), null);
+});
+
+test('rejection reasons survive into something readable', () => {
+  // DOMException puts the useful half in `name`, plain Errors in
+  // `message`, and some browsers reject with a bare string. A readout
+  // saying "[object Object]" would be worse than saying nothing.
+  assert.equal(describeError({ name: 'NotSupportedError', message: 'bounded-floor unavailable' }),
+    'NotSupportedError: bounded-floor unavailable');
+  assert.equal(describeError({ name: 'NotSupportedError' }), 'NotSupportedError');
+  assert.equal(describeError(new Error('nope')), 'Error: nope');
+  assert.equal(describeError('plain string'), 'plain string');
+  assert.equal(describeError(null), 'unknown');
 });

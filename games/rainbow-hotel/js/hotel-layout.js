@@ -66,9 +66,15 @@ export var DEFAULT_SETTINGS = {
   //                 at the doorways. 0 is the spec's baseline ("one turn
   //                 at the doorway threshold, one straight run"); more
   //                 is the tighter-spiral end of the same dial.
-  laneWidth: 1.12,
-  stubDepth: 0.45,
-  passGap: 0.62,
+  // Widened after the first headset test, which reported the hallway as
+  // "ridiculously cramped" and hard to navigate. The earlier numbers
+  // were chosen to buy occlusion margin, and they do -- but a hallway a
+  // person has to shuffle through sideways fails the thing this POC is
+  // actually measuring, which is whether walking it feels like walking
+  // to another floor. Occlusion is bought back with turns instead.
+  laneWidth: 1.32,
+  stubDepth: 0.5,
+  passGap: 0.8,
   baffles: 0,
   baffleThickness: 0.1,
 
@@ -499,10 +505,22 @@ export function planHotel (safeRect, overrides) {
   var scale = corridorDepth / wantedCorridorDepth;
   var laneWidth = settings.laneWidth * scale;
   var stubDepth = settings.stubDepth * scale;
-  // The pass gap has a hard floor at half the lane width: below that the
-  // two piers' gaps stop overlapping and the hallway is sealed -- no
-  // sightline gets through, but neither does the player.
-  var passGap = clamp(settings.passGap * scale, laneWidth / 2 + 0.05, laneWidth - 0.1);
+  // The pass gap is the width of the squeeze past each pier, and it is
+  // where comfort and concealment pull against each other: wide is
+  // pleasant to walk and lets sightlines through, narrow hides the
+  // doorways and is a shuffle. Both ends are computed here and the
+  // search below picks between them.
+  var tightestPass = laneWidth / 2 + 0.05;
+  // 0.7m is about the narrowest gap worth asking someone in a headset to
+  // walk through, and it does not scale down with the play space the way
+  // the lane does -- a person is the same width in a small room. Ask for
+  // it whenever the lane can give it; the search below decides whether
+  // it can be kept.
+  var comfortablePass = clamp(
+    Math.max(settings.passGap * scale, Math.min(0.7, laneWidth - 0.08)),
+    tightestPass,
+    laneWidth - 0.08
+  );
 
   var halfRun = runLength / 2;
   var halfDepth = depth / 2;
@@ -513,25 +531,12 @@ export function planHotel (safeRect, overrides) {
   // wall, so in a small play space the doorway narrows rather than
   // squeezing the piers out: a narrow archway still reads as a doorway,
   // whereas a hallway with no turns in it stops working at all.
-  var doorWidth = Math.min(settings.doorWidth, runLength * 0.26);
+  var comfortableDoor = Math.min(settings.doorWidth, runLength * 0.26);
   var doorMargin = Math.min(settings.doorMargin, runLength * 0.05);
-  var maxOffset = halfRun - doorWidth / 2 - doorMargin;
-  var doorOffset = Math.max(doorWidth * 0.75, maxOffset * clamp(settings.doorSpread, 0.2, 1));
-  var doorAX = -doorOffset;
-  var doorBX = doorOffset;
 
   var corridorRect = rect(-halfRun, halfRun, stripMinZ, doorPlaneZ);
   var roomRect = rect(-halfRun, halfRun, doorPlaneZ, halfDepth);
-
-  // Everything solid standing inside the hallway's strip. The recessed
-  // doorway jambs come first: three blocks filling the stub band
-  // everywhere the two openings aren't.
   var stubBandMinZ = stripMinZ + laneWidth;
-  var blockers = [
-    rect(-halfRun, doorAX - doorWidth / 2, stubBandMinZ, doorPlaneZ),
-    rect(doorAX + doorWidth / 2, doorBX - doorWidth / 2, stubBandMinZ, doorPlaneZ),
-    rect(doorBX + doorWidth / 2, halfRun, stubBandMinZ, doorPlaneZ),
-  ].filter(function (r) { return r.maxX - r.minX > 1e-4; });
 
   // Piers: thin fins that turn a straight run into 90-degree turns
   // without costing any more play space than the gap the player walks
@@ -548,93 +553,210 @@ export function planHotel (safeRect, overrides) {
   // the far edge of the doorway stays visible from most of a short run
   // -- which measured as having no safe rise window at all.
   var thickness = settings.baffleThickness;
-  var southBaffle = function (centerX) {
-    return rect(centerX - thickness / 2, centerX + thickness / 2, stripMinZ + passGap, doorPlaneZ);
-  };
-  var northBaffle = function (centerX) {
-    return rect(centerX - thickness / 2, centerX + thickness / 2, stripMinZ, stripMinZ + laneWidth - passGap);
-  };
+  var wantedInterior = Math.max(0, Math.round(settings.baffles));
 
-  var jambAX = doorAX + doorWidth / 2 + thickness / 2;
-  var jambBX = doorBX - doorWidth / 2 - thickness / 2;
-  var shieldGap = requiredShieldGap({
-    laneWidth: laneWidth,
-    corridorDepth: corridorDepth,
-    passGap: passGap,
-    doorWidth: doorWidth,
-    thickness: thickness,
-  }) * settings.shieldSafety + 0.04;
-  // Leave a short straight stretch between the two pairs for the rise to
-  // happen over; if the run can't afford the piers at all, build without
-  // them and let occlusionWindow report the damage.
-  var affordable = (jambBX - jambAX - 0.24) / 2 - thickness;
-  var shielded = affordable > 0.05;
-  shieldGap = Math.min(shieldGap, Math.max(affordable, 0));
+  // One complete hallway for a given squeeze width and doorway width.
+  // Split out as a function because both of those get *searched* below
+  // rather than simply chosen -- see the candidate loop.
+  function layOut (passGap, doorWidth) {
+    var maxOffset = halfRun - doorWidth / 2 - doorMargin;
+    var doorOffset = Math.max(doorWidth * 0.75, maxOffset * clamp(settings.doorSpread, 0.2, 1));
+    var doorAX = -doorOffset;
+    var doorBX = doorOffset;
 
-  blockers.push(southBaffle(jambAX));
-  blockers.push(southBaffle(jambBX));
-  var shieldAX = jambAX + shieldGap + thickness;
-  var shieldBX = jambBX - shieldGap - thickness;
-  if (shielded) {
-    blockers.push(northBaffle(shieldAX));
-    blockers.push(northBaffle(shieldBX));
+    // Everything solid standing inside the hallway's strip. The recessed
+    // doorway jambs come first: three blocks filling the stub band
+    // everywhere the two openings aren't.
+    var blockers = [
+      rect(-halfRun, doorAX - doorWidth / 2, stubBandMinZ, doorPlaneZ),
+      rect(doorAX + doorWidth / 2, doorBX - doorWidth / 2, stubBandMinZ, doorPlaneZ),
+      rect(doorBX + doorWidth / 2, halfRun, stubBandMinZ, doorPlaneZ),
+    ].filter(function (r) { return r.maxX - r.minX > 1e-4; });
+
+    var southBaffle = function (centerX) {
+      return rect(centerX - thickness / 2, centerX + thickness / 2, stripMinZ + passGap, doorPlaneZ);
+    };
+    var northBaffle = function (centerX) {
+      return rect(centerX - thickness / 2, centerX + thickness / 2, stripMinZ, stripMinZ + laneWidth - passGap);
+    };
+
+    var jambAX = doorAX + doorWidth / 2 + thickness / 2;
+    var jambBX = doorBX - doorWidth / 2 - thickness / 2;
+    var shieldGap = requiredShieldGap({
+      laneWidth: laneWidth,
+      corridorDepth: corridorDepth,
+      passGap: passGap,
+      doorWidth: doorWidth,
+      thickness: thickness,
+    }) * settings.shieldSafety + 0.04;
+    // Leave a short straight stretch between the two pairs for the rise
+    // to happen over; if the run can't afford the piers at all, build
+    // without them and let occlusionWindow report the damage.
+    var affordable = (jambBX - jambAX - 0.24) / 2 - thickness;
+    var shielded = affordable > 0.05;
+    shieldGap = Math.min(shieldGap, Math.max(affordable, 0));
+
+    blockers.push(southBaffle(jambAX));
+    blockers.push(southBaffle(jambBX));
+    var shieldAX = jambAX + shieldGap + thickness;
+    var shieldBX = jambBX - shieldGap - thickness;
+    if (shielded) {
+      blockers.push(northBaffle(shieldAX));
+      blockers.push(northBaffle(shieldBX));
+    }
+
+    // `settings.baffles` adds further piers between the two pairs,
+    // alternating sides so the walk weaves: the tighter-spiral end of the
+    // dial, for comparing how many turns a transition actually needs.
+    //
+    // These project deeper than the doorway piers do, and that is the
+    // whole point. The doorway pair leaves gaps that overlap slightly, so
+    // a person can walk almost straight between them; do the same here and
+    // the extra piers change nothing at all -- not the walked distance,
+    // not the occlusion -- which is exactly what the first version of this
+    // measured. Sized so consecutive gaps *don't* overlap, the player has
+    // to weave around each one, and both numbers move.
+    var interiorGap = clamp(Math.min(passGap, laneWidth - passGap), 0.42, laneWidth - 0.08);
+    var interiorSouth = function (centerX) {
+      return rect(centerX - thickness / 2, centerX + thickness / 2, stripMinZ + interiorGap, doorPlaneZ);
+    };
+    var interiorNorth = function (centerX) {
+      return rect(centerX - thickness / 2, centerX + thickness / 2, stripMinZ, stripMinZ + laneWidth - interiorGap);
+    };
+    var interiorStart = shielded ? shieldAX : jambAX;
+    var interiorSpan = (shielded ? shieldBX : jambBX) - interiorStart;
+    var interiorPiers = function (count) {
+      var piers = [];
+      if (interiorSpan <= 0.3) return piers;
+      for (var i = 0; i < count; i++) {
+        var centerX = interiorStart + interiorSpan * ((i + 1) / (count + 1));
+        // The player comes off the doorway's north pier hugging the south
+        // side, so a south fin is the one that makes them turn first.
+        piers.push(i % 2 === 0 ? interiorSouth(centerX) : interiorNorth(centerX));
+      }
+      return piers;
+    };
+
+    // Ask for as many extra turns as will still leave a way through.
+    // Piers that don't overlap are what makes the dial bite (above), and
+    // enough of them in a short run will wall the hallway off completely
+    // -- so rather than shipping a sealed hallway and a warning, back off
+    // until it is walkable and say how many actually fitted.
+    var interiorCount = wantedInterior;
+    var walk = null;
+    var finalBlockers = blockers;
+    for (;;) {
+      var candidate = blockers.concat(interiorPiers(interiorCount));
+      walk = buildWalkField(
+        corridorRect,
+        candidate,
+        { x: doorAX, z: doorPlaneZ - 0.02 },
+        { x: doorBX, z: doorPlaneZ - 0.02 },
+        settings.gridCell
+      );
+      if (walk.connected || interiorCount === 0) {
+        finalBlockers = candidate;
+        break;
+      }
+      interiorCount--;
+    }
+
+    return {
+      passGap: passGap,
+      doorWidth: doorWidth,
+      doorAX: doorAX,
+      doorBX: doorBX,
+      blockers: finalBlockers,
+      shielded: shielded,
+      shieldGap: shieldGap,
+      jambAX: jambAX,
+      jambBX: jambBX,
+      shieldAX: shieldAX,
+      shieldBX: shieldBX,
+      walk: walk,
+      interiorCount: interiorSpan > 0.3 ? interiorCount : 0,
+    };
   }
 
-  // `settings.baffles` adds further piers between the two pairs,
-  // alternating sides so the walk weaves: the tighter-spiral end of the
-  // dial, for comparing how many turns a transition actually needs.
+  // ---------------------------------------------------------------
+  // Choosing between comfort and concealment
+  // ---------------------------------------------------------------
+  // The first headset test called the hallway "ridiculously cramped",
+  // and widening the squeeze does fix that -- but it also lets
+  // sightlines past the piers, and in a small play space that leaves no
+  // stretch of the walk where the rise can happen unseen. Both matter,
+  // so neither is hard-coded: the widest comfortable hallway is tried
+  // first, and it only gets narrower if that is what it takes to keep
+  // the floor change hidden. Concealment wins because it is the thing
+  // this POC exists to test; comfort is then taken as far as it can be.
   //
-  // These project deeper than the doorway piers do, and that is the
-  // whole point. The doorway pair leaves gaps that overlap slightly, so
-  // a person can walk almost straight between them; do the same here and
-  // the extra piers change nothing at all -- not the walked distance,
-  // not the occlusion -- which is exactly what the first version of this
-  // measured. Sized so consecutive gaps *don't* overlap, the player has
-  // to weave around each one, and both numbers move.
-  var interiorGap = clamp(Math.min(passGap, laneWidth - passGap), 0.42, laneWidth - 0.08);
-  var interiorSouth = function (centerX) {
-    return rect(centerX - thickness / 2, centerX + thickness / 2, stripMinZ + interiorGap, doorPlaneZ);
-  };
-  var interiorNorth = function (centerX) {
-    return rect(centerX - thickness / 2, centerX + thickness / 2, stripMinZ, stripMinZ + laneWidth - interiorGap);
-  };
-  var wantedInterior = Math.max(0, Math.round(settings.baffles));
-  var interiorStart = shielded ? shieldAX : jambAX;
-  var interiorSpan = (shielded ? shieldBX : jambBX) - interiorStart;
-  var interiorPiers = function (count) {
-    var piers = [];
-    if (interiorSpan <= 0.3) return piers;
-    for (var i = 0; i < count; i++) {
-      var centerX = interiorStart + interiorSpan * ((i + 1) / (count + 1));
-      // The player comes off the doorway's north pier hugging the south
-      // side, so a south fin is the one that makes them turn first.
-      piers.push(i % 2 === 0 ? interiorSouth(centerX) : interiorNorth(centerX));
-    }
-    return piers;
-  };
+  // What is given up, if anything, is recorded and warned about rather
+  // than absorbed silently.
+  var attempts = [];
+  for (var pass = comfortablePass; pass > tightestPass + 0.02; pass -= 0.06) {
+    attempts.push({ passGap: pass, doorWidth: comfortableDoor });
+  }
+  attempts.push({ passGap: tightestPass, doorWidth: comfortableDoor });
+  // Still no luck: a narrower doorway is the next cheapest thing to
+  // give, since its far edge is what stays visible longest down the run.
+  for (var door = comfortableDoor - 0.06; door >= 0.52; door -= 0.06) {
+    attempts.push({ passGap: tightestPass, doorWidth: door });
+  }
 
-  // Ask for as many extra turns as will still leave a way through. Piers
-  // that don't overlap are what makes the dial bite (above), and enough
-  // of them in a short run will wall the hallway off completely -- so
-  // rather than shipping a sealed hallway and a warning, back off until
-  // it is walkable and say how many actually fitted.
-  var interiorCount = wantedInterior;
-  var walk = null;
-  for (;;) {
-    var candidate = blockers.concat(interiorPiers(interiorCount));
-    walk = buildWalkField(
-      corridorRect,
-      candidate,
-      { x: doorAX, z: doorPlaneZ - 0.02 },
-      { x: doorBX, z: doorPlaneZ - 0.02 },
-      settings.gridCell
-    );
-    if (walk.connected || interiorCount === 0) {
-      blockers = candidate;
+  var chosen = null;
+  var chosenWindow = null;
+  var mostComfortable = null;
+  var mostComfortableWindow = null;
+  for (var a = 0; a < attempts.length; a++) {
+    var trial = layOut(attempts[a].passGap, attempts[a].doorWidth);
+    if (!trial.walk.connected) continue;
+    var window = occlusionWindow({
+      walk: trial.walk,
+      blockers: trial.blockers,
+      doorWidth: trial.doorWidth,
+      doorAX: trial.doorAX,
+      doorBX: trial.doorBX,
+      doorPlaneZ: doorPlaneZ,
+      settings: settings,
+    });
+    if (!mostComfortable) {
+      mostComfortable = trial;
+      mostComfortableWindow = window;
+    }
+    if (!window.tight) {
+      chosen = trial;
+      chosenWindow = window;
       break;
     }
-    interiorCount--;
   }
+  // Nothing hid the doorways at any squeeze. Build the comfortable one
+  // and let the warnings say the transition is catchable here.
+  if (!chosen) {
+    chosen = mostComfortable || layOut(comfortablePass, comfortableDoor);
+    chosenWindow = mostComfortableWindow || occlusionWindow({
+      walk: chosen.walk,
+      blockers: chosen.blockers,
+      doorWidth: chosen.doorWidth,
+      doorAX: chosen.doorAX,
+      doorBX: chosen.doorBX,
+      doorPlaneZ: doorPlaneZ,
+      settings: settings,
+    });
+  }
+
+  var passGap = chosen.passGap;
+  var doorWidth = chosen.doorWidth;
+  var doorAX = chosen.doorAX;
+  var doorBX = chosen.doorBX;
+  var blockers = chosen.blockers;
+  var shielded = chosen.shielded;
+  var shieldGap = chosen.shieldGap;
+  var jambAX = chosen.jambAX;
+  var jambBX = chosen.jambBX;
+  var shieldAX = chosen.shieldAX;
+  var shieldBX = chosen.shieldBX;
+  var walk = chosen.walk;
+  var interiorCount = chosen.interiorCount;
 
   var floorCount = ROOMS.length;
   var floors = ROOMS.map(function (room, index) {
@@ -691,8 +813,12 @@ export function planHotel (safeRect, overrides) {
   plan.bafflesRequested = wantedInterior;
   // A run with no straight stretch between the two doorway pairs has
   // nowhere to put an extra turn at all, however many were asked for.
-  plan.bafflesApplied = interiorSpan > 0.3 ? interiorCount : 0;
-  plan.rise = occlusionWindow(plan);
+  plan.bafflesApplied = interiorCount;
+  plan.rise = chosenWindow;
+  // How much of the comfortable hallway had to be given back to keep the
+  // floor change hidden. Zero is the happy case.
+  plan.passGapGivenUp = Math.max(0, comfortablePass - passGap);
+  plan.doorWidthGivenUp = Math.max(0, comfortableDoor - doorWidth);
   // A room shallower than this is a ledge, not a room: the hallway has
   // eaten the play space. Surfaced rather than clamped, because the
   // honest answer is "your Guardian is too small for these settings".
@@ -721,8 +847,20 @@ export function planWarnings (plan) {
   if (plan.roomTooShallow) {
     warnings.push('Rooms are only ' + plan.roomDepth.toFixed(2) + 'm deep -- the hallway has taken most of the play space.');
   }
-  if (plan.passGap < 0.55) {
-    warnings.push('The gap past each pier is only ' + plan.passGap.toFixed(2) + 'm. Walkable, but tight enough to be worth checking before trusting it.');
+  if (plan.passGapGivenUp > 0.02 || plan.doorWidthGivenUp > 0.02) {
+    warnings.push('Narrowed the hallway squeeze to ' + plan.passGap.toFixed(2) + 'm' +
+      (plan.doorWidthGivenUp > 0.02 ? ' and the doorways to ' + plan.doorWidth.toFixed(2) + 'm' : '') +
+      ' to keep the floor change hidden. A wider play space buys the comfort back.');
+  } else if (plan.passGap < 0.68) {
+    warnings.push('The gap past each pier is only ' + plan.passGap.toFixed(2) + 'm -- narrow enough to have to turn sideways for.');
+  }
+  // The honest version of the trade, stated once with a number on it.
+  // Room depth, a hallway wide enough to walk, and a transition that
+  // can't be caught are three claims on the same rectangle, and below
+  // roughly 3.2m on the shorter side there isn't enough of it to settle
+  // all three. Saying so beats quietly picking one to sacrifice.
+  if (plan.runLength < 3.2 && plan.rise.tight) {
+    warnings.push('At ' + plan.runLength.toFixed(2) + 'm across, this play space can have a comfortable hallway or a hidden floor change, but not both. It needs about 3.2m on its shorter side for both. Narrowing the doorway or the pier gap trades comfort back for concealment.');
   }
   return warnings;
 }

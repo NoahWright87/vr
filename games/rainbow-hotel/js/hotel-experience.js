@@ -53,12 +53,35 @@ function numberOr (value, fallback) {
   return isFinite(parsed) ? parsed : fallback;
 }
 
+function isTruthy (value) {
+  return value === true || value === 'true' || value === '1' || value === 1;
+}
+
+// Is the hand-entered play space the one to build against?
+//
+// This used to be "are safeX/safeZ set at all", which turned out to be a
+// trap: the settings panel writes every field it holds to local storage,
+// so nudging the play-space boxes once -- on a *desktop*, weeks ago --
+// left a saved override that silently outranked the real Guardian
+// forever after, on that device, in a headset. The override now has to
+// be switched on deliberately, and a saved size with no switch is
+// ignored.
+export function overrideActive (settings) {
+  return Boolean(settings && settings.useOverride && (settings.safeX || settings.safeZ));
+}
+
 // Settings come from three places, in order: the built-in defaults,
 // whatever was last saved in this browser, and the query string. The
 // middle one is what makes the panel useful on a Quest -- set it up on
 // the flat page, then press Enter VR and it is still there.
 export function resolveSettings (search, stored) {
-  var settings = Object.assign({}, DEFAULT_SETTINGS);
+  var settings = Object.assign({}, DEFAULT_SETTINGS, {
+    // The in-headset readout starts on. See the hotel-readout component
+    // for why that flipped; the settings panel turns it off for a run
+    // where the windows are supposed to do the talking.
+    debug: true,
+    useOverride: false,
+  });
   var overlay = function (source) {
     if (!source) return;
     TUNABLES.forEach(function (tunable) {
@@ -67,7 +90,8 @@ export function resolveSettings (search, stored) {
     });
     if (source.safeX !== undefined) settings.safeX = numberOr(source.safeX, settings.safeX);
     if (source.safeZ !== undefined) settings.safeZ = numberOr(source.safeZ, settings.safeZ);
-    if (source.debug !== undefined) settings.debug = source.debug === true || source.debug === 'true' || source.debug === '1';
+    if (source.useOverride !== undefined) settings.useOverride = isTruthy(source.useOverride);
+    if (source.debug !== undefined) settings.debug = isTruthy(source.debug);
   };
   overlay(stored);
   if (search) {
@@ -115,7 +139,9 @@ if (typeof AFRAME !== 'undefined') {
       this.state = { room: 0, junction: null, progress: 0, rise: 0, inHallway: false };
       this.settings = resolveSettings(window.location.search, readStoredSettings());
       this.rect = Object.assign({}, DEFAULT_SAFE_RECT);
-      if (this.settings.safeX || this.settings.safeZ) {
+      this.awaitingBoundary = false;
+      this.lastDiagnostics = null;
+      if (overrideActive(this.settings)) {
         this.rect.sizeX = this.settings.safeX || this.rect.sizeX;
         this.rect.sizeZ = this.settings.safeZ || this.rect.sizeZ;
         this.rect.source = 'override';
@@ -128,14 +154,27 @@ if (typeof AFRAME !== 'undefined') {
       // whatever finally settles rather than being built once at startup.
       this.el.sceneEl.addEventListener('guardian-bounds', function (event) {
         if (!event.detail || !event.detail.rect) return;
-        if (self.settings.safeX || self.settings.safeZ) return;
+        self.lastDiagnostics = event.detail.diagnostics || null;
+        self.awaitingBoundary = false;
+        if (overrideActive(self.settings)) return;
         self.rect = event.detail.rect;
         self.rebuild();
+      });
+
+      // Entering VR is the first moment the real play space can be known,
+      // and the building that is already standing was put up against a
+      // guess. Rather than leave that guess in place and hope a rebuild
+      // turns up, mark the wait explicitly: the readout says the boundary
+      // is being read, and the guardian system guarantees a publish (with
+      // the fallback if it has to) within a few seconds, which rebuilds.
+      this.el.sceneEl.addEventListener('enter-vr', function () {
+        if (overrideActive(self.settings)) return;
+        self.awaitingBoundary = true;
       });
       // Systems initialise before components, so a rectangle settled
       // this early has already been announced to nobody.
       var guardian = this.el.sceneEl.systems['guardian-bounds'];
-      if (guardian && guardian.rect && !this.settings.safeX && !this.settings.safeZ) this.rect = guardian.rect;
+      if (guardian && guardian.rect && !overrideActive(this.settings)) this.rect = guardian.rect;
 
       buildSky(this.el.sceneEl);
       this.rebuild();
@@ -192,12 +231,18 @@ if (typeof AFRAME !== 'undefined') {
     applySettings: function (next) {
       this.settings = Object.assign({}, this.settings, next);
       writeStoredSettings(this.settings);
-      if (this.settings.safeX || this.settings.safeZ) {
+      var guardian = this.el.sceneEl.systems['guardian-bounds'];
+      if (overrideActive(this.settings)) {
         this.rect = Object.assign({}, this.rect, {
           sizeX: this.settings.safeX || this.rect.sizeX,
           sizeZ: this.settings.safeZ || this.rect.sizeZ,
           source: 'override',
         });
+      } else if (guardian && guardian.rect) {
+        // Switching the override back off has to hand the play space back
+        // to whatever was actually measured, not leave the hand-entered
+        // numbers in place under a different name.
+        this.rect = Object.assign({}, guardian.rect);
       }
       this.rebuild();
       this.syncReadout();
@@ -208,6 +253,17 @@ if (typeof AFRAME !== 'undefined') {
       var wanted = this.data.debug || this.settings.debug;
       if (wanted && !this.cameraEl.components['hotel-readout']) this.cameraEl.setAttribute('hotel-readout', '');
       else if (!wanted && this.cameraEl.components['hotel-readout']) this.cameraEl.removeAttribute('hotel-readout');
+
+      var scene = this.el.sceneEl;
+      if (wanted && !scene.querySelector('#boundary-overlay')) {
+        var overlay = document.createElement('a-entity');
+        overlay.setAttribute('id', 'boundary-overlay');
+        overlay.setAttribute('boundary-overlay', '');
+        scene.appendChild(overlay);
+      } else if (!wanted) {
+        var existing = scene.querySelector('#boundary-overlay');
+        if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
+      }
     },
 
     applyFloorY: function (floorY) {
@@ -294,39 +350,228 @@ if (typeof AFRAME !== 'undefined') {
     },
   });
 
-  // An opt-in readout, pinned to the camera. Off by default and it
-  // should stay that way for a real run: the question this POC is asking
-  // is whether the *windows* tell you which floor you are on, and a
-  // caption saying "Green, floor 4" answers it for the player.
+  // The in-headset readout.
+  //
+  // On by default, which is a deliberate reversal. It was off so that the
+  // windows would have to do the work of saying which floor you are on --
+  // which is still the right test, and the switch is in the settings
+  // panel. But the first real headset session failed on something no
+  // amount of looking could diagnose (the play space was never read, and
+  // nothing anywhere said so), and a POC you cannot debug from inside is
+  // worse than one that tells you too much.
   AFRAME.registerComponent('hotel-readout', {
     schema: { hotel: { type: 'selector' } },
 
     init: function () {
+      this.panel = document.createElement('a-entity');
+      this.panel.setAttribute('position', '0 -0.2 -0.72');
+
+      var backing = document.createElement('a-plane');
+      backing.setAttribute('width', '0.92');
+      backing.setAttribute('height', '0.52');
+      backing.setAttribute('material', 'color: #05070c; opacity: 0.85; transparent: true; shader: flat');
+      this.panel.appendChild(backing);
+
       this.text = document.createElement('a-text');
-      this.text.setAttribute('value', '');
-      this.text.setAttribute('align', 'center');
-      this.text.setAttribute('color', '#ffffff');
-      this.text.setAttribute('width', '1.6');
-      this.text.setAttribute('position', '0 -0.32 -0.9');
-      this.el.appendChild(this.text);
+      this.text.setAttribute('value', 'reading play space...');
+      this.text.setAttribute('align', 'left');
+      this.text.setAttribute('color', '#d8e4f2');
+      // width is the metre span the block wraps into and wrapCount is how
+      // many characters go in it, so the two together are what set the
+      // glyph size. Left to their defaults the text came out several
+      // times too big and ran off the panel.
+      this.text.setAttribute('width', '0.86');
+      this.text.setAttribute('wrap-count', '46');
+      this.text.setAttribute('baseline', 'top');
+      this.text.setAttribute('anchor', 'left');
+      this.text.setAttribute('position', '-0.44 0.245 0.002');
+      this.panel.appendChild(this.text);
+
+      this.el.appendChild(this.panel);
       this.lastUpdate = 0;
+
+      // A head-locked panel is still a real object in the world, so a
+      // wall a foot in front of your face hides it -- which is most of
+      // the time, in a building made of small rooms. Drawing it last and
+      // without a depth test is what makes it a heads-up display rather
+      // than a sign on the far side of the plasterboard.
+      var lift = function (el, name) {
+        var apply = function () {
+          var mesh = el.getObject3D(name);
+          if (!mesh || !mesh.material) return;
+          mesh.material.depthTest = false;
+          mesh.renderOrder = 999;
+        };
+        if (el.getObject3D(name)) apply();
+        el.addEventListener('loaded', apply);
+        el.addEventListener('object3dset', apply);
+      };
+      lift(backing, 'mesh');
+      lift(this.text, 'text');
+    },
+
+    remove: function () {
+      if (this.panel && this.panel.parentNode) this.panel.parentNode.removeChild(this.panel);
     },
 
     tick: function (time) {
-      // Twice a second. An <a-text> value change rebuilds its geometry,
-      // which is not something to do every frame for a debug caption.
-      if (time - this.lastUpdate < 500) return;
+      // Three times a second. An <a-text> value change rebuilds its
+      // geometry, which is not something to do every frame.
+      if (time - this.lastUpdate < 330) return;
       this.lastUpdate = time;
       var hotel = (this.data.hotel || this.el.sceneEl).components['rainbow-hotel'];
       if (!hotel || !hotel.plan) return;
-      var report = hotel.report();
-      this.text.setAttribute('value', [
-        report.inHallway
-          ? 'hallway ' + (report.junction + 1) + '  walk ' + (report.progress * 100).toFixed(0) + '%  rise ' + (report.rise * 100).toFixed(0) + '%'
-          : report.roomName + '  (floor ' + (report.room + 1) + ')',
-        'y ' + report.floorY.toFixed(2) + 'm   play space ' +
-          report.rect.sizeX.toFixed(2) + 'x' + report.rect.sizeZ.toFixed(2) + ' (' + (report.rect.source || 'fallback') + ')',
-      ].join('\n'));
+      var guardian = this.el.sceneEl.systems['guardian-bounds'];
+      this.text.setAttribute('value', describeBoundaryState(
+        guardian ? guardian.diagnostics() : null,
+        hotel.report(),
+        hotel.awaitingBoundary
+      ));
     },
   });
+
+  // Your actual boundary, drawn on the floor you are standing on.
+  //
+  // Numbers tell you whether a rectangle was read; this tells you whether
+  // it is the *right* rectangle, which is the question that matters and
+  // the one that is impossible to answer by looking at a hotel. Cyan is
+  // the polygon the headset handed over, amber is the rectangle fitted
+  // inside it, magenta is the tracking origin -- and if the amber box
+  // doesn't sit inside your real Guardian, the building won't either.
+  //
+  // Bounds arrive in the same space the rig lives in, and the rig is
+  // never moved horizontally, so these go straight into world XZ. Only
+  // the height follows the player, so the overlay is on the floor of
+  // whichever storey they are currently on.
+  AFRAME.registerComponent('boundary-overlay', {
+    init: function () {
+      this.drawnFor = null;
+      this.segments = document.createElement('a-entity');
+      this.el.appendChild(this.segments);
+    },
+
+    segment: function (from, to, color, thickness) {
+      var dx = to.x - from.x;
+      var dz = to.z - from.z;
+      var length = Math.hypot(dx, dz);
+      if (length < 1e-4) return;
+      var box = document.createElement('a-box');
+      box.setAttribute('width', length.toFixed(4));
+      box.setAttribute('height', '0.012');
+      box.setAttribute('depth', String(thickness));
+      box.setAttribute('position', ((from.x + to.x) / 2).toFixed(4) + ' 0 ' + ((from.z + to.z) / 2).toFixed(4));
+      box.setAttribute('rotation', '0 ' + (-Math.atan2(dz, dx) * 180 / Math.PI).toFixed(2) + ' 0');
+      box.setAttribute('material', 'color: ' + color + '; shader: flat');
+      this.segments.appendChild(box);
+    },
+
+    redraw: function (diagnostics) {
+      while (this.segments.firstChild) this.segments.removeChild(this.segments.firstChild);
+
+      var polygon = diagnostics && diagnostics.polygon;
+      if (polygon && polygon.length > 2) {
+        for (var i = 0; i < polygon.length; i++) {
+          this.segment(polygon[i], polygon[(i + 1) % polygon.length], '#33e0ff', 0.035);
+        }
+      }
+
+      var rect = diagnostics && diagnostics.rect;
+      if (rect) {
+        var radians = AFRAME.THREE.MathUtils.degToRad(rect.rotationY || 0);
+        var cos = Math.cos(radians);
+        var sin = Math.sin(radians);
+        var halfX = rect.sizeX / 2;
+        var halfZ = rect.sizeZ / 2;
+        var corners = [[-halfX, -halfZ], [halfX, -halfZ], [halfX, halfZ], [-halfX, halfZ]].map(function (corner) {
+          // Same convention as the building root's own rotation, so the
+          // outline lands exactly where the walls do.
+          return {
+            x: rect.centerX + corner[0] * cos + corner[1] * sin,
+            z: rect.centerZ - corner[0] * sin + corner[1] * cos,
+          };
+        });
+        for (var c = 0; c < 4; c++) this.segment(corners[c], corners[(c + 1) % 4], '#ffc24a', 0.05);
+      }
+
+      // Where the tracking origin actually is. If this isn't near the
+      // middle of your room, that alone explains a building that feels
+      // shifted.
+      this.segment({ x: -0.15, z: 0 }, { x: 0.15, z: 0 }, '#ff5fd2', 0.04);
+      this.segment({ x: 0, z: -0.15 }, { x: 0, z: 0.15 }, '#ff5fd2', 0.04);
+    },
+
+    tick: function () {
+      var hotel = this.el.sceneEl.components['rainbow-hotel'];
+      var guardian = this.el.sceneEl.systems['guardian-bounds'];
+      if (!hotel || !guardian) return;
+      this.el.object3D.position.y = (hotel.floorY || 0) + 0.015;
+
+      var diagnostics = guardian.diagnostics();
+      // Redrawing is entity churn, so only when the answer has changed.
+      var signature = [
+        diagnostics.polygon ? diagnostics.polygon.length : 0,
+        diagnostics.rect.sizeX.toFixed(3),
+        diagnostics.rect.sizeZ.toFixed(3),
+        diagnostics.rect.centerX.toFixed(3),
+        diagnostics.rect.centerZ.toFixed(3),
+        (diagnostics.rect.rotationY || 0).toFixed(2),
+      ].join('|');
+      if (signature === this.drawnFor) return;
+      this.drawnFor = signature;
+      this.redraw(diagnostics);
+    },
+  });
+}
+
+// Pure, so the wording can be checked without a headset. Written to be
+// read at arm's length in a headset: the state first, then the numbers
+// that explain it.
+export function describeBoundaryState (diagnostics, report, awaiting) {
+  var lines = [];
+  if (!diagnostics) {
+    lines.push('PLAY SPACE  no guardian-bounds system');
+  } else {
+    var rect = diagnostics.rect || {};
+    var source = rect.source || 'fallback';
+    var headline = awaiting ? 'reading...'
+      : (diagnostics.overridden ? 'HAND-SET' : String(source).toUpperCase());
+    lines.push('PLAY SPACE  ' + headline);
+    lines.push('  size  ' + (rect.sizeX || 0).toFixed(2) + ' x ' + (rect.sizeZ || 0).toFixed(2) +
+      ' m   turned ' + (rect.rotationY || 0).toFixed(1) + ' deg');
+    lines.push('  centre  ' + (rect.centerX || 0).toFixed(2) + ', ' + (rect.centerZ || 0).toFixed(2));
+
+    lines.push('BOUNDARY READ');
+    lines.push('  immersive-vr: ' + yesNo(diagnostics.xrSupported) +
+      '   session: ' + yesNo(diagnostics.sessionActive));
+    lines.push('  bounded-floor: ' + (diagnostics.spaceState || 'idle'));
+    if (diagnostics.spaceError) lines.push('  ! ' + trim(diagnostics.spaceError, 44));
+    lines.push('  points: ' + diagnostics.rawPoints + (diagnostics.rawExtent
+      ? '   raw ' + diagnostics.rawExtent.sizeX.toFixed(2) + ' x ' + diagnostics.rawExtent.sizeZ.toFixed(2)
+      : '   raw --'));
+    lines.push('  frames ' + diagnostics.framesSeen + '   fits ' + diagnostics.goodReads +
+      '   agree ' + diagnostics.agreeingReads);
+    if (diagnostics.poseFailures) lines.push('  pose failures: ' + diagnostics.poseFailures);
+    if (diagnostics.fitFailures) lines.push('  saw boundary, no rectangle fitted x' + diagnostics.fitFailures);
+    if (diagnostics.finishedBecause) lines.push('  finished: ' + diagnostics.finishedBecause);
+  }
+
+  if (report && report.plan) {
+    lines.push('HOTEL');
+    lines.push('  rooms ' + report.plan.runLength.toFixed(2) + ' x ' + report.plan.roomDepth.toFixed(2) +
+      '   hall ' + report.plan.laneWidth.toFixed(2) + ' gap ' + report.plan.passGap.toFixed(2));
+    lines.push('  ' + (report.inHallway
+      ? 'hallway ' + (report.junction + 1) + '  walk ' + (report.progress * 100).toFixed(0) + '%'
+      : report.roomName + ' (floor ' + (report.room + 1) + ')'));
+  }
+  return lines.join('\n');
+}
+
+function yesNo (value) {
+  if (value === null || value === undefined) return '?';
+  return value ? 'yes' : 'no';
+}
+
+function trim (text, max) {
+  var value = String(text);
+  return value.length > max ? value.slice(0, max - 1) + '…' : value;
 }

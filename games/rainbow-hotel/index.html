@@ -139,10 +139,14 @@
       <h2>Hallway tuning</h2>
       <p class="note">
         Saved in this browser, so you can set it here and then press Enter VR on the
-        same device. In a headset the play space comes from your real Guardian;
-        the override below is what a desktop run uses.
+        same device. In a headset the play space is read from your real Guardian
+        when the session starts — the boxes below only apply if you tick the
+        override, and a flat-screen run uses them too.
       </p>
 
+      <div class="row">
+        <label class="check"><input type="checkbox" id="useOverride" /> Use the play space below instead of my Guardian</label>
+      </div>
       <div class="pair">
         <div class="field">
           <label><b>Play space X</b></label>
@@ -286,9 +290,18 @@
 
       var safeX = document.querySelector('#safeX');
       var safeZ = document.querySelector('#safeZ');
-      [safeX, safeZ].forEach(function (input) {
+      var useOverride = document.querySelector('#useOverride');
+      // Editing a size does not, on its own, mean "ignore my Guardian".
+      // It used to, via a saved value, and that silently outranked the
+      // real boundary in a headset for as long as the browser remembered
+      // it. The tick box is the only thing that switches it on now.
+      [safeX, safeZ, useOverride].forEach(function (input) {
         input.addEventListener('change', function () {
-          apply({ safeX: Number(safeX.value), safeZ: Number(safeZ.value) });
+          apply({
+            safeX: Number(safeX.value),
+            safeZ: Number(safeZ.value),
+            useOverride: useOverride.checked,
+          });
         });
       });
 
@@ -303,8 +316,11 @@
       document.querySelector('#copy-link').addEventListener('click', function () {
         var params = new URLSearchParams();
         TUNABLES.forEach(function (tunable) { params.set(tunable.key, String(settings[tunable.key])); });
-        if (settings.safeX) params.set('safeX', String(settings.safeX));
-        if (settings.safeZ) params.set('safeZ', String(settings.safeZ));
+        if (settings.useOverride) {
+          params.set('useOverride', '1');
+          if (settings.safeX) params.set('safeX', String(settings.safeX));
+          if (settings.safeZ) params.set('safeZ', String(settings.safeZ));
+        }
         if (settings.debug) params.set('debug', '1');
         var url = window.location.origin + window.location.pathname + '?' + params.toString();
         if (navigator.clipboard) navigator.clipboard.writeText(url);
@@ -319,6 +335,7 @@
         });
         safeX.value = component.rect.sizeX.toFixed(2);
         safeZ.value = component.rect.sizeZ.toFixed(2);
+        useOverride.checked = Boolean(settings.useOverride);
         debug.checked = Boolean(settings.debug);
       }
 

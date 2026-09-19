@@ -140,7 +140,10 @@ test('a single pier at a doorway is not enough -- the pair is what hides it', ()
   // The same plan with the second (stand-off) pier of each pair removed
   // has doorways visible from most of the run, which is how the paired
   // arrangement was arrived at in the first place.
-  var plan = planHotel({ sizeX: 3, sizeZ: 3 });
+  //
+  // Measured where it bites. Which play spaces those are is itself worth
+  // pinning down, so the second half of this test checks the other end.
+  var plan = planHotel({ sizeX: 2.6, sizeZ: 2.6 });
   var withoutShields = Object.assign({}, plan, {
     blockers: plan.blockers.filter(function (rect) {
       return !(Math.abs(rect.minX - (plan.shieldAX - plan.settings.baffleThickness / 2)) < 1e-6 ||
@@ -169,9 +172,35 @@ test('a single pier at a doorway is not enough -- the pair is what hides it', ()
 
   assert.ok(furthestSeeing(plan) < furthestSeeing(withoutShields) - 0.05,
     'the pair pulls the last sighting of the doorway back down the run');
-  assert.ok(plan.rise.margin > occlusionWindow(withoutShields).margin * 2,
-    'and roughly quadruples the safe stretch to rise over (' +
-    plan.rise.margin.toFixed(3) + ' vs ' + occlusionWindow(withoutShields).margin.toFixed(3) + ')');
+  assert.equal(plan.rise.tight, false, 'with the pair there is a safe stretch');
+  assert.equal(occlusionWindow(withoutShields).tight, true,
+    'and with only the jamb pier there is none at all');
+});
+
+test('the stand-off pier earns its place in a small space and is redundant in a large one', () => {
+  // Worth knowing rather than assuming: the second pier of each pair is
+  // what rescues a cramped play space, but once the doorway recess is
+  // deep enough and the run long enough, the jamb pier alone already
+  // hides the doorway and the stand-off adds nothing but lost run. That
+  // is why it is sized from the geometry (requiredShieldGap) instead of
+  // being a fixed piece of the hallway.
+  var strip = function (plan) {
+    var thickness = plan.settings.baffleThickness;
+    return Object.assign({}, plan, {
+      blockers: plan.blockers.filter(function (rect) {
+        return !(Math.abs(rect.minX - (plan.shieldAX - thickness / 2)) < 1e-6 ||
+          Math.abs(rect.minX - (plan.shieldBX - thickness / 2)) < 1e-6);
+      }),
+    });
+  };
+
+  var small = planHotel({ sizeX: 2.6, sizeZ: 2.6 });
+  assert.equal(small.rise.tight, false);
+  assert.equal(occlusionWindow(strip(small)).tight, true, 'small space depends on the pair');
+
+  var large = planHotel({ sizeX: 4.5, sizeZ: 4 });
+  assert.equal(large.rise.tight, false);
+  assert.equal(occlusionWindow(strip(large)).tight, false, 'large space does not');
 });
 
 test('the required pier spacing matches the geometry it was derived from', () => {
@@ -243,12 +272,36 @@ test('segment/rectangle blocking treats a graze as visible rather than hidden', 
 
 test('defaults are the spec baseline: one turn at each threshold, no extra piers', () => {
   assert.equal(DEFAULT_SETTINGS.baffles, 0);
-  var plan = planHotel({ sizeX: 3, sizeZ: 3 });
+  var plan = planHotel({ sizeX: 4, sizeZ: 3.5 });
   // Three wall blocks making the hallway's south wall, plus the two
   // pairs of piers at the doorways.
   assert.equal(plan.blockers.length, 7);
   assert.equal(plan.shielded, true);
+  assert.equal(plan.bafflesApplied, 0);
 
-  var withExtras = planHotel({ sizeX: 3, sizeZ: 3 }, { baffles: 2 });
-  assert.equal(withExtras.blockers.length, 9, 'the turn count is a parameter on one hallway, not a second hallway');
+  var withExtras = planHotel({ sizeX: 4, sizeZ: 3.5 }, { baffles: 2 });
+  assert.equal(withExtras.bafflesApplied, 2, 'the turn count is a parameter on one hallway, not a second hallway');
+  assert.equal(withExtras.blockers.length, 9);
+});
+
+test('a play space too small for both keeps the floor change hidden and says what it cost', () => {
+  // Comfort and concealment are claims on the same rectangle. The
+  // planner tries the widest comfortable hallway first and only narrows
+  // it if that is what it takes to keep the transition hidden -- because
+  // a catchable transition fails the thing this POC is testing, while a
+  // tight squeeze merely annoys.
+  var roomy = planHotel({ sizeX: 4, sizeZ: 3.5 });
+  assert.equal(roomy.rise.tight, false);
+  assert.ok(roomy.passGap >= 0.7, 'a big enough space keeps a comfortable squeeze, got ' + roomy.passGap.toFixed(2));
+  assert.ok(roomy.passGapGivenUp < 0.02, 'and gives nothing up for it');
+  assert.deepEqual(roomy.warnings, []);
+
+  var cramped = planHotel({ sizeX: 2.4, sizeZ: 2.4 });
+  assert.equal(cramped.rise.tight, false, 'concealment is still intact');
+  assert.ok(cramped.passGapGivenUp > 0.02, 'but comfort was traded for it');
+  assert.ok(cramped.passGap < roomy.passGap);
+  assert.ok(
+    cramped.warnings.some(function (warning) { return /narrowed the hallway squeeze/i.test(warning); }),
+    'and the trade is reported: ' + JSON.stringify(cramped.warnings)
+  );
 });

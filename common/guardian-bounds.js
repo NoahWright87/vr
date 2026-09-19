@@ -260,6 +260,32 @@ export function rectArea (rect) {
   return rect ? rect.sizeX * rect.sizeZ : 0;
 }
 
+// The bounding box of whatever the headset actually handed over, before
+// any fitting. Worth reporting on its own: "I can see a 3.4 x 2.9
+// boundary but can't fit a rectangle in it" and "I never saw a boundary"
+// are different problems with different fixes.
+export function polygonExtent (polygon) {
+  if (!polygon || polygon.length < 2) return null;
+  var box = boundingBox(polygon);
+  return {
+    sizeX: box.maxX - box.minX,
+    sizeZ: box.maxZ - box.minZ,
+    centerX: (box.minX + box.maxX) / 2,
+    centerZ: (box.minZ + box.maxZ) / 2,
+  };
+}
+
+// DOMException carries its useful part in `name`, plain Errors in
+// `message`, and some browsers reject with a bare string.
+export function describeError (error) {
+  if (!error) return 'unknown';
+  if (typeof error === 'string') return error;
+  var name = error.name || '';
+  var message = error.message || '';
+  if (name && message) return name + ': ' + message;
+  return name || message || String(error);
+}
+
 // Two rectangles agree if nothing about them moved by more than a
 // centimetre or two. Used to decide the boundary has settled rather
 // than counting frames alone.
@@ -280,12 +306,23 @@ if (typeof AFRAME !== 'undefined') {
       // built against the result is therefore this far inside the drawn
       // boundary before its own wall thickness is counted.
       inset: { default: 0.18 },
-      minSize: { default: 1.6 },
+      // Deliberately low. A play space that only holds a 1.3m rectangle
+      // is a cramped hotel, but a cramped hotel that lines up with the
+      // room beats a roomy one that doesn't -- and the rectangle is the
+      // only thing anchoring the building to where the player actually
+      // is. Too-small is the caller's problem to warn about, not this
+      // module's to refuse.
+      minSize: { default: 1.2 },
       // How long to keep re-reading after the session starts before
       // giving up and committing to the best answer so far. Quest can
       // hand back nothing at all for the first frames, and has been seen
       // handing back a stale small square before the real one.
-      settleFrames: { default: 120 },
+      settleFrames: { default: 180 },
+      // Wall-clock backstop for the same thing, so a session that never
+      // produces a readable frame still resolves instead of leaving
+      // everything downstream waiting forever on an event that is never
+      // coming.
+      settleMs: { default: 8000 },
       // Consecutive agreeing reads that end the poll early.
       stableReads: { default: 12 },
     },
@@ -295,28 +332,66 @@ if (typeof AFRAME !== 'undefined') {
       this.override = null;
       this.boundedSpace = null;
       this.requestPending = false;
-      this.framesPolled = 0;
-      this.agreeingReads = 0;
       this.candidate = null;
       this.committed = false;
-      this.lastError = null;
+      this.rawPolygon = null;
+      this.resetDiagnostics();
 
       var self = this;
       this.sceneEl.addEventListener('enter-vr', function () { self.beginPolling(); });
-      this.sceneEl.addEventListener('exit-vr', function () { self.boundedSpace = null; });
+      this.sceneEl.addEventListener('exit-vr', function () {
+        self.boundedSpace = null;
+        self.diag.sessionActive = false;
+      });
 
       if (navigator.xr && navigator.xr.isSessionSupported) {
         navigator.xr.isSessionSupported('immersive-vr').then(function (supported) {
+          self.diag.xrSupported = supported;
           if (!supported && !self.override) self.publish(DESKTOP_SAFE_RECT);
-        }).catch(function () {
+        }).catch(function (error) {
+          self.diag.xrSupported = false;
+          self.diag.spaceError = 'isSessionSupported: ' + describeError(error);
           if (!self.override) self.publish(DESKTOP_SAFE_RECT);
         });
-      } else if (!this.override) {
+      } else {
         // No WebXR at all: this is a flat screen, so use the roomier
         // rectangle. Deferred a tick so listeners registered during the
         // same scene init still hear it.
+        this.diag.xrSupported = false;
         setTimeout(function () { if (!self.override) self.publish(DESKTOP_SAFE_RECT); }, 0);
       }
+    },
+
+    // Everything that happened on the way to the current rectangle, in a
+    // form something can put in front of the player's eyes. This exists
+    // because the first headset test of this module failed *silently* --
+    // three separate places could bail out without a word, and from
+    // inside the headset all of them look identical to "it just built
+    // the wrong room".
+    resetDiagnostics: function () {
+      this.diag = {
+        xrSupported: this.diag ? this.diag.xrSupported : null,
+        sessionActive: false,
+        spaceState: 'idle',
+        spaceError: '',
+        rawPoints: 0,
+        rawExtent: null,
+        framesSeen: 0,
+        poseFailures: 0,
+        fitFailures: 0,
+        goodReads: 0,
+        agreeingReads: 0,
+        committed: false,
+        finishedBecause: '',
+      };
+    },
+
+    diagnostics: function () {
+      return Object.assign({}, this.diag, {
+        rect: this.rect,
+        polygon: this.rawPolygon,
+        overridden: Boolean(this.override),
+      });
     },
 
     // Lets the page force a rectangle (the pre-VR settings panel does
@@ -335,50 +410,84 @@ if (typeof AFRAME !== 'undefined') {
 
     beginPolling: function () {
       this.committed = false;
-      this.framesPolled = 0;
-      this.agreeingReads = 0;
       this.candidate = null;
+      this.rawPolygon = null;
+      this.resetDiagnostics();
+      this.diag.sessionActive = true;
+      this.deadline = (typeof performance !== 'undefined' ? performance.now() : Date.now()) + this.data.settleMs;
       this.requestBoundedSpace();
+    },
+
+    // Lets the player ask for another go without leaving VR.
+    retry: function () {
+      this.boundedSpace = null;
+      this.requestPending = false;
+      this.beginPolling();
     },
 
     requestBoundedSpace: function () {
       if (this.boundedSpace || this.requestPending) return;
       var session = this.sceneEl.renderer && this.sceneEl.renderer.xr && this.sceneEl.renderer.xr.getSession();
-      if (!session || !session.requestReferenceSpace) return;
+      if (!session || !session.requestReferenceSpace) {
+        this.diag.spaceState = 'no session yet';
+        return;
+      }
       var self = this;
       this.requestPending = true;
+      this.diag.spaceState = 'requesting';
       session.requestReferenceSpace('bounded-floor').then(function (space) {
         self.boundedSpace = space;
         self.requestPending = false;
+        self.diag.spaceState = 'granted';
       }).catch(function (error) {
-        // A headset that didn't grant bounded-floor (or a browser that
-        // doesn't implement it) is a supported case, not a failure: the
-        // fallback rectangle is already in place and the experience runs
-        // on it. Recording the reason makes that visible in the readout
-        // instead of looking like the boundary was simply never read.
+        // A headset that didn't grant bounded-floor -- a stationary
+        // boundary, boundary turned off, or a browser without it -- is a
+        // supported case, and the fallback rectangle runs the experience.
+        //
+        // What it must NOT do is end the poll quietly, which is what the
+        // first version did: it committed on the spot, published the
+        // fallback, and everything downstream carried on as though a real
+        // boundary had been read. From inside a headset that is
+        // indistinguishable from the boundary simply being ignored. Now
+        // it records why and leaves the poll to time out on its own, so
+        // the readout has something to say.
         self.requestPending = false;
-        self.lastError = String(error && error.message ? error.message : error);
-        self.committed = true;
-        self.publish(self.rect);
+        self.diag.spaceState = 'rejected';
+        self.diag.spaceError = describeError(error);
       });
     },
 
     readOnce: function (frame) {
       if (!this.boundedSpace || !frame || !frame.getPose) return null;
       var geometry = this.boundedSpace.boundsGeometry;
+      this.diag.rawPoints = geometry ? geometry.length : 0;
       if (!geometry || geometry.length < 3) return null;
+
       var baseSpace = this.sceneEl.renderer.xr.getReferenceSpace();
       var pose = null;
       try {
         pose = frame.getPose(this.boundedSpace, baseSpace);
       } catch (error) {
+        this.diag.poseFailures++;
+        this.diag.spaceError = 'getPose: ' + describeError(error);
         return null;
       }
-      var matrix = pose && pose.transform ? pose.transform.matrix : null;
-      return fitSafeRect(transformPoints(geometry, matrix), {
-        inset: this.data.inset,
-        minSize: this.data.minSize,
-      });
+      if (!pose) {
+        this.diag.poseFailures++;
+        return null;
+      }
+
+      var polygon = transformPoints(geometry, pose.transform ? pose.transform.matrix : null);
+      this.rawPolygon = polygon;
+      this.diag.rawExtent = polygonExtent(polygon);
+
+      var fitted = fitSafeRect(polygon, { inset: this.data.inset, minSize: this.data.minSize });
+      // Distinguish "read the boundary but couldn't fit a rectangle in
+      // it" from "never read the boundary". They need completely
+      // different fixes and they used to look the same.
+      if (!fitted) this.diag.fitFailures++;
+      else this.diag.goodReads++;
+      return fitted;
     },
 
     tick: function () {
@@ -388,7 +497,7 @@ if (typeof AFRAME !== 'undefined') {
 
       var frame = this.sceneEl.frame;
       if (!frame) return;
-      this.framesPolled++;
+      this.diag.framesSeen++;
 
       var reading = this.readOnce(frame);
       if (reading) {
@@ -398,22 +507,30 @@ if (typeof AFRAME !== 'undefined') {
         // wins" disagree in exactly the case that matters.
         if (!this.candidate || rectArea(reading) > rectArea(this.candidate) + 0.02) {
           this.candidate = reading;
-          this.agreeingReads = 0;
+          this.diag.agreeingReads = 0;
         } else if (rectsAgree(reading, this.candidate)) {
-          this.agreeingReads++;
+          this.diag.agreeingReads++;
         }
       }
 
-      var settled = this.candidate && this.agreeingReads >= this.data.stableReads;
-      if (settled || this.framesPolled >= this.data.settleFrames) {
-        this.committed = true;
-        this.publish(this.candidate || this.rect);
-      }
+      var now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+      var settled = this.candidate && this.diag.agreeingReads >= this.data.stableReads;
+      var outOfFrames = this.diag.framesSeen >= this.data.settleFrames;
+      var outOfTime = this.deadline && now >= this.deadline;
+      if (!settled && !outOfFrames && !outOfTime) return;
+
+      this.committed = true;
+      this.diag.committed = true;
+      this.diag.finishedBecause = settled ? 'settled' : (outOfFrames ? 'frame limit' : 'timed out');
+      this.publish(this.candidate || this.rect);
     },
 
     publish: function (rect) {
       this.rect = Object.assign({}, rect);
-      this.sceneEl.emit('guardian-bounds', { rect: this.rect, error: this.lastError }, false);
+      this.sceneEl.emit('guardian-bounds', {
+        rect: this.rect,
+        diagnostics: this.diagnostics(),
+      }, false);
     },
   });
 }
