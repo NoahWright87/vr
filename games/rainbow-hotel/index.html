@@ -171,6 +171,9 @@
       <div class="row">
         <label class="check"><input type="checkbox" id="showHotel" /> Put the building up</label>
       </div>
+      <div class="row">
+        <label class="check"><input type="checkbox" id="useHandFloor" /> Build on the floor I drew by hand</label>
+      </div>
       <p class="note">
         The building starts down. Until the green floor rectangle on the ground
         lands inside your real Guardian there is nothing to test, and the walls
@@ -348,6 +351,9 @@
       var showHotel = document.querySelector('#showHotel');
       showHotel.addEventListener('change', function () { apply({ showHotel: showHotel.checked }); });
 
+      var useHandFloor = document.querySelector('#useHandFloor');
+      useHandFloor.addEventListener('change', function () { apply({ useHandFloor: useHandFloor.checked }); });
+
       document.querySelector('#reset').addEventListener('click', function () {
         try { localStorage.removeItem('rainbow-hotel-settings-v1'); } catch (error) { /* fine */ }
         window.location.search = '';
@@ -363,6 +369,7 @@
         }
         if (settings.debug) params.set('debug', '1');
         if (settings.showHotel) params.set('showHotel', '1');
+        if (!settings.useHandFloor) params.set('useHandFloor', '0');
         var url = window.location.origin + window.location.pathname + '?' + params.toString();
         if (navigator.clipboard) navigator.clipboard.writeText(url);
         window.history.replaceState(null, '', '?' + params.toString());
@@ -379,6 +386,7 @@
         useOverride.checked = Boolean(settings.useOverride);
         debug.checked = Boolean(settings.debug);
         showHotel.checked = Boolean(settings.showHotel);
+        useHandFloor.checked = Boolean(settings.useHandFloor);
       }
 
       // The numbers that answer "is this hallway actually hiding the

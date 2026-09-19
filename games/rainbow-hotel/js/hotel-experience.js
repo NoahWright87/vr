@@ -19,7 +19,7 @@
 // player stood still reading a wall, and would arrive at the far doorway
 // out of step with them.
 
-import { DEFAULT_SAFE_RECT } from '../../../common/guardian-bounds.js';
+import { DEFAULT_SAFE_RECT, rectsAgree } from '../../../common/guardian-bounds.js';
 import { planHotel, hallwayProgress, riseFraction, riseProfile, DEFAULT_SETTINGS } from './hotel-layout.js';
 import { buildHotel, buildSky } from './hotel-architecture.js';
 
@@ -88,6 +88,11 @@ export function resolveSettings (search, stored) {
     // meant to fit. The plan is still computed every rebuild; only the
     // geometry is withheld. Tick this back on once the floor is right.
     showHotel: false,
+    // Build on the floor the player drew by hand, when there is one.
+    // That rectangle is the only one anybody has stood in the room and
+    // confirmed; the boundary read is still under suspicion. Untick to
+    // see what the read alone would have produced.
+    useHandFloor: true,
   });
   var overlay = function (source) {
     if (!source) return;
@@ -100,6 +105,7 @@ export function resolveSettings (search, stored) {
     if (source.useOverride !== undefined) settings.useOverride = isTruthy(source.useOverride);
     if (source.debug !== undefined) settings.debug = isTruthy(source.debug);
     if (source.showHotel !== undefined) settings.showHotel = isTruthy(source.showHotel);
+    if (source.useHandFloor !== undefined) settings.useHandFloor = isTruthy(source.useHandFloor);
   };
   overlay(stored);
   if (search) {
@@ -156,13 +162,10 @@ if (typeof AFRAME !== 'undefined') {
       this.state = { room: 0, junction: null, progress: 0, rise: 0, inHallway: false };
       this.settings = resolveSettings(window.location.search, readStoredSettings());
       this.rect = Object.assign({}, DEFAULT_SAFE_RECT);
+      this.guardianRect = null;
+      this.handRect = null;
       this.awaitingBoundary = false;
       this.lastDiagnostics = null;
-      if (overrideActive(this.settings)) {
-        this.rect.sizeX = this.settings.safeX || this.rect.sizeX;
-        this.rect.sizeZ = this.settings.safeZ || this.rect.sizeZ;
-        this.rect.source = 'override';
-      }
 
       var self = this;
       // Subscribe *before* the first build. The Guardian arrives late and
@@ -173,9 +176,14 @@ if (typeof AFRAME !== 'undefined') {
         if (!event.detail || !event.detail.rect) return;
         self.lastDiagnostics = event.detail.diagnostics || null;
         self.awaitingBoundary = false;
-        if (overrideActive(self.settings)) return;
-        self.rect = event.detail.rect;
-        self.rebuild();
+        self.guardianRect = event.detail.rect;
+        if (self.chooseRect()) self.rebuild();
+      });
+
+      // A floor dragged out by hand outranks the read. See chooseRect.
+      this.el.sceneEl.addEventListener('floor-calibration-changed', function (event) {
+        self.handRect = event.detail ? event.detail.rect : null;
+        if (self.chooseRect()) self.rebuild();
       });
 
       // Entering VR is the first moment the real play space can be known,
@@ -191,7 +199,8 @@ if (typeof AFRAME !== 'undefined') {
       // Systems initialise before components, so a rectangle settled
       // this early has already been announced to nobody.
       var guardian = this.el.sceneEl.systems['guardian-bounds'];
-      if (guardian && guardian.rect && !overrideActive(this.settings)) this.rect = guardian.rect;
+      if (guardian && guardian.rect) this.guardianRect = guardian.rect;
+      this.chooseRect();
 
       buildSky(this.el.sceneEl);
       this.rebuild();
@@ -251,22 +260,44 @@ if (typeof AFRAME !== 'undefined') {
       else this.cameraEl.object3D.rotation.y = yaw;
     },
 
+    // Which rectangle the building stands on, decided in exactly one
+    // place. Three answers used to be derived independently at three
+    // decision points, and they drifted apart -- that is how a saved
+    // play-space size came to silently outrank a real Guardian.
+    //
+    // In order: a hand-entered override, because someone typed it and
+    // meant it; then a floor dragged out by hand in the headset, because
+    // that is the one rectangle a person has stood in the room and
+    // confirmed is inside their actual boundary; then the boundary read,
+    // which is still the only one that can be wrong without anybody
+    // noticing. Returns whether the answer changed.
+    chooseRect: function () {
+      var next;
+      if (overrideActive(this.settings)) {
+        next = Object.assign({}, this.guardianRect || DEFAULT_SAFE_RECT, {
+          sizeX: this.settings.safeX || this.rect.sizeX,
+          sizeZ: this.settings.safeZ || this.rect.sizeZ,
+          rotationY: 0,
+          centerX: 0,
+          centerZ: 0,
+          source: 'override',
+        });
+      } else if (this.settings.useHandFloor && this.handRect) {
+        next = Object.assign({}, this.handRect);
+      } else if (this.guardianRect) {
+        next = Object.assign({}, this.guardianRect);
+      } else {
+        next = Object.assign({}, this.rect);
+      }
+      var changed = !rectsAgree(next, this.rect, 0.005) || next.source !== this.rect.source;
+      this.rect = next;
+      return changed;
+    },
+
     applySettings: function (next) {
       this.settings = Object.assign({}, this.settings, next);
       writeStoredSettings(this.settings);
-      var guardian = this.el.sceneEl.systems['guardian-bounds'];
-      if (overrideActive(this.settings)) {
-        this.rect = Object.assign({}, this.rect, {
-          sizeX: this.settings.safeX || this.rect.sizeX,
-          sizeZ: this.settings.safeZ || this.rect.sizeZ,
-          source: 'override',
-        });
-      } else if (guardian && guardian.rect) {
-        // Switching the override back off has to hand the play space back
-        // to whatever was actually measured, not leave the hand-entered
-        // numbers in place under a different name.
-        this.rect = Object.assign({}, guardian.rect);
-      }
+      this.chooseRect();
       this.rebuild();
       this.syncReadout();
     },
@@ -400,8 +431,8 @@ if (typeof AFRAME !== 'undefined') {
       this.panel.setAttribute('position', '0 0.34 -0.95');
 
       var backing = document.createElement('a-plane');
-      backing.setAttribute('width', '0.92');
-      backing.setAttribute('height', '0.72');
+      backing.setAttribute('width', '0.94');
+      backing.setAttribute('height', '0.80');
       backing.setAttribute('material', 'color: #05070c; opacity: 0.85; transparent: true; shader: flat');
       this.panel.appendChild(backing);
 
@@ -413,11 +444,11 @@ if (typeof AFRAME !== 'undefined') {
       // many characters go in it, so the two together are what set the
       // glyph size. Left to their defaults the text came out several
       // times too big and ran off the panel.
-      this.text.setAttribute('width', '0.86');
-      this.text.setAttribute('wrap-count', '46');
+      this.text.setAttribute('width', '0.90');
+      this.text.setAttribute('wrap-count', '52');
       this.text.setAttribute('baseline', 'top');
       this.text.setAttribute('anchor', 'left');
-      this.text.setAttribute('position', '-0.44 0.345 0.002');
+      this.text.setAttribute('position', '-0.45 0.385 0.002');
       this.panel.appendChild(this.text);
 
       this.el.appendChild(this.panel);
@@ -575,23 +606,21 @@ export function describeBoundaryState (diagnostics, report, awaiting, floor) {
       ' m   turned ' + (rect.rotationY || 0).toFixed(1) + ' deg');
     lines.push('  centre  ' + (rect.centerX || 0).toFixed(2) + ', ' + (rect.centerZ || 0).toFixed(2));
 
-    lines.push('BOUNDARY READ');
-    lines.push('  immersive-vr: ' + yesNo(diagnostics.xrSupported) +
-      '   session: ' + yesNo(diagnostics.sessionActive));
-    lines.push('  bounded-floor: ' + (diagnostics.spaceState || 'idle'));
+    lines.push('BOUNDARY READ  ' + (diagnostics.spaceState || 'idle') +
+      (diagnostics.finishedBecause ? ', ' + diagnostics.finishedBecause : ''));
     if (diagnostics.spaceError) lines.push('  ! ' + trim(diagnostics.spaceError, 44));
-    lines.push('  points: ' + diagnostics.rawPoints + (diagnostics.rawExtent
+    lines.push('  vr ' + yesNo(diagnostics.xrSupported) + '/' + yesNo(diagnostics.sessionActive) +
+      '   points ' + diagnostics.rawPoints + (diagnostics.rawExtent
       ? '   raw ' + diagnostics.rawExtent.sizeX.toFixed(2) + ' x ' + diagnostics.rawExtent.sizeZ.toFixed(2)
       : '   raw --'));
-    lines.push('  frames ' + diagnostics.framesSeen + '   fits ' + diagnostics.goodReads +
-      '   agree ' + diagnostics.agreeingReads);
-    // If this is climbing, the boundary is being re-read because the
-    // headset recentred -- and a building put up before the recentre was
-    // standing in the wrong place until this happened.
-    if (diagnostics.resets) lines.push('  recentred x' + diagnostics.resets + ' (boundary re-read)');
+    // Both of these climbing is the boundary being re-measured while you
+    // stand there: `recentred` because the headset said its origin
+    // moved, `moved` because a re-read disagreed with what was published.
+    // A building put up before either was standing in the wrong place.
+    lines.push('  fits ' + diagnostics.goodReads + '   recentred x' + (diagnostics.resets || 0) +
+      '   moved x' + (diagnostics.drifts || 0));
     if (diagnostics.poseFailures) lines.push('  pose failures: ' + diagnostics.poseFailures);
     if (diagnostics.fitFailures) lines.push('  saw boundary, no rectangle fitted x' + diagnostics.fitFailures);
-    if (diagnostics.finishedBecause) lines.push('  finished: ' + diagnostics.finishedBecause);
   }
 
   // The hand-drawn floor, and what to press to change it. This is the
@@ -615,6 +644,16 @@ export function describeBoundaryState (diagnostics, report, awaiting, floor) {
       lines.push('  centre ' + floor.extent.centerX.toFixed(2) + ', ' + floor.extent.centerZ.toFixed(2) +
         '   skew ' + outOfSquare.toFixed(2) + ' m');
     }
+    // The whole point of drawing a floor by hand: this line says what
+    // kind of error the boundary read is making. A pure offset is a
+    // stale origin, a turn is the fitted frame, a size difference is the
+    // fit or the inset.
+    if (floor.versus) {
+      lines.push('  vs read  ' + floor.versus.offset.toFixed(2) + ' m off (' +
+        signed(floor.versus.offsetX) + ', ' + signed(floor.versus.offsetZ) + ')');
+      lines.push('    turned ' + signed(floor.versus.turn, 1) + ' deg   sides ' +
+        signed(floor.versus.longBy) + ' / ' + signed(floor.versus.shortBy));
+    }
     if (!floor.editing) lines.push('  A/B/X/Y to edit the corners');
     else if (floor.holding >= 0) lines.push('  holding corner ' + (floor.holding + 1) + ' -- release grip to drop');
     else if (floor.hovered >= 0) lines.push('  corner ' + (floor.hovered + 1) + ' -- grip to grab, trigger resets');
@@ -637,6 +676,13 @@ export function describeBoundaryState (diagnostics, report, awaiting, floor) {
 function yesNo (value) {
   if (value === null || value === undefined) return '?';
   return value ? 'yes' : 'no';
+}
+
+// Signs matter here: "0.9m off" says nothing about which way, and which
+// way is what tells a shifted origin from a mis-fitted rectangle.
+function signed (value, digits) {
+  var fixed = Number(value).toFixed(digits === undefined ? 2 : digits);
+  return Number(fixed) > 0 ? '+' + fixed : fixed;
 }
 
 function trim (text, max) {

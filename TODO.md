@@ -236,6 +236,19 @@ Two things to do once the floor is confirmed:
 - **Turn the building back on by default** — flip `showHotel` in
   `resolveSettings` and drop the "currently down" wording from the
   page's overlay, the settings panel note and README.
+- **Decide whether the hand-drawn floor stays.** It currently outranks
+  the boundary read (`useHandFloor`, on by default) because it is the
+  only rectangle anyone has confirmed from inside the room. If the read
+  turns out to be trustworthy once the staleness fixes have had a
+  headset session, this becomes a debugging tool rather than the
+  default, and the priority in `chooseRect` should flip back. If it
+  doesn't, this is the shipping answer and it needs a first-run prompt
+  rather than a face button nobody would guess at.
+- **`fitSafeRect` is the wrong fit for a hand-drawn quad.** It maximises
+  a rectangle about a fixed centre, so a quad dragged 45cm out of square
+  loses more than it should (a 3.24/2.18/3.69/2.64 quad fitted back to
+  2.76 x 1.91). Fine for a Guardian polygon, wasteful here. Either slide
+  the centre as well, or square the quad up first and fit that.
 - **The hallway is being redesigned anyway.** Feedback from the first
   session was that it is "ridiculously cramped" and not the layout that
   was asked for. Deliberately not touched since: there is no point

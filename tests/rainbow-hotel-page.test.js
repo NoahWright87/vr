@@ -147,8 +147,31 @@ test('a saved play-space size cannot silently outrank a real Guardian', () => {
   assert.doesNotMatch(experience, /settings\.safeX \|\| self\.settings\.safeZ/);
   assert.doesNotMatch(experience, /!this\.settings\.safeX && !this\.settings\.safeZ/);
   assert.match(page, /id="useOverride"/);
-  // Turning it back off has to hand the play space back to what was measured.
-  assert.match(experience, /else if \(guardian && guardian\.rect\)/);
+  // Turning it back off has to hand the play space back to what was
+  // measured. That used to be three independently-derived answers at
+  // three decision points, which is how they came apart in the first
+  // place; there is now exactly one function that decides, and turning
+  // the override off falls through it to the next source down.
+  assert.match(experience, /chooseRect: function/);
+  assert.match(experience, /if \(overrideActive\(this\.settings\)\)[\s\S]*?else if \(this\.settings\.useHandFloor && this\.handRect\)[\s\S]*?else if \(this\.guardianRect\)/);
+  assert.doesNotMatch(experience, /else if \(guardian && guardian\.rect\)/);
+});
+
+test('a floor drawn by hand outranks the boundary read, but not a typed override', () => {
+  // The hand-drawn rectangle is the only one a person has stood in the
+  // room and confirmed is inside their actual boundary, so it beats the
+  // read -- which is still the one that can be wrong silently. A typed
+  // override still beats both, because somebody meant it.
+  assert.match(experience, /useHandFloor: true/);
+  assert.match(page, /id="useHandFloor"/);
+  assert.match(experience, /addEventListener\('floor-calibration-changed'/);
+  const calibration = readFileSync(new URL('../games/rainbow-hotel/js/floor-calibration.js', import.meta.url), 'utf8');
+  // Four corners dragged by hand are never square, so the building is
+  // laid out on the largest rectangle that fits *inside* the quad --
+  // through the same fitting code the Guardian polygon goes through,
+  // not a second copy that rounds the corners off differently.
+  assert.match(calibration, /fitSafeRect\(this\.corners/);
+  assert.match(calibration, /source = 'hand-drawn'/);
 });
 
 test('the boundary read reports itself instead of failing quietly', () => {
@@ -181,13 +204,59 @@ test('recentring re-reads the boundary instead of leaving it stale', () => {
   // exactly this, and it was not being listened for.
   assert.match(guardian, /watchForRecentre: function/);
   assert.match(guardian, /addEventListener\('reset'/);
-  assert.match(guardian, /self\.retry\(\)/);
+  assert.match(guardian, /if \(self\.committed\) self\.retry\(\)/);
   // It has to be watched *after* the read has settled, which is when
   // nothing else in the poll is still running.
-  assert.match(guardian, /this\.watchForRecentre\(\);\s*\n\s*if \(this\.committed\) return;/);
+  assert.match(guardian, /this\.watchForRecentre\(\);\s*\n\s*if \(this\.committed\) return this\.recheck\(\);/);
   // And the count survives the re-poll it triggers, or it always reads 0.
   assert.match(guardian, /resets: this\.diag \? this\.diag\.resets : 0/);
   assert.match(experience, /diagnostics\.resets/);
+});
+
+test('a reset listener is removed with the space it was on', () => {
+  const guardian = readFileSync(new URL('../common/guardian-bounds.js', import.meta.url), 'utf8');
+  // Re-polling asks for a *fresh* bounded-floor space. The first version
+  // left the old space's listener live and added one more, so the next
+  // real recentre fired on both and spawned two more -- it doubles. A
+  // headset session reported "recentred x44" off about five button
+  // presses, re-polling the boundary continuously the whole time.
+  assert.match(guardian, /removeEventListener\('reset'/);
+  assert.match(guardian, /retry: function \(\)[\s\S]*?this\.unwatchSpace\(this\.boundedSpace\);/);
+  assert.match(guardian, /unwatchAll: function/);
+  // Spaces are tracked with their handler, or the handler can't be
+  // removed later.
+  assert.match(guardian, /this\.watched\.push\(\{ space: space, handler: handler \}\)/);
+});
+
+test('the boundary is re-measured for as long as the session lasts', () => {
+  const guardian = readFileSync(new URL('../common/guardian-bounds.js', import.meta.url), 'utf8');
+  // Committing once and never looking again is what made every staleness
+  // bug here invisible from inside a headset. Relying on the `reset`
+  // event alone is not enough either: it assumes the headset announces
+  // every way the origin can move, and the failure when it doesn't is
+  // silent and total. So the settled rectangle keeps being measured.
+  assert.match(guardian, /recheck: function/);
+  assert.match(guardian, /recheckFrames/);
+  // Republished only when it actually moved -- every publish rebuilds a
+  // building, so noise would rebuild it a couple of times a second.
+  assert.match(guardian, /if \(rectsAgree\(reading, this\.rect, this\.data\.driftTolerance\)\) return;/);
+  assert.match(guardian, /this\.diag\.drifts\+\+/);
+  assert.match(experience, /diagnostics\.drifts/);
+});
+
+test('the hand-drawn floor is compared to the read, not just drawn beside it', () => {
+  const calibration = readFileSync(new URL('../games/rainbow-hotel/js/floor-calibration.js', import.meta.url), 'utf8');
+  // Two blocks of numbers the reader has to subtract in their head is
+  // not a measurement. Each part of the comparison accuses something
+  // different: offset means a stale origin, a turn means the fitted
+  // frame, a size difference means the fit or the inset.
+  assert.match(calibration, /export function compareQuads/);
+  assert.match(calibration, /export function quadHeading/);
+  assert.match(experience, /floor\.versus\.offset/);
+  assert.match(experience, /floor\.versus\.turn/);
+  // Signs matter: "0.9m off" doesn't say which way, and which way is
+  // exactly what separates the causes.
+  assert.match(experience, /function signed/);
 });
 
 test('the in-headset readout and the boundary overlay are both reachable', () => {

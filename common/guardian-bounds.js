@@ -346,6 +346,14 @@ if (typeof AFRAME !== 'undefined') {
       settleMs: { default: 8000 },
       // Consecutive agreeing reads that end the poll early.
       stableReads: { default: 12 },
+      // Once settled, how often to check the boundary is still where it
+      // was. Twice a second is far below anything a person would
+      // notice and far above anything that costs a frame.
+      recheckFrames: { default: 30 },
+      // How far the rectangle has to move before that re-read is worth
+      // republishing. Below this it is measurement noise, and each
+      // publish rebuilds a building.
+      driftTolerance: { default: 0.05 },
     },
 
     init: function () {
@@ -359,12 +367,13 @@ if (typeof AFRAME !== 'undefined') {
       this.watched = [];
       this.resetDiagnostics();
 
+      this.sinceRecheck = 0;
+
       var self = this;
       this.sceneEl.addEventListener('enter-vr', function () { self.beginPolling(); });
       this.sceneEl.addEventListener('exit-vr', function () {
+        self.unwatchAll();
         self.boundedSpace = null;
-        // The reference spaces belong to the session that just ended.
-        self.watched = [];
         self.diag.sessionActive = false;
       });
 
@@ -408,6 +417,7 @@ if (typeof AFRAME !== 'undefined') {
         // Carried across polls on purpose: a re-poll caused by a
         // recentre would otherwise wipe the count of recentres.
         resets: this.diag ? this.diag.resets : 0,
+        drifts: this.diag ? this.diag.drifts : 0,
         committed: false,
         finishedBecause: '',
       };
@@ -427,19 +437,50 @@ if (typeof AFRAME !== 'undefined') {
     // WebXR announces this: the reference space fires `reset`. Both
     // spaces are watched because the one that fires depends on which
     // origin moved, and re-reading costs a second of polling.
+    //
+    // The listeners have to be *removed* along with the space they are
+    // on, which the first version of this did not do. Re-polling asks
+    // for a fresh bounded-floor space, so each recentre left a live
+    // listener on an orphaned space and added one more; the next real
+    // recentre then fired on both and spawned two more. It doubles. A
+    // headset session reported "recentred x44" off about five real
+    // button presses, with the boundary re-polling continuously the
+    // whole time.
     watchForRecentre: function () {
-      var self = this;
       var renderer = this.sceneEl.renderer;
       var base = renderer && renderer.xr && renderer.xr.getReferenceSpace && renderer.xr.getReferenceSpace();
-      [base, this.boundedSpace].forEach(function (space) {
-        if (!space || !space.addEventListener) return;
-        if (self.watched.indexOf(space) >= 0) return;
-        self.watched.push(space);
-        space.addEventListener('reset', function () {
-          self.diag.resets++;
-          self.retry();
-        });
-      });
+      this.watchSpace(base);
+      this.watchSpace(this.boundedSpace);
+    },
+
+    watchSpace: function (space) {
+      if (!space || !space.addEventListener) return;
+      for (var i = 0; i < this.watched.length; i++) {
+        if (this.watched[i].space === space) return;
+      }
+      var self = this;
+      var handler = function () {
+        self.diag.resets++;
+        // One recentre fires on every space that moved, and a burst of
+        // them is one event, not several. A poll already in flight will
+        // pick up the new origin on its own.
+        if (self.committed) self.retry();
+      };
+      space.addEventListener('reset', handler);
+      this.watched.push({ space: space, handler: handler });
+    },
+
+    unwatchSpace: function (space) {
+      if (!space) return;
+      for (var i = this.watched.length - 1; i >= 0; i--) {
+        if (this.watched[i].space !== space) continue;
+        if (space.removeEventListener) space.removeEventListener('reset', this.watched[i].handler);
+        this.watched.splice(i, 1);
+      }
+    },
+
+    unwatchAll: function () {
+      while (this.watched.length) this.unwatchSpace(this.watched[0].space);
     },
 
     diagnostics: function () {
@@ -468,6 +509,7 @@ if (typeof AFRAME !== 'undefined') {
       this.committed = false;
       this.candidate = null;
       this.rawPolygon = null;
+      this.sinceRecheck = 0;
       this.resetDiagnostics();
       this.diag.sessionActive = true;
       this.deadline = (typeof performance !== 'undefined' ? performance.now() : Date.now()) + this.data.settleMs;
@@ -476,6 +518,9 @@ if (typeof AFRAME !== 'undefined') {
 
     // Lets the player ask for another go without leaving VR.
     retry: function () {
+      // The space about to be discarded takes its listener with it, or
+      // every retry leaves one more behind. See watchForRecentre.
+      this.unwatchSpace(this.boundedSpace);
       this.boundedSpace = null;
       this.requestPending = false;
       this.beginPolling();
@@ -553,7 +598,7 @@ if (typeof AFRAME !== 'undefined') {
       // *after* the boundary has settled, which is when nothing else here
       // is still watching.
       this.watchForRecentre();
-      if (this.committed) return;
+      if (this.committed) return this.recheck();
       this.requestBoundedSpace();
 
       var frame = this.sceneEl.frame;
@@ -584,6 +629,34 @@ if (typeof AFRAME !== 'undefined') {
       this.diag.committed = true;
       this.diag.finishedBecause = settled ? 'settled' : (outOfFrames ? 'frame limit' : 'timed out');
       this.publish(this.candidate || this.rect);
+    },
+
+    // The boundary is never finished being read.
+    //
+    // Committing once and never looking again is what made every
+    // staleness bug in this module invisible from inside a headset. A
+    // recentre, a tracking recovery, a Guardian redrawn mid-session --
+    // each leaves the committed rectangle describing a room that has
+    // since moved, with the building standing exactly where it was put
+    // and nothing anywhere saying so. Relying on the `reset` event alone
+    // is not enough either: it assumes the headset announces every way
+    // the origin can move, and the failure mode when it doesn't is
+    // silent and total.
+    //
+    // So the settled rectangle is re-measured a couple of times a second
+    // for as long as the session lasts, and republished only when it has
+    // actually moved. The cost is one polygon transform per check, plus
+    // a fit on the rare checks that disagree.
+    recheck: function () {
+      this.sinceRecheck++;
+      if (this.sinceRecheck < this.data.recheckFrames) return;
+      this.sinceRecheck = 0;
+      var reading = this.readOnce(this.sceneEl.frame);
+      if (!reading) return;
+      if (rectsAgree(reading, this.rect, this.data.driftTolerance)) return;
+      this.diag.drifts++;
+      this.candidate = reading;
+      this.publish(reading);
     },
 
     publish: function (rect) {

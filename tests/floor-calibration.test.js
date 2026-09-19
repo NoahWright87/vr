@@ -6,6 +6,8 @@ import {
   nearestHandle,
   quadExtent,
   quadSides,
+  quadHeading,
+  compareQuads,
   quadArea,
 } from '../games/rainbow-hotel/js/floor-calibration.js';
 import { rectCorners } from '../common/guardian-bounds.js';
@@ -105,4 +107,59 @@ test('the readout measures the sides, not the bounding box', () => {
   const skewed = quadSides(dragged);
   assert.ok(Math.abs(skewed[1] - skewed[3]) > 0.1, 'dragging a corner shows up as skew');
   assert.equal(quadSides(corners.slice(0, 3)), null);
+});
+
+test('a shifted rectangle reads as an offset and nothing else', () => {
+  // This is the signature of a stale origin: the boundary was measured
+  // in a space that has since been recentred, so the rectangle is the
+  // right shape at the wrong place. Nothing else must light up, or the
+  // readout accuses the fitting code of a bug it does not have.
+  const truth = rectCorners({ centerX: 0, centerZ: 0, sizeX: 3.6, sizeZ: 3, rotationY: 12 });
+  const shifted = rectCorners({ centerX: 0.8, centerZ: -0.6, sizeX: 3.6, sizeZ: 3, rotationY: 12 });
+  const gap = compareQuads(truth, shifted);
+  assert.equal(gap.offset.toFixed(2), '1.00');
+  assert.equal(gap.offsetX.toFixed(2), '-0.80');
+  assert.equal(gap.offsetZ.toFixed(2), '0.60');
+  assert.equal(gap.turn.toFixed(1), '0.0');
+  assert.equal(gap.longBy.toFixed(2), '0.00');
+  assert.equal(gap.shortBy.toFixed(2), '0.00');
+});
+
+test('a turned rectangle reads as a turn, and a resized one as a size', () => {
+  const truth = rectCorners({ centerX: 0, centerZ: 0, sizeX: 3.6, sizeZ: 3, rotationY: 0 });
+  const turned = compareQuads(truth, rectCorners({ centerX: 0, centerZ: 0, sizeX: 3.6, sizeZ: 3, rotationY: 20 }));
+  assert.equal(turned.offset.toFixed(2), '0.00');
+  assert.equal(Math.abs(turned.turn).toFixed(1), '20.0');
+
+  const smaller = compareQuads(truth, rectCorners({ centerX: 0, centerZ: 0, sizeX: 3.2, sizeZ: 2.6, rotationY: 0 }));
+  assert.equal(smaller.longBy.toFixed(2), '0.40');
+  assert.equal(smaller.shortBy.toFixed(2), '0.40');
+  assert.equal(smaller.offset.toFixed(2), '0.00');
+});
+
+test('two identical rectangles never read as a 90-degree disagreement', () => {
+  // A quad has no canonical first side, so comparing sides in order --
+  // or headings without folding -- makes the same rectangle disagree
+  // with itself by 90 degrees depending on which corner it starts from.
+  const rect = { centerX: 0.4, centerZ: -0.25, sizeX: 3.6, sizeZ: 3, rotationY: 0 };
+  const corners = rectCorners(rect);
+  const rotatedOrder = [corners[1], corners[2], corners[3], corners[0]];
+  const gap = compareQuads(corners, rotatedOrder);
+  assert.equal(gap.offset.toFixed(4), '0.0000');
+  assert.equal(gap.turn.toFixed(1), '0.0');
+  assert.equal(gap.longBy.toFixed(4), '0.0000');
+  assert.equal(gap.shortBy.toFixed(4), '0.0000');
+});
+
+test('the heading of a quad is the direction of its longest side, folded', () => {
+  const wide = rectCorners({ centerX: 0, centerZ: 0, sizeX: 4, sizeZ: 2, rotationY: 0 });
+  const deep = rectCorners({ centerX: 0, centerZ: 0, sizeX: 2, sizeZ: 4, rotationY: 0 });
+  // One is long along X and the other along Z, which is a real 90
+  // degrees apart -- but folded into [-90, 90) it reads as 0 vs -90 or
+  // +90, never as some arbitrary 270.
+  assert.ok(Math.abs(quadHeading(wide)) < 0.001);
+  assert.equal(Math.abs(quadHeading(deep)).toFixed(1), '90.0');
+  assert.ok(quadHeading(wide) >= -90 && quadHeading(wide) < 90);
+  assert.ok(quadHeading(deep) >= -90 && quadHeading(deep) < 90);
+  assert.equal(compareQuads(wide, null), null);
 });

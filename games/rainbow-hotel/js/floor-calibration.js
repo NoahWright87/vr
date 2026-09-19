@@ -22,7 +22,7 @@
 // Outside a headset the camera stands in for the controller, so the whole
 // thing can be driven headlessly.
 
-import { rectCorners } from '../../../common/guardian-bounds.js';
+import { rectCorners, fitSafeRect } from '../../../common/guardian-bounds.js';
 import '../../../common/checkerboard.js';
 
 var STORAGE_KEY = 'rainbow-hotel-floor-v1';
@@ -90,6 +90,54 @@ export function quadSides (corners) {
   });
 }
 
+// The direction of a quad's longest side, folded into [-90, 90). Folded
+// because a rectangle lying at 100 degrees is the same rectangle at -80
+// with its sides named the other way round, and a readout that flips
+// between the two says nothing.
+export function quadHeading (corners) {
+  var sides = quadSides(corners);
+  if (!sides) return 0;
+  var longest = 0;
+  for (var i = 1; i < 4; i++) if (sides[i] > sides[longest]) longest = i;
+  var from = corners[longest];
+  var to = corners[(longest + 1) % 4];
+  var degrees = Math.atan2(to.z - from.z, to.x - from.x) * 180 / Math.PI;
+  while (degrees >= 90) degrees -= 180;
+  while (degrees < -90) degrees += 180;
+  return degrees;
+}
+
+// How far the floor drawn by hand is from the one the boundary read
+// produced. This is the number the whole calibration mode exists to
+// produce, and each part of it accuses something different:
+//
+//   a pure offset      the polygon was measured in a space whose origin
+//                      has since moved -- staleness, not maths
+//   a turn             the fit's frame or its rotation convention
+//   a size difference  the fit itself, or the inset
+//
+// Sides are compared shortest-to-shortest rather than in order, because
+// which side a quad calls its first is arbitrary and two rectangles of
+// the same shape must not read as different.
+export function compareQuads (mine, theirs) {
+  if (!mine || !theirs || mine.length !== 4 || theirs.length !== 4) return null;
+  var a = quadExtent(mine);
+  var b = quadExtent(theirs);
+  var mySides = quadSides(mine).slice().sort(function (p, q) { return p - q; });
+  var theirSides = quadSides(theirs).slice().sort(function (p, q) { return p - q; });
+  var turn = quadHeading(mine) - quadHeading(theirs);
+  while (turn >= 90) turn -= 180;
+  while (turn < -90) turn += 180;
+  return {
+    offsetX: a.centerX - b.centerX,
+    offsetZ: a.centerZ - b.centerZ,
+    offset: Math.hypot(a.centerX - b.centerX, a.centerZ - b.centerZ),
+    turn: turn,
+    shortBy: (mySides[0] + mySides[1]) / 2 - (theirSides[0] + theirSides[1]) / 2,
+    longBy: (mySides[2] + mySides[3]) / 2 - (theirSides[2] + theirSides[3]) / 2,
+  };
+}
+
 // Shoelace. Reported in the readout so a quad dragged inside-out (which
 // is easy to do with four free corners) is visible as a number going
 // wrong rather than as a floor that renders strangely.
@@ -149,6 +197,11 @@ if (typeof AFRAME !== 'undefined') {
       grabRadius: { default: 0.35 },
       handleRadius: { default: 0.09 },
       hoverRadius: { default: 0.16 },
+      // Taken off every side of the rectangle fitted inside the hand-
+      // drawn quad. Smaller than the Guardian read's 18cm because
+      // whoever dragged these corners was standing in the room and has
+      // already left themselves room by eye.
+      handInset: { default: 0.08 },
     },
 
     init: function () {
@@ -174,6 +227,11 @@ if (typeof AFRAME !== 'undefined') {
 
       this.buildGround();
       this.buildFill();
+      // One bar from the middle of the hand-drawn floor to the middle of
+      // the one the read produced. The numbers say how far apart they
+      // are; this says which way, which is the part that tells you
+      // whether the error is a shift or a turn.
+      this.errorBar = this.makeBar('#ff5fd2');
       this.outline = [];
       this.handles = [];
       for (var i = 0; i < 4; i++) {
@@ -210,6 +268,10 @@ if (typeof AFRAME !== 'undefined') {
         self.dirty = true;
       });
       this.setEditing(false);
+      // A floor saved in a previous session is available immediately,
+      // and `rainbow-hotel` initialises before this component does, so
+      // it has to be told rather than asked.
+      if (this.fromStorage) setTimeout(function () { self.publishFloor(); }, 0);
     },
 
     // The empty lot. With the building down there is otherwise no floor
@@ -345,6 +407,32 @@ if (typeof AFRAME !== 'undefined') {
       this.fromStorage = false;
       clearStoredCorners();
       this.dirty = true;
+      this.publishFloor();
+    },
+
+    // A floor drawn by hand is a rectangle someone has stood in the room
+    // and confirmed, which is more than the boundary read can currently
+    // claim -- so it is offered to anything that wants to build on it.
+    //
+    // The largest rectangle inside the quad, not the quad itself: four
+    // corners dragged by hand are never square (this one came back 28cm
+    // out), and a building laid out on a parallelogram would poke
+    // through the short side. Same fitting code the Guardian polygon
+    // goes through, with a smaller inset because the person drawing it
+    // has already left themselves clearance by eye.
+    handRect: function () {
+      if (!this.fromStorage || !this.corners) return null;
+      return fitSafeRect(this.corners, { inset: this.data.handInset, minSize: 1 });
+    },
+
+    publishFloor: function () {
+      var rect = this.handRect();
+      if (rect) rect.source = 'hand-drawn';
+      this.el.sceneEl.emit('floor-calibration-changed', {
+        rect: rect,
+        corners: this.corners,
+        edited: this.fromStorage,
+      }, false);
     },
 
     grab: function (handEl) {
@@ -358,6 +446,7 @@ if (typeof AFRAME !== 'undefined') {
       this.held = null;
       this.fromStorage = true;
       if (this.corners) writeStoredCorners(this.corners);
+      this.publishFloor();
     },
 
     // The floor sits on the rig, so it follows whatever height the rig is
@@ -490,6 +579,20 @@ if (typeof AFRAME !== 'undefined') {
         bar.object3D.rotation.set(0, -Math.atan2(to.z - from.z, to.x - from.x), 0);
       }
 
+      var auto = this.automaticCorners();
+      var gap = this.fromStorage && auto.length === 4
+        ? compareQuads(corners, auto) : null;
+      if (gap && gap.offset > 0.02) {
+        var mine = quadExtent(corners);
+        this.errorBar.setAttribute('visible', true);
+        this.errorBar.setAttribute('width', gap.offset.toFixed(3));
+        this.errorBar.object3D.position.set(
+          mine.centerX - gap.offsetX / 2, y + 0.014, mine.centerZ - gap.offsetZ / 2);
+        this.errorBar.object3D.rotation.set(0, -Math.atan2(gap.offsetZ, gap.offsetX), 0);
+      } else {
+        this.errorBar.setAttribute('visible', false);
+      }
+
       for (var h = 0; h < 4; h++) {
         var handle = this.handles[h];
         var hot = h === this.hovered;
@@ -510,6 +613,7 @@ if (typeof AFRAME !== 'undefined') {
         extent: quadExtent(this.corners),
         sides: quadSides(this.corners),
         area: quadArea(this.corners),
+        versus: this.fromStorage ? compareQuads(this.corners, this.automaticCorners()) : null,
         edited: this.fromStorage,
       };
     },
