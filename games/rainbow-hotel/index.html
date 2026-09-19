@@ -129,7 +129,9 @@
     <div id="overlay">
       <span>
         <b>The Rainbow Hotel</b> — walk Red → Purple through six floors without leaving one small room.
-        Desktop: click to look, WASD to walk, R to start over. In a headset: press Enter VR and just walk.
+        <b>The building is currently down</b> while the floor is being fitted to a real Guardian: in a headset,
+        any face button makes the green rectangle’s corners draggable (point, grip, drag; trigger resets).
+        Desktop: click to look, WASD to walk, E edits, T resets, R starts over. Settings puts the building back up.
         <a href="../../index.html">All prototypes</a>
       </span>
       <button id="panel-toggle" type="button">Settings</button>
@@ -166,6 +168,16 @@
       <div class="row">
         <label class="check"><input type="checkbox" id="debug" /> In-headset readout</label>
       </div>
+      <div class="row">
+        <label class="check"><input type="checkbox" id="showHotel" /> Put the building up</label>
+      </div>
+      <p class="note">
+        The building starts down. Until the green floor rectangle on the ground
+        lands inside your real Guardian there is nothing to test, and the walls
+        hide the one thing worth looking at. In a headset: any face button turns
+        the four corners into draggable handles, point at one to swell it, grip
+        to move it, trigger to put them all back where the automatic read says.
+      </p>
       <div class="row">
         <button class="action" type="button" id="reset">Reset to defaults</button>
         <button class="action" type="button" id="copy-link">Copy link with these settings</button>
@@ -205,6 +217,24 @@
 
       <a-entity id="player-rig" position="0 0 0">
         <a-camera id="head-camera" wasd-controls="acceleration: 16" look-controls="pointerLockEnabled: true"></a-camera>
+
+        <!--
+          The controllers are here for one job: drawing the floor
+          rectangle by hand, so it can be compared with the one the
+          Guardian read produced. Nothing in the hotel itself reacts to
+          them -- there is still nothing to pick up, pull or open.
+
+          model: false is deliberate. The controller meshes come off a
+          CDN, and this repo is built to run with no network at all; the
+          laser drawn by floor-calibration is the only thing that needs
+          to be visible from inside.
+        -->
+        <a-entity id="left-hand" oculus-touch-controls="hand: left; model: false">
+          <a-box width="0.035" height="0.035" depth="0.08" material="color: #7fd0ff; shader: flat"></a-box>
+        </a-entity>
+        <a-entity id="right-hand" oculus-touch-controls="hand: right; model: false">
+          <a-box width="0.035" height="0.035" depth="0.08" material="color: #7fd0ff; shader: flat"></a-box>
+        </a-entity>
       </a-entity>
     </a-scene>
 
@@ -214,11 +244,12 @@
         resolveSettings,
         readStoredSettings,
       } from './js/hotel-experience.js';
+      import './js/floor-calibration.js';
       import { riseProfile } from './js/hotel-layout.js';
 
       var sceneEl = document.querySelector('a-scene');
 
-      // The component is attached from here rather than as an attribute
+      // The components are attached from here rather than as attributes
       // in the markup above: this is a module, so it runs after the
       // document has been parsed, and A-Frame would otherwise have
       // already tried to initialise an attribute whose component did not
@@ -227,6 +258,12 @@
         rig: '#player-rig',
         camera: '#head-camera',
         root: '#hotel-root',
+      });
+      sceneEl.setAttribute('floor-calibration', {
+        rig: '#player-rig',
+        camera: '#head-camera',
+        leftHand: '#left-hand',
+        rightHand: '#right-hand',
       });
 
       var settings = resolveSettings(window.location.search, readStoredSettings());
@@ -308,6 +345,9 @@
       var debug = document.querySelector('#debug');
       debug.addEventListener('change', function () { apply({ debug: debug.checked }); });
 
+      var showHotel = document.querySelector('#showHotel');
+      showHotel.addEventListener('change', function () { apply({ showHotel: showHotel.checked }); });
+
       document.querySelector('#reset').addEventListener('click', function () {
         try { localStorage.removeItem('rainbow-hotel-settings-v1'); } catch (error) { /* fine */ }
         window.location.search = '';
@@ -322,6 +362,7 @@
           if (settings.safeZ) params.set('safeZ', String(settings.safeZ));
         }
         if (settings.debug) params.set('debug', '1');
+        if (settings.showHotel) params.set('showHotel', '1');
         var url = window.location.origin + window.location.pathname + '?' + params.toString();
         if (navigator.clipboard) navigator.clipboard.writeText(url);
         window.history.replaceState(null, '', '?' + params.toString());
@@ -337,6 +378,7 @@
         safeZ.value = component.rect.sizeZ.toFixed(2);
         useOverride.checked = Boolean(settings.useOverride);
         debug.checked = Boolean(settings.debug);
+        showHotel.checked = Boolean(settings.showHotel);
       }
 
       // The numbers that answer "is this hallway actually hiding the

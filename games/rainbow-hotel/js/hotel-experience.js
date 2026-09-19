@@ -81,6 +81,13 @@ export function resolveSettings (search, stored) {
     // where the windows are supposed to do the talking.
     debug: true,
     useOverride: false,
+    // The building starts *off*. It is standing on a floor rectangle
+    // that has not yet been shown to land inside a real Guardian -- and
+    // while it is up, it hides the one thing worth looking at, which is
+    // that rectangle drawn on the ground next to the boundary it is
+    // meant to fit. The plan is still computed every rebuild; only the
+    // geometry is withheld. Tick this back on once the floor is right.
+    showHotel: false,
   });
   var overlay = function (source) {
     if (!source) return;
@@ -92,6 +99,7 @@ export function resolveSettings (search, stored) {
     if (source.safeZ !== undefined) settings.safeZ = numberOr(source.safeZ, settings.safeZ);
     if (source.useOverride !== undefined) settings.useOverride = isTruthy(source.useOverride);
     if (source.debug !== undefined) settings.debug = isTruthy(source.debug);
+    if (source.showHotel !== undefined) settings.showHotel = isTruthy(source.showHotel);
   };
   overlay(stored);
   if (search) {
@@ -118,6 +126,15 @@ export function writeStoredSettings (settings) {
   } catch (error) {
     // Settings still apply for this session.
   }
+}
+
+// Switching the building off has to take down whatever is already
+// standing, not merely stop putting more up. Returns null so callers can
+// assign it straight to `built` and have "there is no building" be one
+// falsy check everywhere downstream.
+function clearHotel (root) {
+  while (root.firstChild) root.removeChild(root.firstChild);
+  return null;
 }
 
 if (typeof AFRAME !== 'undefined') {
@@ -192,12 +209,18 @@ if (typeof AFRAME !== 'undefined') {
     // Rebuilds the plan and the geometry, and puts the player back in
     // the Red room. Called at startup, when the Guardian settles, and
     // whenever the settings panel changes something.
+    //
+    // The plan is always computed -- the settings panel's measurements,
+    // the warnings and the floor rectangle all come off it. Whether the
+    // walls actually go up is a separate question, and the answer is no
+    // until the floor has been shown to land inside a real Guardian. See
+    // `showHotel` in resolveSettings.
     rebuild: function () {
       this.plan = planHotel(this.rect, this.settings);
       this.rootEl.object3D.position.set(this.plan.rootX, 0, this.plan.rootZ);
       this.rootEl.object3D.rotation.set(0, AFRAME.THREE.MathUtils.degToRad(this.plan.rootRotationY), 0);
       this.rootEl.object3D.updateMatrixWorld(true);
-      this.built = buildHotel(this.rootEl, this.plan);
+      this.built = this.settings.showHotel ? buildHotel(this.rootEl, this.plan) : clearHotel(this.rootEl);
       this.state = { room: 0, junction: null, progress: 0, rise: 0, inHallway: false };
       this.applyFloorY(this.plan.floors[0].floorY);
       this.placeFlatScreenViewer();
@@ -268,7 +291,10 @@ if (typeof AFRAME !== 'undefined') {
 
     applyFloorY: function (floorY) {
       this.floorY = floorY;
-      this.built.hallway.object3D.position.y = floorY;
+      // The rig is set either way: with the building switched off the
+      // player still stands on floor zero, which is where the floor
+      // rectangle and the boundary overlay are drawn.
+      if (this.built && this.built.hallway) this.built.hallway.object3D.position.y = floorY;
       this.rigEl.object3D.position.y = floorY;
     },
 
@@ -322,6 +348,9 @@ if (typeof AFRAME !== 'undefined') {
     },
 
     tick: function () {
+      // No building means no rooms to be in and no hallway to walk, so
+      // the state machine simply doesn't run and the rig stays on floor
+      // zero with the floor rectangle.
       if (!this.plan || !this.built || !this.cameraEl) return;
       this.cameraEl.object3D.getWorldPosition(this.headWorld);
       this.headLocal.copy(this.headWorld);
@@ -344,6 +373,7 @@ if (typeof AFRAME !== 'undefined') {
         rise: this.state.rise,
         floorY: this.floorY,
         inHallway: this.state.junction !== null,
+        standing: Boolean(this.built),
         rect: this.rect,
         plan: this.plan,
       };
@@ -364,11 +394,14 @@ if (typeof AFRAME !== 'undefined') {
 
     init: function () {
       this.panel = document.createElement('a-entity');
-      this.panel.setAttribute('position', '0 -0.2 -0.72');
+      // High and a metre out, rather than low and close. The thing this
+      // panel is currently reporting on is drawn on the floor, and a
+      // head-locked board below the horizon sits exactly on top of it.
+      this.panel.setAttribute('position', '0 0.34 -0.95');
 
       var backing = document.createElement('a-plane');
       backing.setAttribute('width', '0.92');
-      backing.setAttribute('height', '0.52');
+      backing.setAttribute('height', '0.72');
       backing.setAttribute('material', 'color: #05070c; opacity: 0.85; transparent: true; shader: flat');
       this.panel.appendChild(backing);
 
@@ -384,7 +417,7 @@ if (typeof AFRAME !== 'undefined') {
       this.text.setAttribute('wrap-count', '46');
       this.text.setAttribute('baseline', 'top');
       this.text.setAttribute('anchor', 'left');
-      this.text.setAttribute('position', '-0.44 0.245 0.002');
+      this.text.setAttribute('position', '-0.44 0.345 0.002');
       this.panel.appendChild(this.text);
 
       this.el.appendChild(this.panel);
@@ -422,10 +455,12 @@ if (typeof AFRAME !== 'undefined') {
       var hotel = (this.data.hotel || this.el.sceneEl).components['rainbow-hotel'];
       if (!hotel || !hotel.plan) return;
       var guardian = this.el.sceneEl.systems['guardian-bounds'];
+      var calibration = this.el.sceneEl.components['floor-calibration'];
       this.text.setAttribute('value', describeBoundaryState(
         guardian ? guardian.diagnostics() : null,
         hotel.report(),
-        hotel.awaitingBoundary
+        hotel.awaitingBoundary,
+        calibration && calibration.corners ? calibration.report() : null
       ));
     },
   });
@@ -526,7 +561,7 @@ if (typeof AFRAME !== 'undefined') {
 // Pure, so the wording can be checked without a headset. Written to be
 // read at arm's length in a headset: the state first, then the numbers
 // that explain it.
-export function describeBoundaryState (diagnostics, report, awaiting) {
+export function describeBoundaryState (diagnostics, report, awaiting, floor) {
   var lines = [];
   if (!diagnostics) {
     lines.push('PLAY SPACE  no guardian-bounds system');
@@ -550,18 +585,51 @@ export function describeBoundaryState (diagnostics, report, awaiting) {
       : '   raw --'));
     lines.push('  frames ' + diagnostics.framesSeen + '   fits ' + diagnostics.goodReads +
       '   agree ' + diagnostics.agreeingReads);
+    // If this is climbing, the boundary is being re-read because the
+    // headset recentred -- and a building put up before the recentre was
+    // standing in the wrong place until this happened.
+    if (diagnostics.resets) lines.push('  recentred x' + diagnostics.resets + ' (boundary re-read)');
     if (diagnostics.poseFailures) lines.push('  pose failures: ' + diagnostics.poseFailures);
     if (diagnostics.fitFailures) lines.push('  saw boundary, no rectangle fitted x' + diagnostics.fitFailures);
     if (diagnostics.finishedBecause) lines.push('  finished: ' + diagnostics.finishedBecause);
   }
 
+  // The hand-drawn floor, and what to press to change it. This is the
+  // panel's whole reason for existing right now: the numbers above say a
+  // rectangle was read, and only this says whether it is the *right*
+  // rectangle, by letting it be compared to one dragged out by hand.
+  if (floor) {
+    lines.push('FLOOR  ' + (floor.editing ? 'EDITING' : 'locked') +
+      '   ' + (floor.edited ? 'hand-set' : 'from the read'));
+    if (floor.sides) {
+      // The sides themselves, not the bounding box: a rectangle turned
+      // 18 degrees has a box half a metre bigger than itself in both
+      // directions, which reads as "too big" next to a Guardian you are
+      // standing comfortably inside.
+      var acrossA = (floor.sides[0] + floor.sides[2]) / 2;
+      var acrossB = (floor.sides[1] + floor.sides[3]) / 2;
+      var outOfSquare = Math.max(Math.abs(floor.sides[0] - floor.sides[2]),
+        Math.abs(floor.sides[1] - floor.sides[3]));
+      lines.push('  sides ' + acrossA.toFixed(2) + ' x ' + acrossB.toFixed(2) +
+        '   area ' + floor.area.toFixed(2) + ' m2');
+      lines.push('  centre ' + floor.extent.centerX.toFixed(2) + ', ' + floor.extent.centerZ.toFixed(2) +
+        '   skew ' + outOfSquare.toFixed(2) + ' m');
+    }
+    if (!floor.editing) lines.push('  A/B/X/Y to edit the corners');
+    else if (floor.holding >= 0) lines.push('  holding corner ' + (floor.holding + 1) + ' -- release grip to drop');
+    else if (floor.hovered >= 0) lines.push('  corner ' + (floor.hovered + 1) + ' -- grip to grab, trigger resets');
+    else lines.push('  point at a corner -- grip grabs, trigger resets');
+  }
+
   if (report && report.plan) {
-    lines.push('HOTEL');
+    lines.push('HOTEL  ' + (report.standing ? 'standing' : 'hidden'));
     lines.push('  rooms ' + report.plan.runLength.toFixed(2) + ' x ' + report.plan.roomDepth.toFixed(2) +
       '   hall ' + report.plan.laneWidth.toFixed(2) + ' gap ' + report.plan.passGap.toFixed(2));
-    lines.push('  ' + (report.inHallway
-      ? 'hallway ' + (report.junction + 1) + '  walk ' + (report.progress * 100).toFixed(0) + '%'
-      : report.roomName + ' (floor ' + (report.room + 1) + ')'));
+    if (report.standing) {
+      lines.push('  ' + (report.inHallway
+        ? 'hallway ' + (report.junction + 1) + '  walk ' + (report.progress * 100).toFixed(0) + '%'
+        : report.roomName + ' (floor ' + (report.room + 1) + ')'));
+    }
   }
   return lines.join('\n');
 }

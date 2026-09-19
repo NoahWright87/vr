@@ -85,9 +85,53 @@ test('the POC really does stop at walking: no interactions are wired up', () => 
   // since the flat page around it is allowed its own buttons.
   const scene = page.slice(page.indexOf('<a-scene'), page.indexOf('</a-scene>'));
   assert.ok(scene.length > 100, 'found the scene markup');
-  for (const absent of ['hand-controls', 'oculus-touch-controls', 'laser-controls', 'raycaster', 'cursor', 'grab']) {
+  for (const absent of ['hand-controls', 'laser-controls', 'raycaster', 'cursor', 'grab']) {
     assert.doesNotMatch(scene, new RegExp(absent), `${absent} should not be in the scene`);
   }
+  // Controllers are the one exception, and only for drawing the floor
+  // rectangle by hand -- the measurement that says whether the Guardian
+  // read can be trusted. Nothing in the hotel reacts to them, so the
+  // spec's "no interactions" still holds where it was aimed.
+  assert.match(scene, /oculus-touch-controls="hand: left; model: false"/);
+  assert.match(scene, /oculus-touch-controls="hand: right; model: false"/);
+  assert.doesNotMatch(scene, /oculus-touch-controls="[^"]*model: true/);
+  assert.match(page, /setAttribute\('floor-calibration'/);
+});
+
+test('the building is down until the floor has been fitted to a real Guardian', () => {
+  // The hotel stands on a rectangle that has not yet been shown to land
+  // inside anyone's actual boundary, and while the walls are up they hide
+  // the only thing worth looking at, which is that rectangle on the floor
+  // next to the boundary it is meant to fit. The geometry is withheld;
+  // none of the code that builds it has gone anywhere.
+  assert.match(experience, /showHotel: false/);
+  assert.match(experience, /this\.settings\.showHotel \? buildHotel\(this\.rootEl, this\.plan\) : clearHotel\(this\.rootEl\)/);
+  assert.match(experience, /import \{ buildHotel, buildSky \}/);
+  assert.match(page, /id="showHotel"/);
+  // Switching it off has to take down what is already standing, and
+  // everything downstream has to survive there being no building.
+  assert.match(experience, /function clearHotel/);
+  assert.match(experience, /if \(this\.built && this\.built\.hallway\)/);
+  assert.match(experience, /if \(!this\.plan \|\| !this\.built \|\| !this\.cameraEl\) return;/);
+});
+
+test('the floor rectangle can be redrawn by hand, from inside the headset', () => {
+  const calibration = readFileSync(new URL('../games/rainbow-hotel/js/floor-calibration.js', import.meta.url), 'utf8');
+  // Face button toggles, laser aims, hover swells the handle, grip drags.
+  for (const event of ['abuttondown', 'bbuttondown', 'xbuttondown', 'ybuttondown', 'gripdown', 'gripup']) {
+    assert.match(calibration, new RegExp(event), `${event} should be handled`);
+  }
+  assert.match(calibration, /hoverRadius/);
+  assert.match(calibration, /handleRadius/);
+  // -Z, explicitly. getWorldDirection hands back +Z for a plain Object3D
+  // and has cost this repo an afternoon before.
+  assert.match(calibration, /forward\.set\(0, 0, -1\)\.applyQuaternion\(quaternion\)/);
+  assert.doesNotMatch(calibration, /\.getWorldDirection\(/);
+  // Only a hand-dragged corner is saved. Persisting the automatic read
+  // would make the next load mistake it for a correction and stop
+  // following the Guardian at all.
+  assert.match(calibration, /resetToAutomatic: function \(\)[\s\S]*?clearStoredCorners\(\);/);
+  assert.match(calibration, /release: function \(\)[\s\S]*?writeStoredCorners\(this\.corners\);/);
 });
 
 test('a saved play-space size cannot silently outrank a real Guardian', () => {
@@ -114,7 +158,7 @@ test('the boundary read reports itself instead of failing quietly', () => {
   // how many points came back, whether the pose resolved, whether a
   // rectangle could be fitted, and what ended the poll.
   for (const field of ['xrSupported', 'spaceState', 'spaceError', 'rawPoints', 'rawExtent',
-    'poseFailures', 'fitFailures', 'goodReads', 'finishedBecause']) {
+    'poseFailures', 'fitFailures', 'goodReads', 'finishedBecause', 'resets']) {
     assert.match(guardian, new RegExp(field), `diagnostics should carry ${field}`);
   }
   assert.match(guardian, /diagnostics: function/);
@@ -125,6 +169,25 @@ test('the boundary read reports itself instead of failing quietly', () => {
   // the boundary waits forever.
   assert.match(guardian, /settleMs/);
   assert.match(guardian, /outOfTime/);
+});
+
+test('recentring re-reads the boundary instead of leaving it stale', () => {
+  const guardian = readFileSync(new URL('../common/guardian-bounds.js', import.meta.url), 'utf8');
+  // Holding the Oculus button moves the origin of the space the scene
+  // renders in. The polygon was converted into that space once and
+  // nothing re-read it, so from then on the rectangle described where
+  // the room used to be -- the building standing still while the player
+  // and their walls moved out from under it. WebXR fires `reset` for
+  // exactly this, and it was not being listened for.
+  assert.match(guardian, /watchForRecentre: function/);
+  assert.match(guardian, /addEventListener\('reset'/);
+  assert.match(guardian, /self\.retry\(\)/);
+  // It has to be watched *after* the read has settled, which is when
+  // nothing else in the poll is still running.
+  assert.match(guardian, /this\.watchForRecentre\(\);\s*\n\s*if \(this\.committed\) return;/);
+  // And the count survives the re-poll it triggers, or it always reads 0.
+  assert.match(guardian, /resets: this\.diag \? this\.diag\.resets : 0/);
+  assert.match(experience, /diagnostics\.resets/);
 });
 
 test('the in-headset readout and the boundary overlay are both reachable', () => {

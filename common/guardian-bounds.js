@@ -260,6 +260,27 @@ export function rectArea (rect) {
   return rect ? rect.sizeX * rect.sizeZ : 0;
 }
 
+// The four corners of a fitted rectangle, in the frame the rectangle was
+// measured in. The sign convention matches the rotation a scene graph
+// applies for the same `rotationY`, so anything drawn from these lands
+// exactly where geometry built under that rotation does -- which is the
+// whole point of having one function for it rather than two hand-rolled
+// copies that disagree by a sign.
+export function rectCorners (rect) {
+  if (!rect) return [];
+  var radians = (rect.rotationY || 0) * Math.PI / 180;
+  var cos = Math.cos(radians);
+  var sin = Math.sin(radians);
+  var halfX = rect.sizeX / 2;
+  var halfZ = rect.sizeZ / 2;
+  return [[-halfX, -halfZ], [halfX, -halfZ], [halfX, halfZ], [-halfX, halfZ]].map(function (corner) {
+    return {
+      x: rect.centerX + corner[0] * cos + corner[1] * sin,
+      z: rect.centerZ - corner[0] * sin + corner[1] * cos,
+    };
+  });
+}
+
 // The bounding box of whatever the headset actually handed over, before
 // any fitting. Worth reporting on its own: "I can see a 3.4 x 2.9
 // boundary but can't fit a rectangle in it" and "I never saw a boundary"
@@ -335,12 +356,15 @@ if (typeof AFRAME !== 'undefined') {
       this.candidate = null;
       this.committed = false;
       this.rawPolygon = null;
+      this.watched = [];
       this.resetDiagnostics();
 
       var self = this;
       this.sceneEl.addEventListener('enter-vr', function () { self.beginPolling(); });
       this.sceneEl.addEventListener('exit-vr', function () {
         self.boundedSpace = null;
+        // The reference spaces belong to the session that just ended.
+        self.watched = [];
         self.diag.sessionActive = false;
       });
 
@@ -381,9 +405,41 @@ if (typeof AFRAME !== 'undefined') {
         fitFailures: 0,
         goodReads: 0,
         agreeingReads: 0,
+        // Carried across polls on purpose: a re-poll caused by a
+        // recentre would otherwise wipe the count of recentres.
+        resets: this.diag ? this.diag.resets : 0,
         committed: false,
         finishedBecause: '',
       };
+    },
+
+    // Recentring invalidates everything measured before it.
+    //
+    // Holding the Oculus button moves the origin of the local-floor space
+    // the scene renders in. The boundary polygon was converted into that
+    // space once, at the moment it was read, and nothing re-reads it --
+    // so from the recentre onwards the rectangle describes where the room
+    // *was* relative to an origin that has since moved. The building
+    // stays exactly where it was put while the player and their real
+    // walls move out from under it, which is the "not even close"
+    // failure, and nothing on screen would say a thing about it.
+    //
+    // WebXR announces this: the reference space fires `reset`. Both
+    // spaces are watched because the one that fires depends on which
+    // origin moved, and re-reading costs a second of polling.
+    watchForRecentre: function () {
+      var self = this;
+      var renderer = this.sceneEl.renderer;
+      var base = renderer && renderer.xr && renderer.xr.getReferenceSpace && renderer.xr.getReferenceSpace();
+      [base, this.boundedSpace].forEach(function (space) {
+        if (!space || !space.addEventListener) return;
+        if (self.watched.indexOf(space) >= 0) return;
+        self.watched.push(space);
+        space.addEventListener('reset', function () {
+          self.diag.resets++;
+          self.retry();
+        });
+      });
     },
 
     diagnostics: function () {
@@ -491,8 +547,13 @@ if (typeof AFRAME !== 'undefined') {
     },
 
     tick: function () {
-      if (this.committed || this.override) return;
+      if (this.override) return;
       if (!this.sceneEl.is('vr-mode')) return;
+      // Deliberately before the committed check: a recentre matters most
+      // *after* the boundary has settled, which is when nothing else here
+      // is still watching.
+      this.watchForRecentre();
+      if (this.committed) return;
       this.requestBoundedSpace();
 
       var frame = this.sceneEl.frame;

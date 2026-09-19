@@ -222,6 +222,28 @@ there. Everything below was considered and put off on purpose, not
 missed. See README.md's "The Rainbow Hotel: how it works" and DESIGN.md's
 "Impossible spaces" section for how the built part works.
 
+**The building is currently switched off** (`showHotel`, off by default,
+tick box in the settings panel). It is not broken and nothing has been
+removed — the plan is still computed on every rebuild, and ticking the
+box puts the whole thing back up. It is off because the first two
+headset sessions both came back with "the hotel is not aligned with my
+boundary, not even close", and while the walls are standing they hide
+the only thing worth looking at: the floor rectangle on the ground next
+to the boundary it is supposed to fit inside. See "Fitting the floor to
+a real Guardian" in README.md for the calibration mode that replaced it.
+Two things to do once the floor is confirmed:
+
+- **Turn the building back on by default** — flip `showHotel` in
+  `resolveSettings` and drop the "currently down" wording from the
+  page's overlay, the settings panel note and README.
+- **The hallway is being redesigned anyway.** Feedback from the first
+  session was that it is "ridiculously cramped" and not the layout that
+  was asked for. Deliberately not touched since: there is no point
+  tuning a corridor inside a building that is standing in the wrong
+  place. The comfort-versus-concealment search in `planHotel` is what
+  currently decides its width, and it will need revisiting with whatever
+  the new layout turns out to be.
+
 - **The hallway's depth comes out of every room's depth, and nothing in
   the current design avoids that.** At a 2.4m Guardian the rooms end up
   1.2m deep. The idea that would break the tie: give each doorway a
