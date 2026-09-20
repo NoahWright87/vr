@@ -229,6 +229,22 @@ if (typeof AFRAME !== 'undefined') {
   var ACTIVATE_EVENTS = ['triggerdown', 'abuttondown', 'xbuttondown'];
   var BACK_EVENTS = ['bbuttondown', 'ybuttondown', 'gripdown'];
 
+  function handIsHolding(handEl) {
+    var semantic = handEl && handEl.components && handEl.components['semantic-hand'];
+    return Boolean(semantic && semantic.heldEl);
+  }
+
+  // Which controller a hand entity is, for reporting captured sticks.
+  function handSide(el) {
+    if (!el) return null;
+    var semantic = el.components && el.components['semantic-hand'];
+    if (semantic && semantic.data && semantic.data.hand) return semantic.data.hand;
+    var id = el.id || '';
+    if (id.indexOf('left') !== -1) return 'left';
+    if (id.indexOf('right') !== -1) return 'right';
+    return null;
+  }
+
   var panelSerial = 0;
 
   // Breadcrumb titles are drawn a letter at a time so they can fly into
@@ -374,6 +390,13 @@ if (typeof AFRAME !== 'undefined') {
       // the intended gesture anyway; mounted-interaction uses 0.75.
       hintRadius: { default: 1.2 },
       plate: { default: true },
+      // Whether this menu can be dismissed from inside itself. A fixture
+      // — a panel on a wall, the visor — is not something you should be
+      // able to lose: it gets no X, and pressing back at the root does
+      // nothing instead of landing on a close button. The visor closes
+      // by taking your hand away from your head; a wall panel closes by
+      // walking away from it. Neither needs a button that can strand it.
+      closable: { default: true },
       // Where this surface lives.
       //
       //   'none'   — a thing in the room. Depth-tested, occluded by
@@ -419,6 +442,9 @@ if (typeof AFRAME !== 'undefined') {
         memory: this.data.memory,
         memoryMs: this.data.memoryMs,
         breadcrumbDepth: this.data.breadcrumbDepth,
+        // No chrome at all means back-at-root has nowhere to land, which
+        // is exactly what a fixture wants.
+        chrome: this.data.closable ? undefined : [],
       });
 
       var self = this;
@@ -555,6 +581,7 @@ if (typeof AFRAME !== 'undefined') {
       // target: pressing outward at the root lands on it, and a second
       // press confirms. That is the whole reason closing is no longer
       // something a stray press can do by accident.
+      if (data.closable) {
       var close = document.createElement('a-entity');
       close.classList.add('menu-target');
       close.setAttribute('geometry', 'primitive: plane; width: ' + data.rowHeight * 0.8 + '; height: ' + data.rowHeight * 0.8);
@@ -572,6 +599,7 @@ if (typeof AFRAME !== 'undefined') {
       this.el.appendChild(close);
       this.closeEl = close;
       this.closeGlyphEl = closeGlyph;
+      }
 
       var rule = document.createElement('a-plane');
       rule.setAttribute('width', data.width * 0.92);
@@ -1232,9 +1260,17 @@ if (typeof AFRAME !== 'undefined') {
     },
 
     tick: function (time, delta) {
+      // A collapsed panel is still reachable. It was not, and that made
+      // closing one in a headset a one-way door: the scan only offered
+      // open menus, and in XR there is no walk-up E prompt to bring it
+      // back. A panel that collapses to its title bar is exactly the
+      // one that is supposed to be re-openable by reaching for it.
       var menus = [];
       for (var m = 0; m < this.menus.length; m++) {
-        if (this.menus[m].menu.isOpen) menus.push(this.menus[m]);
+        var candidate = this.menus[m];
+        if (candidate.menu.isOpen || candidate.data.closeBehavior === 'collapse') {
+          menus.push(candidate);
+        }
       }
       // Closing the menu you are holding hands the controls straight
       // back, whether it collapsed or vanished.
@@ -1274,7 +1310,13 @@ if (typeof AFRAME !== 'undefined') {
       // not take it away again.
       for (var pi = this.pinned.length - 1; pi >= 0; pi--) {
         var pin = this.pinned[pi];
-        if (!pin.component.menu.isOpen || !this.handIsAvailable(pin.state.el)) {
+        // Deliberately NOT handIsAvailable: that counts the finger laser
+        // as "busy", and grip — which is how you go back — is what turns
+        // the laser on (see watch-menu's gripdown; TODO.md). So every
+        // back press unpinned the hand and left the menu dead in your
+        // face. A pin ends when the menu closes or you actually pick
+        // something up, and nothing else.
+        if (!pin.component.menu.isOpen || handIsHolding(pin.state.el)) {
           this.unpinHand(pin.component);
           continue;
         }
@@ -1350,6 +1392,11 @@ if (typeof AFRAME !== 'undefined') {
         var wins = Boolean(claim && claim.el === hand.el);
         var next = wins ? hand.candidate : null;
 
+        // Reaching for a collapsed panel opens it again. Without this,
+        // a panel that collapses can be engaged but shows nothing, and
+        // the stick drives a list nobody can see.
+        if (next && !next.menu.isOpen) next.menu.open();
+
         if (hand.menu !== next) {
           if (hand.menu && hand.menu.engagedHand === hand.el) hand.menu.setEngagedHand(null);
           hand.menu = next;
@@ -1392,7 +1439,23 @@ if (typeof AFRAME !== 'undefined') {
       state.armedX = true;
       component.setEngagedHand(handEl);
       this.pinned.push({ component: component, state: state });
+      this.publishCapturedSticks();
       return true;
+    },
+
+    // A stick driving a menu is not also walking you around. Published
+    // per hand as a scene attribute, the same shape as data-menu-locked:
+    // locomotion does not need to know what a menu is, only that this
+    // particular stick is spoken for — which leaves the other hand's
+    // stick doing its usual job rather than freezing the player.
+    publishCapturedSticks: function () {
+      var hands = [];
+      for (var i = 0; i < this.pinned.length; i++) {
+        var el = this.pinned[i].state.el;
+        var side = handSide(el);
+        if (side && hands.indexOf(side) === -1) hands.push(side);
+      }
+      this.el.setAttribute('data-menu-sticks', hands.join(' '));
     },
 
     unpinHand: function (component) {
@@ -1405,6 +1468,7 @@ if (typeof AFRAME !== 'undefined') {
         }
         this.pinned.splice(i, 1);
       }
+      this.publishCapturedSticks();
     },
 
     isPinned: function (state) {

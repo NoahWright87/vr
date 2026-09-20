@@ -153,6 +153,32 @@ test('the close button is not an activation to flash', () => {
   assert.equal(menu.isOpen, false);
 });
 
+// A fixture — a panel on a wall, the visor — should not be losable from
+// inside itself. With no chrome there is no close button, and back at
+// the root has nowhere to land, so it simply stays where it is.
+test('a menu with no chrome cannot be closed from the root', () => {
+  const menu = createMenu(samplePage(), { chrome: [] });
+  menu.open();
+  assert.equal(menu.back(), false, 'back at the root does nothing');
+  assert.equal(menu.inChrome(), false);
+  assert.equal(menu.isOpen, true);
+  assert.deepEqual(menu.getChrome(), []);
+});
+
+test('a chromeless menu still drills and backs out normally', () => {
+  const menu = createMenu(samplePage(), { chrome: [] });
+  menu.open();
+  menu.moveFocus(4);
+  assert.equal(menu.focusedRow().label, 'Comfort');
+  menu.activate();
+  assert.equal(menu.depth(), 1);
+  assert.equal(menu.back(), true, 'back out of a submenu still works');
+  assert.equal(menu.depth(), 0);
+  assert.equal(menu.isOpen, true, 'and one more back does not close it');
+  menu.back();
+  assert.equal(menu.isOpen, true);
+});
+
 test('an action can close the menu on activation', () => {
   const menu = createMenu({ title: 'T', items: [
     { kind: 'action', id: 'go', label: 'Go', closeOnActivate: true },

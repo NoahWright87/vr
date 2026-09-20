@@ -101,12 +101,10 @@ if (typeof AFRAME !== 'undefined') {
       this.pips = {};
       this.openSide = null;
       this.hands = [];
-      // A hand has to leave the temple zone before it can open or close
-      // anything again. Without this, closing the menu with your hand
-      // still up simply reopens it a beat later, which reads as the
-      // menu refusing to close. Same re-arm shape as the stick detent
-      // and the punch tracker's hold-for-reset.
-      this.armedFor = {};
+      // How long each side has spent disagreeing with where your hand
+      // is. Reset the moment they agree again, which is what lets you
+      // call off a close by bringing your hand back.
+      this.dwellMs = { left: 0, right: 0 };
       // The schema seeds these; from then on they are the truth (see
       // setDraw for why they cannot live in the attribute).
       this.drawMode = this.data.draw;
@@ -183,6 +181,12 @@ if (typeof AFRAME !== 'undefined') {
         breadcrumbDepth: 1,
         open: false,
         closeBehavior: 'hide',
+        // No X. Taking your hand away from your head is how this one
+        // closes, so a button that can also close it is a second,
+        // worse answer to a question already settled by the gesture --
+        // and one that can strand the menu if the gesture is what
+        // reopens it.
+        closable: false,
         // The visor is transient — it should not strand you three
         // levels deep because you closed it to shoot someone.
         memory: 'temporary',
@@ -405,48 +409,52 @@ if (typeof AFRAME !== 'undefined') {
       if (!mode || !mode.isMode('xr') || !this.cameraEl) return this.hidePips();
       if (!this.hands.length) return this.hidePips();
 
-      var candidate = null;
+      // Where each hand is, once per hand per frame: reading the pose
+      // twice would measure the second reading against the first and
+      // always see a stationary hand, quietly disabling the speed guard.
+      var atTemple = {};
       var approaching = {};
       for (var i = 0; i < this.hands.length; i++) {
         var handEl = this.hands[i];
-        // Once per hand per frame: reading the pose twice would measure
-        // the second reading against the first and always see a
-        // stationary hand, quietly disabling the speed guard.
         var state = this.readHand(handEl, delta);
         if (!state) continue;
         if (state.approachSide) approaching[state.approachSide] = true;
-        if (state.side && this.panels[state.side] && !candidate) {
-          candidate = { handEl: handEl, side: state.side };
+        if (!state.side || !this.panels[state.side]) continue;
+        // A hand flung past your ear is not a menu press, so speed
+        // blocks arriving. It does not block leaving: putting your hand
+        // down quickly is still putting your hand down.
+        if (state.fast && !this.isOpen(state.side)) continue;
+        if (!atTemple[state.side]) atTemple[state.side] = handEl;
+      }
+
+      // The gesture is a state, not a switch. Your hand being at your
+      // temple is what "menu open" means; it being away is what "menu
+      // closed" means. The bar is the delay before the state catches up
+      // with your hand, in whichever direction they currently disagree —
+      // so bring your hand back mid-close and the bar simply empties and
+      // nothing happens, which is the whole point of showing it.
+      for (var side in this.panels) {
+        var hand = atTemple[side] || null;
+        var open = this.isOpen(side);
+        var wantOpen = Boolean(hand);
+        var dwelling = wantOpen !== open;
+
+        this.setPipPresence(side, dwelling || Boolean(approaching[side]), Boolean(hand));
+        if (!dwelling) {
+          this.dwellMs[side] = 0;
+          this.setPipProgress(side, 0);
+          continue;
         }
-      }
-      for (var ps in this.pips) this.setPipPresence(ps, Boolean(approaching[ps]), ps === (candidate && candidate.side));
 
-      // Holding at your temple while that side is already open is how
-      // you close it again — the same gesture both ways, like the key.
-      var progressSide = candidate ? candidate.side : null;
-      for (var s in this.pips) {
-        if (s !== progressSide) this.setPipProgress(s, 0);
-      }
-      if (!candidate) {
-        this.dwellFor = null;
-        this.dwellMs = 0;
-        return;
-      }
+        this.dwellMs[side] = (this.dwellMs[side] || 0) + delta;
+        var progress = Math.min(1, this.dwellMs[side] / this.data.dwellMs);
+        this.setPipProgress(side, progress);
+        if (progress < 1) continue;
 
-      if (this.dwellFor !== candidate.side) {
-        this.dwellFor = candidate.side;
-        this.dwellMs = 0;
-      }
-      this.dwellMs += delta;
-      var progress = Math.min(1, this.dwellMs / this.data.dwellMs);
-      this.setPipProgress(candidate.side, progress);
-
-      if (progress >= 1) {
-        this.dwellMs = 0;
-        this.dwellFor = null;
-        this.setPipProgress(candidate.side, 0);
-        this.armedFor[candidate.handEl.id] = false;
-        this.toggle(candidate.side, candidate.handEl);
+        this.dwellMs[side] = 0;
+        this.setPipProgress(side, 0);
+        if (wantOpen) this.open(side, hand);
+        else this.close(side);
       }
     },
 
@@ -471,20 +479,20 @@ if (typeof AFRAME !== 'undefined') {
         ? (this._local.x < 0 ? 'left' : 'right')
         : null;
 
-      // A hand swung past your ear is not a menu press. The pip may
-      // still show — you can see where you are heading — but the dwell
-      // does not start.
-      if (speed > TEMPLE_MAX_SPEED) return { approachSide: approachSide, side: null };
-
-      var margin = this.dwellFor ? TEMPLE_EXIT_MARGIN : 0;
-      if (!insideTemple(this._local, margin)) {
-        // Leaving the zone is what re-arms the gesture.
-        this.armedFor[handEl.id] = true;
-        return { approachSide: approachSide, side: null };
-      }
-      if (this.armedFor[handEl.id] === false) return { approachSide: approachSide, side: null };
-      // The side of your head the hand is on, not which hand it is.
-      return { approachSide: approachSide, side: this._local.x < 0 ? 'left' : 'right' };
+      // Purely geometric: whether the hand is in a temple zone, and
+      // which side of your HEAD it is on rather than which hand it is,
+      // so reaching across works. What that means is the tick's
+      // business. The zone grows a little once that side is open, so a
+      // hand resting at the boundary does not start a close dwell every
+      // time it drifts a centimetre.
+      var side = this._local.x < 0 ? 'left' : 'right';
+      var margin = this.isOpen(side) ? TEMPLE_EXIT_MARGIN : 0;
+      if (!insideTemple(this._local, margin)) return { approachSide: approachSide, side: null };
+      return {
+        approachSide: approachSide,
+        side: side,
+        fast: speed > TEMPLE_MAX_SPEED,
+      };
     },
 
     // Present only while a hand is on its way to the temple, and
