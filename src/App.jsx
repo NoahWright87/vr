@@ -43,6 +43,14 @@ export function App() {
           >
             Point, shoot, pop. A quick warm-up for getting used to VR controls.
           </Card>
+          <Card
+            title="Haptics Lab"
+            href="/games/haptics-lab/"
+            interactive
+            footer={<Text tone="muted">Test controllers →</Text>}
+          >
+            A focused Quest controller vibration test with independent left/right levels.
+          </Card>
         </CardGrid>
       </Container>
 
