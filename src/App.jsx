@@ -43,6 +43,14 @@ export function App() {
           >
             Point, shoot, pop. A quick warm-up for getting used to VR controls.
           </Card>
+          <Card
+            title="Boundary Lab"
+            href="/games/boundaries/"
+            interactive
+            footer={<Text tone="muted">Open lab →</Text>}
+          >
+            A shared foundation for reading and visualizing the headset’s play-space boundary.
+          </Card>
         </CardGrid>
       </Container>
 
