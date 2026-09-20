@@ -49,6 +49,7 @@ export default defineConfig({
         home: resolve(root, 'index.html'),
         about: resolve(root, 'about/index.html'),
         cubePop: resolve(root, 'games/cube-pop/index.html'),
+        hapticsLab: resolve(root, 'games/haptics-lab/index.html'),
         punchPop: resolve(root, 'games/punch-pop/index.html'),
         pistolsAtDawn: resolve(root, 'games/pistols-at-dawn/index.html'),
         menuShowcase: resolve(root, 'primitives/menus/index.html'),

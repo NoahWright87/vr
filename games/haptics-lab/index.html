@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Haptics Lab — WebXR Prototype</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <script>window.AFRAME_CDN_ROOT = '../../vendor/aframe-1.6.0/';</script>
+    <script src="../../vendor/aframe-1.6.0/aframe-v1.6.0.min.js"></script>
+    <script type="module" src="../../common/watch-menu.js"></script>
+    <script type="module" src="../../common/desktop-controls.js"></script>
+
+    <style>
+      body { margin: 0; font-family: system-ui, sans-serif; }
+      #overlay {
+        position: absolute; top: 0; left: 0; right: 0; z-index: 1;
+        padding: 0.75rem 1rem; display: flex; gap: 1rem; justify-content: space-between;
+        background: rgba(0, 0, 0, 0.62); color: #eef5ff; font-size: 0.9rem;
+      }
+      #overlay a { color: #9ad; }
+    </style>
+  </head>
+  <body>
+    <div id="overlay">
+      <span>Haptics Lab — raise either wrist, then point with the other hand and pull trigger. Test left/right vibration at 20%, 60%, or 100%.</span>
+      <a href="../../index.html">All prototypes</a>
+    </div>
+
+    <!-- This experience deliberately has no game loop: it is a clean, quiet
+         hardware test that uses the same hands and wrist-watch primitive as
+         the richer experiences. -->
+    <a-scene keyboard-shortcuts="enterVR: false">
+      <a-sky color="#08111f"></a-sky>
+      <a-light type="ambient" color="#b9d5ff" intensity="0.6"></a-light>
+      <a-light type="directional" color="#ffffff" intensity="0.7" position="2 4 1"></a-light>
+      <a-plane rotation="-90 0 0" width="20" height="20" color="#17233a"></a-plane>
+      <a-cylinder radius="0.35" height="0.7" position="0 0.35 -1.6" material="color: #233a5e; roughness: 0.8"></a-cylinder>
+      <a-text value="HAPTICS LAB" align="center" color="#a8d8ff" width="2.2" position="0 1.25 -1.6"></a-text>
+      <a-text value="Use either wrist watch to send a pulse to either controller." align="center" color="#c7d4e8" width="1.7" position="0 1.05 -1.6"></a-text>
+
+      <a-entity
+        id="rig"
+        semantic-look-controls="camera: #head-camera"
+        gamepad-input="leftHand: #left-hand; rightHand: #right-hand; primaryAction: activate; secondaryAction: activate"
+        touch-controls="leftHand: #left-hand; rightHand: #right-hand; primaryAction: activate; primaryLabel: USE; secondaryAction: none; watchAction: watch; watchLabel: WATCH"
+        desktop-controls="camera: #head-camera; leftHand: #left-hand; rightHand: #right-hand; sprintEnabled: false"
+      >
+        <a-camera id="head-camera" position="0 1.6 0" look-controls="pointerLockEnabled: true" wasd-controls="acceleration: 25">
+          <a-entity
+            id="gaze-cursor"
+            control-mode-visibility="modes: desktop"
+            cursor="fuse: false"
+            position="0 0 -1"
+            geometry="primitive: ring; radiusInner: 0.005; radiusOuter: 0.008"
+            material="color: #ffffff; shader: flat; opacity: 0.8"
+            raycaster="objects: .menu-target; far: 10"
+          ></a-entity>
+        </a-camera>
+
+        <!-- Keep this attribute order: semantic-hand uses hand-with-watch's
+             corrective hand-space when it creates its visible hand model. -->
+        <a-entity id="left-hand" class="hand" position="-0.2 1.35 -0.4"
+          hand-with-watch="hand: left"
+          semantic-hand="hand: left; maxReach: 1"
+        ></a-entity>
+        <a-entity id="right-hand" class="hand" position="0.2 1.35 -0.4"
+          hand-with-watch="hand: right"
+          semantic-hand="hand: right; maxReach: 1"
+        ></a-entity>
+      </a-entity>
+
+      <!-- Both watches clone this template. The buttons intentionally target
+           an explicit hand, so one open watch can verify either controller. -->
+      <template id="watch-menu-template">
+        <a-entity class="watch-menu-panel" visible="false">
+          <a-entity data-menu-page="main">
+            <a-plane width="1.25" height="1.78" color="#101827" position="0 -0.12 -0.01"></a-plane>
+            <a-entity class="menu-chrome-slot" data-title="HAPTICS" data-help="true" data-close="true" data-width="1.25" data-bar-y="0.66"></a-entity>
+
+            <a-text value="Each pulse lasts 250 ms" align="center" color="#9fb7d7" width="2.2" position="0 0.48 0.01"></a-text>
+            <a-text value="LEFT CONTROLLER" align="center" color="#8dd6ff" width="2.2" position="-0.3 0.31 0.01"></a-text>
+            <a-text value="RIGHT CONTROLLER" align="center" color="#ffbc8d" width="2.2" position="0.3 0.31 0.01"></a-text>
+
+            <a-entity class="pm-target" geometry="primitive: plane; width: 0.5; height: 0.17" material="color: #16425d" menu-item="value: haptic-left-low; label: Left 20%" position="-0.3 0.12 0">
+              <a-text value="20%" align="center" color="#e8f7ff" width="3" position="0 0 0.01"></a-text>
+            </a-entity>
+            <a-entity class="pm-target" geometry="primitive: plane; width: 0.5; height: 0.17" material="color: #5b351f" menu-item="value: haptic-right-low; label: Right 20%" position="0.3 0.12 0">
+              <a-text value="20%" align="center" color="#fff3e8" width="3" position="0 0 0.01"></a-text>
+            </a-entity>
+            <a-entity class="pm-target" geometry="primitive: plane; width: 0.5; height: 0.17" material="color: #1c6389" menu-item="value: haptic-left-medium; label: Left 60%" position="-0.3 -0.11 0">
+              <a-text value="60%" align="center" color="#e8f7ff" width="3" position="0 0 0.01"></a-text>
+            </a-entity>
+            <a-entity class="pm-target" geometry="primitive: plane; width: 0.5; height: 0.17" material="color: #8a522d" menu-item="value: haptic-right-medium; label: Right 60%" position="0.3 -0.11 0">
+              <a-text value="60%" align="center" color="#fff3e8" width="3" position="0 0 0.01"></a-text>
+            </a-entity>
+            <a-entity class="pm-target" geometry="primitive: plane; width: 0.5; height: 0.17" material="color: #238bc0" menu-item="value: haptic-left-high; label: Left 100%" position="-0.3 -0.34 0">
+              <a-text value="100%" align="center" color="#ffffff" width="3" position="0 0 0.01"></a-text>
+            </a-entity>
+            <a-entity class="pm-target" geometry="primitive: plane; width: 0.5; height: 0.17" material="color: #c96e37" menu-item="value: haptic-right-high; label: Right 100%" position="0.3 -0.34 0">
+              <a-text value="100%" align="center" color="#ffffff" width="3" position="0 0 0.01"></a-text>
+            </a-entity>
+
+            <a-text class="haptics-status" value="Choose a controller and level" align="center" color="#c7d4e8" width="2.1" wrap-count="30" position="0 -0.61 0.01"></a-text>
+          </a-entity>
+
+          <a-entity data-menu-page="help" visible="false">
+            <a-plane width="1.1" height="1.25" color="#101827" position="0 -0.05 -0.01"></a-plane>
+            <a-entity class="menu-chrome-slot" data-title="HELP" data-help="false" data-close="true" data-close-value="help-close" data-width="1.1" data-bar-y="0.46"></a-entity>
+            <a-text value="Raise a wrist to open its menu. Hold grip with the other hand to point, then pull trigger on a level. The status confirms whether Quest Browser accepted a haptics request; it cannot sense the physical motor." align="center" color="#e8eef9" width="1.8" wrap-count="25" position="0 0.03 0.01"></a-text>
+          </a-entity>
+        </a-entity>
+      </template>
+    </a-scene>
+
+    <script>
+      (function () {
+        var LEVELS = { low: 0.2, medium: 0.6, high: 1.0 };
+
+        function setStatus(message, color) {
+          document.querySelectorAll('.haptics-status').forEach(function (label) {
+            label.setAttribute('text', 'value', message);
+            label.setAttribute('text', 'color', color || '#c7d4e8');
+          });
+        }
+
+        document.querySelector('a-scene').addEventListener('menu-item-select', function (evt) {
+          var match = /^haptic-(left|right)-(low|medium|high)$/.exec(evt.detail.value || '');
+          if (!match) return;
+          var hand = match[1];
+          var intensity = LEVELS[match[2]];
+          var handEl = document.querySelector('#' + hand + '-hand');
+          var watch = handEl && handEl.components['hand-with-watch'];
+          if (!watch) return;
+          setStatus('Sending ' + hand.toUpperCase() + ' ' + Math.round(intensity * 100) + '%...', '#fff0a3');
+          watch.triggerHaptics(intensity, 250);
+        });
+
+        document.querySelector('a-scene').addEventListener('haptics-pulse-result', function (evt) {
+          var result = evt.detail;
+          var name = result.hand.toUpperCase() + ' ' + Math.round(result.intensity * 100) + '%';
+          if (result.status === 'sent') {
+            setStatus(name + ' sent via ' + result.api.replace('-', ' '), '#9ff0bb');
+          } else if (result.status === 'unavailable') {
+            setStatus(name + ': no haptics API on this controller', '#ffb3a7');
+          } else {
+            setStatus(name + ': browser ' + result.status, '#ffb3a7');
+          }
+        });
+      })();
+    </script>
+  </body>
+</html>
