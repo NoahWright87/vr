@@ -313,7 +313,10 @@ if (typeof AFRAME !== 'undefined') {
         var overlay = document.createElement('a-entity');
         overlay.setAttribute('id', 'boundary-overlay');
         overlay.setAttribute('boundary-overlay', '');
-        scene.appendChild(overlay);
+        // Into the play space, not the scene: the boundary it draws is
+        // measured in play-space coordinates now, so this is the one
+        // parent that makes those numbers land where they mean.
+        (scene.querySelector('#play-space') || scene).appendChild(overlay);
       } else if (!wanted) {
         var existing = scene.querySelector('#boundary-overlay');
         if (existing && existing.parentNode) existing.parentNode.removeChild(existing);

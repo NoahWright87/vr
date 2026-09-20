@@ -267,3 +267,56 @@ test('the in-headset readout and the boundary overlay are both reachable', () =>
   assert.match(experience, /debug: true/);
   assert.match(experience, /boundary-overlay/);
 });
+
+test('the building hangs off the play space instead of being converted into the scene', () => {
+  const guardian = readFileSync(new URL('../common/guardian-bounds.js', import.meta.url), 'utf8');
+  // Three headset sessions reported the hotel standing through a wall
+  // and inside a couch. The matrix maths, the rectangle fit, the corner
+  // convention and the building's 90-degree swing all check out in
+  // isolation -- which left the one step none of them covers: converting
+  // the boundary out of the headset's play-space coordinates into the
+  // scene's, once, and building against the result.
+  //
+  // That conversion is gone. boundsGeometry is already in the bounded
+  // space, so the rectangle is measured there and an anchor entity
+  // carries the whole building, its transform being that space's live
+  // pose. The rectangle lands on the real boundary by construction
+  // rather than by arithmetic, and a recentre moves the anchor on the
+  // next frame instead of stranding a building.
+  assert.match(guardian, /registerComponent\('play-space-anchor'/);
+  assert.match(guardian, /matrix\.fromArray\(pose\.transform\.matrix\)/);
+  assert.match(guardian, /matrixAutoUpdate = false/);
+  // The read itself must no longer need a pose, a frame, or a base space.
+  assert.match(guardian, /readOnce: function \(\)/);
+  assert.match(guardian, /var polygon = flattenPoints\(geometry\);/);
+  // Nothing before the anchor touches a pose. The boundary read used to,
+  // and that call is the conversion this change exists to delete.
+  const anchorAt = guardian.indexOf("registerComponent('play-space-anchor'");
+  assert.ok(anchorAt > 0, 'found the anchor component');
+  assert.doesNotMatch(guardian.slice(0, anchorAt), /getPose/,
+    'only the anchor should read a pose');
+  // The building goes inside the anchor; the player rig does not, since
+  // they move around within the play space.
+  const scene = page.slice(page.indexOf('<a-scene'), page.indexOf('</a-scene>'));
+  // play-space closes immediately after hotel-root, so the rig that
+  // follows cannot be inside it.
+  assert.match(scene, /<a-entity id="play-space" play-space-anchor>\s*<a-entity id="hotel-root"><\/a-entity>\s*<\/a-entity>/);
+  assert.ok(scene.indexOf('id="player-rig"') > scene.indexOf('id="play-space"'),
+    'the rig comes after the play space, not inside it');
+  // A dropped pose keeps the last good transform rather than snapping
+  // the building to the origin for a frame.
+  assert.match(guardian, /if \(!pose \|\| !pose\.transform \|\| !pose\.transform\.matrix\)/);
+});
+
+test('the hand-drawn floor is stored in play-space coordinates too', () => {
+  const calibration = readFileSync(new URL('../games/rainbow-hotel/js/floor-calibration.js', import.meta.url), 'utf8');
+  // Otherwise the corners are in the render space while the boundary
+  // they are being compared against is in the play space, and the
+  // comparison measures the difference between two coordinate systems
+  // rather than the error it is meant to find.
+  assert.match(calibration, /querySelector\('#play-space'\)/);
+  assert.match(calibration, /worldToLocal\(self\.worldPoint\)/);
+  // The lasers stay in the render space, where the controllers are.
+  assert.match(calibration, /this\.pointerRoot = document\.createElement/);
+  assert.match(calibration, /worldFloorY: function/);
+});

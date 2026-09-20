@@ -221,9 +221,20 @@ if (typeof AFRAME !== 'undefined') {
         this.hands = [document.querySelector('#left-hand'), document.querySelector('#right-hand')].filter(Boolean);
       }
 
+      // The floor goes inside the play space, so its corners are in the
+      // same coordinates the boundary is measured in and it tracks a
+      // recentre along with the building.
       this.root = document.createElement('a-entity');
       this.root.setAttribute('id', 'floor-calibration-root');
-      this.el.sceneEl.appendChild(this.root);
+      (this.el.sceneEl.querySelector('#play-space') || this.el.sceneEl).appendChild(this.root);
+
+      // The lasers do not. They come off the controllers, which live in
+      // the render space, so they are drawn there and only their floor
+      // hit is converted across.
+      this.pointerRoot = document.createElement('a-entity');
+      this.el.sceneEl.appendChild(this.pointerRoot);
+
+      this.worldPoint = new THREE.Vector3();
 
       this.buildGround();
       this.buildFill();
@@ -330,39 +341,27 @@ if (typeof AFRAME !== 'undefined') {
 
     buildPointers: function () {
       var self = this;
-      this.pointers = this.hands.map(function () {
+      var makePointer = function () {
         var beam = document.createElement('a-box');
         beam.setAttribute('width', '0.008');
         beam.setAttribute('height', '0.008');
         beam.setAttribute('depth', '1');
         beam.setAttribute('material', 'color: #7fd0ff; shader: flat');
-        self.root.appendChild(beam);
+        self.pointerRoot.appendChild(beam);
 
         var dot = document.createElement('a-circle');
         dot.setAttribute('radius', '0.035');
         dot.setAttribute('rotation', '-90 0 0');
         dot.setAttribute('material', 'color: #7fd0ff; shader: flat; side: double');
-        self.root.appendChild(dot);
+        self.pointerRoot.appendChild(dot);
 
         return { beam: beam, dot: dot, hit: null };
-      });
+      };
+      this.pointers = this.hands.map(makePointer);
       // No tracked controllers (a flat-screen run): the camera is the
       // pointer, so the same code path can be driven and tested without
       // a headset rather than only existing for one.
-      if (!this.pointers.length && this.cameraEl) {
-        var beam = document.createElement('a-box');
-        beam.setAttribute('width', '0.008');
-        beam.setAttribute('height', '0.008');
-        beam.setAttribute('depth', '1');
-        beam.setAttribute('material', 'color: #7fd0ff; shader: flat');
-        this.root.appendChild(beam);
-        var dot = document.createElement('a-circle');
-        dot.setAttribute('radius', '0.035');
-        dot.setAttribute('rotation', '-90 0 0');
-        dot.setAttribute('material', 'color: #7fd0ff; shader: flat; side: double');
-        this.root.appendChild(dot);
-        this.pointers = [{ beam: beam, dot: dot, hit: null, fallback: true }];
-      }
+      if (!this.pointers.length && this.cameraEl) this.pointers = [makePointer()];
     },
 
     // The source of each pointer, in world space. A tracked controller
@@ -456,6 +455,17 @@ if (typeof AFRAME !== 'undefined') {
       return (this.rigEl ? this.rigEl.object3D.position.y : 0) + 0.01;
     },
 
+    // The floor's height in the render space, where the controllers are.
+    // The quad is drawn in play-space coordinates now, and the two
+    // spaces share their floor plane in practice -- but deriving it
+    // rather than assuming it is what stops a wrong assumption becoming
+    // another silent offset.
+    worldFloorY: function () {
+      this.worldPoint.set(0, this.planeY, 0);
+      this.root.object3D.localToWorld(this.worldPoint);
+      return this.worldPoint.y;
+    },
+
     tick: function () {
       if (!this.corners) {
         this.resetToAutomatic();
@@ -488,6 +498,7 @@ if (typeof AFRAME !== 'undefined') {
       var origin = new THREE.Vector3();
       var quaternion = new THREE.Quaternion();
       var forward = new THREE.Vector3();
+      var worldY = this.worldFloorY();
 
       this.pointers.forEach(function (pointer) {
         pointer.beam.setAttribute('visible', false);
@@ -504,11 +515,20 @@ if (typeof AFRAME !== 'undefined') {
         // more than once -- see DESIGN.md.
         forward.set(0, 0, -1).applyQuaternion(quaternion);
 
-        var hit = rayFloorHit(origin, forward, self.planeY);
-        pointer.hit = hit;
-        if (!hit) return;
+        // The ray is cast in the render space, where the controller is.
+        var hit = rayFloorHit(origin, forward, worldY);
+        if (!hit) { pointer.hit = null; return; }
 
-        var handleIndex = nearestHandle(hit, self.corners, self.data.grabRadius);
+        // ...and the result is carried across into the play space,
+        // which is where the corners live. This is the only conversion
+        // left in the whole boundary path, it happens per frame rather
+        // than once, and it is driven by the same anchor the building
+        // hangs off -- so the two cannot disagree.
+        self.worldPoint.set(hit.x, worldY, hit.z);
+        self.root.object3D.worldToLocal(self.worldPoint);
+        pointer.hit = { x: self.worldPoint.x, z: self.worldPoint.z, distance: hit.distance };
+
+        var handleIndex = nearestHandle(pointer.hit, self.corners, self.data.grabRadius);
         if (handleIndex >= 0 && hovered < 0) hovered = handleIndex;
 
         pointer.beam.setAttribute('visible', true);
@@ -516,13 +536,13 @@ if (typeof AFRAME !== 'undefined') {
         pointer.beam.setAttribute('depth', Math.max(hit.distance, 0.05).toFixed(3));
         pointer.beam.object3D.position.set(
           (origin.x + hit.x) / 2,
-          (origin.y + self.planeY) / 2,
+          (origin.y + worldY) / 2,
           (origin.z + hit.z) / 2
         );
         // A plain Object3D's lookAt aims its +Z at the target, which is
         // exactly what a beam built along Z wants.
-        pointer.beam.object3D.lookAt(hit.x, self.planeY, hit.z);
-        pointer.dot.object3D.position.set(hit.x, self.planeY + 0.004, hit.z);
+        pointer.beam.object3D.lookAt(hit.x, worldY, hit.z);
+        pointer.dot.object3D.position.set(hit.x, worldY + 0.004, hit.z);
       });
 
       // A held corner follows the hand that grabbed it, and ignores

@@ -216,7 +216,17 @@
       <a-entity light="type: ambient; color: #ffffff; intensity: 0.68"></a-entity>
       <a-entity light="type: directional; color: #fff4e2; intensity: 0.6; castShadow: false" position="-2 4 1.5"></a-entity>
 
-      <a-entity id="hotel-root"></a-entity>
+      <!--
+        Everything built on the play space lives inside this, and its
+        transform is the play space's own pose, refreshed every frame.
+        So the building is laid out in the headset's play-space
+        coordinates and lands on the real boundary by construction. The
+        player rig is deliberately NOT in here: they move around inside
+        the play space, so their rig stays where tracking puts it.
+      -->
+      <a-entity id="play-space" play-space-anchor>
+        <a-entity id="hotel-root"></a-entity>
+      </a-entity>
 
       <a-entity id="player-rig" position="0 0 0">
         <a-camera id="head-camera" wasd-controls="acceleration: 16" look-controls="pointerLockEnabled: true"></a-camera>

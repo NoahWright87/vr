@@ -50,10 +50,24 @@ export var DESKTOP_SAFE_RECT = {
   source: 'desktop',
 };
 
-// WebXR hands back a column-major 4x4 in `pose.transform.matrix`. The
-// bounds polygon is expressed in the bounded-floor space, which is not
-// the space A-Frame renders in (that stays local-floor), so every point
-// has to come through this on its way to being useful.
+// Strips a WebXR bounds polygon down to the flat points the fitting
+// code works in. `boundsGeometry` is already expressed in the bounded
+// space's own coordinates, which is the space anything built on the
+// play space should live in -- see the `play-space-anchor` component
+// below for why nothing converts it any more.
+export function flattenPoints (points) {
+  return (points || []).map(function (point) {
+    return { x: point.x || 0, z: point.z || 0 };
+  });
+}
+
+// WebXR hands back a column-major 4x4 in `pose.transform.matrix`.
+//
+// Kept, and still tested, because it is the correct way to move a point
+// between two reference spaces -- but nothing in this module uses it
+// any more. Converting the boundary into the render space once and
+// building against the result is exactly the mistake `play-space-anchor`
+// exists to undo.
 export function transformPoints (points, matrix) {
   if (!matrix) return points.map(function (point) { return { x: point.x, z: point.z }; });
   return points.map(function (point) {
@@ -558,27 +572,23 @@ if (typeof AFRAME !== 'undefined') {
       });
     },
 
-    readOnce: function (frame) {
-      if (!this.boundedSpace || !frame || !frame.getPose) return null;
+    // The rectangle, measured in the play space's own coordinates.
+    //
+    // No pose, no reference-space conversion, no frame required. This
+    // used to convert the polygon into the space the scene renders in
+    // and fit a rectangle to the result, which is one coordinate change
+    // more than the job needs -- and it was the step that put a building
+    // through somebody's wall. `boundsGeometry` is already expressed in
+    // the bounded space, so the rectangle is measured there and the
+    // whole building is hung off that space instead. See
+    // `play-space-anchor`.
+    readOnce: function () {
+      if (!this.boundedSpace) return null;
       var geometry = this.boundedSpace.boundsGeometry;
       this.diag.rawPoints = geometry ? geometry.length : 0;
       if (!geometry || geometry.length < 3) return null;
 
-      var baseSpace = this.sceneEl.renderer.xr.getReferenceSpace();
-      var pose = null;
-      try {
-        pose = frame.getPose(this.boundedSpace, baseSpace);
-      } catch (error) {
-        this.diag.poseFailures++;
-        this.diag.spaceError = 'getPose: ' + describeError(error);
-        return null;
-      }
-      if (!pose) {
-        this.diag.poseFailures++;
-        return null;
-      }
-
-      var polygon = transformPoints(geometry, pose.transform ? pose.transform.matrix : null);
+      var polygon = flattenPoints(geometry);
       this.rawPolygon = polygon;
       this.diag.rawExtent = polygonExtent(polygon);
 
@@ -605,7 +615,7 @@ if (typeof AFRAME !== 'undefined') {
       if (!frame) return;
       this.diag.framesSeen++;
 
-      var reading = this.readOnce(frame);
+      var reading = this.readOnce();
       if (reading) {
         // Keep the largest plausible rectangle seen rather than the most
         // recent one. The documented Quest failure is a *small* stale
@@ -651,7 +661,7 @@ if (typeof AFRAME !== 'undefined') {
       this.sinceRecheck++;
       if (this.sinceRecheck < this.data.recheckFrames) return;
       this.sinceRecheck = 0;
-      var reading = this.readOnce(this.sceneEl.frame);
+      var reading = this.readOnce();
       if (!reading) return;
       if (rectsAgree(reading, this.rect, this.data.driftTolerance)) return;
       this.diag.drifts++;
@@ -665,6 +675,78 @@ if (typeof AFRAME !== 'undefined') {
         rect: this.rect,
         diagnostics: this.diagnostics(),
       }, false);
+    },
+  });
+
+  // Hangs everything built on the play space off the play space itself.
+  //
+  // The boundary polygon arrives in the bounded-floor space's own
+  // coordinates. The obvious thing -- and what this did for three
+  // headset sessions running -- is to convert it into the space the
+  // scene renders in, fit a rectangle to the result, and build there.
+  // That is one coordinate change more than the job needs, it happens
+  // exactly once, and every way the two spaces can drift apart
+  // afterwards (recentring, tracking recovery, anything the headset
+  // does not announce) turns into a building standing in the wrong
+  // place, silently, with no way to tell from inside.
+  //
+  // So nothing converts the boundary any more. The rectangle is
+  // measured in the bounded space and this entity's transform *is* the
+  // pose of that space, refreshed every frame. Anything parented to it
+  // is therefore in play-space coordinates: put a rectangle at the
+  // measured centre and it lands on the real boundary, by construction
+  // rather than by arithmetic. A recentre moves this entity on the next
+  // frame and the building comes with it.
+  //
+  // Only the building hangs here. The player does not: they move inside
+  // the play space, so their rig stays in the render space where the
+  // headset's own tracking puts it.
+  AFRAME.registerComponent('play-space-anchor', {
+    init: function () {
+      this.el.object3D.matrixAutoUpdate = false;
+      this.el.object3D.matrix.identity();
+      this.anchored = false;
+      this.poseFailures = 0;
+      var self = this;
+      this.el.sceneEl.addEventListener('exit-vr', function () {
+        // Outside XR there is no play space; fall back to the identity
+        // so a flat-screen run still renders the building somewhere
+        // sensible instead of wherever the last pose left it.
+        self.anchored = false;
+        self.el.object3D.matrix.identity();
+        self.el.object3D.matrixWorldNeedsUpdate = true;
+      });
+    },
+
+    tick: function () {
+      var sceneEl = this.el.sceneEl;
+      if (!sceneEl.is('vr-mode')) return;
+      var guardian = sceneEl.systems['guardian-bounds'];
+      var space = guardian && guardian.boundedSpace;
+      var frame = sceneEl.frame;
+      if (!space || !frame || !frame.getPose) return;
+
+      var renderer = sceneEl.renderer;
+      var baseSpace = renderer && renderer.xr && renderer.xr.getReferenceSpace();
+      if (!baseSpace) return;
+
+      var pose = null;
+      try {
+        pose = frame.getPose(space, baseSpace);
+      } catch (error) {
+        this.poseFailures++;
+        return;
+      }
+      // A dropped pose keeps the last good transform rather than
+      // snapping the building to the origin for a frame.
+      if (!pose || !pose.transform || !pose.transform.matrix) {
+        this.poseFailures++;
+        return;
+      }
+
+      this.el.object3D.matrix.fromArray(pose.transform.matrix);
+      this.el.object3D.matrixWorldNeedsUpdate = true;
+      this.anchored = true;
     },
   });
 }
