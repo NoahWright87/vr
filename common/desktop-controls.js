@@ -1335,6 +1335,10 @@ AFRAME.registerComponent('desktop-controls', {
   },
 
   applyMovement: function (delta) {
+    // A crossbar menu holds W/A/S/D while it is entered -- see
+    // menu-stick-control's lock(). Checked here rather than in the
+    // callers so both normal and watch modes are covered.
+    if (this.sceneEl.getAttribute('data-menu-locked') === 'true') return;
     if (this.autoCrouch) return;
     var x = (this.keys.KeyD ? 1 : 0) - (this.keys.KeyA ? 1 : 0);
     var z = (this.keys.KeyS ? 1 : 0) - (this.keys.KeyW ? 1 : 0);
