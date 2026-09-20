@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>The Rainbow Hotel — Impossible Spaces POC</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <script>window.AFRAME_CDN_ROOT = '../../vendor/aframe-1.6.0/';</script>
+    <script src="../../vendor/aframe-1.6.0/aframe-v1.6.0.min.js"></script>
+
+    <style>
+      body {
+        margin: 0;
+        font-family: system-ui, sans-serif;
+        background: #11141a;
+      }
+      #overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        padding: 0.7rem 1rem;
+        background: rgba(0, 0, 0, 0.62);
+        color: #f2f3f5;
+        z-index: 2;
+        font-size: 0.88rem;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 1rem;
+      }
+      #overlay a { color: #9ad; }
+      #panel-toggle {
+        font: inherit;
+        padding: 0.3rem 0.7rem;
+        cursor: pointer;
+        border-radius: 4px;
+        border: 1px solid #556;
+        background: #1d222b;
+        color: #e8eaee;
+        white-space: nowrap;
+      }
+      #panel {
+        position: absolute;
+        top: 3.1rem;
+        right: 0.8rem;
+        width: 22rem;
+        max-width: calc(100vw - 1.6rem);
+        max-height: calc(100vh - 4rem);
+        overflow-y: auto;
+        z-index: 2;
+        padding: 0.9rem 1rem 1.1rem;
+        border-radius: 8px;
+        background: rgba(14, 17, 23, 0.94);
+        color: #e8eaee;
+        font-size: 0.82rem;
+        box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+      }
+      #panel[hidden] { display: none; }
+      #panel h2 {
+        margin: 0 0 0.2rem;
+        font-size: 0.95rem;
+      }
+      #panel p.note {
+        margin: 0 0 0.9rem;
+        color: #9aa3b0;
+        line-height: 1.45;
+      }
+      .field { margin-bottom: 0.75rem; }
+      .field label {
+        display: flex;
+        justify-content: space-between;
+        gap: 0.5rem;
+        margin-bottom: 0.2rem;
+      }
+      .field label b { font-weight: 600; }
+      .field label span { color: #8fd4ff; font-variant-numeric: tabular-nums; }
+      .field input[type="range"] { width: 100%; }
+      .field small {
+        display: block;
+        color: #7f8896;
+        line-height: 1.4;
+        margin-top: 0.15rem;
+      }
+      .pair { display: flex; gap: 0.6rem; }
+      .pair .field { flex: 1; }
+      .pair input[type="number"] {
+        width: 100%;
+        background: #1d222b;
+        color: #e8eaee;
+        border: 1px solid #39414f;
+        border-radius: 4px;
+        padding: 0.25rem 0.35rem;
+        font: inherit;
+      }
+      #measures {
+        margin: 0.4rem 0 0.9rem;
+        padding: 0.6rem 0.7rem;
+        border-radius: 6px;
+        background: #171c25;
+        line-height: 1.55;
+        font-variant-numeric: tabular-nums;
+      }
+      #measures dt { color: #8f98a6; float: left; clear: left; width: 11.5rem; }
+      #measures dd { margin: 0 0 0 11.5rem; }
+      #warnings { margin: 0 0 0.9rem; padding: 0; list-style: none; }
+      #warnings li {
+        padding: 0.45rem 0.6rem;
+        margin-bottom: 0.35rem;
+        border-radius: 5px;
+        background: #3a2a18;
+        color: #ffd9a3;
+        line-height: 1.45;
+      }
+      #panel .row { display: flex; gap: 0.5rem; align-items: center; margin-top: 0.6rem; }
+      #panel button.action {
+        font: inherit;
+        padding: 0.35rem 0.7rem;
+        cursor: pointer;
+        border-radius: 4px;
+        border: 1px solid #556;
+        background: #1d222b;
+        color: #e8eaee;
+      }
+      #panel label.check { display: flex; gap: 0.4rem; align-items: center; }
+    </style>
+  </head>
+  <body>
+    <div id="overlay">
+      <span>
+        <b>The Rainbow Hotel</b> — walk Red → Purple through six floors without leaving one small room.
+        <b>The building is currently down</b> while the floor is being fitted to a real Guardian: in a headset,
+        any face button makes the green rectangle’s corners draggable (point, grip, drag; trigger resets).
+        Desktop: click to look, WASD to walk, E edits, T resets, R starts over. Settings puts the building back up.
+        <a href="../../index.html">All prototypes</a>
+      </span>
+      <button id="panel-toggle" type="button">Settings</button>
+    </div>
+
+    <section id="panel" hidden>
+      <h2>Hallway tuning</h2>
+      <p class="note">
+        Saved in this browser, so you can set it here and then press Enter VR on the
+        same device. In a headset the play space is read from your real Guardian
+        when the session starts — the boxes below only apply if you tick the
+        override, and a flat-screen run uses them too.
+      </p>
+
+      <div class="row">
+        <label class="check"><input type="checkbox" id="useOverride" /> Use the play space below instead of my Guardian</label>
+      </div>
+      <div class="pair">
+        <div class="field">
+          <label><b>Play space X</b></label>
+          <input type="number" id="safeX" min="1.6" max="8" step="0.1" />
+        </div>
+        <div class="field">
+          <label><b>Play space Z</b></label>
+          <input type="number" id="safeZ" min="1.6" max="8" step="0.1" />
+        </div>
+      </div>
+
+      <dl id="measures"></dl>
+      <ul id="warnings"></ul>
+
+      <div id="tunables"></div>
+
+      <div class="row">
+        <label class="check"><input type="checkbox" id="debug" /> In-headset readout</label>
+      </div>
+      <div class="row">
+        <label class="check"><input type="checkbox" id="showHotel" /> Put the building up</label>
+      </div>
+      <div class="row">
+        <label class="check"><input type="checkbox" id="useHandFloor" /> Build on the floor I drew by hand</label>
+      </div>
+      <p class="note">
+        The building starts down. Until the green floor rectangle on the ground
+        lands inside your real Guardian there is nothing to test, and the walls
+        hide the one thing worth looking at. In a headset: any face button turns
+        the four corners into draggable handles, point at one to swell it, grip
+        to move it, trigger to put them all back where the automatic read says.
+      </p>
+      <div class="row">
+        <button class="action" type="button" id="reset">Reset to defaults</button>
+        <button class="action" type="button" id="copy-link">Copy link with these settings</button>
+      </div>
+    </section>
+
+    <!--
+      Every control that matters, on the wrist.
+
+      The settings panel above this is a flat HTML page, which is
+      unreachable the moment you press Enter VR -- so referring someone
+      in a headset to a tick box there is referring them to something
+      they cannot see or touch. This is the same `hand-with-watch`
+      primitive Pistols at Dawn and the menus showcase use: raise the
+      watch to open it, point and pull the trigger to choose. Labels are
+      kept in step with the settings by syncMenuLabels() below.
+    -->
+    <template id="watch-menu-template">
+      <a-entity class="watch-menu-panel" visible="false">
+        <a-entity data-menu-page="main">
+          <a-plane width="1" height="1.5" color="#101827" position="0 -0.16 -0.01"></a-plane>
+          <a-entity class="menu-chrome-slot" data-title="HOTEL" data-help="false" data-close="true" data-width="1" data-bar-y="0.49"></a-entity>
+
+          <a-entity class="pm-target" geometry="primitive: plane; width: 0.78; height: 0.2"
+            material="color: #182238" menu-item="value: toggle-hotel; label: Building" position="0 0.3 0">
+            <a-text class="wm-hotel" value="Building: down" align="center" color="#eee" width="2.4" position="0 0 0.01"></a-text>
+          </a-entity>
+
+          <a-entity class="pm-target" geometry="primitive: plane; width: 0.78; height: 0.2"
+            material="color: #182238" menu-item="value: toggle-edit; label: Edit floor" position="0 0.08 0">
+            <a-text class="wm-edit" value="Edit floor corners" align="center" color="#eee" width="2.4" position="0 0 0.01"></a-text>
+          </a-entity>
+
+          <a-entity class="pm-target" geometry="primitive: plane; width: 0.78; height: 0.2"
+            material="color: #182238" menu-item="value: reset-floor; label: Reset floor" position="0 -0.14 0">
+            <a-text value="Reset floor to detected" align="center" color="#eee" width="2.4" position="0 0 0.01"></a-text>
+          </a-entity>
+
+          <a-entity class="pm-target" geometry="primitive: plane; width: 0.78; height: 0.2"
+            material="color: #182238" menu-item="value: toggle-hand-floor; label: Build on" position="0 -0.36 0">
+            <a-text class="wm-source" value="Build on: my floor" align="center" color="#eee" width="2.4" position="0 0 0.01"></a-text>
+          </a-entity>
+
+          <a-entity class="pm-target" geometry="primitive: plane; width: 0.78; height: 0.2"
+            material="color: #182238" menu-item="value: toggle-readout; label: Readout" position="0 -0.58 0">
+            <a-text class="wm-readout" value="Readout: on" align="center" color="#eee" width="2.4" position="0 0 0.01"></a-text>
+          </a-entity>
+        </a-entity>
+      </a-entity>
+    </template>
+
+    <!--
+      The scene. Three things are load-bearing and easy to undo by
+      accident, so they are spelled out here:
+
+      1. Lighting is ambient plus one *directional* light, and nothing
+         else. Translating a surface does not change how a directional
+         light falls on it, so the hallway looks identical at every
+         height it passes through. A point light anywhere near the shaft
+         would shade its walls differently as it rose, which is the one
+         cue that would give the whole trick away. Shadows are off for
+         the same reason.
+
+      2. The player rig's Y is owned entirely by the `rainbow-hotel`
+         component -- it is the current floor level. Nothing else may
+         write it.
+
+      3. Outside XR, `wasd-controls` moves the *camera* inside the rig,
+         not the rig itself. That is deliberate: it is the same thing
+         headset tracking does when you walk in your real room, so a
+         desktop run exercises the actual code path rather than a
+         stand-in for it.
+    -->
+    <a-scene
+      renderer="colorManagement: true; antialias: true"
+      background="color: #cbdcea"
+    >
+      <a-entity light="type: ambient; color: #ffffff; intensity: 0.68"></a-entity>
+      <a-entity light="type: directional; color: #fff4e2; intensity: 0.6; castShadow: false" position="-2 4 1.5"></a-entity>
+
+      <!--
+        Everything built on the play space lives inside this, and its
+        transform is the play space's own pose, refreshed every frame.
+        So the building is laid out in the headset's play-space
+        coordinates and lands on the real boundary by construction. The
+        player rig is deliberately NOT in here: they move around inside
+        the play space, so their rig stays where tracking puts it.
+      -->
+      <a-entity id="play-space" play-space-anchor>
+        <a-entity id="hotel-root"></a-entity>
+      </a-entity>
+
+      <a-entity id="player-rig" position="0 0 0">
+        <a-camera id="head-camera" wasd-controls="acceleration: 16" look-controls="pointerLockEnabled: true"></a-camera>
+
+        <!--
+          The controllers are here for one job: drawing the floor
+          rectangle by hand, so it can be compared with the one the
+          Guardian read produced. Nothing in the hotel itself reacts to
+          them -- there is still nothing to pick up, pull or open.
+
+          model: false is deliberate. The controller meshes come off a
+          CDN, and this repo is built to run with no network at all; the
+          laser drawn by floor-calibration is the only thing that needs
+          to be visible from inside.
+        -->
+        <a-entity id="left-hand" hand-with-watch="hand: left"></a-entity>
+        <a-entity id="right-hand" oculus-touch-controls="hand: right; model: false">
+          <a-box width="0.035" height="0.035" depth="0.08" material="color: #7fd0ff; shader: flat"></a-box>
+        </a-entity>
+      </a-entity>
+    </a-scene>
+
+    <script type="module">
+      import {
+        TUNABLES,
+        resolveSettings,
+        readStoredSettings,
+      } from './js/hotel-experience.js';
+      import './js/floor-calibration.js';
+      // The wrist watch, its projected menu and the pointing that drives
+      // them, exactly as Pistols at Dawn and the menus showcase use it.
+      import '../../common/watch-menu.js';
+      import { riseProfile } from './js/hotel-layout.js';
+
+      var sceneEl = document.querySelector('a-scene');
+
+      // The components are attached from here rather than as attributes
+      // in the markup above: this is a module, so it runs after the
+      // document has been parsed, and A-Frame would otherwise have
+      // already tried to initialise an attribute whose component did not
+      // exist yet.
+      sceneEl.setAttribute('rainbow-hotel', {
+        rig: '#player-rig',
+        camera: '#head-camera',
+        root: '#hotel-root',
+      });
+      sceneEl.setAttribute('floor-calibration', {
+        rig: '#player-rig',
+        camera: '#head-camera',
+        leftHand: '#left-hand',
+        rightHand: '#right-hand',
+      });
+
+      var settings = resolveSettings(window.location.search, readStoredSettings());
+      var panel = document.querySelector('#panel');
+      var toggle = document.querySelector('#panel-toggle');
+      toggle.addEventListener('click', function () {
+        panel.hidden = !panel.hidden;
+      });
+
+      function hotel () {
+        return sceneEl.components['rainbow-hotel'];
+      }
+
+      function apply (changes) {
+        var component = hotel();
+        if (!component) return;
+        component.applySettings(changes);
+        settings = component.settings;
+      }
+
+      // One slider per tunable, built from the same list the runtime
+      // reads, so there is no second place to keep in step.
+      var container = document.querySelector('#tunables');
+      TUNABLES.forEach(function (tunable) {
+        var field = document.createElement('div');
+        field.className = 'field';
+        var label = document.createElement('label');
+        var name = document.createElement('b');
+        name.textContent = tunable.label;
+        var value = document.createElement('span');
+        label.appendChild(name);
+        label.appendChild(value);
+
+        var input = document.createElement('input');
+        input.type = 'range';
+        input.min = String(tunable.min);
+        input.max = String(tunable.max);
+        input.step = String(tunable.step);
+
+        var hint = document.createElement('small');
+        hint.textContent = tunable.hint || '';
+
+        var show = function (raw) {
+          value.textContent = (tunable.step >= 1 ? Number(raw).toFixed(0) : Number(raw).toFixed(2)) +
+            (tunable.unit ? ' ' + tunable.unit : '');
+        };
+        input.addEventListener('input', function () { show(input.value); });
+        input.addEventListener('change', function () {
+          var changes = {};
+          changes[tunable.key] = Number(input.value);
+          apply(changes);
+        });
+
+        field.appendChild(label);
+        field.appendChild(input);
+        if (tunable.hint) field.appendChild(hint);
+        container.appendChild(field);
+        tunable.input = input;
+        tunable.show = show;
+      });
+
+      var safeX = document.querySelector('#safeX');
+      var safeZ = document.querySelector('#safeZ');
+      var useOverride = document.querySelector('#useOverride');
+      // Editing a size does not, on its own, mean "ignore my Guardian".
+      // It used to, via a saved value, and that silently outranked the
+      // real boundary in a headset for as long as the browser remembered
+      // it. The tick box is the only thing that switches it on now.
+      [safeX, safeZ, useOverride].forEach(function (input) {
+        input.addEventListener('change', function () {
+          apply({
+            safeX: Number(safeX.value),
+            safeZ: Number(safeZ.value),
+            useOverride: useOverride.checked,
+          });
+        });
+      });
+
+      var debug = document.querySelector('#debug');
+      debug.addEventListener('change', function () { apply({ debug: debug.checked }); });
+
+      var showHotel = document.querySelector('#showHotel');
+      showHotel.addEventListener('change', function () { apply({ showHotel: showHotel.checked }); });
+
+      var useHandFloor = document.querySelector('#useHandFloor');
+      useHandFloor.addEventListener('change', function () { apply({ useHandFloor: useHandFloor.checked }); });
+
+      document.querySelector('#reset').addEventListener('click', function () {
+        try { localStorage.removeItem('rainbow-hotel-settings-v1'); } catch (error) { /* fine */ }
+        window.location.search = '';
+      });
+
+      document.querySelector('#copy-link').addEventListener('click', function () {
+        var params = new URLSearchParams();
+        TUNABLES.forEach(function (tunable) { params.set(tunable.key, String(settings[tunable.key])); });
+        if (settings.useOverride) {
+          params.set('useOverride', '1');
+          if (settings.safeX) params.set('safeX', String(settings.safeX));
+          if (settings.safeZ) params.set('safeZ', String(settings.safeZ));
+        }
+        if (settings.debug) params.set('debug', '1');
+        if (settings.showHotel) params.set('showHotel', '1');
+        if (!settings.useHandFloor) params.set('useHandFloor', '0');
+        var url = window.location.origin + window.location.pathname + '?' + params.toString();
+        if (navigator.clipboard) navigator.clipboard.writeText(url);
+        window.history.replaceState(null, '', '?' + params.toString());
+      });
+
+      function syncInputs (component) {
+        settings = component.settings;
+        TUNABLES.forEach(function (tunable) {
+          tunable.input.value = String(settings[tunable.key]);
+          tunable.show(settings[tunable.key]);
+        });
+        safeX.value = component.rect.sizeX.toFixed(2);
+        safeZ.value = component.rect.sizeZ.toFixed(2);
+        useOverride.checked = Boolean(settings.useOverride);
+        debug.checked = Boolean(settings.debug);
+        showHotel.checked = Boolean(settings.showHotel);
+        useHandFloor.checked = Boolean(settings.useHandFloor);
+      }
+
+      // The numbers that answer "is this hallway actually hiding the
+      // transition?". The occlusion margin is the one that matters: it is
+      // the fraction of the walk over which neither doorway can be seen,
+      // measured off the real wall rectangles rather than assumed.
+      var measures = document.querySelector('#measures');
+      var warningList = document.querySelector('#warnings');
+      function describe (plan) {
+        var profile = riseProfile(plan, 0.9);
+        var rows = [
+          ['Play space', plan.safeRect.sizeX.toFixed(2) + ' x ' + plan.safeRect.sizeZ.toFixed(2) + ' m (' + plan.safeRect.source + ')'],
+          ['Each room', plan.runLength.toFixed(2) + ' x ' + plan.roomDepth.toFixed(2) + ' m'],
+          ['Hallway walk', profile.walkLength.toFixed(2) + ' m'],
+          ['Rise happens over', profile.riseDistance.toFixed(2) + ' m of that walk'],
+          ['Occlusion margin', (profile.occlusionMargin * 100).toFixed(1) + '% of the walk'],
+          ['Top floor', (plan.floors[plan.floors.length - 1].floorY).toFixed(1) + ' m up'],
+          ['Gap past each pier', plan.passGap.toFixed(2) + ' m'],
+        ];
+        measures.innerHTML = '';
+        rows.forEach(function (row) {
+          var dt = document.createElement('dt');
+          dt.textContent = row[0];
+          var dd = document.createElement('dd');
+          dd.textContent = row[1];
+          measures.appendChild(dt);
+          measures.appendChild(dd);
+        });
+
+        warningList.innerHTML = '';
+        (plan.warnings || []).forEach(function (warning) {
+          var item = document.createElement('li');
+          item.textContent = warning;
+          warningList.appendChild(item);
+        });
+      }
+
+      // --- the wrist menu ------------------------------------------------
+      // Same settings as the panel above, reachable from inside a headset.
+      // Everything goes through apply(), so the two surfaces cannot drift
+      // out of step -- whichever you touch, the other shows it.
+      function calibration () {
+        return sceneEl.components['floor-calibration'];
+      }
+
+      function syncMenuLabels () {
+        var cal = calibration();
+        var rows = [
+          ['.wm-hotel', 'Building: ' + (settings.showHotel ? 'up' : 'down')],
+          ['.wm-edit', cal && cal.editing ? 'Done editing floor' : 'Edit floor corners'],
+          ['.wm-source', 'Build on: ' + (settings.useHandFloor ? 'my floor' : 'detected')],
+          ['.wm-readout', 'Readout: ' + (settings.debug ? 'on' : 'off')],
+        ];
+        rows.forEach(function (row) {
+          // The template is cloned into the live panel, so there can be
+          // more than one of these once a menu has been opened.
+          sceneEl.querySelectorAll(row[0]).forEach(function (el) {
+            el.setAttribute('text', 'value', row[1]);
+          });
+        });
+      }
+
+      sceneEl.addEventListener('menu-item-select', function (event) {
+        var value = event.detail && event.detail.value;
+        var cal = calibration();
+        if (value === 'toggle-hotel') apply({ showHotel: !settings.showHotel });
+        else if (value === 'toggle-hand-floor') apply({ useHandFloor: !settings.useHandFloor });
+        else if (value === 'toggle-readout') apply({ debug: !settings.debug });
+        else if (value === 'toggle-edit' && cal) cal.setEditing(!cal.editing);
+        else if (value === 'reset-floor' && cal) cal.resetToAutomatic();
+        else return;
+        syncMenuLabels();
+      });
+
+      sceneEl.addEventListener('floor-calibration-mode', syncMenuLabels);
+
+      sceneEl.addEventListener('hotel-rebuilt', function (event) {
+        var component = hotel();
+        if (component) syncInputs(component);
+        describe(event.detail.plan);
+        syncMenuLabels();
+      });
+    </script>
+  </body>
+</html>

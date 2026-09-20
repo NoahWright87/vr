@@ -492,6 +492,79 @@ The knock-on: what a pistol IS had to move out of markup and into a
 maker function so a rack could build one, and once it had, three props
 in markup became one prop and three sockets.
 
+## Impossible spaces, and the one rule that makes them safe
+
+The Rainbow Hotel (`games/rainbow-hotel/`) is a different kind of
+prototype from the rest of this repo: not a sandbox of systems that
+combine, but a single claim being tested to destruction. Six rooms are
+stacked at the same floor-plan position inside one Guardian rectangle,
+and one hallway slides up and down a reserved strip along one edge of
+it. Walk the hallway and you come out a floor higher.
+
+The interesting part is not the trick — that's an old one — but what it
+takes to know the trick is holding. The player never sees the hallway
+move, because the hallway moves with them: their rig and the hallway
+take the same Y every frame, from one number. What they *could* see is a
+doorway that has drifted out of line with the room behind it. So the
+whole design reduces to one invariant:
+
+> **The hallway may only rise where neither of its doorways can be seen.**
+
+Which is a thing you can compute, so it is computed rather than
+eyeballed. A grid is walked over the hallway's floor, and every
+reachable spot is asked how far along the walk it is and whether either
+doorway is visible from it, by segment-versus-rectangle tests against
+the real wall geometry. The rise is confined to the gap between the last
+sighting of one doorway and the first sighting of the other. When that
+gap doesn't exist the plan says so instead of shipping, and the settings
+panel explains which knob caused it.
+
+Three things fell out of measuring rather than drawing, and all three
+were wrong in the first version:
+
+- **One pier at a doorway does nothing useful.** A single fin extending
+  the jamb into the run casts a partial shadow; the far edge of the
+  doorway stays visible from most of a short run, and there is no safe
+  stretch left at all. A *pair* — the jamb fin plus one standing off it
+  from the opposite wall — is unpassable by a sightline and passable by
+  a person, because a person isn't a straight line. That asymmetry is
+  the entire mechanism, and it is cheap: it costs the width of the gap
+  you walk through, not the depth of a real dog-leg, which matters when
+  the whole building has to fit in a 3m square.
+- **Progress has to be a geodesic.** Projecting a position onto the
+  hallway's centreline puts the alcove beside a doorway — one step from
+  it — in the middle of the walk. The rise is a function of this number,
+  so that is not a rounding error, it is the hallway half a floor up
+  while the player can still see through the doorway. Dijkstra out from
+  the first doorway, around the piers, sampled bilinearly.
+- **A dial that doesn't move the numbers isn't a dial.** "More turns"
+  first shipped as extra piers whose gaps overlapped enough that a
+  straight line still threaded them: the walked distance didn't change,
+  the occlusion didn't change, the knob did nothing. Sized so
+  consecutive gaps don't overlap, both numbers move.
+
+The rendering rule that goes with it: **nothing may light or texture the
+hallway in a way that changes as it moves.** A directional light is
+fine, because translating a surface doesn't alter how one falls on it. A
+point light near the shaft is not, and neither is a shadow, a
+reflection, or a world-space projection. The hallway's own lighting is
+an emissive panel. There is a test that fails if a point light ever
+appears in that scene, because this is exactly the sort of thing
+someone adds later for atmosphere without knowing it was load-bearing.
+
+And the inverse, which is more useful than it sounds: everything *on*
+the hallway is free to be as detailed as you like, because it moves with
+the player and therefore cannot betray anything. The hallway got
+pilasters at a regular spacing for precisely this reason — not
+decoration, but optical flow. A corridor of flat grey walls gives the
+eye nothing to measure its own motion against, and "I walked up to the
+next floor" needs the walking to register first.
+
+What the prototype cannot answer from a terminal: whether a rise that
+completes over 0.76m of walking reads as a walk or as a snap, and
+whether anyone feels ill. The geometry guarantees nobody can *see* it;
+that is not the same as nobody noticing it.
+
 ## Rules learned the hard way
 
 **Never move the camera.** A view that drifts, rolls or sways

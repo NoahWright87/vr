@@ -213,3 +213,88 @@ yet:
   restructuring anything.
 - **Player names.** The roster only has peerId + color right now —
   there's no name entry or display anywhere.
+
+## The Rainbow Hotel (impossible spaces POC)
+
+Built to answer one question — does a small physical room convincingly
+disguise itself as a multi-floor building — and deliberately stopped
+there. Everything below was considered and put off on purpose, not
+missed. See README.md's "The Rainbow Hotel: how it works" and DESIGN.md's
+"Impossible spaces" section for how the built part works.
+
+**The building is currently switched off** (`showHotel`, off by default,
+tick box in the settings panel). It is not broken and nothing has been
+removed — the plan is still computed on every rebuild, and ticking the
+box puts the whole thing back up. It is off because the first two
+headset sessions both came back with "the hotel is not aligned with my
+boundary, not even close", and while the walls are standing they hide
+the only thing worth looking at: the floor rectangle on the ground next
+to the boundary it is supposed to fit inside. See "Fitting the floor to
+a real Guardian" in README.md for the calibration mode that replaced it.
+Two things to do once the floor is confirmed:
+
+- **Turn the building back on by default** — flip `showHotel` in
+  `resolveSettings` and drop the "currently down" wording from the
+  page's overlay, the settings panel note and README.
+- **Decide whether the hand-drawn floor stays.** It currently outranks
+  the boundary read (`useHandFloor`, on by default) because it is the
+  only rectangle anyone has confirmed from inside the room. If the read
+  turns out to be trustworthy once the staleness fixes have had a
+  headset session, this becomes a debugging tool rather than the
+  default, and the priority in `chooseRect` should flip back. If it
+  doesn't, this is the shipping answer and it needs a first-run prompt
+  rather than a face button nobody would guess at.
+- **`fitSafeRect` is the wrong fit for a hand-drawn quad.** It maximises
+  a rectangle about a fixed centre, so a quad dragged 45cm out of square
+  loses more than it should (a 3.24/2.18/3.69/2.64 quad fitted back to
+  2.76 x 1.91). Fine for a Guardian polygon, wasteful here. Either slide
+  the centre as well, or square the quad up first and fit that.
+- **The hallway is being redesigned anyway.** Feedback from the first
+  session was that it is "ridiculously cramped" and not the layout that
+  was asked for. Deliberately not touched since: there is no point
+  tuning a corridor inside a building that is standing in the wrong
+  place. The comfort-versus-concealment search in `planHotel` is what
+  currently decides its width, and it will need revisiting with whatever
+  the new layout turns out to be.
+
+- **The hallway's depth comes out of every room's depth, and nothing in
+  the current design avoids that.** At a 2.4m Guardian the rooms end up
+  1.2m deep. The idea that would break the tie: give each doorway a
+  *local* recess that pokes south into the room's plan — a doorway-wide,
+  full-height slot in the shared wall — so the doorway sits deeper
+  without the whole strip getting wider. Deeper recesses measured as the
+  single biggest win for the occlusion margin, so this is worth real
+  effort if the rooms feel cramped in a headset. The catch is that the
+  slot is open at every height, so the hallway would have to carry
+  blanking panels above and below its own opening to fill it as it
+  passes; that's a moving-parts change, not a parameter change.
+- **No collision, anywhere.** The piers and walls are virtual only, so a
+  player who walks through one can stand somewhere the occlusion
+  analysis never considered and catch a misaligned doorway. Deliberate:
+  pushing a real body back is worse than letting them cheat. If it turns
+  out to matter, the cheap fix is a comfort fade when the head is inside
+  solid geometry, not a physics response.
+- **`fitSafeRect` is centre-anchored.** It grows a rectangle about the
+  boundary's centroid, so a U-shaped Guardian (a pillar in the middle of
+  the room) yields a small rectangle rather than a large off-centre one.
+  It refuses rather than guessing, which is the right failure, but
+  sliding the rectangle to find a bigger fit is a fair improvement and
+  the tests already document the limitation.
+- **No audio.** Footsteps in the hallway would do the same job the
+  pilasters do — telling you that you are walking — and reverb changing
+  between a small room and a corridor is most of what sells an interior.
+  Left out because the POC is about vision and vestibular comfort, and
+  adding audio before knowing whether the visual trick holds would make
+  it harder to tell which one was doing the work.
+- **The alternate hallway layout from the spec** (doorway in the centre
+  of one wall, sharp turn, run to the edge, turn, run along it, turn,
+  arrive at the centre of the opposite wall) is approximated by the
+  "extra turns" dial rather than built as its own shape. The dial gets
+  the *effect* — more turns, longer walk, bigger safe stretch — within
+  one reusable piece. A genuinely different door placement is a
+  `doorSpread` of less than 1 plus a layout function; nobody has needed
+  it yet.
+- **Six floors is hardcoded to six colours.** `ROOMS` in
+  `hotel-layout.js` is the whole list and everything else counts off it,
+  so a seventh floor is one entry — but the exterior's height bands were
+  chosen against a six-floor building and would want revisiting.
