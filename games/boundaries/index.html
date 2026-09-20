@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Boundary Lab — WebXR Prototype</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <!-- Keep A-Frame and its controller-hand assets local, as in the
+         project’s other WebXR experiences. -->
+    <script>window.AFRAME_CDN_ROOT = '../../vendor/aframe-1.6.0/';</script>
+    <script src="../../vendor/aframe-1.6.0/aframe-v1.6.0.min.js"></script>
+    <script type="module" src="../../common/watch-menu.js"></script>
+    <script type="module" src="../../common/locomotion.js"></script>
+    <script type="module" src="../../common/desktop-controls.js"></script>
+
+    <style>
+      body {
+        margin: 0;
+        font-family: system-ui, sans-serif;
+      }
+      #overlay {
+        position: absolute;
+        inset: 0 auto auto 0;
+        right: 0;
+        z-index: 1;
+        display: flex;
+        justify-content: space-between;
+        gap: 1rem;
+        padding: 0.75rem 1rem;
+        background: rgba(4, 10, 22, 0.72);
+        color: #f4f8ff;
+        font-size: 0.9rem;
+      }
+      #overlay a { color: #9ad; }
+    </style>
+  </head>
+  <body>
+    <div id="overlay">
+      <span>
+        Boundary Lab — use the wrist watch for the experience menu. Desktop:
+        WASD/mouse; press Tab to open the watch.
+      </span>
+      <a href="../../index.html">All prototypes</a>
+    </div>
+
+    <!-- The shared watch component projects this template from either wrist. -->
+    <template id="watch-menu-template">
+      <a-entity class="watch-menu-panel" visible="false">
+        <a-entity data-menu-page="main">
+          <a-plane width="1" height="1.34" color="#101827" position="0 -0.07 -0.01"></a-plane>
+          <a-entity class="menu-chrome-slot" data-title="BOUNDARY LAB" data-help="false" data-close="true" data-width="1" data-bar-y="0.52"></a-entity>
+          <a-text value="HEADSET BOUNDARY" align="center" color="#7dd3fc" width="1.7" position="0 0.28 0.01"></a-text>
+          <a-text class="boundary-status" value="Enter VR to detect" align="center" color="#f8fafc" width="1.55" position="0 0.08 0.01"></a-text>
+          <a-text class="boundary-detail" value="The cyan ground outline will match\nthe headset's reported play space." align="center" color="#aab8d2" width="1.25" position="0 -0.2 0.01"></a-text>
+          <a-text value="Always obey your headset's safety system." align="center" color="#7182a1" width="0.85" position="0 -0.48 0.01"></a-text>
+        </a-entity>
+      </a-entity>
+    </template>
+
+    <script>
+      // The floor texture is the same lightweight, canvas-generated checker
+      // pattern used by the other room-scale experiences. Its fixed squares
+      // make physical walking legible without an external image asset.
+      function applyCheckerTexture(el, colorA, colorB, repeatX, repeatY) {
+        var canvas = document.createElement('canvas');
+        canvas.width = canvas.height = 64;
+        var context = canvas.getContext('2d');
+        context.fillStyle = colorA;
+        context.fillRect(0, 0, 64, 64);
+        context.fillStyle = colorB;
+        context.fillRect(0, 0, 32, 32);
+        context.fillRect(32, 32, 32, 32);
+
+        var texture = new AFRAME.THREE.CanvasTexture(canvas);
+        texture.wrapS = texture.wrapT = AFRAME.THREE.RepeatWrapping;
+        texture.repeat.set(repeatX, repeatY);
+
+        function apply() {
+          var mesh = el.getObject3D('mesh');
+          if (!mesh || !mesh.material) return;
+          mesh.material.map = texture;
+          mesh.material.needsUpdate = true;
+        }
+        if (el.getObject3D('mesh')) apply();
+        else el.addEventListener('loaded', apply, { once: true });
+      }
+
+      // WebXR exposes a real room-scale boundary through a bounded-floor
+      // reference space. The points are measured in metres at y=0, relative
+      // to that space's origin. We transform them into A-Frame's active
+      // reference space each XR frame, then render an exact ground outline.
+      // The API may return an irregular polygon, so a made-up rectangle would
+      // be less useful for checking alignment with the physical guardian.
+      AFRAME.registerComponent('headset-boundary', {
+        init: function () {
+          var THREE = AFRAME.THREE;
+          this.session = null;
+          this.boundedSpace = null;
+          this.pending = false;
+          this.status = 'Enter VR to detect';
+          this.detail = 'The cyan ground outline will match\nthe headset\'s reported play space.';
+          this.matrix = new THREE.Matrix4();
+          this.point = new THREE.Vector3();
+          this.lastMatrix = null;
+          this.geometry = new THREE.BufferGeometry();
+          this.cornerGeometry = new THREE.BufferGeometry();
+          this.outline = new THREE.LineLoop(
+            this.geometry,
+            new THREE.LineBasicMaterial({ color: '#22d3ee', transparent: true, opacity: 0.95, depthTest: false })
+          );
+          this.corners = new THREE.Points(
+            this.cornerGeometry,
+            new THREE.PointsMaterial({ color: '#f8fafc', size: 0.055, sizeAttenuation: true, depthTest: false })
+          );
+          this.outline.renderOrder = this.corners.renderOrder = 1;
+          this.outline.visible = this.corners.visible = false;
+          // Do not parent the detected outline to #boundary-rig: smooth or
+          // teleport locomotion moves that rig, while boundsGeometry is in
+          // the XR reference space. Keeping the visual at the scene root
+          // makes it stay fixed to the real room as the player moves.
+          this.renderRoot = this.el.sceneEl.object3D;
+          this.renderRoot.add(this.outline);
+          this.renderRoot.add(this.corners);
+
+          this.onEnterVR = this.start.bind(this);
+          this.onExitVR = this.stop.bind(this);
+          this.onWatchReady = this.renderStatus.bind(this);
+          this.el.sceneEl.addEventListener('enter-vr', this.onEnterVR);
+          this.el.sceneEl.addEventListener('exit-vr', this.onExitVR);
+          this.el.sceneEl.addEventListener('watch-menu-ready', this.onWatchReady);
+          this.el.sceneEl.addEventListener('loaded', function () {
+            applyCheckerTexture(document.querySelector('#boundary-floor'), '#263550', '#1c2940', 15, 15);
+          });
+        },
+
+        setStatus: function (status, detail) {
+          this.status = status;
+          this.detail = detail;
+          this.renderStatus();
+        },
+
+        renderStatus: function () {
+          var status = this.status;
+          var detail = this.detail;
+          document.querySelectorAll('.boundary-status').forEach(function (el) {
+            el.setAttribute('text', 'value', status);
+          });
+          document.querySelectorAll('.boundary-detail').forEach(function (el) {
+            el.setAttribute('text', 'value', detail);
+          });
+        },
+
+        start: function () {
+          var renderer = this.el.sceneEl.renderer;
+          var session = renderer && renderer.xr && renderer.xr.getSession && renderer.xr.getSession();
+          if (!session || this.pending || this.session === session) return;
+          this.pending = true;
+          this.session = session;
+          this.setStatus('Requesting headset boundary…', 'Reading the room-scale play space\nfrom this XR session.');
+
+          var self = this;
+          session.requestReferenceSpace('bounded-floor').then(function (space) {
+            if (self.session !== session) return;
+            self.pending = false;
+            self.boundedSpace = space;
+            space.addEventListener('reset', function () { self.lastMatrix = null; });
+            if (!space.boundsGeometry || space.boundsGeometry.length < 3) {
+              self.setStatus('No boundary geometry supplied', 'This headset/browser supports XR,\nbut did not expose a play-space outline.');
+              return;
+            }
+            self.setStatus('Boundary detected', 'Align the cyan outline with your\nheadset safety boundary.');
+            session.requestAnimationFrame(function onXRFrame(time, frame) {
+              if (self.session !== session) return;
+              self.updateFromFrame(frame);
+              session.requestAnimationFrame(onXRFrame);
+            });
+          }).catch(function () {
+            if (self.session !== session) return;
+            self.pending = false;
+            self.setStatus('Boundary unavailable', 'This headset or browser does not\nprovide bounded-floor play-space data.');
+          });
+        },
+
+        stop: function () {
+          this.session = null;
+          this.boundedSpace = null;
+          this.pending = false;
+          this.lastMatrix = null;
+          this.outline.visible = this.corners.visible = false;
+          this.setStatus('Enter VR to detect', 'The cyan outline appears only when\na headset supplies boundary data.');
+        },
+
+        updateFromFrame: function (frame) {
+          var renderer = this.el.sceneEl.renderer;
+          var baseSpace = renderer && renderer.xr && renderer.xr.getReferenceSpace && renderer.xr.getReferenceSpace();
+          if (!baseSpace || !this.boundedSpace) return;
+          var pose = frame.getPose(this.boundedSpace, baseSpace);
+          if (!pose) return;
+
+          this.matrix.fromArray(pose.transform.matrix);
+          var elements = this.matrix.elements;
+          if (this.lastMatrix && elements.every(function (value, index) {
+            return Math.abs(value - this.lastMatrix[index]) < 0.0001;
+          }, this)) return;
+          this.lastMatrix = elements.slice();
+
+          var bounds = this.boundedSpace.boundsGeometry;
+          var positions = new Float32Array(bounds.length * 3);
+          var minX = Infinity;
+          var maxX = -Infinity;
+          var minZ = Infinity;
+          var maxZ = -Infinity;
+          for (var i = 0; i < bounds.length; i++) {
+            var bound = bounds[i];
+            minX = Math.min(minX, bound.x);
+            maxX = Math.max(maxX, bound.x);
+            minZ = Math.min(minZ, bound.z);
+            maxZ = Math.max(maxZ, bound.z);
+            this.point.set(bound.x, bound.y + 0.028, bound.z).applyMatrix4(this.matrix);
+            positions[i * 3] = this.point.x;
+            positions[i * 3 + 1] = this.point.y;
+            positions[i * 3 + 2] = this.point.z;
+          }
+          this.geometry.setAttribute('position', new AFRAME.THREE.Float32BufferAttribute(positions, 3));
+          this.cornerGeometry.setAttribute('position', new AFRAME.THREE.Float32BufferAttribute(positions, 3));
+          this.geometry.computeBoundingSphere();
+          this.cornerGeometry.computeBoundingSphere();
+          this.outline.visible = this.corners.visible = true;
+          this.setStatus(
+            'Boundary detected · ' + bounds.length + ' corners',
+            (maxX - minX).toFixed(1) + ' × ' + (maxZ - minZ).toFixed(1) + ' m play-space bounds\nCyan line = exact detected outline.'
+          );
+        },
+
+        remove: function () {
+          this.el.sceneEl.removeEventListener('enter-vr', this.onEnterVR);
+          this.el.sceneEl.removeEventListener('exit-vr', this.onExitVR);
+          this.el.sceneEl.removeEventListener('watch-menu-ready', this.onWatchReady);
+          this.renderRoot.remove(this.outline);
+          this.renderRoot.remove(this.corners);
+          this.geometry.dispose();
+          this.cornerGeometry.dispose();
+          this.outline.material.dispose();
+          this.corners.material.dispose();
+        },
+      });
+    </script>
+
+    <a-scene background="color: #08101f">
+      <a-plane id="boundary-floor" rotation="-90 0 0" width="30" height="30" color="#263550"></a-plane>
+      <a-sky color="#08101f"></a-sky>
+
+      <!-- One rig keeps headset, controllers, and desktop fallback transforms
+           together. The two visual hand entities mirror the controller poses
+           in XR; semantic-hand supplies the equivalent desktop hands. -->
+      <a-entity
+        id="boundary-rig"
+        headset-boundary
+        locomotion-demo="speed: 1.5"
+        semantic-look-controls="camera: #boundary-camera"
+        gamepad-input="leftHand: #left-hand; rightHand: #right-hand"
+        touch-controls="leftHand: #left-hand; rightHand: #right-hand; primaryAction: none; interactAction: none; grabAction: none; watchAction: watch; watchLabel: WATCH; crouchAction: crouch"
+        desktop-controls="camera: #boundary-camera; leftHand: #left-hand; rightHand: #right-hand"
+      >
+        <a-camera id="boundary-camera" wasd-controls="enabled: false" look-controls="pointerLockEnabled: true">
+          <a-text
+            class="boundary-status"
+            value="Enter VR to detect boundary"
+            align="center"
+            color="#e0f2fe"
+            width="1.7"
+            position="0 0.25 -2.2"
+          ></a-text>
+          <a-text
+            class="boundary-detail"
+            value="A checkerboard floor makes physical movement readable."
+            align="center"
+            color="#aab8d2"
+            width="1.2"
+            position="0 0.03 -2.2"
+          ></a-text>
+        </a-camera>
+
+        <!-- Attribute order is intentional: hand-with-watch creates the
+             corrected hand space before semantic-hand adds its desktop model. -->
+        <a-entity id="left-hand" class="hand" hand-with-watch="hand: left" semantic-hand="hand: left; maxReach: 1"></a-entity>
+        <a-entity id="left-hand-visual" hand-controls="hand: left; handModelStyle: lowPoly; color: #3a3a3a"></a-entity>
+
+        <a-entity id="right-hand" class="hand" hand-with-watch="hand: right" semantic-hand="hand: right; maxReach: 1"></a-entity>
+        <a-entity id="right-hand-visual" hand-controls="hand: right; handModelStyle: lowPoly; color: #3a3a3a"></a-entity>
+      </a-entity>
+    </a-scene>
+  </body>
+</html>
