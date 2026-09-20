@@ -252,18 +252,25 @@ if (typeof AFRAME !== 'undefined') {
       this.buildPointers();
 
       var self = this;
+      // Keyboard equivalents for a flat-screen run; in a headset these
+      // two live on the wrist menu.
       var onFace = function () { self.setEditing(!self.editing); };
       var onGripDown = function (event) { self.grab(event.target); };
       var onGripUp = function () { self.release(); };
       var onTrigger = function () { if (self.editing) self.resetToAutomatic(); };
 
+      // Grip only.
+      //
+      // Editing used to start on any face button and reset on the
+      // trigger, which was fine while this was the only thing in the
+      // scene listening. It isn't any more: the wrist menu activates
+      // its rows with exactly those buttons, so a trigger pull aimed at
+      // a menu row would also throw away the floor behind it. Starting
+      // and resetting an edit are menu rows now; the grip drag stays on
+      // the controller because that is the gesture itself.
       this.hands.forEach(function (hand) {
-        ['abuttondown', 'bbuttondown', 'xbuttondown', 'ybuttondown'].forEach(function (name) {
-          hand.addEventListener(name, onFace);
-        });
         hand.addEventListener('gripdown', onGripDown);
         hand.addEventListener('gripup', onGripUp);
-        hand.addEventListener('triggerdown', onTrigger);
       });
 
       // Keyboard equivalents, so the whole flow can be exercised without

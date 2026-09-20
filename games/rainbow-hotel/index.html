@@ -188,6 +188,51 @@
     </section>
 
     <!--
+      Every control that matters, on the wrist.
+
+      The settings panel above this is a flat HTML page, which is
+      unreachable the moment you press Enter VR -- so referring someone
+      in a headset to a tick box there is referring them to something
+      they cannot see or touch. This is the same `hand-with-watch`
+      primitive Pistols at Dawn and the menus showcase use: raise the
+      watch to open it, point and pull the trigger to choose. Labels are
+      kept in step with the settings by syncMenuLabels() below.
+    -->
+    <template id="watch-menu-template">
+      <a-entity class="watch-menu-panel" visible="false">
+        <a-entity data-menu-page="main">
+          <a-plane width="1" height="1.5" color="#101827" position="0 -0.16 -0.01"></a-plane>
+          <a-entity class="menu-chrome-slot" data-title="HOTEL" data-help="false" data-close="true" data-width="1" data-bar-y="0.49"></a-entity>
+
+          <a-entity class="pm-target" geometry="primitive: plane; width: 0.78; height: 0.2"
+            material="color: #182238" menu-item="value: toggle-hotel; label: Building" position="0 0.3 0">
+            <a-text class="wm-hotel" value="Building: down" align="center" color="#eee" width="2.4" position="0 0 0.01"></a-text>
+          </a-entity>
+
+          <a-entity class="pm-target" geometry="primitive: plane; width: 0.78; height: 0.2"
+            material="color: #182238" menu-item="value: toggle-edit; label: Edit floor" position="0 0.08 0">
+            <a-text class="wm-edit" value="Edit floor corners" align="center" color="#eee" width="2.4" position="0 0 0.01"></a-text>
+          </a-entity>
+
+          <a-entity class="pm-target" geometry="primitive: plane; width: 0.78; height: 0.2"
+            material="color: #182238" menu-item="value: reset-floor; label: Reset floor" position="0 -0.14 0">
+            <a-text value="Reset floor to detected" align="center" color="#eee" width="2.4" position="0 0 0.01"></a-text>
+          </a-entity>
+
+          <a-entity class="pm-target" geometry="primitive: plane; width: 0.78; height: 0.2"
+            material="color: #182238" menu-item="value: toggle-hand-floor; label: Build on" position="0 -0.36 0">
+            <a-text class="wm-source" value="Build on: my floor" align="center" color="#eee" width="2.4" position="0 0 0.01"></a-text>
+          </a-entity>
+
+          <a-entity class="pm-target" geometry="primitive: plane; width: 0.78; height: 0.2"
+            material="color: #182238" menu-item="value: toggle-readout; label: Readout" position="0 -0.58 0">
+            <a-text class="wm-readout" value="Readout: on" align="center" color="#eee" width="2.4" position="0 0 0.01"></a-text>
+          </a-entity>
+        </a-entity>
+      </a-entity>
+    </template>
+
+    <!--
       The scene. Three things are load-bearing and easy to undo by
       accident, so they are spelled out here:
 
@@ -242,9 +287,7 @@
           laser drawn by floor-calibration is the only thing that needs
           to be visible from inside.
         -->
-        <a-entity id="left-hand" oculus-touch-controls="hand: left; model: false">
-          <a-box width="0.035" height="0.035" depth="0.08" material="color: #7fd0ff; shader: flat"></a-box>
-        </a-entity>
+        <a-entity id="left-hand" hand-with-watch="hand: left"></a-entity>
         <a-entity id="right-hand" oculus-touch-controls="hand: right; model: false">
           <a-box width="0.035" height="0.035" depth="0.08" material="color: #7fd0ff; shader: flat"></a-box>
         </a-entity>
@@ -258,6 +301,9 @@
         readStoredSettings,
       } from './js/hotel-experience.js';
       import './js/floor-calibration.js';
+      // The wrist watch, its projected menu and the pointing that drives
+      // them, exactly as Pistols at Dawn and the menus showcase use it.
+      import '../../common/watch-menu.js';
       import { riseProfile } from './js/hotel-layout.js';
 
       var sceneEl = document.querySelector('a-scene');
@@ -434,10 +480,50 @@
         });
       }
 
+      // --- the wrist menu ------------------------------------------------
+      // Same settings as the panel above, reachable from inside a headset.
+      // Everything goes through apply(), so the two surfaces cannot drift
+      // out of step -- whichever you touch, the other shows it.
+      function calibration () {
+        return sceneEl.components['floor-calibration'];
+      }
+
+      function syncMenuLabels () {
+        var cal = calibration();
+        var rows = [
+          ['.wm-hotel', 'Building: ' + (settings.showHotel ? 'up' : 'down')],
+          ['.wm-edit', cal && cal.editing ? 'Done editing floor' : 'Edit floor corners'],
+          ['.wm-source', 'Build on: ' + (settings.useHandFloor ? 'my floor' : 'detected')],
+          ['.wm-readout', 'Readout: ' + (settings.debug ? 'on' : 'off')],
+        ];
+        rows.forEach(function (row) {
+          // The template is cloned into the live panel, so there can be
+          // more than one of these once a menu has been opened.
+          sceneEl.querySelectorAll(row[0]).forEach(function (el) {
+            el.setAttribute('text', 'value', row[1]);
+          });
+        });
+      }
+
+      sceneEl.addEventListener('menu-item-select', function (event) {
+        var value = event.detail && event.detail.value;
+        var cal = calibration();
+        if (value === 'toggle-hotel') apply({ showHotel: !settings.showHotel });
+        else if (value === 'toggle-hand-floor') apply({ useHandFloor: !settings.useHandFloor });
+        else if (value === 'toggle-readout') apply({ debug: !settings.debug });
+        else if (value === 'toggle-edit' && cal) cal.setEditing(!cal.editing);
+        else if (value === 'reset-floor' && cal) cal.resetToAutomatic();
+        else return;
+        syncMenuLabels();
+      });
+
+      sceneEl.addEventListener('floor-calibration-mode', syncMenuLabels);
+
       sceneEl.addEventListener('hotel-rebuilt', function (event) {
         var component = hotel();
         if (component) syncInputs(component);
         describe(event.detail.plan);
+        syncMenuLabels();
       });
     </script>
   </body>

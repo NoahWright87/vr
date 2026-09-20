@@ -88,14 +88,32 @@ test('the POC really does stop at walking: no interactions are wired up', () => 
   for (const absent of ['hand-controls', 'laser-controls', 'raycaster', 'cursor', 'grab']) {
     assert.doesNotMatch(scene, new RegExp(absent), `${absent} should not be in the scene`);
   }
-  // Controllers are the one exception, and only for drawing the floor
-  // rectangle by hand -- the measurement that says whether the Guardian
-  // read can be trusted. Nothing in the hotel reacts to them, so the
-  // spec's "no interactions" still holds where it was aimed.
-  assert.match(scene, /oculus-touch-controls="hand: left; model: false"/);
+  // Controllers are the one exception, and only for the setup tools:
+  // drawing the floor rectangle by hand, and the wrist menu that drives
+  // it. Nothing in the hotel itself reacts to them, so the spec's "no
+  // interactions" still holds where it was aimed.
+  assert.match(scene, /hand-with-watch="hand: left"/);
   assert.match(scene, /oculus-touch-controls="hand: right; model: false"/);
   assert.doesNotMatch(scene, /oculus-touch-controls="[^"]*model: true/);
   assert.match(page, /setAttribute\('floor-calibration'/);
+});
+
+test('every setting is reachable from inside the headset, on the wrist', () => {
+  // The HTML panel is unreachable the moment you press Enter VR, so
+  // pointing someone in a headset at a tick box there is pointing them
+  // at something they can neither see nor touch. This is the same
+  // `hand-with-watch` primitive two other prototypes already use, not a
+  // third hand-rolled menu.
+  assert.match(page, /import '\.\.\/\.\.\/common\/watch-menu\.js'/);
+  assert.match(page, /<template id="watch-menu-template">/);
+  for (const value of ['toggle-hotel', 'toggle-edit', 'reset-floor', 'toggle-hand-floor', 'toggle-readout']) {
+    assert.match(page, new RegExp(`menu-item="value: ${value};`), `${value} should be a menu row`);
+  }
+  // Both surfaces go through apply(), so touching one updates the other
+  // rather than the two drifting apart.
+  assert.match(page, /addEventListener\('menu-item-select'/);
+  assert.match(page, /function syncMenuLabels/);
+  assert.match(page, /apply\(\{ showHotel: !settings\.showHotel \}\)/);
 });
 
 test('the building is down until the floor has been fitted to a real Guardian', () => {
@@ -117,9 +135,17 @@ test('the building is down until the floor has been fitted to a real Guardian', 
 
 test('the floor rectangle can be redrawn by hand, from inside the headset', () => {
   const calibration = readFileSync(new URL('../games/rainbow-hotel/js/floor-calibration.js', import.meta.url), 'utf8');
-  // Face button toggles, laser aims, hover swells the handle, grip drags.
-  for (const event of ['abuttondown', 'bbuttondown', 'xbuttondown', 'ybuttondown', 'gripdown', 'gripup']) {
+  // The laser aims, hover swells the handle, and grip drags it.
+  for (const event of ['gripdown', 'gripup']) {
     assert.match(calibration, new RegExp(event), `${event} should be handled`);
+  }
+  // Grip and nothing else. Starting an edit and resetting the floor used
+  // to sit on the face buttons and the trigger, which are exactly what
+  // the wrist menu activates its rows with -- so a trigger pull aimed at
+  // a menu row would also throw away the floor behind it.
+  for (const taken of ['abuttondown', 'bbuttondown', 'xbuttondown', 'ybuttondown', 'triggerdown']) {
+    assert.doesNotMatch(calibration, new RegExp(`addEventListener\\('${taken}'`),
+      `${taken} belongs to the menu now`);
   }
   assert.match(calibration, /hoverRadius/);
   assert.match(calibration, /handleRadius/);
