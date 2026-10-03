@@ -41,7 +41,7 @@ See **[DESIGN.md](DESIGN.md)** for the design philosophy these prototypes are bu
 ## Prototypes
 
 - **[Cube Pop](games/cube-pop/index.html)** — point a Quest controller at a floating cube and pull the trigger to pop it. Counter tracks progress; popping all cubes shows a win state with an in-VR reset button. Also has a gaze-reticle fallback so you can validate it from a phone or desktop browser without a headset — see below.
-- **[Haptics Lab](games/haptics-lab/index.html)** — a clean Quest controller vibration diagnostic. Its shared wrist-watch menu can pulse either controller at 20%, 60%, or 100% and reports whether the browser accepted the haptics request.
+- **[Boundary Lab](games/boundaries/index.html)** — reads the headset-reported play-space boundary, includes left/right haptics tests at 20%, 60%, or 100%, and has a shared grab cube that gives each controller a short reach cue when Grip can grab it.
 - **[Punch Pop](games/punch-pop/index.html)** — punch-to-move locomotion POC. There are no laser pointers here; you move by physically throwing punches, and you pop cubes by hitting them with a fist that's moving fast enough. See below for how it works and how to tune it.
 
 ### Punch Pop: how it works

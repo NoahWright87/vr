@@ -53,3 +53,13 @@ test('reports unavailable and rejected hardware requests without throwing', asyn
     hapticActuators: [{ pulse() { return Promise.resolve(false); } }],
   }), 0.6, 250), { status: 'rejected', api: 'haptic-actuator' });
 });
+
+test('the shared reach cue is configured as a sub-100ms edge-triggered pulse', async () => {
+  const source = await import('node:fs/promises').then(({ readFile }) =>
+    readFile(new URL('../common/haptics.js', import.meta.url), 'utf8')
+  );
+  assert.match(source, /registerComponent\('grabbable-proximity-haptics'/);
+  assert.match(source, /duration: \{ default: 45 \}/);
+  assert.match(source, /if \(inRange && !this\.wasInRange\)/);
+  assert.match(source, /zone\.data\.radius/);
+});

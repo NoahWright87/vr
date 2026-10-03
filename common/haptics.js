@@ -76,3 +76,71 @@ export function pulseHaptics(handEl, intensity, durationMs) {
     return Promise.resolve({ status: 'failed', error: error && error.message ? error.message : String(error) });
   }
 }
+
+// A compact, edge-triggered cue for any hand near an ordinary
+// simple-grabbable + hint-zone pair. The shared interaction-hints system uses
+// the zone's radius to decide whether a real XR grip can grab the object, so
+// using that same radius means the buzz says exactly "grip will work now".
+//
+// This belongs with the shared haptics adapter rather than a particular game:
+// adding `grabbable-proximity-haptics` to a hand gives every small prototype
+// the same tactile affordance without coupling it to a prop's visuals.
+if (typeof AFRAME !== 'undefined') {
+  AFRAME.registerComponent('grabbable-proximity-haptics', {
+    schema: {
+      intensity: { default: 0.35 },
+      duration: { default: 45 },
+      interval: { default: 40 },
+    },
+
+    init: function () {
+      this.nextCheckAt = 0;
+      this.wasInRange = false;
+      this.handPosition = new AFRAME.THREE.Vector3();
+      this.targetPosition = new AFRAME.THREE.Vector3();
+    },
+
+    tick: function (time) {
+      if (time < this.nextCheckAt) return;
+      this.nextCheckAt = time + this.data.interval;
+
+      var controlMode = this.el.sceneEl.systems['control-mode'];
+      if (!controlMode || !controlMode.isMode('xr')) {
+        this.wasInRange = false;
+        return;
+      }
+
+      var hand = this.el.components['semantic-hand'];
+      if (!hand || hand.heldEl) {
+        this.wasInRange = false;
+        return;
+      }
+      hand.getInteractionWorldPosition(this.handPosition);
+
+      var targets = this.el.sceneEl.querySelectorAll('[simple-grabbable][hint-zone]');
+      var inRange = false;
+      for (var i = 0; i < targets.length; i++) {
+        var target = targets[i];
+        var zone = target.components['hint-zone'];
+        var grabbable = target.components['simple-grabbable'];
+        if (!zone || !grabbable || zone.data.action !== 'grab' || grabbable.state === 'held' || !zone.isAvailable('xr')) continue;
+        target.object3D.getWorldPosition(this.targetPosition);
+        if (this.handPosition.distanceToSquared(this.targetPosition) <= zone.data.radius * zone.data.radius) {
+          inRange = true;
+          break;
+        }
+      }
+
+      if (inRange && !this.wasInRange) {
+        var self = this;
+        pulseHaptics(this.el, this.data.intensity, this.data.duration).then(function (result) {
+          self.el.emit('grabbable-proximity-haptic-result', {
+            status: result.status,
+            durationMs: self.data.duration,
+          }, true);
+        });
+      }
+      this.wasInRange = inRange;
+    },
+  });
+}
