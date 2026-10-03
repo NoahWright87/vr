@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-const page = readFileSync(new URL('../games/boundaries/index.html', import.meta.url), 'utf8');
+const page = readFileSync(new URL('../games/boundaries/index.html', import.meta.url), 'utf8') + readFileSync(new URL('../common/headset-boundary.js', import.meta.url), 'utf8');
 const viteConfig = readFileSync(new URL('../vite.config.js', import.meta.url), 'utf8');
 
 test('Boundary Lab is built as an experience and starts with shared watch hands', () => {

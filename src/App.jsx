@@ -44,6 +44,15 @@ export function App() {
             Point, shoot, pop. A quick warm-up for getting used to VR controls.
           </Card>
           <Card
+            title="Impossible Spaces"
+            href="/games/impossible-spaces/"
+            interactive
+            footer={<Text tone="muted">Explore →</Text>}
+          >
+            Walk a maze larger than your real room. Colored spaces overlap, and
+            stationary elevators change the world behind closed doors.
+          </Card>
+          <Card
             title="Boundary Lab"
             href="/games/boundaries/"
             interactive
