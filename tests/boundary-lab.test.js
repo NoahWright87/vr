@@ -24,3 +24,17 @@ test('Boundary Lab uses the headset-reported bounded floor rather than a guessed
   assert.match(page, /this\.renderRoot = this\.el\.sceneEl\.object3D/);
   assert.match(page, /Cyan line = exact detected outline/);
 });
+
+test('Boundary Lab combines haptics controls with a shared grabbable cube', () => {
+  assert.match(page, /id="boundary-grab-cube"/);
+  assert.match(page, /simple-grabbable=/);
+  assert.match(page, /hint-zone="action: grab; radius: 0\.3/);
+  assert.match(page, /grabAction: grab; grabLabel: GRAB/);
+  assert.match(page, /grabbable-proximity-haptics="intensity: 0\.35; duration: 45"/);
+  assert.match(page, /page-haptics/);
+  ['left', 'right'].forEach((hand) => {
+    ['low', 'medium', 'high'].forEach((level) => {
+      assert.match(page, new RegExp('menu-item="value: haptic-' + hand + '-' + level));
+    });
+  });
+});

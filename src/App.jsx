@@ -49,7 +49,7 @@ export function App() {
             interactive
             footer={<Text tone="muted">Open lab →</Text>}
           >
-            A shared foundation for reading and visualizing the headset’s play-space boundary.
+            Read the headset boundary, test controller haptics, and grab a cube with tactile reach feedback.
           </Card>
         </CardGrid>
       </Container>
