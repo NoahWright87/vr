@@ -3,117 +3,22 @@
   <head>
     <meta charset="utf-8" />
     <title>Noah's VR projects</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="description" content="Noah's VR projects: WebXR games and reusable VR interaction experiments, built for the Meta Quest Browser." />
-    <meta name="theme-color" content="#F2E3F1" />
     <link rel="icon" href="assets/noah-vr.svg" type="image/svg+xml" />
-    <script src="assets/theme.js"></script>
-    <link rel="stylesheet" href="vendor/design-1.3.0/index.css" />
-    <link rel="stylesheet" href="assets/site.css" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#F2E3F1" />
+    <script>
+      (() => {
+        let mode = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        try {
+          const stored = localStorage.getItem('nw-theme-mode');
+          if (stored === 'dark' || stored === 'light') mode = stored;
+        } catch { /* Use the system preference when storage is unavailable. */ }
+        document.documentElement.dataset.theme = mode;
+      })();
+    </script>
   </head>
   <body>
-    <a class="skip-link" href="#main">Skip to projects</a>
-    <header class="nw-header nw-header--sticky nw-header--no-shadow">
-      <a class="site-home-link" href="./" aria-label="Noah's VR projects — home">
-        <svg class="site-logo" viewBox="45 63 1161 1122" aria-hidden="true" focusable="false">
-          <g transform="translate(0,1254) scale(0.1,-0.1)" fill-rule="evenodd">
-            <g class="silhouette"><path d="M6075 11749 c-490 -45 -964 -237 -1360 -549 -124 -98 -361 -342 -456 -470 -290 -391 -469 -818 -541 -1290 -15 -101 -17 -531 -4 -798 l9 -184 -115 7 c-138 9 -200 -5 -277 -64 -132 -99 -178 -237 -159 -481 32 -423 248 -957 465 -1151 81 -73 127 -93 229 -97 l93 -4 16 -76 c47 -211 173 -491 301 -672 70 -98 185 -233 263 -307 l44 -42 -6 -152 c-4 -84 -7 -182 -7 -219 l0 -66 -91 -73 c-50 -41 -96 -83 -104 -95 -7 -12 -91 -145 -187 -296 -96 -151 -187 -296 -202 -322 -15 -27 -33 -48 -39 -48 -21 0 -519 -175 -701 -247 -858 -338 -1538 -743 -1875 -1116 -131 -145 -220 -282 -322 -492 -161 -336 -322 -899 -423 -1483 l-23 -132 5659 0 5658 0 -4 23 c-3 12 -15 78 -26 147 -41 239 -138 661 -200 868 -201 677 -417 1019 -860 1367 -99 78 -348 247 -435 295 -33 19 -92 53 -131 76 -103 61 -408 213 -613 304 -243 108 -477 197 -796 301 -148 49 -276 92 -284 97 -7 4 -33 39 -56 77 -23 39 -97 156 -163 260 -66 105 -142 224 -168 266 -46 71 -153 173 -221 208 -23 12 -23 14 -23 228 l0 215 79 84 c208 219 338 413 439 654 37 86 90 256 107 338 l7 32 68 0 c117 0 162 21 265 125 142 142 244 330 345 635 109 329 138 627 77 792 -30 82 -62 126 -130 177 -83 63 -131 74 -271 66 l-119 -6 6 83 c3 46 12 182 18 304 30 535 -51 964 -266 1409 -222 461 -542 831 -951 1098 -292 191 -684 339 -1014 381 -158 21 -395 28 -525 15z"/></g>
-            <g class="collar"><path d="M4478 5060 l-87 -71 20 -32 c11 -18 93 -139 182 -269 89 -131 313 -460 497 -732 184 -272 337 -494 340 -493 8 3 475 488 477 496 1 3 -77 58 -174 121 -320 210 -604 435 -834 662 -118 116 -264 288 -305 357 -10 17 -21 31 -24 31 -3 0 -44 -32 -92 -70z"/><path d="M7909 5058 c-196 -289 -617 -659 -1129 -996 -80 -52 -147 -96 -148 -98 -9 -6 23 -43 199 -225 102 -107 204 -214 228 -239 23 -25 45 -40 47 -34 3 6 67 103 144 215 76 112 191 281 254 374 63 94 180 267 261 385 302 442 366 540 360 550 -10 16 -155 130 -165 130 -5 0 -28 -28 -51 -62z"/></g>
-            <g class="tie"><path d="M5915 3718 c-72 -67 -169 -159 -217 -204 l-87 -82 139 -261 c77 -144 140 -267 140 -274 0 -7 -21 -60 -46 -117 -119 -270 -285 -835 -383 -1300 -50 -240 -111 -586 -111 -635 0 -13 103 -15 880 -15 707 0 880 3 880 13 0 7 -11 78 -25 157 -115 653 -320 1472 -450 1795 -19 48 -35 93 -35 102 0 9 68 133 150 276 l151 261 -203 203 -203 203 -225 0 -225 0 -130 -122z"/></g>
-          </g>
-          <g class="headset">
-            <rect x="352" y="376" width="558" height="65" rx="28"/>
-            <path d="M430 326 H832 Q878 326 878 372 V496 Q878 542 832 542 H678 Q657 542 650 519 L644 502 Q638 484 626 484 Q614 484 608 502 L602 519 Q595 542 574 542 H430 Q384 542 384 496 V372 Q384 326 430 326 Z"/>
-          </g>
-          <g class="sensor"><circle cx="440" cy="405" r="18"/><circle cx="822" cy="405" r="18"/></g>
-          <rect class="accent" x="581" y="380" width="100" height="16" rx="8"/>
-        </svg>
-        <strong class="site-name">Noah's VR projects</strong>
-      </a>
-      <nav class="site-nav" aria-label="Site navigation">
-        <a href="#games">Games</a>
-        <a href="#primitives">Primitives</a>
-        <button id="theme-toggle" class="nw-toggle-icon theme-toggle" type="button" aria-label="Switch to dark mode" aria-pressed="false" hidden>
-          <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M20.8 13A9 9 0 0 1 11 3.2 9 9 0 1 0 20.8 13Z" />
-          </svg>
-          <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
-            <circle cx="12" cy="12" r="4" />
-            <path d="M12 2v2m0 16v2M2 12h2m16 0h2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42" />
-          </svg>
-        </button>
-      </nav>
-    </header>
-    <main id="main" class="site-main" tabindex="-1">
-      <div class="intro">
-        <p class="eyebrow">Built for Meta Quest · Powered by WebXR</p>
-        <h1>Small experiments. Whole new worlds.</h1>
-        <p>Small self-contained WebXR experiments, built for the Meta Quest Browser. Pick a project, put on your headset, and jump in.</p>
-      </div>
-      <section id="games" aria-labelledby="games-heading">
-        <h2 id="games-heading">Games</h2>
-        <p class="section-desc">Playful prototypes exploring what you can do in VR.</p>
-        <ul class="project-list">
-          <li>
-            <a class="game-link nw-card nw-card--link nw-card--interactive" href="games/cube-pop/">
-              <span class="project-title">Cube Pop<span class="project-arrow" aria-hidden="true">↗</span></span>
-              <span class="desc">Point a controller at a floating cube and pull the trigger to pop it. Pop them all to win.</span>
-            </a>
-          </li>
-          <li>
-            <a class="game-link nw-card nw-card--link nw-card--interactive" href="games/punch-pop/">
-              <span class="project-title">Punch Pop<span class="project-arrow" aria-hidden="true">↗</span></span>
-              <span class="desc">Punching is how you move. Swing to lunge, uppercut to launch, hammer down to crash. Punch cubes hard enough to pop them.</span>
-            </a>
-          </li>
-          <li class="featured">
-            <a class="game-link nw-card nw-card--link nw-card--interactive" href="games/pistols-at-dawn/">
-              <span class="project-title">Pistols at Dawn<span class="project-arrow" aria-hidden="true">↗</span></span>
-              <span class="desc">Draw a holstered pistol, shotgun, or your hat and shoot up a whole gallery — stationary targets, spinning wheels, conveyor belts, and pop-up surprises. Twirl anything you're holding, toss it hand to hand, or snap it into any anchor it fits — including a gun tucked inside your hat, or worn on your head like one. Turn around for the saloon: knock a cap off on the counter, pour the beer into your own face, throw a fistful of bottles up and shoot them to pieces, light a cigar off your own hot barrel, and find out what happens to your aim when you overdo either. Spilled beer pools and burns, fire spreads along it and takes the targets with it, and a thrown bottle spills its own — so the Molotov builds itself out of parts that were already there.</span>
-            </a>
-          </li>
-        </ul>
-      </section>
-      <section id="primitives" aria-labelledby="primitives-heading">
-        <h2 id="primitives-heading">Primitives</h2>
-        <p class="section-desc">Reusable interaction building blocks, each demoed on its own here first, then stitched together into the prototypes above &mdash; a small design system for VR interactions.</p>
-        <ul class="project-list">
-          <li>
-            <a class="game-link nw-card nw-card--link nw-card--interactive" href="primitives/menus/">
-              <span class="project-title">Menus<span class="project-arrow" aria-hidden="true">↗</span></span>
-              <span class="desc">Every menu style in one place: a fixed in-world panel, and a wrist-worn watch you poke with your other hand.</span>
-            </a>
-          </li>
-          <li>
-            <span class="game-link disabled nw-card">
-              <span class="project-title">Movement</span><span class="soon-badge">Coming soon</span>
-              <span class="desc">Locomotion and turning &mdash; teleport, smooth movement, snap turn, and smooth turn.</span>
-            </span>
-          </li>
-          <li>
-            <span class="game-link disabled nw-card">
-              <span class="project-title">Vibration / Haptics</span><span class="soon-badge">Coming soon</span>
-              <span class="desc">Controller rumble feedback tied to grabs, collisions, and UI events.</span>
-            </span>
-          </li>
-          <li>
-            <span class="game-link disabled nw-card">
-              <span class="project-title">Object Manipulation</span><span class="soon-badge">Coming soon</span>
-              <span class="desc">Grab, throw, and two-handed scale/rotate for physical objects.</span>
-            </span>
-          </li>
-          <li>
-            <span class="game-link disabled nw-card">
-              <span class="project-title">Audio</span><span class="soon-badge">Coming soon</span>
-              <span class="desc">Positional/spatial sound cues tied to events and objects in the scene.</span>
-            </span>
-          </li>
-        </ul>
-      </section>
-    </main>
-    <footer class="nw-footer site-footer">
-      <span>Noah's VR projects</span>
-      <a href="https://noahwright.dev">Visit my developer website ↗</a>
-    </footer>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

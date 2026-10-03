@@ -579,19 +579,47 @@ change to the shared systems.
 
 Pistols at Dawn's own `<script>` block crossed 10,000 lines and made
 "go change the bar" mean scrolling past gun, target, and vice code to
-get there. It's been split into 13 topic files under
+get there. It's been split into topic files under
 `games/pistols-at-dawn/js/` — `core.js` (the foundation: shared
 physics/ballistics/audio helpers, the particle/liquid/fire system,
 ITEM_MAKERS, and the world-systems bootstrap) plus `core-equip.js`,
-`core-hand-rig.js`, `core-substances.js`, five `items-*.js` files (one
-per weapon/prop family — guns, bow, explosives, tank, bar, vices) and
-three `world-*.js` files (player body, the saloon-bar/wardrobe island,
-the shooting range) — loaded as plain `<script src>` tags, same
+`core-hand-rig.js`, `core-substances.js`, the `items-*.js` prop-family
+files and `world-*.js` destination/building files. Shared files are loaded
+as plain `<script src>` tags, same
 implicit-global style the single file already used, just filed by
-subject instead of dumped in one place. No bundler, no import/export,
-no behavior change; every stage was a move, verified against the
-original with Playwright before being committed. `index.html` itself
-is down to ~310 lines of markup.
+subject instead of dumped in one place. Those files still have no
+import/export boundary; every stage of the split was a move, verified against the
+original with browser tests before being committed.
+
+The second boundary is runtime ownership. `areas/range.html`,
+`saloon.html`, `farm.html`, and `stable.html` are small A-Frame fragments.
+`area-manager` fetches one fragment at a time and lazily loads that area's
+builder scripts behind the teleport fade. The outgoing entity root is removed,
+not merely hidden: its render objects, component ticks, raycast targets, and
+scene-query results all disappear. Loose area-owned objects are removed too;
+anything parented into a persistent player hand/body slot has its ownership
+cleared and travels with the player. Global effect pools stay allocated to
+avoid hitches, but their live particles, puddles, and fires reset between
+destinations. Adding an area means one manifest entry in `world-town.js`, one
+fragment, and its builder script(s).
+
+The third boundary is visual detail versus gameplay shape. `model-prop`
+loads a GLB beneath one A-Frame entity and creates a deliberately simple box,
+sphere, or cylinder proxy. When a proxy exists, the imported visual meshes opt
+out of raycasting; a `shootable` root therefore tests only the cheap proxy no
+matter how detailed the artwork becomes. Static pieces should still be merged
+by material in the source model—this contract prevents collision complexity,
+but it cannot turn a badly split GLB into one draw call.
+
+Scene-wide interaction discovery is also indexed now. A MutationObserver
+invalidates cached lists when relevant nodes, classes, or component attributes
+change; hands, guns, fire, tanks, explosions, and slots reuse those lists
+instead of independently walking the DOM. Moving positions are never cached.
+The proximity buzz is advisory and checks at 12.5 Hz, staggered between hands;
+grip selection itself stays event-time and exact. Watch > Show Performance
+enables a twice-per-second headset overlay for FPS/frame time, draw calls,
+triangles, geometries, and textures. It does no measurement or text work while
+disabled.
 
 One real lesson from doing this for real: almost every cross-file
 reference is safe regardless of which file defines it or the order
@@ -607,16 +635,13 @@ the declaring file loads no later than the file using it) rather than
 trusting it by eye, on any repo using this same plain-script pattern.
 
 This makes pistols-at-dawn the one prototype in the repo that isn't a
-single self-contained file (see the README's stated convention). Two
-things worth revisiting later, once the split has paid for itself and
+single self-contained file. Vite was later added once shared menu/watch
+primitives made manual globals and cache-busting a recurring cost. One
+thing remains worth revisiting once the split has paid for itself and
 some of these systems (anchor-slot/holsterable in particular) have
 proven themselves general enough to be worth lifting into a real
 shared library used by other prototypes, not just this one:
 
-- **Whether "no build step" still holds.** It's the right call for a
-  handful of self-contained files with no need to share code between
-  prototypes; a real shared library across games is a different
-  question, and might be the moment a small bundler earns its keep.
 - **How the split should be named/shaped** once code is meant to move
   *out* of pistols-at-dawn's own folder — worth keeping the
   genuinely-generic files (the equip contract, the target-range

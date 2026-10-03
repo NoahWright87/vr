@@ -1,24 +1,44 @@
 # vr
 
-A collection of small WebXR prototypes for the Meta Quest 2 browser, built with [A-Frame](https://aframe.io) via CDN — no build step, no npm install. Each prototype is a single, self-contained HTML file.
-
-> **Note:** both of those are under reconsideration for `pistols-at-dawn`, which outgrew a single file (see its own `js/` folder and [DESIGN.md](DESIGN.md#file-structure-outgrowing-single-file)) and is where a future shared library across prototypes — and the build step that would come with one — is most likely to start.
+A collection of small WebXR prototypes for the Meta Quest 2 browser, built with [A-Frame](https://aframe.io) and a deliberately small Vite multi-page build. The smaller prototypes remain mostly single-file experiments; Pistols at Dawn and the shared primitives have deliberately outgrown that convention.
 
 Deployed as a static site (planned: `vr.noahwright.dev` via Netlify).
 
 ## Structure
 
 ```
-/index.html                   landing page linking to every prototype and primitive
-/games/<name>/index.html      one folder per prototype, fully self-contained
-/primitives/<name>/index.html one folder per reusable interaction primitive, fully self-contained
+/index.html                   React entry point (mounts src/App.jsx) — the only non-VR page
+/src/App.jsx                  landing page content: linking to every prototype and primitive
+/src/theme.js                 color tokens fed to @noahwright/design's theme
+/games/<name>/index.html      one folder per prototype
+/primitives/<name>/index.html one folder per reusable interaction showcase
+/common/menus.js              shared menu rows, pages, chrome, and projection
+/common/watch-menu.js         shared wrist watch and pointing interaction
+/common/locomotion.js         shared locomotion component
+/common/desktop-controls.js   desktop intent, movement, and interaction modes
+/common/interaction-hints.js  semantic hands, hint zones, mounted/grab primitives
+/common/interaction-targeting.js deterministic input-agnostic target selection
+/vite.config.js               Vite entries and runtime-asset copying
 ```
 
-To add a new prototype: create `games/<name>/index.html`, and add a link to it from the root `index.html`. Nothing else needs to change — each game manages its own A-Frame version, components, and assets.
+Every prototype/primitive page is still vanilla A-Frame with no build-time framework, per the project's usual approach. The one exception is the root landing page: it's a small React app using [`@noahwright/design`](https://github.com/NoahWright87/design) for shared branding across sites, since it's the one page that isn't a VR scene.
 
-The landing page uses the styles and Wright Sans fonts from **@noahwright/design 1.3.0**, vendored locally without adding a build step (see [vendor/README.md](vendor/README.md)). Its orange/purple light and dark palettes match [NoahWrightDev2026](https://github.com/NoahWright87/NoahWrightDev2026). The header theme switch remembers the visitor's choice, defaulting to their system preference. Site overrides live in `assets/site.css`; `assets/theme.js` applies the theme before first paint.
+To add a new prototype: create `games/<name>/index.html`, add it to the Vite inputs in `vite.config.js`, add a card to `src/App.jsx`, and import only the shared modules it uses. `watch-menu.js` imports its menu dependency; locomotion remains independent.
 
-The header and SVG favicon adapt the developer site's original silhouette with a VR headset in place of glasses. The silhouette, collar, and tie paths come from its `src/lib/logo.ts`. Keep the header SVG in `index.html` and `assets/noah-vr.svg` shapes in sync when editing the logo; the favicon follows the OS color scheme and the header follows the selected site theme.
+The landing and About pages use **@noahwright/design 1.3.0**, with orange/purple light and dark palettes matching [NoahWrightDev2026](https://github.com/NoahWright87/NoahWrightDev2026). The header theme switch remembers the visitor's choice and defaults to their system preference. Theme tokens live in `src/theme.js` and site overrides in `src/site.css`.
+
+The header and favicon share `assets/noah-vr.svg`: the developer site's original silhouette, collar, and tie paths, with a VR headset replacing the glasses. The header follows the selected site theme; the favicon follows the OS color scheme.
+
+## Development
+
+```sh
+npm install
+npm run dev
+```
+
+`npm run build` produces the deployable site in `dist/`, and `npm run preview` serves that production build locally. Existing prototype URLs are preserved by the multi-page inputs.
+
+
 
 A-Frame itself is vendored into `/vendor` rather than loaded from the `aframe.io` CDN — see [`vendor/README.md`](vendor/README.md) for why and how to bump versions.
 
@@ -27,6 +47,7 @@ See **[DESIGN.md](DESIGN.md)** for the design philosophy these prototypes are bu
 ## Prototypes
 
 - **[Cube Pop](games/cube-pop/index.html)** — point a Quest controller at a floating cube and pull the trigger to pop it. Counter tracks progress; popping all cubes shows a win state with an in-VR reset button. Also has a gaze-reticle fallback so you can validate it from a phone or desktop browser without a headset — see below.
+- **[Boundary Lab](games/boundaries/index.html)** — reads the headset-reported play-space boundary, includes left/right haptics tests at 20%, 60%, or 100%, and has a shared grab cube that gives each controller a short reach cue when Grip can grab it.
 - **[Punch Pop](games/punch-pop/index.html)** — punch-to-move locomotion POC. There are no laser pointers here; you move by physically throwing punches, and you pop cubes by hitting them with a fist that's moving fast enough. See below for how it works and how to tune it.
 
 ### Punch Pop: how it works
@@ -54,7 +75,7 @@ The core idea being tested: **punching is the locomotion**, not a separate joyst
 - An optional in-view **stats HUD** (menu, MORE tab → Show Stats) shows the last punch/uppercut's axis and whether it fired via full extension or stopping, max speed / hand distance / head distance, computed magnitude (and, if the lock-on distance cap kicked in, the capped value), lock/memory/hit-assist state, and distance to target — for understanding what the targeting system is actually doing while playtesting.
 - A separate, opt-in **live debug HUD** (menu, DEBUG tab → Live Debug HUD) shows the raw handful of numbers the detection logic reads *every frame*, continuously, rather than a post-punch snapshot: both hands' raw vs. head-relative speed and current forward/overhead axis state (`A`/`E`/`H` for armed/extending/holdForReset), the live stop-speed threshold, the turn filter percentage, the calibrated reach values, and the active hit-assist mode. This is meant to make a confusing in-headset moment legible on the spot, or at least screenshot-able, instead of guessed at from outside the headset.
 
-**Menu:** press any face button (A/B on the right controller, X/Y on the left) to open it — grip used to, but got pressed by accident too often during normal punching. A bigger panel spawns fixed in world space, a couple feet in front of wherever you're currently standing and facing, oriented back toward you; press a face button again to close it. Two things happen structurally while it's open: punching and cube-popping are disabled and rig physics freeze entirely (gated on a shared `menuOpen` flag), the always-on debug line/punch label and any opt-in stats/live-debug HUDs are hidden (they'd otherwise visually clutter the panel, and were reported as possibly blocking menu buttons), and the *other* hand (never the one that pressed the face button) gets a small laser pointer + cursor to click menu buttons with. Because only one hand can ever be an active pointer at a time, there's no way for an absent-minded trigger pull on the "wrong" hand to register a click on whatever it happened to be aimed at. The laser stops exactly at whatever it's pointing at (a `laser-beam` component rescales it to the raycaster's live hit distance every frame). **A genuinely important fix, found by reading A-Frame 1.6.0's actual `cursor` component source rather than assuming**: the hand `cursor` components now explicitly bind `downEvents`/`upEvents` to the real `triggerdown`/`triggerup` controller events — left at their default (empty), `cursor` instead listens for *mouse/touch events on the canvas*, and a real trigger pull only ever produced a click via whatever synthetic click a given WebXR browser happens to fire on "select" for accessibility-fallback purposes, which is exactly the kind of thing that would register "some of the time" — the actual cause of a round of "the menu buttons don't work reliably" playtesting feedback. The small `+`/`-` adjust buttons were also enlarged, since hand tremor during a trigger pull nudging the raycast off a small target between press and release compounds the same problem. The trigger's normal "quick reset" job is suspended while the menu is open. Content is organized into tabs, built with a small generic `createTabbedPanel` helper that has nothing Punch-Pop-specific in it, meant to be copy-pasted into future prototypes that need tabs (this repo has no build step or shared module system, so "reusable" means "self-contained enough to lift wholesale," not an import):
+**Menu:** press any face button (A/B on the right controller, X/Y on the left) to open it — grip used to, but got pressed by accident too often during normal punching. A bigger panel spawns fixed in world space, a couple feet in front of wherever you're currently standing and facing, oriented back toward you; press a face button again to close it. Two things happen structurally while it's open: punching and cube-popping are disabled and rig physics freeze entirely (gated on a shared `menuOpen` flag), the always-on debug line/punch label and any opt-in stats/live-debug HUDs are hidden (they'd otherwise visually clutter the panel, and were reported as possibly blocking menu buttons), and the *other* hand (never the one that pressed the face button) gets a small laser pointer + cursor to click menu buttons with. Because only one hand can ever be an active pointer at a time, there's no way for an absent-minded trigger pull on the "wrong" hand to register a click on whatever it happened to be aimed at. The laser stops exactly at whatever it's pointing at (a `laser-beam` component rescales it to the raycaster's live hit distance every frame). **A genuinely important fix, found by reading A-Frame 1.6.0's actual `cursor` component source rather than assuming**: the hand `cursor` components now explicitly bind `downEvents`/`upEvents` to the real `triggerdown`/`triggerup` controller events — left at their default (empty), `cursor` instead listens for *mouse/touch events on the canvas*, and a real trigger pull only ever produced a click via whatever synthetic click a given WebXR browser happens to fire on "select" for accessibility-fallback purposes, which is exactly the kind of thing that would register "some of the time" — the actual cause of a round of "the menu buttons don't work reliably" playtesting feedback. The small `+`/`-` adjust buttons were also enlarged, since hand tremor during a trigger pull nudging the raycast off a small target between press and release compounds the same problem. The trigger's normal "quick reset" job is suspended while the menu is open. Content is organized into tabs, built with a small generic `createTabbedPanel` helper that has nothing Punch-Pop-specific in it. That older helper is still local to Punch Pop; new cross-experience menu work should use or extend the shared modules in `common/` rather than copy-pasting it:
 
 - **PUNCH** — Move Speed, Gravity, Max Speed, Reset Arena
 - **FOES** — Cube Count, Cube Health, cycle Cube Behavior
@@ -108,20 +129,23 @@ Tuning knobs not yet exposed in the menu (drag, room size, cube-cube collision r
 
   Guns produce no smoke at the moment of the shot. Instead a barrel remembers how hard it's been worked, and once you stop shooting for a beat, that much smoke curls up out of the muzzle — cheaper than puffing on every trigger pull, and it looks more like a western. Smoke, glass, sparks, beer, fires and puddles all come out of recycled pools (entities are reused from free lists at unit size and scaled, never created and destroyed), which is what keeps a sustained pour or a spreading fire from hitching the frame. You can sweep smoke away by waving a hand through it, or clear it by bringing the muzzle up in front of your face to blow across it. The glug, the cap clink, and breaking glass are synthesized with the Web Audio API rather than shipped as assets, which keeps each prototype a single self-contained file.
 
-  On performance: A-Frame gives you geometry caching (480 meshes in this scene share 80 geometries) and frustum culling for free, but no batching, no instancing, and no material sharing — every mesh here has its own material. The measured problem was neither of those. A-Frame builds `a-cylinder` at 36x18 segments and `a-sphere` at 36x18, about 1300 triangles each, so a scene made of bottle necks and cigars was carrying **276,000 triangles**. Patching the registered primitives' schema defaults once, before the scene initializes, brought that to **27,000** without touching a single creation site. What's left is ~160 draw calls, which is the next thing worth attacking if it ever matters: about 210 of the 480 meshes are the five separate ring discs on each of 37 target faces, and baking a bullseye into one texture would collapse those to 37.
+  On performance: A-Frame gives you geometry caching (480 meshes in the full range share 80 geometries) and frustum culling for free, but no batching, no instancing, and no material sharing — every mesh here has its own material. A-Frame builds `a-cylinder` at 36x18 segments and `a-sphere` at 36x18, about 1300 triangles each, so the original scene was carrying **276,000 triangles**. Patching the registered primitives' schema defaults once brought that to **27,000**. Destinations now live in separate `areas/*.html` fragments: teleport loads one destination's builder scripts/content behind the fade and disposes the previous entity tree, so hidden towns do not keep rendering, ticking, raycasting, or appearing in global interaction scans. In a desktop runtime smoke test, leaving the full range for the farm reduced live A-Frame entities from 439 to 127. The watch clock updates its text once per second rather than once per rendered frame, repeated visibility changes bypass A-Frame's attribute parser, and the HUD can be hidden from the watch menu. What's left in the full range is draw-call pressure: the separate ring discs on target faces are a good future texture/instancing candidate if headset measurements still show GPU pressure.
+
+  Repeated interaction discovery is mutation-indexed: hot paths reuse live element lists for grabbables, shootables, hands, ignition sources, targets, tanks, and brace surfaces instead of repeatedly querying the entire A-Frame DOM. Proximity haptics run at 12.5 Hz while actual grip selection remains immediate. Watch → **Show Performance** enables a low-frequency in-headset readout for FPS, frame time, draw calls, triangles, geometries, and textures. Future GLBs can use `model-prop` to pair the visual model with a simple box/sphere/cylinder hit proxy; detailed model meshes then opt out of gameplay raycasts.
 
   Hit targets are invincible rings on a board that tips over like a steel pop-up target; a whole group resets together once every target in it is down. The gallery spans an arc in front of you: three tiers of stationary targets at increasing distance, a couple of spinning target wheels, a couple of conveyor belts sliding targets in alternating directions, and a row of whack-a-mole-style poppers that surface on a timer. Also has the gaze-reticle fallback for target scoring, though the grab/dangle/holster/throw/slot mechanic itself is VR-only.
 
 ## Primitives
 
-Small, reusable interaction building blocks — a design-system for VR, in the Storybook sense. Rather than one experience per primitive, each primitive category gets ONE demo covering every style/variant, so they can be compared side by side — the equivalent of a Storybook page listing every story for a component. The reusable pieces (A-Frame components) are meant to be copied into other prototypes as-is rather than reimplemented per game.
+Small, reusable interaction building blocks — a design-system for VR, in the Storybook sense. Rather than one experience per primitive, each primitive category gets ONE demo covering every style/variant, so they can be compared side by side — the equivalent of a Storybook page listing every story for a component. Reusable A-Frame components live under `common/` and are loaded directly by both the showcase and the experiences that consume them.
 
 - **[Menus](primitives/menus/index.html)** — every menu style in one scene, on a checkerboard floor (a tiny canvas-generated texture, tiled) so there's some sense of scale and footing:
   - **Fixed panel** — a menu fixed in world space. The `menu-item` component is the reusable part: attach it to any entity with its own geometry/material and it becomes a clickable row that highlights on hover and emits a `menu-item-select` event (with `{value, label}`) on click.
-  - **Chrome, unified** — every panel's title bar (a dedicated strip along the top, title text confined to its own region, up to two buttons anchored to the right) is built by one shared `buildMenuChrome()` function, not hand-placed per template — the fixed panel, the watch's two views, and the wall/pedestal panels all go through it. Whether a panel shows a ❔ and/or a ❌ is a parameter there (the fixed panel shows neither — "Main Menu energy" — without needing its own bespoke layout code), and because the layout is computed instead of eyeballed, the title and buttons can't collide the way independently hand-positioned coordinates could (and did).
-  - **Pointing, unified** — every hand carries one laser, originating from the same fingertip hitbox used for poking (not the raw controller entity, whose forward doesn't match where the rendered hand appears to point) and following the actual finger-bone direction measured from the hand model itself (loaded the GLB, played its Point animation, took the vector between two finger bones — not a guessed axis, and not the position-only measurement used elsewhere, which turned out ~20° off and visibly crooked as a direction). The laser only appears once the hand's own "point" gesture animation has settled (~180ms), not mid-animation; hides while the trigger is held (the gesture bends the finger) without losing track of what's under it; and — since the same raycast already has to run continuously for hover/click detection — only actually renders while it's hitting a real target, so it never draws off into empty space. Any face button or the trigger activates whatever it's hovering — a menu never special-cases which one was used. This same laser can select an open menu's rows regardless of whether that menu is normally poke- or laser-driven, so a poke-oriented menu's close button, say, is always reachable by backing up and pointing instead. Poking up close still works too, debounced (a short per-row cooldown) so the small jitter of a real close-up poke doesn't double- or triple-count as the fingertip wobbles at the hitbox boundary.
+  - **Multi-value options** — `menu-option` builds a three-part row from a pipe-delimited value list. The left/right arrows cycle with wraparound, while the center label (for example `Targets: 6`) opens a compact list of every choice. The open list is a modal interaction layer, so rows visually underneath it cannot receive ray or poke events. Changes bubble as `menu-option-change` with the option key, value, display label, and index; the showcase's Move speed row and Pistols at Dawn's target-type, count, speed, and distance rows use the same component. Pistols keeps exactly one live gallery and swaps it among the restored stationary, spinner, conveyor, and pop-up implementations while retaining the current settings. Galleries support up to 24 targets at 5m, 15m, 30m, or 45m: high-count spinners add counter-rotating radii, conveyors add as many as four alternating rows, and stationary/pop-up galleries spread across 120-degree arcs. Shots and the desktop reticle share a 75m range, and bullseyes use non-overlapping annular scoring zones so distant faces do not depth-flicker.
+  - **Chrome, unified** — every panel's title bar (a dedicated strip along the top, title text confined to its own region, and its buttons anchored to the right) is built by one shared `buildMenuChrome()` function, not hand-placed per template — the fixed panel, the watch's views, and the wall/pedestal panels all go through it. Whether a panel shows a ❔, an ❌, and the automatic/manual toggle is parameterized there (the fixed panel shows none — "Main Menu energy" — without needing its own bespoke layout code), and because the layout is computed instead of eyeballed, the title and buttons can't collide the way independently hand-positioned coordinates could (and did).
+  - **Pointing, unified** — every hand carries one laser, originating from the same fingertip hitbox used for poking (not the raw controller entity, whose forward doesn't match where the rendered hand appears to point) and following the actual finger-bone direction measured from the hand model itself (loaded the GLB, played its Point animation, took the vector between two finger bones — not a guessed axis, and not the position-only measurement used elsewhere, which turned out ~20° off and visibly crooked as a direction). The laser appears once the hand's own "point" gesture animation has settled (~180ms), or immediately while an activation button is held; it remains visible during a trigger pull even when that hand is also holding and firing a gun. Since the same raycast already has to run continuously for hover/click detection, the line only renders while it is hitting a real target, so it never draws off into empty space. Any face button or the trigger activates whatever it's hovering — a menu never special-cases which one was used. This same laser can select an open menu's rows regardless of whether that menu is normally poke- or laser-driven, so a poke-oriented menu's close button, say, is always reachable by backing up and pointing instead. Poking up close still works too, debounced (a short per-row cooldown) so the small jitter of a real close-up poke doesn't double- or triple-count as the fingertip wobbles at the hitbox boundary.
   - **Wrist watch, wall screen, pedestal button** — three different "poke a trigger, a menu pops out of it" props, all built on the same `projected-menu` component: attach it to any entity with its own geometry (a watch face, a wall-mounted screen, a physical button — `obb-collider` auto-sizes the poke hitbox from whatever geometry is there) and a `<template>` of menu content, and it becomes a trigger. Poke/laser sizes, the offset the menu appears at (chosen so the opened panel clears the trigger's own geometry rather than intersecting it), and poke-vs-laser-vs-auto mode are all schema options set per instance, so the same component drives three visually and behaviorally distinct props:
-    - The **watch** — a band + face attached to A-Frame's built-in hand model (correctly oriented: band loops the wrist, face flush on the back of the hand), showing a live clock in its own title bar. Point with one hand (squeeze grip) and poke the other wrist's face — real button-driven gesture detection, not hand-tracking — to project a menu outward from it. Tilt the wrist toward your face and it grows to a few times its size, still poke-driven ("auto" mode reading the trigger's own orientation); turn the face up instead and it grows larger still and billboards to face the player, switching to laser/cursor selection from the other hand. Holds a stopwatch, a real haptic-pulse test (Gamepad API), and a placeholder "About."
+    - The **watch** — a band + face attached to A-Frame's built-in hand model (correctly oriented: band loops the wrist, face flush on the back of the hand), showing a live clock in its own title bar. It defaults to automatic opening: raise and point the watch face toward yourself and its smaller poke menu appears; lower the wrist and it closes. The halfway, face-up pose shows the larger billboard/laser layout without changing the open/closed state, so it never opens merely because your hand passed through that pose. Poking the face still explicitly opens it, and ❌ explicitly closes it. The adjacent `A`/`M` button switches automatic opening on or off; an explicit close stays closed until the auto-open pose is left. The same toggle is part of every projected menu—on fixed props, automatic mode maps naturally to enter-proximity/open and leave-proximity/close. Pointing remains real button-driven gesture detection, not hand-tracking.
     - The **wall screen** — a fixed prop a short reach to the right of spawn; poking it always opens a bigger poke-driven menu that sits just barely proud of the wall's own surface (and hides the small TAP trigger underneath it, same as the watch hiding its own face), so it reads as the button expanding to fill the whole wall rather than a panel floating in front of it (`mode: 'poke'` — no orientation to read on a world-fixed trigger).
     - The **pedestal button** — a fixed prop a short reach to the left of spawn; poking it always billboards a menu up above it for laser/cursor selection (`mode: 'laser'`).
     - All three close the same three ways: poke/point-and-activate the ❌, walk far enough away or (world-fixed triggers only) look away for a few seconds, or (watch only) just lower the wrist.
@@ -130,7 +154,15 @@ Small, reusable interaction building blocks — a design-system for VR, in the S
     - The **wall screen's** is a *sidecar*: a small companion panel (with its own chrome title bar) toggled beside the main one, which never has to hide or get covered — good for stats/detail on whatever's currently showing without interrupting it.
     - The **pedestal's** is a *tutorial overlay*: arrow-and-caption hints drawn on top of the still-visible menu, stepped with any face button (bottom button back, top button forward — A/X and B/Y on real Quest controllers) instead of an on-screen row — the menu underneath is intentionally made inert (`projected-menu`'s `suppressPointing`, for exactly this "covered but still visible" case) while the overlay is up, so a face button steps the tutorial instead of also activating whatever's behind it.
 
-Coming soon: movement (locomotion + turning), vibration/haptics, object manipulation, and spatial audio.
+  - **Desktop semantic hands** — outside XR, click the scene for pointer-locked mouse look and use WASD to move. `Tab` raises the non-dominant watch while the dominant simulated hand points (`Esc` is an alias when the browser does not consume it for pointer-lock); `E` completes a real hand poke on the reachable, highlighted wall menu and locks the player into its authored mounted-interaction anchor; `F` grabs or drops the selected test box through the same semantic hand action used by an XR grip. `E` or `Esc` exits mounted interaction. The watch exposes handedness plus Always/Delayed/Never interaction hints, both persisted locally. Hint zones resolve overlapping candidates once, so the outlined/signposted object and the object an action receives cannot disagree. XR controllers still own the gameplay hand transforms while presenting.
+
+The desktop layer intentionally expresses intent instead of emulating an
+`XRInputSource`: tracked XR input and desktop input converge on the shared
+gameplay-facing hand entities. The V1 box has only a small shared held/falling/
+resting state machine; Pistols at Dawn's larger holster/stack/throw/catch graph
+remains isolated until it can be migrated incrementally.
+
+Coming soon: broader object manipulation and spatial audio.
 
 ## Running locally
 
@@ -186,3 +218,143 @@ Once this repo is on Netlify (or GitHub Pages in the meantime), just open the de
 4. Pull either trigger at any time for a quick reset.
 5. Press any face button (A/B on the right controller, X/Y on the left) to open the menu — it spawns a couple feet in front of you, facing you, and your other hand gets a laser pointer. Aim it at a button and pull that hand's trigger to click: switch tabs (PUNCH / FOES / AIM / REACH / SPLAT / FEEL / DEBUG / MORE), adjust speed/gravity/cube count/behavior/lock-on/hit-assist/reach calibration/splatter/comfort-vignette/haptic-buzz/detection thresholds, Resume, or select **Exit VR** to leave the session. Press a face button again to close it.
 6. You should feel a controller pulse on a punch that connects, plus a light buzz in both hands while zooming, and see the edges of your view darken during fast movement — all under the FEEL tab if you want to turn any of it down (or up).
+
+## Multiplayer
+
+`common/multiplayer.js` (WebRTC peer connections) and `worker/`
+(the signaling relay that gets two peers' connections talking to each
+other — see "Hosted relay (Cloudflare Workers)" below) are what
+`primitives/menus/` uses to demonstrate peer-to-peer multiplayer, and
+what the in-VR watch menu's **Multiplayer** page builds on for real
+play: open the watch menu, tap Multiplayer, tap HOST (get a 4-character
+room code, shown beside the watch) or dial in a code with the
+directional selector and tap JOIN. No address to type anywhere — the
+relay's address is baked in at build time (see "Hardcoding the relay
+address" below), so a room code is the only thing anyone ever enters.
+Actual gameplay traffic never touches the relay — it goes directly
+peer-to-peer between each joiner and the host once connected (never
+joiner-to-joiner directly), the relay only ever sees the one-time
+WebRTC handshake.
+
+The menu showcase page (`primitives/menus/`) also still has a plain
+HTML panel exercising the same connection code directly (manual
+copy/paste, and a free-text relay-address field) — useful for testing
+the handshake without a headset, not something a player would see.
+Its relay-address field has nothing to point to by default now that
+there's no locally-run relay to type in; paste a `wrangler dev`
+address there (see "Testing locally without deploying" below) if
+you're testing the Worker itself through that panel.
+
+### Hosted relay (Cloudflare Workers)
+
+The relay (`worker/`) is a Cloudflare Worker + Durable Object,
+reachable over the open internet — see `worker/src/signal-hub.js` for
+the room logic and its header comment for why one Durable Object
+instance is enough for this.
+
+**One-time account setup:**
+
+1. Create a free Cloudflare account at
+   [dash.cloudflare.com/sign-up](https://dash.cloudflare.com/sign-up)
+   — no credit card required. Workers stays on the **Free** plan
+   until you explicitly switch to **Workers Paid** in the dashboard;
+   nothing here does that for you, and the free plan has no payment
+   method attached at all, so there's no way for it to bill you by
+   accident.
+2. Log in from your machine: `npx wrangler login` opens a browser tab
+   to authorize the CLI. This is only needed for deploying from your
+   own computer (`npm run relay:hosted:deploy`) — skip it if you're
+   only using the GitHub Actions workflow below.
+
+**Deploying:**
+
+- **From your machine**: `npm run relay:hosted:deploy` (after
+  `wrangler login` above). Prints the `https://vr-signal-relay.<your
+  subdomain>.workers.dev` URL — the relay's `wss://` address is the
+  same host with `wss://` in place of `https://`.
+- **From GitHub Actions** (no local `wrangler login` needed): the
+  "Deploy signal hub" workflow (`.github/workflows/deploy-signal-hub.yml`)
+  runs `npm test` then deploys, triggered manually from the Actions
+  tab. It needs one repo secret:
+  - **`CLOUDFLARE_API_TOKEN`** — in the Cloudflare dashboard, go to
+    **My Profile → API Tokens → Create Token** and use the **"Edit
+    Cloudflare Workers"** template (scopes it to Workers + Durable
+    Objects only, not your whole account). Add it as a secret at
+    **repo Settings → Secrets and variables → Actions → New repository
+    secret**, named `CLOUDFLARE_API_TOKEN`.
+  - If your Cloudflare login has access to more than one account (most
+    personal accounts don't), wrangler may also need a
+    `CLOUDFLARE_ACCOUNT_ID` secret to know which one to deploy into —
+    only add this if a deploy fails asking for it. Find it on any
+    domain's Overview page in the dashboard, in the right sidebar.
+
+**PR previews**: every PR automatically gets its own live preview
+Worker — `preview-signal-hub.yml` deploys `vr-signal-relay-pr-<number>`
+(its own Durable Object namespace, isolated from production) and
+comments the `wss://` address on the PR. `cleanup-signal-hub-preview.yml`
+deletes it again when the PR closes, merged or not, so these don't
+pile up on the account. This isn't Cloudflare's built-in "preview URL"
+feature (`wrangler versions upload`) — that's explicitly unsupported
+for Workers using Durable Objects, which this one does — so it's a
+real second Worker instead of a lightweight preview version, on the
+same free plan as production.
+
+This deploys unconditionally, not just for PRs that touch `worker/**`
+— see "Hardcoding the relay address" below for why: every Netlify
+deploy-preview build bakes in a `vr-signal-relay-pr-<number>` address
+regardless of what the PR actually changed, since the HOST/JOIN
+buttons ship on every build. A PR whose own preview Worker doesn't
+exist yet still has its build pointed at that address, so the button
+lights up (the click itself works) but hosting/joining silently fails
+— the WebSocket error only reaches the browser console, not the UI.
+
+This is separate from, and unrelated to, the site's own Netlify
+deploy previews (the actual `primitives/menus/` page a browser loads)
+— those come from Netlify's own GitHub integration, not anything in
+this repo, and only fire on a real push to a PR's branch (opening or
+retargeting a PR alone doesn't trigger one — push a commit if a
+preview seems to be missing). The two previews line up automatically,
+though: see "Hardcoding the relay address" below for why a PR's
+Netlify preview already points at that same PR's Worker preview with
+nothing to paste anywhere.
+
+**Hardcoding the relay address**: `vite.config.js` computes the
+relay's `wss://` address at build time from `CONTEXT`/`REVIEW_ID` —
+environment variables Netlify sets automatically on every build, not
+anything configured in this repo — and injects it as a global
+(`__RELAY_URL__`, read via `common/relay-config.js`'s `RELAY_URL`).
+On a `deploy-preview` build, `REVIEW_ID` is the PR number, which lines
+up exactly with `preview-signal-hub.yml`'s `vr-signal-relay-pr-<number>`
+naming — so a PR's Netlify preview is automatically wired to that same
+PR's Worker preview, no manual pasting involved. Any other build
+(production, local `npm run dev`) falls back to the production
+address. An explicit `VITE_RELAY_URL` env var overrides both, for
+pointing a build at something else entirely (e.g. a local
+`wrangler dev` instance — see below).
+
+**Testing locally without deploying**: `npm run relay:hosted:dev` runs
+the same Worker code against Cloudflare's local simulator (`workerd`)
+on your machine — prints a `ws://localhost:8787`-style address, no
+Cloudflare account needed for this part. Paste it into the showcase
+panel's relay-address field to exercise it directly, or run
+`VITE_RELAY_URL=ws://localhost:8787 npm run dev` to point a real dev
+build (including the in-VR watch menu) at it.
+
+**Cost**: the relay only ever moves a few KB of text per connection
+(the one-time handshake) — nowhere near the free plan's limits
+(100,000 requests/day) under any realistic amount of play. If usage
+ever did grow enough to matter, the free plan simply stops accepting
+requests rather than charging you; the only way this relay can ever
+cost money is if you deliberately upgrade the Cloudflare account to
+Workers Paid.
+
+**Why the relay alone isn't enough**: `common/multiplayer.js` also now
+points `iceServers` at a free public STUN server
+(`stun.cloudflare.com`, no account needed), which is the other half of
+what it takes for two peers on separate networks to find each
+other — the relay lets them exchange addresses, STUN is what gives
+each side a real address to exchange. TURN — needed for the fraction
+of networks where even STUN can't establish a direct path, and which
+comes with a real ongoing bandwidth cost since it relays actual
+gameplay traffic — is deliberately not part of this yet; see
+`TODO.md`.

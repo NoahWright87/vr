@@ -1,14 +1,4 @@
-# Vendored dependencies
-
-## @noahwright/design 1.3.0
-
-`design-1.3.0/` contains the published package's `dist/index.css`, all four Wright Sans WOFF2 files referenced by it, its CSS source map, and its MIT license. The landing page uses the package's header, card, toggle, footer, typography, and theme styles with site palette overrides. React JavaScript is unnecessary for this static HTML site.
-
-Source: https://www.npmjs.com/package/@noahwright/design/v/1.3.0
-
-To update, check `npm view @noahwright/design version`, download that exact version with `npm pack @noahwright/design@<version>` in a scratch folder, and extract it. Copy `dist/index.css`, `dist/index.css.map`, all `dist/*.woff2` files, and `LICENSE` into a new `vendor/design-<version>/` folder. Update the stylesheet link in the root `index.html`, the version references in these docs, and verify both themes and mobile layout. No install or build is required to serve the site.
-
-## A-Frame
+# Vendored A-Frame
 
 A checked-in copy of A-Frame, used instead of the `aframe.io` CDN. Still no
 npm install, no build step — this is just a file in the repo.

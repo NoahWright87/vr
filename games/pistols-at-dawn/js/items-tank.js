@@ -55,6 +55,7 @@
           heldRotation: { x: -90, y: 0, z: 0 },
           holsterPosition: { x: 0, y: 0, z: 0.06 },
           grabRadius: 0.24,
+          grabPriority: 30,
           comOffset: { x: 0, y: -0.1, z: 0 },
           maxThrowSpeed: 5,
         });
@@ -344,7 +345,7 @@
           var color = liquid ? liquid.dropColor || liquid.poolColor : '#2b2b2f';
 
           if (this.gaugeEl) {
-            this.gaugeEl.setAttribute('visible', !!liquid);
+            this.gaugeEl.object3D.visible = !!liquid;
             this.gaugeEl.setAttribute(
               'material',
               'color: ' + color + '; shader: flat; opacity: 0.85; transparent: true'

@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>About | Noah's VR projects</title>
+    <link rel="icon" href="../assets/noah-vr.svg" type="image/svg+xml" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#F2E3F1" />
+    <script>
+      (() => {
+        let mode = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        try {
+          const stored = localStorage.getItem('nw-theme-mode');
+          if (stored === 'dark' || stored === 'light') mode = stored;
+        } catch { /* Use the system preference when storage is unavailable. */ }
+        document.documentElement.dataset.theme = mode;
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/about-main.jsx"></script>
+  </body>
+</html>

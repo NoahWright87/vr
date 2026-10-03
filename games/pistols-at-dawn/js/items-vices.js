@@ -131,11 +131,11 @@
 
         parts.body.object3D.scale.y = Math.max(solid / parts.fullLength, 0.0001);
         parts.body.object3D.position.set(0, 0, -solid / 2);
-        parts.body.setAttribute('visible', solid > 0.001);
+        parts.body.object3D.visible = solid > 0.001;
 
         parts.ash.object3D.scale.y = Math.max(ashLength / parts.fullLength, 0.0001);
         parts.ash.object3D.position.set(0, 0, -(solid + ashLength / 2));
-        parts.ash.setAttribute('visible', ashLength > 0.001);
+        parts.ash.object3D.visible = ashLength > 0.001;
 
         parts.ember.object3D.position.set(0, 0, -length);
         parts.hitbox.object3D.scale.y = (length + 0.04) / (parts.fullLength + 0.04);
@@ -674,13 +674,18 @@
         VICES.nicotine = Math.min(VICES.nicotine + amount, 1);
       }
 
+      var EXERTION_RISE_PER_S = 0.5; // reaches full exertion after ~2s of continuous sprinting
+      var EXERTION_FALL_PER_S = 0.2; // and takes ~5s to fully recover once you stop -- breathlessness lingers a bit
+
       registerComponent('vice-meter', {
         init: function () {
           VICES.alcohol = 0;
           VICES.nicotine = 0;
+          EXERTION.level = 0;
 
           this.hud = document.querySelector('#vice-text');
           this.sky = document.querySelector('a-sky');
+          this.playerRig = document.querySelector('#player-rig');
           this.refreshTimer = 0;
 
           this._soberColor = new THREE.Color(SOBER_SKY);
@@ -693,6 +698,11 @@
           VICES.alcohol = Math.max(VICES.alcohol - ALCOHOL_DECAY_PER_S * dtSeconds, 0);
           VICES.nicotine = Math.max(VICES.nicotine - NICOTINE_DECAY_PER_S * dtSeconds, 0);
 
+          var locomotion = this.playerRig && this.playerRig.components['locomotion-demo'];
+          var sprinting = Boolean(locomotion && locomotion.isSprinting);
+          var exertionRate = sprinting ? EXERTION_RISE_PER_S : -EXERTION_FALL_PER_S;
+          EXERTION.level = Math.max(0, Math.min(1, EXERTION.level + exertionRate * dtSeconds));
+
           this.refreshTimer -= dt || 16;
           if (this.refreshTimer > 0) return;
           this.refreshTimer = 150;
@@ -702,7 +712,7 @@
         },
 
         updateHud: function () {
-          if (!this.hud) return;
+          if (!this.hud || !PLAYER_HUD_VISIBLE) return;
           this.hud.setAttribute(
             'text',
             'value',

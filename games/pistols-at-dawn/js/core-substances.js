@@ -69,6 +69,7 @@
         }
 
         el = document.createElement('a-entity');
+        el.setAttribute('data-area-persistent', '');
 
         var disc = document.createElement('a-circle');
         disc.setAttribute('radius', 1);

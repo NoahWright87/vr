@@ -12,8 +12,7 @@
       var STAND_UP_DUR_MS = 350;
       var RESET_DELAY_MS = 700; // pause after a group's last target falls, before that group pops back up
 
-      var RING_Z_START = 0.03; // meters in front of the board face, to the outermost ring
-      var RING_Z_STEP = 0.01; // extra separation per ring stepping inward — small enough to look flat from a few meters out, big enough that the depth buffer doesn't flicker between rings
+      var RING_Z = 0.1; // safely in front of the board; rings never overlap each other
       // ==============================================================
       // createTargetFace
       // The reusable "bullseye" visual: a board plus five scored rings,
@@ -46,13 +45,21 @@
         ];
 
         rings.forEach(function (ring, i) {
-          var circle = document.createElement('a-circle');
-          circle.setAttribute('radius', ring.radius * scale);
-          circle.setAttribute('color', ring.color);
-          circle.setAttribute('position', { x: 0, y: 0, z: RING_Z_START + i * RING_Z_STEP });
-          circle.classList.add('shootable');
-          circle.setAttribute('scoring-ring', { score: ring.score, label: ring.label });
-          face.appendChild(circle);
+          // Nested full disks required tiny Z offsets to reveal each color.
+          // At 30m+ those planes collapse to the same depth-buffer value and
+          // flicker. Annuli do not overlap at all, so every scoring zone can
+          // share one stable plane.
+          var zone = document.createElement(i === rings.length - 1 ? 'a-circle' : 'a-ring');
+          if (i === rings.length - 1) zone.setAttribute('radius', ring.radius * scale);
+          else {
+            zone.setAttribute('radius-inner', rings[i + 1].radius * scale);
+            zone.setAttribute('radius-outer', ring.radius * scale);
+          }
+          zone.setAttribute('color', ring.color);
+          zone.setAttribute('position', { x: 0, y: 0, z: RING_Z });
+          zone.classList.add('shootable');
+          zone.setAttribute('scoring-ring', { score: ring.score, label: ring.label });
+          face.appendChild(zone);
         });
 
         return face;
@@ -162,18 +169,20 @@
         init: function () {
           placeInArc(this.el, this.data.angle, this.data.distance);
 
+          this.paused = false;
+
           this.targets = [];
           var self = this;
           this.onTargetFallen = makeGroupResetHandler(function () { return self.targets; });
           this.el.addEventListener('target-fallen', this.onTargetFallen);
 
-          var support = document.createElement('a-box');
-          support.setAttribute('width', 0.08);
-          support.setAttribute('depth', 0.08);
-          support.setAttribute('height', this.data.hubHeight);
-          support.setAttribute('position', { x: 0, y: this.data.hubHeight / 2, z: 0 });
-          support.setAttribute('color', '#5b4633');
-          this.el.appendChild(support);
+          this.support = document.createElement('a-box');
+          this.support.setAttribute('width', 0.08);
+          this.support.setAttribute('depth', 0.08);
+          this.support.setAttribute('height', this.data.hubHeight);
+          this.support.setAttribute('position', { x: 0, y: this.data.hubHeight / 2, z: 0 });
+          this.support.setAttribute('color', '#5b4633');
+          this.el.appendChild(this.support);
 
           this.hub = document.createElement('a-entity');
           this.hub.setAttribute('position', { x: 0, y: this.data.hubHeight, z: 0 });
@@ -186,34 +195,87 @@
           axle.setAttribute('color', '#2b2b2f');
           this.hub.appendChild(axle);
 
-          for (var i = 0; i < this.data.spokeCount; i++) {
-            var angleDeg = (360 / this.data.spokeCount) * i;
-            var angleRad = (angleDeg * Math.PI) / 180;
-            var x = this.data.wheelRadius * Math.cos(angleRad);
-            var y = this.data.wheelRadius * Math.sin(angleRad);
+          this.spokeEls = [];
+          this.layerEls = [];
+          this.buildSpokes();
+        },
 
-            var spoke = document.createElement('a-box');
-            spoke.setAttribute('width', 0.04);
-            spoke.setAttribute('depth', 0.04);
-            spoke.setAttribute('height', this.data.wheelRadius);
-            spoke.setAttribute('position', { x: x / 2, y: y / 2, z: 0 });
-            spoke.setAttribute('rotation', { x: 0, y: 0, z: angleDeg - 90 });
-            spoke.setAttribute('color', '#5b4633');
-            this.hub.appendChild(spoke);
+        update: function (oldData) {
+          if (!this.hub) return;
+          if (
+            oldData.distance !== undefined &&
+            (oldData.distance !== this.data.distance || oldData.angle !== this.data.angle)
+          ) {
+            placeInArc(this.el, this.data.angle, this.data.distance);
+          }
+          if (oldData.spokeCount !== undefined && oldData.spokeCount !== this.data.spokeCount) this.buildSpokes();
+        },
 
-            var hinge = document.createElement('a-entity');
-            hinge.setAttribute('pop-target', '');
-            hinge.setAttribute('position', { x: x, y: y, z: 0 });
-            this.hub.appendChild(hinge);
-            hinge.appendChild(createTargetFace(this.data.targetScale));
+        buildSpokes: function () {
+          this.layerEls.forEach(function (layerEl) {
+            if (layerEl.parentNode) layerEl.parentNode.removeChild(layerEl);
+          });
+          this.layerEls.length = 0;
+          this.spokeEls.length = 0;
+          this.targets.length = 0;
+          var spokeCount = Math.max(1, Math.round(this.data.spokeCount));
+          var layerCount = spokeCount <= 8 ? 1 : spokeCount <= 16 ? 2 : 3;
+          var layerGap = Math.max(0.95, this.data.targetScale * 1.1 + 0.3);
+          var outerRadius = this.data.wheelRadius + (layerCount - 1) * layerGap;
+          var hubHeight = Math.max(this.data.hubHeight, outerRadius + 0.2);
+          this.hub.setAttribute('position', { x: 0, y: hubHeight, z: 0 });
+          this.support.setAttribute('height', hubHeight);
+          this.support.setAttribute('position', { x: 0, y: hubHeight / 2, z: 0 });
+          var remaining = spokeCount;
 
-            this.targets.push(hinge);
+          for (var layerIndex = 0; layerIndex < layerCount; layerIndex++) {
+            var layerSpokeCount = Math.ceil(remaining / (layerCount - layerIndex));
+            remaining -= layerSpokeCount;
+            var radius = this.data.wheelRadius + layerIndex * layerGap;
+            var layer = document.createElement('a-entity');
+            layer._spinDirection = layerIndex % 2 === 0 ? 1 : -1;
+            this.hub.appendChild(layer);
+            this.layerEls.push(layer);
+
+            for (var i = 0; i < layerSpokeCount; i++) {
+              var angleDeg = (360 / layerSpokeCount) * i + layerIndex * 12;
+              var angleRad = (angleDeg * Math.PI) / 180;
+              var x = radius * Math.cos(angleRad);
+              var y = radius * Math.sin(angleRad);
+
+              var spoke = document.createElement('a-box');
+              spoke.setAttribute('width', 0.04);
+              spoke.setAttribute('depth', 0.04);
+              spoke.setAttribute('height', radius);
+              spoke.setAttribute('position', { x: x / 2, y: y / 2, z: -layerIndex * 0.04 });
+              spoke.setAttribute('rotation', { x: 0, y: 0, z: angleDeg - 90 });
+              spoke.setAttribute('color', '#5b4633');
+              layer.appendChild(spoke);
+              this.spokeEls.push(spoke);
+
+              var hinge = document.createElement('a-entity');
+              hinge.setAttribute('pop-target', '');
+              hinge.setAttribute('position', { x: x, y: y, z: -layerIndex * 0.04 });
+              layer.appendChild(hinge);
+              hinge.appendChild(createTargetFace(this.data.targetScale));
+
+              this.spokeEls.push(hinge);
+              this.targets.push(hinge);
+            }
           }
         },
 
         tick: function (time, dt) {
+          if (this.paused) return;
           var dtSeconds = Math.min((dt || 16) / 1000, 0.05);
-          this.hub.object3D.rotation.z += ((this.data.speed * Math.PI) / 180) * dtSeconds;
+          var delta = ((this.data.speed * Math.PI) / 180) * dtSeconds;
+          this.layerEls.forEach(function (layer) {
+            layer.object3D.rotation.z += delta * layer._spinDirection;
+          });
+        },
+
+        setPaused: function (paused) {
+          this.paused = !!paused;
         },
       });
 
@@ -227,6 +289,7 @@
       registerComponent('conveyor-target', {
         schema: {
           count: { type: 'number', default: 3 },
+          conveyorCount: { type: 'number', default: 1 },
           length: { type: 'number', default: 3.2 }, // meters of track, end to end
           speed: { type: 'number', default: 0.45 }, // meters/second
           direction: { type: 'number', default: 1 }, // 1 = left-to-right, -1 = right-to-left
@@ -239,56 +302,64 @@
         init: function () {
           placeInArc(this.el, this.data.angle, this.data.distance);
 
+          this.paused = false;
           this.targets = [];
           var self = this;
           this.onTargetFallen = makeGroupResetHandler(function () { return self.targets; });
           this.el.addEventListener('target-fallen', this.onTargetFallen);
 
           var halfLength = this.data.length / 2;
+          var conveyorCount = Math.max(1, Math.min(4, Math.round(this.data.conveyorCount)));
+          var basePerConveyor = Math.floor(this.data.count / conveyorCount);
+          var extras = this.data.count % conveyorCount;
 
-          var track = document.createElement('a-box');
-          track.setAttribute('width', this.data.length + 0.3);
-          track.setAttribute('height', 0.05);
-          track.setAttribute('depth', 0.05);
-          track.setAttribute('position', { x: 0, y: this.data.height, z: 0 });
-          track.setAttribute('color', '#2b2b2f');
-          this.el.appendChild(track);
+          for (var lane = 0; lane < conveyorCount; lane++) {
+            var laneTargetCount = basePerConveyor + (lane < extras ? 1 : 0);
+            var laneY = this.data.height + lane * 1.2 * this.data.targetScale;
+            var laneZ = -lane * 0.12;
+            var laneDirection = lane % 2 === 0 ? this.data.direction : -this.data.direction;
 
-          [-halfLength - 0.1, halfLength + 0.1].forEach(function (legX) {
-            var leg = document.createElement('a-box');
-            leg.setAttribute('width', 0.06);
-            leg.setAttribute('depth', 0.06);
-            leg.setAttribute('height', self.data.height);
-            leg.setAttribute('position', { x: legX, y: self.data.height / 2, z: 0 });
-            leg.setAttribute('color', '#5b4633');
-            self.el.appendChild(leg);
-          });
+            var track = document.createElement('a-box');
+            track.setAttribute('width', this.data.length + 0.3);
+            track.setAttribute('height', 0.05);
+            track.setAttribute('depth', 0.05);
+            track.setAttribute('position', { x: 0, y: laneY, z: laneZ });
+            track.setAttribute('color', '#2b2b2f');
+            this.el.appendChild(track);
 
-          var spacing = this.data.length / this.data.count;
-          for (var i = 0; i < this.data.count; i++) {
-            var startX = -halfLength + spacing * (i + 0.5);
-
-            var hinge = document.createElement('a-entity');
-            hinge.setAttribute('pop-target', '');
-            hinge.setAttribute('position', { x: startX, y: this.data.height, z: 0 });
-            this.el.appendChild(hinge);
-            hinge.appendChild(createTargetFace(this.data.targetScale));
-
-            this.targets.push(hinge);
+            var spacing = this.data.length / laneTargetCount;
+            for (var i = 0; i < laneTargetCount; i++) {
+              var startX = -halfLength + spacing * (i + 0.5);
+              var hinge = document.createElement('a-entity');
+              hinge.setAttribute('pop-target', '');
+              hinge.setAttribute('position', { x: startX, y: laneY, z: laneZ });
+              hinge._conveyorDirection = laneDirection;
+              this.el.appendChild(hinge);
+              var face = createTargetFace(this.data.targetScale);
+              if (laneDirection < 0) face.setAttribute('rotation', '0 0 180');
+              hinge.appendChild(face);
+              this.targets.push(hinge);
+            }
           }
         },
 
         tick: function (time, dt) {
+          if (this.paused) return;
           var dtSeconds = Math.min((dt || 16) / 1000, 0.05);
-          var delta = this.data.speed * this.data.direction * dtSeconds;
+          var speed = this.data.speed;
           var halfLength = this.data.length / 2;
 
           this.targets.forEach(function (hingeEl) {
             var pos = hingeEl.object3D.position;
+            var delta = speed * hingeEl._conveyorDirection * dtSeconds;
             pos.x += delta;
             if (pos.x > halfLength) pos.x -= halfLength * 2;
             else if (pos.x < -halfLength) pos.x += halfLength * 2;
           });
+        },
+
+        setPaused: function (paused) {
+          this.paused = !!paused;
         },
       });
 
@@ -309,8 +380,6 @@
         schema: {
           count: { type: 'number', default: 4 },
           spacing: { type: 'number', default: 0.8 },
-          upHeight: { type: 'number', default: 1.1 },
-          downHeight: { type: 'number', default: -0.5 }, // below the ground plane, so it's genuinely hidden
           targetScale: { type: 'number', default: 0.5 },
           cycleMinMs: { type: 'number', default: 2000 }, // shortest time spent hidden between pops
           cycleMaxMs: { type: 'number', default: 4500 }, // longest time spent hidden between pops
@@ -320,36 +389,46 @@
         },
 
         init: function () {
-          placeInArc(this.el, this.data.angle, this.data.distance);
-
+          this.paused = false;
           this.targets = [];
           this.poppers = [];
           var self = this;
           this.onTargetFallen = makeGroupResetHandler(function () { return self.targets; });
           this.el.addEventListener('target-fallen', this.onTargetFallen);
-
-          var totalWidth = (this.data.count - 1) * this.data.spacing;
+          var targetHalfHeight = 0.55 * this.data.targetScale;
+          var upY = targetHalfHeight; // target's bottom edge rests on the ground
+          var downY = -targetHalfHeight - 0.05; // top edge clears the ground while hidden
 
           for (var i = 0; i < this.data.count; i++) {
-            var x = -totalWidth / 2 + i * this.data.spacing;
+            var t = this.data.count === 1 ? 0 : i / (this.data.count - 1) - 0.5;
+            var angleDeg = this.data.angle + t * 120;
+            var angleRad = angleDeg * Math.PI / 180;
+            var staggeredDistance = Math.max(2, this.data.distance + (i % 3 - 1));
+            var x = staggeredDistance * Math.sin(angleRad);
+            var z = -staggeredDistance * Math.cos(angleRad);
 
             var hole = document.createElement('a-circle');
             hole.setAttribute('radius', 0.18);
             hole.setAttribute('rotation', '-90 0 0');
             hole.setAttribute('color', '#3a2f22');
-            hole.setAttribute('position', { x: x, y: 0.005, z: 0 });
+            hole.setAttribute('position', { x: x, y: 0.005, z: z });
             this.el.appendChild(hole);
 
             var hinge = document.createElement('a-entity');
             hinge.setAttribute('pop-target', '');
-            hinge.setAttribute('position', { x: x, y: this.data.downHeight, z: 0 });
+            hinge.setAttribute('position', { x: x, y: downY, z: z });
             this.el.appendChild(hinge);
-            hinge.appendChild(createTargetFace(this.data.targetScale));
+            var face = createTargetFace(this.data.targetScale);
+            face.setAttribute('rotation', { x: 0, y: -angleDeg, z: 0 });
+            hinge.appendChild(face);
 
             this.targets.push(hinge);
             this.poppers.push({
               hinge: hinge,
               x: x,
+              z: z,
+              upY: upY,
+              downY: downY,
               isUp: false,
               timer: Math.random() * this.data.cycleMaxMs, // stagger initial pops
             });
@@ -357,16 +436,17 @@
         },
 
         tick: function (time, dt) {
+          if (this.paused) return;
           var self = this;
           this.poppers.forEach(function (popper) {
             popper.timer -= dt || 16;
             if (popper.timer > 0) return;
 
             popper.isUp = !popper.isUp;
-            var targetY = popper.isUp ? self.data.upHeight : self.data.downHeight;
+            var targetY = popper.isUp ? popper.upY : popper.downY;
             popper.hinge.setAttribute('animation__pop', {
               property: 'position',
-              to: popper.x + ' ' + targetY + ' 0',
+              to: popper.x + ' ' + targetY + ' ' + popper.z,
               dur: 220,
               easing: popper.isUp ? 'easeOutQuad' : 'easeInQuad',
             });
@@ -374,6 +454,10 @@
               ? self.data.upDurationMs
               : self.data.cycleMinMs + Math.random() * (self.data.cycleMaxMs - self.data.cycleMinMs);
           });
+        },
+
+        setPaused: function (paused) {
+          this.paused = !!paused;
         },
       });
 
@@ -484,6 +568,7 @@
         schema: {
           count: { type: 'number', default: 3 },
           distanceScale: { type: 'number', default: 1 }, // multiplies how far this group stands from the player
+          distance: { type: 'number', default: 0 }, // absolute distance; zero preserves distanceScale compatibility
         },
 
         init: function () {
@@ -493,29 +578,37 @@
           this.onTargetFallen = makeGroupResetHandler(function () { return self.targets; });
           this.el.addEventListener('target-fallen', this.onTargetFallen);
 
-          this.buildLayout(this.data.count, this.data.distanceScale).forEach(function (spot) {
+          var distance = this.data.distance || 4.5 * this.data.distanceScale;
+          this.buildLayout(this.data.count, distance).forEach(function (spot) {
             self.targets.push(self.spawnTarget(spot.x, spot.standHeight, spot.z, spot.rotY));
           });
         },
 
-        // A shallow arc of `count` stands at a distance scaled by
-        // distanceScale, wider arcs for bigger groups so the stands
-        // don't crowd together at longer range.
-        buildLayout: function (count, distanceScale) {
-          var baseRadius = 4.5 * distanceScale;
-          var totalSpreadDeg = Math.min(14 * count, 60);
+        // Fill a 120-degree firing arc. Nearby targets occupy several
+        // height/depth tiers because a single 1.1m board subtends far more of
+        // the player's view at 5m than it does at 45m.
+        buildLayout: function (count, distance) {
+          var targetAngle = 2 * Math.atan2(0.65, distance) * 180 / Math.PI;
+          var capacity = Math.max(4, Math.floor(120 / (targetAngle * 1.25)));
+          var rowCount = Math.ceil(count / capacity);
+          var remaining = count;
           var positions = [];
 
-          for (var i = 0; i < count; i++) {
-            var t = count === 1 ? 0 : i / (count - 1) - 0.5; // -0.5..0.5 across the group
-            var angleDeg = t * totalSpreadDeg;
-            var angleRad = (angleDeg * Math.PI) / 180;
-            positions.push({
-              x: baseRadius * Math.sin(angleRad),
-              z: -baseRadius * Math.cos(angleRad),
-              standHeight: i % 2 === 0 ? 1.2 : 1.4,
-              rotY: -angleDeg, // angle the board back toward the player
-            });
+          for (var row = 0; row < rowCount; row++) {
+            var rowTargetCount = Math.ceil(remaining / (rowCount - row));
+            remaining -= rowTargetCount;
+            var rowDistance = distance + row * 1.5;
+            for (var column = 0; column < rowTargetCount; column++) {
+              var t = rowTargetCount === 1 ? 0 : column / (rowTargetCount - 1) - 0.5;
+              var angleDeg = t * 120;
+              var angleRad = angleDeg * Math.PI / 180;
+              positions.push({
+                x: rowDistance * Math.sin(angleRad),
+                z: -rowDistance * Math.cos(angleRad),
+                standHeight: 1.1 + row * 1.15 + (column % 2) * 0.12,
+                rotY: -angleDeg,
+              });
+            }
           }
 
           return positions;

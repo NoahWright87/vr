@@ -1,0 +1,30 @@
+name: Deploy signal hub (Cloudflare Worker)
+
+# Manual only, deliberately — this pushes to a live, internet-reachable
+# endpoint, so it shouldn't fire on every push the way the exe-build
+# workflow does. Trigger it from the Actions tab once you've added the
+# CLOUDFLARE_API_TOKEN repo secret (see README.md's "Hosted relay"
+# section for how to create one and what permissions it needs).
+on:
+  workflow_dispatch: {}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - run: npm ci
+
+      - run: npm test
+
+      - name: Deploy to Cloudflare
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          workingDirectory: worker
+          command: deploy

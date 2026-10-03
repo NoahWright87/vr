@@ -45,6 +45,134 @@
       }
 
       // ==============================================================
+      // SCENE INDEX
+      // querySelectorAll is convenient but allocating and walking the full
+      // A-Frame DOM several times per frame is not. These lists are rebuilt
+      // only when relevant entities/classes enter or leave the document.
+      // Positions and component state remain live on the returned elements.
+      // ==============================================================
+      var SCENE_INDEX_VERSION = 0;
+      var SCENE_INDEX_CACHE = {};
+
+      function invalidateSceneIndex() {
+        SCENE_INDEX_VERSION++;
+      }
+
+      function sceneElements(selector) {
+        var cached = SCENE_INDEX_CACHE[selector];
+        if (cached && cached.version === SCENE_INDEX_VERSION) return cached.elements;
+        var elements = Array.prototype.slice.call(document.querySelectorAll(selector));
+        SCENE_INDEX_CACHE[selector] = { version: SCENE_INDEX_VERSION, elements: elements };
+        return elements;
+      }
+
+      registerComponent('scene-index', {
+        init: function () {
+          this.observer = new MutationObserver(invalidateSceneIndex);
+          this.observer.observe(this.el, {
+            childList: true,
+            subtree: true,
+            attributes: true,
+            attributeFilter: [
+              'class', 'breakable', 'cuttable-shotgun', 'gun-brace-surface',
+              'ignition-source', 'lightable', 'liquid-tank', 'pop-target',
+            ],
+          });
+          invalidateSceneIndex();
+        },
+
+        remove: function () {
+          if (this.observer) this.observer.disconnect();
+          SCENE_INDEX_CACHE = {};
+          invalidateSceneIndex();
+        },
+      });
+
+      // ==============================================================
+      // COMPONENT: model-prop
+      // Future GLBs keep their detailed visual mesh separate from a cheap
+      // gameplay proxy. The proxy is the only descendant raycastable by gun
+      // shots, so imported visual detail never becomes collision complexity.
+      // Put `class="shootable"` on the component's root when appropriate.
+      // ==============================================================
+      function ignoreModelRaycast() {}
+
+      registerComponent('model-prop', {
+        schema: {
+          src: { type: 'asset' },
+          visualPosition: { type: 'vec3', default: { x: 0, y: 0, z: 0 } },
+          visualRotation: { type: 'vec3', default: { x: 0, y: 0, z: 0 } },
+          visualScale: { type: 'vec3', default: { x: 1, y: 1, z: 1 } },
+          hitbox: { type: 'string', default: 'box', oneOf: ['box', 'sphere', 'cylinder', 'none'] },
+          hitboxPosition: { type: 'vec3', default: { x: 0, y: 0, z: 0 } },
+          hitboxRotation: { type: 'vec3', default: { x: 0, y: 0, z: 0 } },
+          hitboxSize: { type: 'vec3', default: { x: 1, y: 1, z: 1 } },
+          hitboxRadius: { type: 'number', default: 0.5 },
+          hitboxHeight: { type: 'number', default: 1 },
+        },
+
+        init: function () {
+          this.visualEl = document.createElement('a-entity');
+          this.visualEl.classList.add('model-visual');
+          this.onModelLoaded = this.onModelLoaded.bind(this);
+          this.visualEl.addEventListener('model-loaded', this.onModelLoaded);
+          this.el.appendChild(this.visualEl);
+        },
+
+        update: function () {
+          var data = this.data;
+          this.visualEl.setAttribute('gltf-model', data.src);
+          this.visualEl.setAttribute('position', data.visualPosition);
+          this.visualEl.setAttribute('rotation', data.visualRotation);
+          this.visualEl.setAttribute('scale', data.visualScale);
+          this.buildHitbox();
+          if (data.hitbox !== 'none') this.disableVisualRaycasts();
+        },
+
+        remove: function () {
+          this.visualEl.removeEventListener('model-loaded', this.onModelLoaded);
+          if (this.visualEl.parentNode) this.visualEl.parentNode.removeChild(this.visualEl);
+          if (this.hitboxEl && this.hitboxEl.parentNode) this.hitboxEl.parentNode.removeChild(this.hitboxEl);
+        },
+
+        onModelLoaded: function () {
+          if (this.data.hitbox !== 'none') this.disableVisualRaycasts();
+        },
+
+        disableVisualRaycasts: function () {
+          var mesh = this.visualEl.getObject3D('mesh');
+          if (!mesh) return;
+          mesh.traverse(function (object) {
+            if (object.isMesh) object.raycast = ignoreModelRaycast;
+          });
+        },
+
+        buildHitbox: function () {
+          if (this.hitboxEl && this.hitboxEl.parentNode) this.hitboxEl.parentNode.removeChild(this.hitboxEl);
+          this.hitboxEl = null;
+          if (this.data.hitbox === 'none') return;
+
+          var hitbox = document.createElement('a-entity');
+          hitbox.classList.add('model-hitbox');
+          hitbox.setAttribute('data-simple-hitbox', '');
+          hitbox.setAttribute('position', this.data.hitboxPosition);
+          hitbox.setAttribute('rotation', this.data.hitboxRotation);
+          hitbox.setAttribute('material', 'shader: flat; transparent: true; opacity: 0; depthWrite: false');
+          if (this.data.hitbox === 'sphere') {
+            hitbox.setAttribute('geometry', { primitive: 'sphere', radius: this.data.hitboxRadius, segmentsWidth: 6, segmentsHeight: 4 });
+          } else if (this.data.hitbox === 'cylinder') {
+            hitbox.setAttribute('geometry', { primitive: 'cylinder', radius: this.data.hitboxRadius, height: this.data.hitboxHeight, segmentsRadial: 8 });
+          } else {
+            hitbox.setAttribute('geometry', {
+              primitive: 'box', width: this.data.hitboxSize.x, height: this.data.hitboxSize.y, depth: this.data.hitboxSize.z,
+            });
+          }
+          this.el.appendChild(hitbox);
+          this.hitboxEl = hitbox;
+        },
+      });
+
+      // ==============================================================
       // LOW-POLY GEOMETRY DEFAULTS
       // A-Frame builds a-cylinder at 36 radial x 18 height segments and
       // a-sphere at 36 x 18, which is ~1300 triangles for a bottle neck
@@ -90,7 +218,10 @@
       // Also read by castShot/findLookTarget (see items-guns.js and
       // core-equip.js's computeThrowVelocity) for the raycaster's far
       // distance and a miss tracer's length alike.
-      var MAX_SHOT_RANGE = 20; // meters
+      // The configurable range extends past 45m once an arc staggers some
+      // targets behind its nominal distance. Keep one shared ceiling for
+      // hits, aim assistance, projectiles, and miss tracers.
+      var MAX_SHOT_RANGE = 75; // meters
 
       // Juggling: an aimed toss, not raw physics. The vertical speed of
       // your hand at release controls how high/long the arc is; the
@@ -474,6 +605,25 @@
       // module object rather than a component lookup because it's read
       // by everything, every frame.
       var VICES = { alcohol: 0, nicotine: 0 };
+      // Same shape and same reason, but unlike VICES it rises on its own
+      // (ramps up while sprinting) as well as falling — see vice-meter's
+      // tick in items-vices.js, which is also where it's ticked, and
+      // hand-rig's exertion-breathing wobble contributor, which reads it.
+      var EXERTION = { level: 0 };
+      // Debug-only, off by default: 'none' | 'red' | 'green'. Set by the
+      // watch's Debug page (world-menu.js's onOptionChange) and read by
+      // world-systems.updateLaserSight, which draws a translucent line +
+      // impact dot out of any held firearm's muzzle. Session-only, same
+      // as the shooting gallery's own menu-option settings -- no need to
+      // survive a reload.
+      var LASER_SIGHT = 'none';
+      var LASER_SIGHT_COLORS = { red: '#ff3b3b', green: '#3bff6a' };
+      var LASER_SIGHT_LINE_OPACITY = 0.5;
+      var LASER_SIGHT_DOT_RADIUS = 0.012;
+      var LASER_SIGHT_DOT_OPACITY = 0.85;
+      // The watch menu owns this switch. HUD producers check it before doing
+      // text geometry work that cannot be seen while the HUD is hidden.
+      var PLAYER_HUD_VISIBLE = true;
 
       // The particle pool and the per-frame wind snapshot, both owned
       // by world-systems.
@@ -529,7 +679,7 @@
         if (SHOOTABLE_STAMP === FRAME_STAMP) return SHOOTABLE_ROOTS;
         SHOOTABLE_STAMP = FRAME_STAMP;
 
-        var shootables = document.querySelectorAll('.shootable');
+        var shootables = sceneElements('.shootable');
         SHOOTABLE_ROOTS.length = 0;
         for (var i = 0; i < shootables.length; i++) {
           if (shootables[i].object3D && shootables[i].object3D.visible) SHOOTABLE_ROOTS.push(shootables[i].object3D);
@@ -595,6 +745,7 @@
         }
 
         el = document.createElement(shape === 'box' ? 'a-box' : 'a-sphere');
+        el.setAttribute('data-area-persistent', '');
         if (shape === 'box') {
           el.setAttribute('geometry', { primitive: 'box', width: 1, height: 1, depth: 1 });
         } else {
@@ -767,6 +918,18 @@
           PARTICLES[write++] = PARTICLES[i];
         }
         PARTICLES.length = write;
+      }
+
+      function resetTransientWorld() {
+        for (var i = 0; i < PARTICLES.length; i++) killParticle(PARTICLES[i]);
+        sweepParticles();
+        if (typeof releasePool === 'function') {
+          for (var p = POOLS.length - 1; p >= 0; p--) releasePool(p);
+        }
+        HOT_POINTS.length = 0;
+        WIND_HANDS.length = 0;
+        HELD_ITEMS.length = 0;
+        if (fireLight) fireLight.intensity = 0;
       }
 
       function randomUnitVector() {
@@ -1167,6 +1330,46 @@
         return out;
       }
 
+      // Three more wobble contributors, same fixed-sine-sum shape as
+      // viceWobble and summed onto the same hand-rig grip child (see
+      // hand-rig.updateGrip) rather than introducing a different kind of
+      // motion per cause. Degrees, like viceWobble's output.
+
+      var IDLE_TREMOR_DEG = 0.35; // a small physiological tremor present even sober and at rest, so idle hands aren't perfectly still
+      var WEIGHT_TREMOR_DEG = 2.6; // at holsterable.weight 1.0 -- scaled down for lighter items
+      var EXERTION_BREATH_DEG = 3.2; // at EXERTION.level 1.0 -- a winded heave, not a tremor
+
+      // Always-on baseline, independent of anything held or drunk.
+      function idleTremor(seed, timeMs, out) {
+        var t = timeMs / 1000;
+        out.x = IDLE_TREMOR_DEG * Math.sin(t * 1.7 + seed * 1.3);
+        out.y = IDLE_TREMOR_DEG * Math.sin(t * 1.1 + seed * 0.7);
+        out.z = IDLE_TREMOR_DEG * 0.6 * Math.sin(t * 2.3 + seed * 2.1);
+        return out;
+      }
+
+      // A heavier held object wavers the wrist more, and more slowly,
+      // than a light one -- lower frequency than idleTremor on purpose.
+      function weightWobble(seed, timeMs, weight, out) {
+        var amp = Math.max(0, weight || 0) * WEIGHT_TREMOR_DEG;
+        var t = timeMs / 1000;
+        out.x = amp * Math.sin(t * 0.7 + seed * 1.9);
+        out.y = amp * Math.sin(t * 0.5 + seed * 0.4);
+        out.z = amp * 0.5 * Math.sin(t * 0.9 + seed * 3.3);
+        return out;
+      }
+
+      // A winded chest heave, slower than a tremor and mostly a
+      // side-to-side sway rather than a shake.
+      function exertionWobble(seed, timeMs, out) {
+        var amp = EXERTION.level * EXERTION_BREATH_DEG;
+        var t = timeMs / 1000;
+        out.x = amp * Math.sin(t * 1.9 + seed);
+        out.y = amp * 0.7 * Math.sin(t * 1.9 + seed + Math.PI / 2);
+        out.z = 0;
+        return out;
+      }
+
       // ==============================================================
       // createHitbox
       // An invisible, deliberately oversized collider child. Fully
@@ -1256,7 +1459,7 @@
       // rather than assuming which is left/right.
       // ==============================================================
       function findOtherHand(handEl) {
-        var hands = document.querySelectorAll('.hand');
+        var hands = sceneElements('.hand');
         for (var i = 0; i < hands.length; i++) {
           if (hands[i] !== handEl) return hands[i];
         }
@@ -1576,7 +1779,7 @@
           // claiming, first — an occupant that stops existing without
           // saying so leaves a slot that looks full forever, and a
           // rack that looks full never restocks.
-          var hands = document.querySelectorAll('.hand');
+          var hands = sceneElements('.hand');
           for (var h = 0; h < hands.length; h++) {
             var handRig = hands[h].components['hand-rig'];
             if (handRig) handRig.discard(el);
@@ -1744,10 +1947,16 @@
           this._quat = new THREE.Quaternion();
           this._delta = new THREE.Vector3();
           this._heldPool = []; // reused entries behind HELD_ITEMS
+          this._windPool = []; // reused entries behind WIND_HANDS
           this._hotPool = []; // reused entries behind HOT_POINTS
           this._containerPool = []; // and behind OPEN_CONTAINERS
           this._scratch = new THREE.Vector3();
           this._blowing = {}; // per-hand latch, so one raise of the barrel is one gust
+          this._laserOrigin = new THREE.Vector3();
+          this._laserQuat = new THREE.Quaternion();
+          this._laserDir = new THREE.Vector3();
+          this._laserEnd = new THREE.Vector3();
+          this._laserVisuals = {}; // hand element id -> { lineEl, dotEl }, created lazily
         },
 
         tick: function (time, dt) {
@@ -1768,42 +1977,55 @@
           this.updateParticles(dtSeconds);
           this.updateIgnition();
           this.updateBlow();
+          this.updateLaserSight();
         },
 
         // One scan of the scene per frame, shared by every anchor-slot
         // indicator. Vectors are pooled rather than reallocated, since
         // this runs every frame forever.
         updateHeldItems: function () {
-          var items = document.querySelectorAll('.grabbable');
+          var hands = sceneElements('.hand');
           var count = 0;
           HELD_ITEMS.length = 0;
 
-          for (var i = 0; i < items.length; i++) {
-            var holsterable = items[i].components.holsterable;
-            if (!holsterable || holsterable.state !== 'held') continue;
+          for (var i = 0; i < hands.length; i++) {
+            var handRig = hands[i].components['hand-rig'];
+            if (!handRig) continue;
+            for (var j = 0; j < handRig.heldObjects.length; j++) {
+              var item = handRig.heldObjects[j];
+              var holsterable = item.components.holsterable;
+              if (!holsterable || holsterable.state !== 'held') continue;
 
-            if (!this._heldPool[count]) this._heldPool[count] = { rank: 0, pos: new THREE.Vector3() };
-            var entry = this._heldPool[count];
-            items[i].object3D.getWorldPosition(entry.pos);
-            entry.rank = SLOT_SIZE_RANK[holsterable.data.itemSize];
-            HELD_ITEMS.push(entry);
-            count++;
+              if (!this._heldPool[count]) this._heldPool[count] = { rank: 0, pos: new THREE.Vector3(), holsterable: null };
+              var entry = this._heldPool[count];
+              item.object3D.getWorldPosition(entry.pos);
+              entry.rank = SLOT_SIZE_RANK[holsterable.data.itemSize];
+              entry.holsterable = holsterable;
+              HELD_ITEMS.push(entry);
+              count++;
+            }
           }
         },
 
         // A snapshot of where the hands are and how fast they're
         // moving, taken once and reused by every puff of smoke.
         updateWind: function () {
-          var hands = document.querySelectorAll('.hand');
+          var hands = sceneElements('.hand');
           WIND_HANDS.length = 0;
+          var count = 0;
 
           for (var i = 0; i < hands.length; i++) {
             var handRig = hands[i].components['hand-rig'];
             if (!handRig) continue;
             if (handRig.velocity.length() < WIND_HAND_MIN_SPEED) continue;
 
-            hands[i].object3D.getWorldPosition(this._handPos);
-            WIND_HANDS.push({ pos: this._handPos.clone(), vel: handRig.velocity.clone() });
+            if (!this._windPool[count]) {
+              this._windPool[count] = { pos: new THREE.Vector3(), vel: new THREE.Vector3() };
+            }
+            var entry = this._windPool[count++];
+            hands[i].object3D.getWorldPosition(entry.pos);
+            entry.vel.copy(handRig.velocity);
+            WIND_HANDS.push(entry);
           }
         },
 
@@ -1828,7 +2050,7 @@
             HOT_POINTS.push(entry);
           }
 
-          var sources = document.querySelectorAll('[ignition-source]');
+          var sources = sceneElements('[ignition-source]');
           for (var i = 0; i < sources.length; i++) {
             var source = sources[i].components['ignition-source'];
             if (!source || !source.hot) continue;
@@ -1871,7 +2093,7 @@
               this.updateFirePool(pool, time, dtSeconds);
               if (!brightest || pool.radius > brightest.radius) brightest = pool;
             } else {
-              if (pool.flame) pool.flame.setAttribute('visible', false);
+              if (pool.flame) pool.flame.object3D.visible = false;
               // Drying out is a size, not a timer: a puddle shrinks at
               // its liquid's own rate, so a big spill lasts longer than
               // a splash for the obvious reason rather than because
@@ -1973,7 +2195,7 @@
             pool.needsColor = true;
             pool.radius = POOL_START_RADIUS * 2;
             pool.age = 0;
-            if (pool.flame) pool.flame.setAttribute('visible', false);
+            if (pool.flame) pool.flame.object3D.visible = false;
             spawnSmoke(poolPosition(pool, this._scratch), null, 0.7);
             return;
           }
@@ -1981,7 +2203,7 @@
           var strength = Math.min(pool.radius / POOL_REFERENCE_RADIUS, 1);
 
           if (pool.flame) {
-            pool.flame.setAttribute('visible', true);
+            pool.flame.object3D.visible = true;
             var phase = (time / 1000) * FIRE_WIGGLE_HZ + pool.phase;
             var height = FIRE_MIN_RADIUS + (FIRE_MAX_RADIUS - FIRE_MIN_RADIUS) * Math.sqrt(strength);
             var stretch = 1.7 + 0.35 * Math.sin(phase);
@@ -2029,7 +2251,7 @@
           if (pool.damageTimer > 0) return;
           pool.damageTimer = FIRE_DAMAGE_DELAY_MS;
 
-          var hinges = document.querySelectorAll('[pop-target]');
+          var hinges = sceneElements('[pop-target]');
           var reach = FIRE_DAMAGE_RADIUS + pool.radius;
 
           for (var i = 0; i < hinges.length; i++) {
@@ -2128,7 +2350,7 @@
               // mouth goes down your throat — there is no separate
               // "am I drinking" check anywhere, just beer and a head
               // in the way of it.
-              if (this.mouthEl && obj.position.distanceTo(this._mouthPos) < DROPLET_SWALLOW_RADIUS) {
+              if (this.mouthEl && obj.position.distanceToSquared(this._mouthPos) < DROPLET_SWALLOW_RADIUS * DROPLET_SWALLOW_RADIUS) {
                 this.swallow(liquid);
                 killParticle(p);
                 continue;
@@ -2215,7 +2437,7 @@
           if (!liquid.flammable) return false;
 
           for (var i = 0; i < HOT_POINTS.length; i++) {
-            if (obj.position.distanceTo(HOT_POINTS[i].pos) > DROPLET_IGNITE_RADIUS) continue;
+            if (obj.position.distanceToSquared(HOT_POINTS[i].pos) > DROPLET_IGNITE_RADIUS * DROPLET_IGNITE_RADIUS) continue;
 
             p.liquid = 'fire';
             p.baseScale = LIQUIDS.fire.dropRadius;
@@ -2232,7 +2454,7 @@
         // hot points are, since every droplet in the air asks.
         updateContainers: function () {
           OPEN_CONTAINERS.length = 0;
-          var tanks = document.querySelectorAll('[liquid-tank]');
+          var tanks = sceneElements('[liquid-tank]');
           for (var i = 0; i < tanks.length; i++) {
             var tank = tanks[i].components['liquid-tank'];
             if (!tank || !tank.isOpen()) continue;
@@ -2248,7 +2470,7 @@
 
         fillContainer: function (p, obj) {
           for (var i = 0; i < OPEN_CONTAINERS.length; i++) {
-            if (obj.position.distanceTo(OPEN_CONTAINERS[i].pos) > TANK_MOUTH_RADIUS) continue;
+            if (obj.position.distanceToSquared(OPEN_CONTAINERS[i].pos) > TANK_MOUTH_RADIUS * TANK_MOUTH_RADIUS) continue;
             OPEN_CONTAINERS[i].tank.fill(p.liquid || 'beer');
             return true;
           }
@@ -2314,8 +2536,9 @@
         applyWind: function (p, dtSeconds) {
           for (var i = 0; i < WIND_HANDS.length; i++) {
             this._delta.copy(p.el.object3D.position).sub(WIND_HANDS[i].pos);
-            var d = this._delta.length();
-            if (d > WIND_HAND_RADIUS) continue;
+            var distanceSq = this._delta.lengthSq();
+            if (distanceSq > WIND_HAND_RADIUS * WIND_HAND_RADIUS) continue;
+            var d = Math.sqrt(distanceSq);
 
             var falloff = 1 - d / WIND_HAND_RADIUS;
             p.vel.addScaledVector(WIND_HANDS[i].vel, WIND_HAND_FACTOR * falloff * dtSeconds);
@@ -2326,7 +2549,7 @@
         // source. Both lists are tiny (a handful of cigars, two guns),
         // and neither side knows what the other is.
         updateIgnition: function () {
-          var lightables = document.querySelectorAll('[lightable]');
+          var lightables = sceneElements('[lightable]');
           if (!lightables.length || !HOT_POINTS.length) return;
 
           for (var i = 0; i < lightables.length; i++) {
@@ -2336,7 +2559,7 @@
 
             for (var j = 0; j < HOT_POINTS.length; j++) {
               if (HOT_POINTS[j].el === lightables[i]) continue;
-              if (this._tipA.distanceTo(HOT_POINTS[j].pos) < IGNITE_RADIUS) {
+              if (this._tipA.distanceToSquared(HOT_POINTS[j].pos) < IGNITE_RADIUS * IGNITE_RADIUS) {
                 lightable.ignite();
                 break;
               }
@@ -2351,7 +2574,7 @@
         updateBlow: function () {
           if (!this.mouthEl || !this.cameraEl) return; // _mouthPos is refreshed once per frame in tick
 
-          var hands = document.querySelectorAll('.hand');
+          var hands = sceneElements('.hand');
           for (var i = 0; i < hands.length; i++) {
             var handRig = hands[i].components['hand-rig'];
             if (!handRig) continue;
@@ -2362,7 +2585,7 @@
               if (!muzzleEl || !handRig.heldObjects[j].components.firearm) continue;
 
               muzzleEl.object3D.getWorldPosition(this._muzzlePos);
-              if (this._muzzlePos.distanceTo(this._mouthPos) > BLOW_RADIUS) continue;
+              if (this._muzzlePos.distanceToSquared(this._mouthPos) > BLOW_RADIUS * BLOW_RADIUS) continue;
 
               muzzleEl.object3D.getWorldQuaternion(this._quat);
               this._muzzleDir.set(0, 0, -1).applyQuaternion(this._quat);
@@ -2385,7 +2608,7 @@
           for (var i = 0; i < PARTICLES.length; i++) {
             var p = PARTICLES[i];
             if (p.kind !== 'smoke') continue;
-            if (p.el.object3D.position.distanceTo(this._mouthPos) > BLOW_GUST_RADIUS) continue;
+            if (p.el.object3D.position.distanceToSquared(this._mouthPos) > BLOW_GUST_RADIUS * BLOW_GUST_RADIUS) continue;
 
             p.vel.addScaledVector(this._headDir, BLOW_GUST_SPEED);
             p.vel.y += 0.6;
@@ -2398,5 +2621,81 @@
           for (var k = 0; k < 2; k++) {
             spawnSmoke(this._delta, this._headDir.clone().multiplyScalar(2.2), 0.5);
           }
+        },
+
+        // Debug-only visual (see LASER_SIGHT, the watch's Debug page):
+        // a translucent line from any held firearm's muzzle to wherever
+        // castShot says a real shot would land right now, plus a small
+        // impact dot -- the same "cast a ray, don't fire" reuse of
+        // castShot that firearm.fire() itself uses, and the same
+        // dot-at-the-hit-point technique the watch's own fingertip laser
+        // (common/watch-menu.js) uses for pointing at a menu. Lets you
+        // judge hand wobble by eye without needing to actually shoot.
+        updateLaserSight: function () {
+          var hands = sceneElements('.hand');
+          for (var i = 0; i < hands.length; i++) {
+            var handEl = hands[i];
+            var handRig = handEl.components['hand-rig'];
+            var muzzleEl = null;
+            for (var j = 0; handRig && j < handRig.heldObjects.length; j++) {
+              var held = handRig.heldObjects[j];
+              if (!held.components.firearm) continue;
+              muzzleEl = held.querySelector('.muzzle');
+              if (muzzleEl) break;
+            }
+
+            var visual = this.getLaserVisual(handEl);
+            if (!muzzleEl || LASER_SIGHT === 'none') {
+              if (visual.visible) {
+                visual.lineEl.setAttribute('visible', false);
+                visual.dotEl.setAttribute('visible', false);
+                visual.visible = false;
+              }
+              continue;
+            }
+
+            muzzleEl.object3D.getWorldPosition(this._laserOrigin);
+            muzzleEl.object3D.getWorldQuaternion(this._laserQuat);
+            this._laserDir.set(0, 0, -1).applyQuaternion(this._laserQuat).normalize();
+            var hit = castShot(this._laserOrigin, this._laserDir);
+            if (hit) this._laserEnd.copy(hit.point);
+            else this._laserEnd.copy(this._laserOrigin).addScaledVector(this._laserDir, MAX_SHOT_RANGE);
+
+            var color = LASER_SIGHT_COLORS[LASER_SIGHT] || LASER_SIGHT_COLORS.red;
+            visual.lineEl.setAttribute('line', {
+              start: { x: this._laserOrigin.x, y: this._laserOrigin.y, z: this._laserOrigin.z },
+              end: { x: this._laserEnd.x, y: this._laserEnd.y, z: this._laserEnd.z },
+              color: color,
+              opacity: LASER_SIGHT_LINE_OPACITY,
+            });
+            visual.dotEl.object3D.position.copy(this._laserEnd);
+            visual.dotEl.setAttribute('material', 'color', color);
+            if (!visual.visible) {
+              visual.lineEl.setAttribute('visible', true);
+              visual.dotEl.setAttribute('visible', true);
+              visual.visible = true;
+            }
+          }
+        },
+
+        getLaserVisual: function (handEl) {
+          var id = handEl.id || handEl;
+          var existing = this._laserVisuals[id];
+          if (existing) return existing;
+
+          var lineEl = document.createElement('a-entity');
+          lineEl.setAttribute('line', { start: '0 0 0', end: '0 0 -1', color: LASER_SIGHT_COLORS.red, opacity: LASER_SIGHT_LINE_OPACITY });
+          lineEl.setAttribute('visible', false);
+          this.el.sceneEl.appendChild(lineEl);
+
+          var dotEl = document.createElement('a-entity');
+          dotEl.setAttribute('geometry', 'primitive: sphere; radius: ' + LASER_SIGHT_DOT_RADIUS + '; segmentsWidth: 10; segmentsHeight: 8');
+          dotEl.setAttribute('material', 'color: ' + LASER_SIGHT_COLORS.red + '; shader: flat; opacity: ' + LASER_SIGHT_DOT_OPACITY + '; transparent: true');
+          dotEl.setAttribute('visible', false);
+          this.el.sceneEl.appendChild(dotEl);
+
+          var entry = { lineEl: lineEl, dotEl: dotEl, visible: false };
+          this._laserVisuals[id] = entry;
+          return entry;
         },
       });

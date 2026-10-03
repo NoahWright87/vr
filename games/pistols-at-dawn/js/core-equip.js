@@ -3,7 +3,8 @@
       // The generic hold/holster/dangle/throw/catch contract every
       // grabbable item plugs into (holsterable, anchor-slot), and the
       // two things worn on the body that carry their own slots
-      // (body-anchor, belt). Split out of game.js — see DESIGN.md's
+      // (body-anchor, belt; vests build on the same contracts in
+      // items-throwing-weapons.js). Split out of game.js — see DESIGN.md's
       // "File structure" section. GRAVITY, GROUND_REST_Y, and the
       // shared ballistics helpers (computeThrowVelocity and friends)
       // stay in game.js because they're genuinely used outside this
@@ -11,10 +12,12 @@
       // ==============================================================
 
       var GRAB_RADIUS = 0.15; // meters — how close a hand must be to pick something up
-      var HIP_HEIGHT = 0.9; // meters off the ground
+      var HIP_HEAD_DROP = 0.75; // headset-to-body offsets keep worn gear attached while standing, crouching, or sitting
       var HIP_SIDE_OFFSET = 0.18; // meters, left/right from body centerline
-      var BACK_HEIGHT = 1.3; // meters off the ground — the bandolier's anchor sits higher up the torso than the hips
+      var BACK_HEAD_DROP = 0.35;
       var BACK_DEPTH_OFFSET = 0.3; // meters behind the body centerline — the headset sits at the FRONT of your head, so a small offset puts the bandolier inside your chest and makes the shotgun nearly impossible to reach
+      var CHEST_HEAD_DROP = 0.41;
+      var CHEST_DEPTH_OFFSET = -0.18; // local -Z is forward: reachable without putting the vest inside the ghost torso
       var BELT_TUBE_RADIUS = 0.012;
       var BELT_COLOR = '#4a3220'; // matches the hip holster leather
       var BELT_BUCKLE_COLOR = '#c9962c'; // matches other brass trim (e.g. boxy-sniper's trigger)
@@ -23,6 +26,12 @@
       var DANGLE_DAMPING = 0.999; // per-frame angular velocity decay while swinging — close to 1 = low friction, keeps spinning
       var MAX_ANGULAR_VELOCITY = 40; // rad/s safety clamp so one noisy tracking spike can't fling it into nonsense
       var FALL_DAMPING = 0.99; // per-frame angular velocity decay while tumbling to the ground
+
+      // Timings for performEquipDraw/performEquipHolster's scripted
+      // twirl (see their own comments) — tune by feel, same as every
+      // other duration in this file.
+      var EQUIP_READY_MS = 260; // draw: both hands moving from the twirl into their ready/aim position
+      var EQUIP_HOLSTER_MS = 320; // holster: main hand traveling from ready position back to the anchor slot
       // ==============================================================
       // ANCHOR SLOTS
       // Any object holsterable declares an itemSize; any anchor
@@ -47,17 +56,13 @@
       // Generous catch detection for anything falling/flying (a
       // dropped or thrown holsterable prop — this doesn't know or care
       // which one, it just checks `.hand` elements' public hand-rig
-      // state). A hand can catch by gripping (any grip currently held, not
-      // just a fresh press) within THROW_CATCH_RADIUS, or by resting a
-      // finger on the trigger within that same radius — the two modes
-      // the caller uses to decide "snap into hand" vs. "land on the
-      // finger and dangle." Skips any hand with no room left. isWeapon
-      // additionally skips any hand that already holds a firearm — see
-      // hand-rig.hasWeapon — so a thrown/dropped second pistol sails
-      // past a fist already holding one instead of joining it.
+      // state). An EMPTY hand can catch by gripping within
+      // THROW_CATCH_RADIUS, or by resting a finger on the trigger in
+      // that same radius. A busy hand never passively grows a stack;
+      // stacking is reserved for hand-rig's explicit quick re-grip.
       // ==============================================================
       function findCatchingHand(worldPos, radius, isWeapon) {
-        var hands = document.querySelectorAll('.hand');
+        var hands = sceneElements('.hand');
         var handPos = new THREE.Vector3();
         var best = null;
         var bestDist = radius;
@@ -67,6 +72,7 @@
           var handRig = handEl.components['hand-rig'];
           if (!handRig) continue;
           if (handRig.isFull()) continue;
+          if (handRig.heldObjects.length || handRig.danglingObjects.length || handRig.supportObjects.length) continue;
           if (isWeapon && handRig.hasWeapon()) continue;
 
           var mode = handRig.gripHeld ? 'grip' : handRig.fingerOnTrigger ? 'trigger' : null;
@@ -117,9 +123,9 @@
       // holsterable.tryHolsterElse/findNearestSlot), not a passive
       // basket that scoops up anything that flies near it.
       // ==============================================================
-      function findCatchingSlot(worldPos, itemSize) {
-        var itemRank = SLOT_SIZE_RANK[itemSize];
-        var slots = document.querySelectorAll('.anchor-slot');
+      function findCatchingSlot(worldPos, holsterable) {
+        var itemRank = SLOT_SIZE_RANK[holsterable.data.itemSize];
+        var slots = sceneElements('.anchor-slot');
         var slotPos = new THREE.Vector3();
         var best = null;
         var bestDist = Infinity;
@@ -127,7 +133,7 @@
         for (var i = 0; i < slots.length; i++) {
           var slotEl = slots[i];
           var slotComp = slotEl.components['anchor-slot'];
-          if (!slotComp || slotComp.isFull()) continue;
+          if (!slotComp || !slotComp.canAccept(holsterable)) continue;
 
           var slotRank = SLOT_SIZE_RANK[slotComp.data.size];
           if (slotRank < itemRank) continue;
@@ -144,6 +150,11 @@
         }
 
         return best;
+      }
+
+      function socketLoadUnits(holsterable) {
+        if (holsterable.data.loadUnits > 0) return holsterable.data.loadUnits;
+        return { large: 105, medium: 35, small: 21 }[holsterable.data.itemSize] || 21;
       }
 
       // ==============================================================
@@ -163,8 +174,8 @@
       // ==============================================================
       // COMPONENT: body-anchor
       // Drives an invisible entity to sit at roughly a fixed spot on
-      // the player's body, following the headset's horizontal position
-      // and yaw only (deliberately ignoring pitch/roll, so looking up
+      // the player's body, following the headset's position and yaw
+      // (deliberately ignoring pitch/roll, so looking up
       // or tilting your head doesn't drag it around) — there's no real
       // body tracking on a Quest, so this is an approximation for both
       // spots it's used for: the waist and the back-center bandolier
@@ -184,7 +195,7 @@
       // ==============================================================
       registerComponent('body-anchor', {
         schema: {
-          side: { type: 'string', default: 'waist' }, // 'waist' | 'back'
+          side: { type: 'string', default: 'waist' }, // 'waist' | 'back' | 'chest'
         },
 
         init: function () {
@@ -196,10 +207,13 @@
 
           if (this.data.side === 'back') {
             this.localOffset = new THREE.Vector3(0, 0, BACK_DEPTH_OFFSET); // local +Z is behind the player
-            this.height = BACK_HEIGHT;
+            this.headDrop = BACK_HEAD_DROP;
+          } else if (this.data.side === 'chest') {
+            this.localOffset = new THREE.Vector3(0, 0, CHEST_DEPTH_OFFSET);
+            this.headDrop = CHEST_HEAD_DROP;
           } else {
             this.localOffset = new THREE.Vector3(0, 0, 0);
-            this.height = HIP_HEIGHT;
+            this.headDrop = HIP_HEAD_DROP;
           }
 
           this.buildProps();
@@ -217,7 +231,7 @@
 
           this.el.object3D.position.set(
             this.camPos.x + this.offsetVec.x,
-            this.height,
+            Math.max(this.camPos.y - this.headDrop, 0.3),
             this.camPos.z + this.offsetVec.z
           );
           this.el.object3D.rotation.set(0, yaw, 0);
@@ -347,6 +361,441 @@
       });
 
       // ==============================================================
+      // performEquipDraw / performEquipHolster
+      // Drawing or holstering a large two-handed weapon (the back
+      // bandolier's shotgun) via the numbered hotbar, with the same
+      // dramatic flourish a VR player gets for free by twirling the gun
+      // on their own trigger finger between the grab and the final
+      // grip. No new mechanic — this is hand-rig's existing hold/
+      // dangle/re-grip state machine (release with a finger still on
+      // the trigger dangles; findGrabbableObject already lets a hand
+      // re-grab something dangling from ITSELF), just sequenced through
+      // real scripted events instead of a real trigger finger. The
+      // earlier version of this tried to have the SUPPORT hand catch
+      // the gun mid-air from the main hand — that didn't hold up in
+      // play, so this keeps the whole twirl on the one hand that
+      // actually did the reach, exactly the way a single VR hand keeps
+      // hold of its own dangle while it decides where to put it.
+      //
+      // Draw:
+      //   1. Main hand reaches back and grabs the gun (reachAndGrabItem
+      //      — same helper the plain F-key reach uses).
+      //   2. The instant it has it, it lets go into a dangle on itself
+      //      (fingerOnTrigger + onGripUp — release() sees the finger
+      //      still down and dangles rather than throws or holsters).
+      //   3. Main hand, now twirling, travels to its ready/hip-fire
+      //      position; support hand simultaneously moves to ITS OWN
+      //      ready position (cosmetic only — no grip event yet).
+      //   4. Main hand re-grips (onGripDown — findGrabbableObject's own
+      //      "dangling from myself" eligibility picks the gun right
+      //      back up, since updateDangle pins it exactly to the hand's
+      //      own grip point every frame). That grab's own autoGrabSupport
+      //      then sends the support hand the rest of the way onto the
+      //      forend a beat later, same as any other desktop shotgun draw.
+      //
+      // suppressAutoSupport (hand-rig.js) blocks the reach's own initial
+      // gripdown from jumping the support hand to the forend before the
+      // flourish has even started — it's reset the moment the reach
+      // lands, so the FINAL re-grip's autoGrabSupport fires normally.
+      //
+      // A one-handed item (no forend) skips the twirl entirely — the
+      // reach IS the whole draw, same as any other hotbar slot.
+      //
+      // Holster is the mirror image, minus the ready-position leg: drop
+      // into a dangle, travel to the slot, let go. settleVelocity right
+      // before that final release is load-bearing (see animateRelease's
+      // own comment) — without it, the last sliver of this motion's
+      // velocity reads as a real throw instead of a holster.
+      // ==============================================================
+      // Whichever hand (if either) currently holds something too big to
+      // dual-wield — see hand-rig.isWeaponObject's own itemSize check
+      // for the same "'small' is the one size meant to share a hand
+      // with the other side" rule this mirrors.
+      function findHeldLargeItem() {
+        var hands = [document.querySelector('#left-hand'), document.querySelector('#right-hand')];
+        for (var i = 0; i < hands.length; i++) {
+          var handRig = hands[i] && hands[i].components['hand-rig'];
+          var held = handRig && handRig.heldObjects[0];
+          var holsterable = held && held.components.holsterable;
+          if (holsterable && holsterable.data.itemSize !== 'small') return held;
+        }
+        return null;
+      }
+
+      function performEquipDraw(desktopControls, mainHandRig, gun) {
+        var holsterable = gun.components.holsterable;
+        var hasForend = holsterable.data.supportRadius > 0;
+
+        mainHandRig.suppressAutoSupport = true;
+        reachAndGrabItem(mainHandRig, gun, function () {
+          mainHandRig.suppressAutoSupport = false;
+          if (!hasForend) return; // one-handed item: the grab above is the whole draw
+
+          mainHandRig.fingerOnTrigger = true;
+          mainHandRig.onGripUp(); // release(true) -> startDangling() on this same hand
+
+          var mainHandEl = mainHandRig.el;
+          var supportHandEl = findOtherHand(mainHandEl);
+          var supportHandRig = supportHandEl && supportHandEl.components['hand-rig'];
+
+          var mainSide = mainHandEl.id === 'left-hand' ? -1 : 1;
+          var supportSide = -mainSide;
+          var mainReadyPos = desktopControls.cameraOffsetToWorld(new THREE.Vector3(mainSide * 0.2, -0.25, -0.48), true);
+          var mainReadyQuat = desktopControls.cameraYawQuaternion();
+          var supportReadyPos = desktopControls.cameraOffsetToWorld(new THREE.Vector3(supportSide * 0.15, -0.28, -0.62), true);
+          var supportReadyQuat = desktopControls.cameraYawQuaternion();
+
+          mainHandRig.animateHandMotion([{
+            position: mainReadyPos,
+            quaternion: mainReadyQuat,
+            pose: 'Point',
+            duration: EQUIP_READY_MS,
+          }], function () {
+            mainHandRig.settleVelocity();
+            mainHandRig.fingerOnTrigger = false;
+            mainHandRig.onGripDown(); // re-grip the dangling gun -> autoGrabSupport brings the off-hand the rest of the way in
+          }, gun);
+
+          // Only pose the off hand cosmetically if it's actually free to
+          // move. If it's still holding something -- most commonly
+          // clearOtherHandIfExclusive (just above, via reachAndGrabItem)
+          // mid-flight sending a dual-wielded pistol back to its own hip
+          // -- animateHandMotion's own cancelMotion() would abort that
+          // release before its onComplete ever calls onGripUp(), leaving
+          // the pistol stuck in heldObjects forever with nothing left to
+          // finish releasing it. Leaving this hand alone here just means
+          // it keeps running its own release motion to completion and
+          // then eases to rest on its own; autoGrabSupport (fired once
+          // the main hand re-grips, below) still finds it and brings it
+          // onto the forend once it's actually free.
+          if (supportHandRig && !supportHandRig.heldObjects.length) {
+            supportHandRig.animateHandMotion([{
+              position: supportReadyPos,
+              quaternion: supportReadyQuat,
+              pose: 'Point',
+              duration: EQUIP_READY_MS,
+            }], function () {}, gun);
+          }
+        });
+      }
+
+      function performEquipHolster(mainHandRig, gun) {
+        var backAnchorEl = document.querySelector('#back-anchor');
+        if (!backAnchorEl) return;
+
+        mainHandRig.fingerOnTrigger = true;
+        // release(true) -> startDangling(). onGripUp's own bookkeeping
+        // already drops this gun's support hand for us (see its
+        // holsterable.supportHand cleanup) -- nothing else to do here
+        // for the support side; it eases back to its own rest pose the
+        // same way it does after any other release.
+        mainHandRig.onGripUp();
+
+        var backPos = new THREE.Vector3();
+        var backQuat = new THREE.Quaternion();
+        backAnchorEl.object3D.getWorldPosition(backPos);
+        backAnchorEl.object3D.getWorldQuaternion(backQuat);
+
+        mainHandRig.animateHandMotion([{
+          position: backPos,
+          quaternion: backQuat,
+          pose: 'Point',
+          duration: EQUIP_HOLSTER_MS,
+        }], function () {
+          mainHandRig.settleVelocity();
+          mainHandRig.fingerOnTrigger = false;
+          mainHandRig.onTriggerTouchEnd(); // endDangle() -> tryHolsterElse finds the back anchor by proximity, since the hand is now sitting right on it
+        }, gun);
+      }
+
+      // ==============================================================
+      // COMPONENT: hotbar-equip
+      // The number-key/touch-button answer to "how do I draw a gun on
+      // desktop/mobile when I can't turn my head independently of my
+      // body to actually aim a reach at a holster the way VR lets you."
+      // Five fixed slots — 1: left hip, 2: right hip, 3: the back
+      // bandolier, 4/5: the vest's throwing-weapon pockets — each
+      // resolved live to whatever its anchor-slot's CURRENT occupant is
+      // (see resolveItem); there is no remembered "this slot means that
+      // specific gun," on purpose — a starter weapon is just whatever
+      // happened to be stocked there at scene load, exactly like a
+      // store rack's gun or a refilled throwing knife.
+      //
+      // Still just choreography, not a bespoke equip system: every
+      // ordinary press ends in exactly the same two moves core-hand-
+      // rig.js's onDesktopGrabAttempt (the F key) already uses — pose a
+      // hand's transform via its semantic-hand component onto the
+      // item's current world transform, then fire the real gripdown/
+      // gripup events hand-rig already listens for. There is no
+      // separate "equip" state anywhere; hand-rig's heldObjects and
+      // holsterable's own state are the only truth. Slot 3's own large
+      // weapon — drawing or holstering it — still ends the same way,
+      // just via a longer sequence of those same real events; see
+      // performEquipDraw/performEquipHolster below.
+      // ==============================================================
+      registerComponent('hotbar-equip', {
+        init: function () {
+          this._lastButtonState = {};
+          this._lastAimVisible = null;
+          this.onHotbarAttempt = this.onHotbarAttempt.bind(this);
+          this.el.addEventListener('desktop-hotbar-attempt', this.onHotbarAttempt);
+        },
+
+        remove: function () {
+          this.el.removeEventListener('desktop-hotbar-attempt', this.onHotbarAttempt);
+        },
+
+        onHotbarAttempt: function (evt) {
+          this.activateSlot(evt.detail.slot);
+        },
+
+        // Contextual button coloring for touch (common/input-router.js's
+        // setButtonState) — component init order between the scene and a
+        // nested entity isn't guaranteed, so #player-rig's touch-controls
+        // is looked up lazily here rather than cached in init(). Guarded
+        // on last-known state per slot so this is an occasional
+        // setAttribute on change, not one every frame.
+        tick: function () {
+          if (!this.touchControls || !this.desktopControls) {
+            var playerRig = document.querySelector('#player-rig');
+            this.touchControls = playerRig && playerRig.components['touch-controls'];
+            this.desktopControls = playerRig && playerRig.components['desktop-controls'];
+            if (!this.touchControls || !this.desktopControls) return;
+          }
+          for (var n = 1; n <= 5; n++) {
+            var state = this.computeButtonState(n);
+            if (this._lastButtonState[n] === state) continue;
+            this._lastButtonState[n] = state;
+            this.touchControls.setButtonState('hotbar' + n, state);
+          }
+
+          // GRAB and DROP are the same button (input-router.js's
+          // grabAction) — F/PICKUP always does whichever one applies,
+          // so its label should say which that is, the same way the
+          // hotbar slots above already read as empty/holstered/held
+          // instead of one fixed label regardless of state.
+          var dominantSide = this.desktopControls.dominantSide();
+          var dominantHandEl = document.querySelector(dominantSide === 'left' ? '#left-hand' : '#right-hand');
+          var dominantHandRig = dominantHandEl && dominantHandEl.components['hand-rig'];
+          var holdingSomething = Boolean(dominantHandRig && (dominantHandRig.heldObjects.length || dominantHandRig.supportObjects.length));
+          this.touchControls.setButtonLabel('grab', holdingSomething ? 'DROP' : 'GRAB');
+
+          // AIM means nothing with empty hands -- only show it once
+          // either hand actually holds a firearm (hand-rig.hasWeapon,
+          // core-hand-rig.js — the same "gun, bow, launcher, nozzle, or
+          // thrown blade" check onDesktopTriggerAttempt already uses).
+          var leftHandRig = document.querySelector('#left-hand').components['hand-rig'];
+          var rightHandRig = document.querySelector('#right-hand').components['hand-rig'];
+          var hasWeaponDrawn = Boolean((leftHandRig && leftHandRig.hasWeapon()) || (rightHandRig && rightHandRig.hasWeapon()));
+          if (this._lastAimVisible !== hasWeaponDrawn) {
+            this._lastAimVisible = hasWeaponDrawn;
+            this.touchControls.setButtonVisible('aim', hasWeaponDrawn);
+          }
+        },
+
+        computeButtonState: function (n) {
+          var item = this.resolveItem(n);
+          if (!item) return 'empty';
+          var holsterable = item.components.holsterable;
+          return holsterable && holsterable.state === 'held' ? 'held' : 'holstered';
+        },
+
+        // The anchor-slot element backing each numbered slot. Resolved
+        // live rather than cached — these are the same fixed elements
+        // for the life of the scene, only the ITEM in each needs
+        // caching (see resolveItem) since it moves around. 4/5 walk
+        // down through the vest's own pockets to each pocket's ammo
+        // pack's own inner slot — the pack itself never leaves the
+        // pocket, but what's loaded in its inner slot is swapped out
+        // by ammo-pack's auto-refill after every throw.
+        slotElFor: function (n) {
+          if (n === 1 || n === 2) {
+            // The belt isn't a component ON #waist-anchor — it's an
+            // ordinary holsterable item OCCUPYING that anchor-slot, same
+            // as any other worn equipment (see belt's own comment).
+            var waist = document.querySelector('#waist-anchor');
+            var waistSlot = waist && waist.components['anchor-slot'];
+            var beltOccupant = waistSlot && waistSlot.occupants[0];
+            var belt = beltOccupant && beltOccupant.el.components.belt;
+            return belt && belt.hipSlots[n - 1]; // hipSlots[0] is side -1 (left), [1] is side 1 (right) — see belt's own init
+          }
+          if (n === 3) return document.querySelector('#back-anchor');
+
+          // 4 = knife pack (vest pocket 0), 5 = star pack (pocket 1) —
+          // same "item occupying a worn anchor" pattern as the belt above.
+          var chest = document.querySelector('#chest-anchor');
+          var chestSlot = chest && chest.components['anchor-slot'];
+          var vestOccupant = chestSlot && chestSlot.occupants[0];
+          var vest = vestOccupant && vestOccupant.el.components.vest;
+          var pocketEl = vest && vest.pocketSlots[n - 4];
+          var pocketSlot = pocketEl && pocketEl.components['anchor-slot'];
+          var packOccupant = pocketSlot && pocketSlot.occupants[0];
+          var ammoPack = packOccupant && packOccupant.el.components['ammo-pack'];
+          return ammoPack && ammoPack.slotEl;
+        },
+
+        // Deliberately never caches the resolved ITEM (only slotElFor's
+        // anchor-slot elements are stable/reusable) — every slot's item
+        // is genuinely whatever currently occupies its home anchor-slot,
+        // full stop. A starter pistol or the starter shotgun is not a
+        // remembered specific object; it's just what happened to be
+        // stocked there at scene load, exactly like a store rack's gun
+        // or a refilled throwing knife. Caching slots 1-3 used to assume
+        // "drawn, then eventually holstered back to the same slot" was
+        // the only way an item left play — but a dropped or thrown gun
+        // can end up resting anywhere in the world while staying
+        // .isConnected, and the old cache kept pointing hotbar-equip at
+        // it regardless: pressing that slot's key would animate a hand
+        // all the way out to wherever the gun actually landed instead of
+        // correctly finding the holster empty.
+        resolveItem: function (n) {
+          var slotEl = this.slotElFor(n);
+          var anchorSlot = slotEl && slotEl.components['anchor-slot'];
+          var occupant = anchorSlot && anchorSlot.occupants[0]; // occupants holds holsterable COMPONENTS, not elements
+          return occupant ? occupant.el : null;
+        },
+
+        activateSlot: function (n) {
+          var playerRigEl = document.querySelector('#player-rig');
+          var desktopControlsComp = playerRigEl && playerRigEl.components['desktop-controls'];
+          var leftHandEl = document.querySelector('#left-hand');
+          var rightHandEl = document.querySelector('#right-hand');
+          var leftHandRig = leftHandEl && leftHandEl.components['hand-rig'];
+          var rightHandRig = rightHandEl && rightHandEl.components['hand-rig'];
+
+          // The back bandolier is fully self-contained, both ways:
+          // holstering whatever large weapon is currently held, or
+          // drawing whatever currently occupies the back anchor, never
+          // falls through to the shared draw logic below (which just
+          // reaches a hand into a fixed hip holster) — see
+          // performEquipDraw/performEquipHolster. Guns are just
+          // objects; there's nothing special about which one you
+          // started with, so pressing 3 while a large weapon is held
+          // always means "put THIS one away," whether or not the back
+          // happens to have anything else in it yet (see performEquip-
+          // Holster's own comment on that interim limitation).
+          if (n === 3 && desktopControlsComp) {
+            var heldLarge = findHeldLargeItem();
+            if (heldLarge) {
+              desktopControlsComp.stopAiming();
+              var heldLargeHandRig = heldLarge.components.holsterable.hand.components['hand-rig'];
+              performEquipHolster(heldLargeHandRig, heldLarge);
+              return;
+            }
+
+            var gunToEquip = this.resolveItem(3);
+            if (gunToEquip) {
+              desktopControlsComp.stopAiming();
+              // Not side-specific — prefer whichever hand is already
+              // free, tie-broken toward the dominant hand (also the
+              // fallback once both hands are occupied, in which case
+              // it gets cleared first, just below, like any other slot).
+              var backDominantSide = desktopControlsComp.dominantSide();
+              var backDominantHandRig = backDominantSide === 'left' ? leftHandRig : rightHandRig;
+              var backOtherHandRig = backDominantSide === 'left' ? rightHandRig : leftHandRig;
+              var backTargetHandRig;
+              if (backDominantHandRig && !backDominantHandRig.heldObjects.length) backTargetHandRig = backDominantHandRig;
+              else if (backOtherHandRig && !backOtherHandRig.heldObjects.length) backTargetHandRig = backOtherHandRig;
+              else backTargetHandRig = backDominantHandRig;
+
+              if (backTargetHandRig) {
+                if (backTargetHandRig.heldObjects.length) {
+                  releaseToOwnHome(backTargetHandRig, function () {
+                    performEquipDraw(desktopControlsComp, backTargetHandRig, gunToEquip);
+                  });
+                } else {
+                  performEquipDraw(desktopControlsComp, backTargetHandRig, gunToEquip);
+                }
+              }
+            }
+            return;
+          }
+
+          // Toggle off, for the two side-fixed hip slots: 1 always means
+          // "my left hand," full stop, whether or not whatever it's
+          // holding right now is literally what resolveItem(1) would
+          // find in the holster this instant — the same "which hand
+          // this key means" question the back-bandolier check above
+          // just answered for 3. resolveItem can't answer this on its own:
+          // grab()'s own vacateSlot removes an item from its anchor-
+          // slot's occupants the moment it's actually held, so the
+          // holster correctly reads as empty right when this check
+          // needs to catch that the hand, not the slot, has it.
+          if ((n === 1 || n === 2) && desktopControlsComp) {
+            var sideHandRig = n === 1 ? leftHandRig : rightHandRig;
+            if (sideHandRig && sideHandRig.heldObjects.length) {
+              desktopControlsComp.stopAiming();
+              releaseToOwnHome(sideHandRig);
+              return;
+            }
+          }
+
+          var item = this.resolveItem(n);
+          if (!item) return; // empty holster — nothing to draw yet
+          var holsterable = item.components.holsterable;
+          if (!holsterable) return;
+
+          // Whatever's about to change in your hands, any active ADS is
+          // stale the moment it does -- most noticeable in toggle mode,
+          // where there'd otherwise be no button press to naturally end
+          // it and you'd stay "aiming" a completely different gun (or no
+          // gun at all) than the one you started aiming.
+          if (desktopControlsComp) desktopControlsComp.stopAiming();
+
+          // Only 1/2/4/5 ever reach here — n === 3 always returns above,
+          // one way or the other.
+          var targetHandRig;
+          if (n === 1) {
+            targetHandRig = leftHandRig; // fixed: a real hand reaches for the holster on its own side
+          } else if (n === 2) {
+            targetHandRig = rightHandRig;
+          } else {
+            // The vest pockets (4/5) aren't side-specific — prefer
+            // whichever hand is already free, tie-broken toward the
+            // dominant hand (also the fallback once both hands are
+            // occupied, in which case it gets cleared just below like
+            // anything else).
+            var dominantSide = desktopControlsComp ? desktopControlsComp.dominantSide() : 'right';
+            var dominantHandRig = dominantSide === 'left' ? leftHandRig : rightHandRig;
+            var otherHandRig = dominantSide === 'left' ? rightHandRig : leftHandRig;
+            if (dominantHandRig && !dominantHandRig.heldObjects.length) targetHandRig = dominantHandRig;
+            else if (otherHandRig && !otherHandRig.heldObjects.length) targetHandRig = otherHandRig;
+            else targetHandRig = dominantHandRig;
+          }
+          if (!targetHandRig) return;
+
+          var pos = new THREE.Vector3();
+          var quat = new THREE.Quaternion();
+          item.object3D.getWorldPosition(pos);
+          item.object3D.getWorldQuaternion(quat);
+
+          // The actual reach-and-grab, run once the target hand is free
+          // to make it (see below) — animateGripDown is a real animated
+          // motion (hand-rig.js), not a teleport, and only fires the
+          // real gripdown once the hand visibly arrives. clearOtherHand-
+          // IfExclusive runs from its completion callback, i.e. AFTER
+          // the grab, not alongside it — see that function's own comment
+          // for why the ordering there is load-bearing.
+          var grabItem = function () {
+            targetHandRig.animateGripDown(pos, quat, function () {
+              clearOtherHandIfExclusive(targetHandRig, item);
+            }, item);
+          };
+
+          // Clear whatever the target hand already holds FIRST — safe to
+          // sequence before the grab (unlike clearOtherHandIfExclusive's
+          // own bump, which must follow it), since releaseToOwnHome aims
+          // this release at that item's OWN home slot, which has nothing
+          // to do with slot `n`'s own item or destination. One hand can
+          // only run one animated motion at a time, so the grab has to
+          // wait for this release's own completion callback rather than
+          // starting alongside it.
+          if (targetHandRig.heldObjects.length) releaseToOwnHome(targetHandRig, grabItem);
+          else grabItem();
+        },
+      });
+
+      // ==============================================================
       // COMPONENT: anchor-slot
       // The generic "you can snap a compatible item here" socket.
       // Purely declarative on its own (just a size — small/medium/
@@ -370,6 +819,7 @@
         schema: {
           size: { type: 'string', default: 'small' }, // 'small' | 'medium' | 'large'
           capacity: { type: 'number', default: 1 },
+          capacityUnits: { type: 'number', default: 0 }, // optional weighted capacity; cannon uses 105 so large/medium/small/extra-small consume 105/35/21/15
           fanSpread: { type: 'number', default: 0.045 }, // meters between stacked occupants
           fanAxis: { type: 'string', default: 'x' }, // which of the slot's own axes they spread along. A row of cigars in your teeth goes across (x); arrows on a bowstring go up it (y)
           fanYaw: { type: 'number', default: 0 }, // degrees of splay per step — only meaningful for things with a long axis, like cigars or barrels
@@ -381,12 +831,14 @@
 
         init: function () {
           this.occupants = [];
+          this.accepting = true; // machinery can temporarily close a socket without dismantling it (see cannon hatch)
           this.wasInRange = false;
           this.clickElapsed = null; // ms into the click bounce, or null when idle
 
           this.sphere = document.createElement('a-sphere');
           this._shownRadius = SLOT_SPHERE_BASE_RADIUS[this.data.size] * this.data.indicatorScale;
           this._shownOpacity = 0.35;
+          this._sphereVisible = true;
           this.sphere.setAttribute('radius', this._shownRadius);
           this.sphere.setAttribute(
             'material',
@@ -399,7 +851,24 @@
         },
 
         isFull: function () {
-          return this.occupants.length >= this.data.capacity;
+          if (this.occupants.length >= this.data.capacity) return true;
+          return this.data.capacityUnits > 0 && this.usedUnits() >= this.data.capacityUnits;
+        },
+
+        usedUnits: function () {
+          return this.occupants.reduce(function (total, occupant) {
+            return total + socketLoadUnits(occupant);
+          }, 0);
+        },
+
+        canAccept: function (holsterable) {
+          if (!this.accepting) return false;
+          if (!holsterable) return false;
+          if (this.occupants.indexOf(holsterable) !== -1) return true;
+          if (this.data.swap) return true;
+          if (this.occupants.length >= this.data.capacity) return false;
+          if (!this.data.capacityUnits) return true;
+          return this.usedUnits() + socketLoadUnits(holsterable) <= this.data.capacityUnits;
         },
 
         // Called by holsterable whenever this slot's contents change.
@@ -415,13 +884,31 @@
         },
 
         tick: function (time, dt) {
+          if (!this.accepting) {
+            this.setIndicatorVisible(false);
+            this.wasInRange = false;
+            this.clickElapsed = null;
+            return;
+          }
           // A swap slot stays "live" even while full — the indicator
           // should still glow as a replacement approaches, the same
           // invitation an empty slot gives.
           if (this.isFull() && !this.data.swap) {
-            this.sphere.setAttribute('visible', false);
+            this.setIndicatorVisible(false);
             this.wasInRange = false;
             this.clickElapsed = null;
+            return;
+          }
+
+          // Most sockets spend most frames with no item in either hand. Keep
+          // their static idle appearance without repeating distance/math work
+          // until world-systems reports an actually held candidate.
+          if (!HELD_ITEMS.length && this.clickElapsed === null) {
+            this.setIndicatorVisible(!this.data.idleHidden);
+            this.wasInRange = false;
+            if (!this.data.idleHidden) {
+              this.setIndicator(SLOT_SPHERE_BASE_RADIUS[this.data.size] * this.data.indicatorScale, 0.25);
+            }
             return;
           }
 
@@ -437,11 +924,11 @@
           // tighter, reveal distance.
           var revealDist = this.data.revealDistance || approachRadius;
           if (this.data.idleHidden && nearestDist > revealDist && this.clickElapsed === null) {
-            this.sphere.setAttribute('visible', false);
+            this.setIndicatorVisible(false);
             this.wasInRange = false;
             return;
           }
-          this.sphere.setAttribute('visible', true);
+          this.setIndicatorVisible(true);
 
           var baseR = SLOT_SPHERE_BASE_RADIUS[this.data.size];
           var maxR = SLOT_SPHERE_MAX_RADIUS[this.data.size];
@@ -488,6 +975,12 @@
           }
         },
 
+        setIndicatorVisible: function (visible) {
+          if (visible === this._sphereVisible) return;
+          this._sphereVisible = visible;
+          this.sphere.object3D.visible = visible;
+        },
+
         // Nearest currently-HELD (actively gripped, not dangling —
         // that's a twirl in progress, not "aiming for a slot")
         // grabbable item whose itemSize actually fits this slot.
@@ -502,12 +995,81 @@
           this.el.object3D.getWorldPosition(this._slotPos);
 
           for (var i = 0; i < HELD_ITEMS.length; i++) {
-            if (HELD_ITEMS[i].rank > slotRank) continue;
+            if (HELD_ITEMS[i].rank > slotRank || !this.canAccept(HELD_ITEMS[i].holsterable)) continue;
             var d = HELD_ITEMS[i].pos.distanceTo(this._slotPos);
             if (d < best) best = d;
           }
 
           return best;
+        },
+      });
+
+      // ==============================================================
+      // COMPONENT: slot-reach-grab
+      // A long desktop/mobile/gamepad reach for an anchor-slot's
+      // current occupant — the "define a grab area" half of picking up
+      // shop and bar props that F's own plain search (hand-rig's
+      // onDesktopGrabAttempt) can never reach on its own. That search
+      // only ever looks from wherever desktop-controls' fixed idle
+      // hand pose currently sits (roughly chest height), so a bottle
+      // sitting on a bar counter or a rifle racked on a store shelf
+      // stays permanently just out of range — confirmed directly: even
+      // standing right against the counter and looking straight down
+      // at it, the idle hand's own position never closes to within a
+      // small item's ~0.16m grabRadius. common/interaction-hints.js's
+      // hint-zone already solves exactly this for the Showcase's own
+      // simple-grabbable boxes (a shoulder-anchored reach plus a gaze
+      // cone, both far more generous than a fixed hand offset) — this
+      // component is the bridge that lets an anchor-slot opt into that
+      // same discovery mechanism while still landing in Pistols' own
+      // richer holsterable state machine (hold/holster/dangle/throw),
+      // not a second, parallel one. Put a sibling `hint-zone` on the
+      // same slot entity (action: grab -- see world-saloon-bar.js's
+      // addLocalSlot for the reference tuning, copied from the
+      // Showcase's own grab zone) to actually offer it.
+      //
+      // Deliberately never touches source: 'xr' — a real VR hand
+      // already grabs slot occupants directly via hand-rig's own
+      // tight, physically-tracked proximity check (findGrabbableObject
+      // from the hand's genuine position), and animateGripDown below
+      // is a scripted desktop/mobile reach that would fight real
+      // controller tracking if it ever ran against one.
+      // ==============================================================
+      registerComponent('slot-reach-grab', {
+        init: function () {
+          this.onSemanticAction = this.onSemanticAction.bind(this);
+          this.el.addEventListener('semantic-action', this.onSemanticAction);
+        },
+
+        remove: function () {
+          this.el.removeEventListener('semantic-action', this.onSemanticAction);
+        },
+
+        onSemanticAction: function (evt) {
+          if (evt.detail.action !== 'grab' || evt.detail.source === 'xr') return;
+
+          var handEl = evt.detail.handEl;
+          var handRig = handEl && handEl.components['hand-rig'];
+          if (!handRig) return;
+
+          // Same toggle onDesktopGrabAttempt's own plain reach already
+          // has: a full hand always means "let go," never "try to grab
+          // something else" -- otherwise F would never fall through to
+          // a plain release for as long as a hand-rig.hasWeapon-style
+          // hint-zone target stays in gaze/reach (empty or not, the
+          // hint system doesn't know), which near a whole shelf of
+          // these is most of the time you'd want to just set something
+          // down.
+          if (handRig.heldObjects.length || handRig.supportObjects.length) {
+            handRig.onGripUp();
+            return;
+          }
+
+          var slot = this.el.components['anchor-slot'];
+          var occupant = slot && slot.occupants[0];
+          if (!occupant) return;
+
+          reachAndGrabItem(handRig, occupant.el);
         },
       });
 
@@ -593,6 +1155,7 @@
           heldPosition: { type: 'vec3', default: { x: 0, y: 0, z: 0 } },
           heldRotation: { type: 'vec3', default: { x: 0, y: 0, z: 0 } },
           grabRadius: { type: 'number', default: GRAB_RADIUS },
+          grabPriority: { type: 'number', default: 0 }, // lower wins before distance; worn equipment opts into larger values so its contents are drawn first
           // Most props are grabbed by their one natural handle, so the
           // grab test is a sphere around the origin. Long thin ones are
           // not: an arrow's origin is at its nock, and being unable to
@@ -602,8 +1165,11 @@
           // capsule rather than a ball, for a couple of dot products.
           grabSpan: { type: 'vec3', default: { x: 0, y: 0, z: 0 } },
           comOffset: { type: 'vec3', default: { x: 0, y: 0, z: 0 } }, // center of mass, relative to the entity origin
+          weight: { type: 'number', default: 0.3 }, // 0..1 "heaviness" for hand-rig's weight-tremor wobble contributor -- not real mass, tuned by feel like everything else here
           maxThrowSpeed: { type: 'number', default: OVERHAND_MAX_DEFAULT_SPEED }, // how hard this particular object can be thrown, whatever your arm does
           gravityScale: { type: 'number', default: 1 }, // multiplies gravity while falling — under 1 keeps a thrown object up longer, which is what makes shooting bottles out of the air possible
+          impactDamage: { type: 'number', default: 1 }, // published on projectile `shot` events; current steel targets only care that they were hit, future damageables can care how hard
+          loadUnits: { type: 'number', default: 0 }, // weighted socket footprint; ordinary slots ignore it
           supportGrip: { type: 'vec3', default: { x: 0, y: 0, z: 0 } }, // local position of a second place to hold this, if any
           supportRadius: { type: 'number', default: 0 }, // 0 disables the second grip entirely
           supportAims: { type: 'boolean', default: true }, // does the second hand steer this? A shotgun forend does — the barrel follows the line between your hands. A bowstring does NOT: the bow hand alone aims it, and the string hand only says how far it's drawn
@@ -625,12 +1191,9 @@
           this.slotIndex = 0;
           this.slotCount = 1;
 
-          // Composed on top of the held pose every frame by firearm,
-          // which writes its recoil kick here rather than fighting
-          // over the same object3D. Unsteady hands are NOT applied
-          // here any more — they belong to the hand (see
-          // hand-rig.updateGrip), and this object inherits them by
-          // being parented to it.
+          // Kept for non-firearm pose effects. Firearm recoil belongs
+          // to the hand now (see hand-rig.updateGrip), so the fist and
+          // gun kick as one instead of the gun floating in its palm.
           this.extraPitchDeg = 0;
           this._heldElapsed = 0;
 
@@ -661,9 +1224,15 @@
           this._gripWorld = new THREE.Vector3();
           this._supportWorld = new THREE.Vector3();
           this._aimUp = new THREE.Vector3();
+          this._supportUp = new THREE.Vector3();
+          this._aimForward = new THREE.Vector3();
           this._aimMatrix = new THREE.Matrix4();
           this._aimQuat = new THREE.Quaternion();
           this._parentQuat = new THREE.Quaternion();
+          this._supportQuat = new THREE.Quaternion();
+          this._twoHandTargetQuat = new THREE.Quaternion();
+          this._twoHandQuat = new THREE.Quaternion();
+          this._twoHandSeeded = false;
           this._grabA = new THREE.Vector3();
           this._grabB = new THREE.Vector3();
           this._grabAxis = new THREE.Vector3();
@@ -738,7 +1307,7 @@
         applyHeldPose: function (time, dtSeconds) {
           this._heldElapsed += dtSeconds * 1000;
           if (this._poseBlendElapsed < SNAP_BLEND_DUR_MS) return;
-          if (this.supportHand && this.data.supportAims) return this.applyTwoHandedPose();
+          if (this.supportHand && this.data.supportAims) return this.applyTwoHandedPose(dtSeconds);
 
           var d = this.data;
           this.el.object3D.position.set(
@@ -780,32 +1349,51 @@
         // wander the way one on a single wrist does, and the effect
         // falls out of the geometry rather than from any damping.
         //
-        // Roll comes from the near hand, so twisting your grip still
-        // rolls the gun. Only the near hand can fire it (see
-        // hand-rig.onTriggerDown) — the support hand is holding a
-        // forend, not a trigger.
-        applyTwoHandedPose: function () {
+        // The hand-to-hand line supplies pitch and yaw. Roll uses the
+        // average "up" of both grip poses, projected perpendicular to
+        // that line, so one noisy controller cannot whip a long rifle
+        // around its barrel. The final quaternion is lightly smoothed
+        // to absorb tracking chatter without making aim feel gummy.
+        applyTwoHandedPose: function (dtSeconds) {
           var d = this.data;
           this.el.object3D.position.set(d.heldPosition.x, d.heldPosition.y, d.heldPosition.z);
 
           var parent = this.el.object3D.parent;
           if (!parent) return;
+          var supportGrip = gripObjectOf(this.supportHand);
+          if (!supportGrip) return;
 
           parent.getWorldPosition(this._gripWorld);
-          this.supportHand.object3D.getWorldPosition(this._supportWorld);
+          supportGrip.getWorldPosition(this._supportWorld);
           if (this._gripWorld.distanceToSquared(this._supportWorld) < 0.0004) return;
 
-          // Matrix4.lookAt builds a rotation whose -Z points from eye
-          // to target, and the object's own -Z is its barrel, so this
-          // aims the gun straight down the line between your hands.
           this._aimUp.set(0, 1, 0).applyQuaternion(parent.getWorldQuaternion(this._parentQuat));
+          this._supportUp.set(0, 1, 0).applyQuaternion(supportGrip.getWorldQuaternion(this._supportQuat));
+          this._aimUp.add(this._supportUp);
+          this._aimForward.copy(this._supportWorld).sub(this._gripWorld).normalize();
+          this._aimUp.addScaledVector(this._aimForward, -this._aimUp.dot(this._aimForward));
+          if (this._aimUp.lengthSq() < 0.0001) {
+            this._aimUp.set(0, 1, 0).addScaledVector(this._aimForward, -this._aimForward.y);
+            if (this._aimUp.lengthSq() < 0.0001) {
+              this._aimUp.set(1, 0, 0).addScaledVector(this._aimForward, -this._aimForward.x);
+            }
+          }
+          this._aimUp.normalize();
+
+          // Matrix4.lookAt builds a rotation whose -Z points from eye
+          // to target, matching the weapons' barrel axis.
           this._aimMatrix.lookAt(this._gripWorld, this._supportWorld, this._aimUp);
           this._aimQuat.setFromRotationMatrix(this._aimMatrix);
 
-          // Into the parent's frame, since that's where local
-          // rotations are expressed.
           parent.getWorldQuaternion(this._parentQuat);
-          this.el.object3D.quaternion.copy(this._parentQuat.invert()).multiply(this._aimQuat);
+          this._twoHandTargetQuat.copy(this._parentQuat.invert()).multiply(this._aimQuat);
+          if (!this._twoHandSeeded) {
+            this._twoHandQuat.copy(this._twoHandTargetQuat);
+            this._twoHandSeeded = true;
+          } else {
+            this._twoHandQuat.slerp(this._twoHandTargetQuat, 1 - Math.exp(-18 * dtSeconds));
+          }
+          this.el.object3D.quaternion.copy(this._twoHandQuat);
 
           if (this.extraPitchDeg) this.el.object3D.rotateX((this.extraPitchDeg * Math.PI) / 180);
         },
@@ -848,6 +1436,7 @@
 
         grabSupport: function (handEl) {
           this.supportHand = handEl;
+          this._twoHandSeeded = false;
         },
 
         // Announced rather than acted on, like everything else here:
@@ -861,6 +1450,7 @@
           // this object is concerned.
           var draw = this.supportDraw();
           this.supportHand = null;
+          this._twoHandSeeded = false;
           this.el.emit('support-released', { draw: draw }, false);
         },
 
@@ -869,7 +1459,7 @@
         supportDraw: function () {
           if (!this.supportHand || !this.el.object3D.parent) return 0;
           this.el.object3D.parent.getWorldPosition(this._gripWorld);
-          this.supportHand.object3D.getWorldPosition(this._supportWorld);
+          gripObjectOf(this.supportHand).getWorldPosition(this._supportWorld);
           return this._gripWorld.distanceTo(this._supportWorld);
         },
 
@@ -1099,6 +1689,9 @@
         // it — a spinning object thrown should keep spinning, just as
         // hard, not reset to a slower default.
         throwWithVelocity: function (velocity) {
+          var releaseHand = this.hand;
+          var releaseRig = releaseHand && releaseHand.components['hand-rig'];
+          var handVelocity = releaseRig ? releaseRig.velocity.clone() : null;
           this.state = 'falling';
           this.hand = null;
           this.releaseSupport();
@@ -1119,6 +1712,10 @@
           if (this.angularVelocity.length() < THROW_SPIN_RATE) {
             this.angularVelocity.set(THROW_SPIN_RATE, 0, 0);
           }
+          this.el.emit('thrown', {
+            handVelocity: handVelocity,
+            assistedVelocity: this.fallVelocity.clone(),
+          }, false);
         },
 
         // Grip-catch: snaps rigidly into handEl, but blends smoothly
@@ -1234,7 +1831,7 @@
             return true;
           }
 
-          var slotEl = findCatchingSlot(this._worldPos, this.data.itemSize);
+          var slotEl = findCatchingSlot(this._worldPos, this);
           if (slotEl) {
             this.catchIntoSlot(slotEl);
             return true;
@@ -1258,7 +1855,7 @@
         // outright rather than rely on that staying true).
         findNearestSlot: function (worldPos) {
           var itemRank = SLOT_SIZE_RANK[this.data.itemSize];
-          var slots = document.querySelectorAll('.anchor-slot');
+          var slots = sceneElements('.anchor-slot');
           var best = null;
           var bestRank = Infinity;
           var bestDist = Infinity;
@@ -1267,7 +1864,7 @@
             var slotEl = slots[i];
             var slotComp = slotEl.components['anchor-slot'];
             if (!slotComp) continue;
-            if (slotComp.isFull() && slotComp.occupants.indexOf(this) === -1 && !slotComp.data.swap) continue;
+            if (!slotComp.canAccept(this)) continue;
 
             var slotRank = SLOT_SIZE_RANK[slotComp.data.size];
             if (slotRank < itemRank) continue;
@@ -1358,6 +1955,14 @@
           }
 
           this.checkImpact(dt);
+          // Impact companions such as arrows and throwing blades can
+          // end flight synchronously (and may reparent themselves to
+          // what they struck). Do not then interpret their new local Y
+          // as a second, ground-level landing in this same frame.
+          if (this.state !== 'falling') return;
+
+          var ballistic = this.el.components['ballistic-projectile'];
+          if (ballistic && ballistic.updateFlight(this, dt)) return;
 
           if (this.el.object3D.position.y <= GROUND_REST_Y) {
             var impactSpeed = this.fallVelocity.length();
@@ -1390,6 +1995,8 @@
         // shelf would smash something.
         // ==========================================================
         checkImpact: function (dt) {
+          var piercing = this.el.components['piercing-projectile'];
+          if (piercing && piercing.checkImpact(this, dt)) return;
           if (this.impactCooldown > 0) {
             this.impactCooldown -= dt * 1000;
             return;
@@ -1408,8 +2015,18 @@
           if (!hit) return;
 
           this.impactCooldown = IMPACT_COOLDOWN_MS;
-          hit.el.emit('shot', { point: hit.point.clone(), direction: this._impactDir.clone() }, false);
-          this.el.emit('impact', { point: hit.point.clone(), speed: speed, hitEl: hit.el }, false);
+          hit.el.emit('shot', {
+            point: hit.point.clone(),
+            direction: this._impactDir.clone(),
+            damage: this.data.impactDamage,
+          }, false);
+          this.el.emit('impact', {
+            point: hit.point.clone(),
+            direction: this._impactDir.clone(),
+            speed: speed,
+            damage: this.data.impactDamage,
+            hitEl: hit.el,
+          }, false);
 
           // Whatever it hit took most of the energy out of it. If it
           // was something that ends on contact, its own impact handler
@@ -1453,6 +2070,7 @@
           holsterSelector: '#' + slotId,
           itemSize: 'medium',
           grabRadius: 0.22,
+          grabPriority: 30,
         });
         el.setAttribute('boxy-belt', { color: color, buckleColor: buckleColor });
         el.setAttribute('belt', { stockHips: !!stockHips });

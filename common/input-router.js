@@ -1,0 +1,771 @@
+import './control-mode.js';
+import { chargedActionStrength } from './desktop-action-utils.js';
+
+export function applyInputDeadzone(value, deadzone = 0.18) {
+  var magnitude = Math.abs(Number(value) || 0);
+  var threshold = Math.max(0, Math.min(0.95, Number(deadzone) || 0));
+  if (magnitude <= threshold) return 0;
+  return Math.sign(value) * (magnitude - threshold) / (1 - threshold);
+}
+
+export function createStandardGamepadButtonBindings(actions) {
+  return {
+    0: actions.primary,
+    1: actions.back,
+    2: actions.interact,
+    3: actions.watch,
+    4: actions.grab,
+    5: actions.secondary,
+    6: actions.aim || actions.secondary,
+    7: actions.primary,
+    9: actions.watch,
+    10: actions.sprint || actions.crouch,
+  };
+}
+
+if (typeof AFRAME !== 'undefined') {
+  var THREE = AFRAME.THREE;
+  // A look-area press under this much movement, released within this
+  // long, reads as a tap rather than the start of a look-drag — see
+  // touch-controls' bindLook.
+  var TAP_MOVE_THRESHOLD = 12;
+  var TAP_MAX_MS = 400;
+
+  AFRAME.registerSystem('input-router', {
+    init: function () {
+      this.gamepad = null;
+      this.hasTouch = Boolean(
+        navigator.maxTouchPoints > 0 ||
+        (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) ||
+        new URLSearchParams(window.location.search).get('touch') === '1'
+      );
+      this.activeFamily = this.hasTouch ? 'touch' : 'keyboard';
+      this.lastFlatFamily = this.activeFamily;
+      this.onKeyDown = this.onKeyDown.bind(this);
+      this.onPointerDown = this.onPointerDown.bind(this);
+      this.onControlModeChanged = this.onControlModeChanged.bind(this);
+      window.addEventListener('keydown', this.onKeyDown, true);
+      window.addEventListener('pointerdown', this.onPointerDown, true);
+      this.sceneEl.addEventListener('control-mode-changed', this.onControlModeChanged);
+      this.publish();
+    },
+
+    onKeyDown: function () {
+      this.setActiveFamily('keyboard');
+    },
+
+    onPointerDown: function (evt) {
+      var virtualTouchControl = this.hasTouch && evt.target && evt.target.closest && evt.target.closest('.semantic-touch-controls');
+      this.setActiveFamily(evt.pointerType === 'touch' || virtualTouchControl ? 'touch' : 'keyboard');
+    },
+
+    onControlModeChanged: function (evt) {
+      this.setActiveFamily(evt.detail.mode === 'xr' ? 'xr' : this.lastFlatFamily, true);
+    },
+
+    setActiveFamily: function (family, force) {
+      if (family !== 'xr') this.lastFlatFamily = family;
+      if (!force && this.activeFamily === family) return;
+      var previousFamily = this.activeFamily;
+      this.activeFamily = family;
+      this.publish();
+      this.sceneEl.emit('input-family-changed', {
+        family: family,
+        previousFamily: previousFamily,
+        hasTouch: this.hasTouch,
+        hasGamepad: Boolean(this.gamepad),
+      }, false);
+    },
+
+    publish: function () {
+      this.sceneEl.setAttribute('data-input-family', this.activeFamily);
+      this.sceneEl.setAttribute('data-has-touch', this.hasTouch ? 'true' : 'false');
+      document.documentElement.setAttribute('data-input-family', this.activeFamily);
+      document.documentElement.setAttribute('data-has-touch', this.hasTouch ? 'true' : 'false');
+    },
+
+    getActiveFamily: function () {
+      return this.activeFamily;
+    },
+
+    getGamepad: function () {
+      return this.gamepad;
+    },
+
+    tick: function () {
+      var mode = this.sceneEl.systems['control-mode'];
+      if (mode && mode.isMode('xr')) {
+        if (this.activeFamily !== 'xr') this.setActiveFamily('xr', true);
+        return;
+      }
+      var pads = navigator.getGamepads ? navigator.getGamepads() : [];
+      var next = null;
+      for (var i = 0; i < pads.length; i++) {
+        if (pads[i] && pads[i].connected) {
+          next = pads[i];
+          break;
+        }
+      }
+      var hadGamepad = Boolean(this.gamepad);
+      this.gamepad = next;
+      if (!next) {
+        if (hadGamepad && this.activeFamily === 'gamepad') {
+          this.setActiveFamily(this.hasTouch ? 'touch' : 'keyboard');
+        }
+        return;
+      }
+      var meaningfulAxis = Array.prototype.some.call(next.axes || [], function (axis) {
+        return Math.abs(axis) > 0.22;
+      });
+      var meaningfulButton = Array.prototype.some.call(next.buttons || [], function (button) {
+        return button && (button.pressed || button.value > 0.25);
+      });
+      if (meaningfulAxis || meaningfulButton) this.setActiveFamily('gamepad');
+    },
+
+    remove: function () {
+      window.removeEventListener('keydown', this.onKeyDown, true);
+      window.removeEventListener('pointerdown', this.onPointerDown, true);
+      this.sceneEl.removeEventListener('control-mode-changed', this.onControlModeChanged);
+    },
+  });
+
+  AFRAME.registerComponent('input-family-visibility', {
+    schema: {
+      families: { default: 'keyboard|gamepad|touch|xr' },
+    },
+
+    init: function () {
+      this.router = this.el.sceneEl.systems['input-router'];
+      this.authoredVisible = this.el.getAttribute('visible') !== false;
+      this.onChanged = this.applyVisibility.bind(this);
+      this.el.sceneEl.addEventListener('input-family-changed', this.onChanged);
+      this.applyVisibility();
+    },
+
+    applyVisibility: function () {
+      var accepted = String(this.data.families).split(/[|,\s]+/);
+      var visible = this.authoredVisible && accepted.indexOf(this.router.getActiveFamily()) !== -1;
+      this.el.object3D.visible = visible;
+      this.el.setAttribute('data-input-family-visible', visible ? 'true' : 'false');
+    },
+
+    remove: function () {
+      this.el.sceneEl.removeEventListener('input-family-changed', this.onChanged);
+      this.el.object3D.visible = this.authoredVisible;
+    },
+  });
+
+  AFRAME.registerComponent('semantic-look-controls', {
+    schema: {
+      camera: { type: 'selector' },
+      gamepadDegreesPerSecond: { default: 150 },
+      touchDegreesPerPixel: { default: 0.16 },
+      invertY: { default: false },
+    },
+
+    init: function () {
+      this.onLook = this.onLook.bind(this);
+      this.el.addEventListener('semantic-look', this.onLook);
+    },
+
+    onLook: function (evt) {
+      if (!evt.detail || !this.data.camera) return;
+      var detail = evt.detail;
+      var yawDelta;
+      var pitchDelta;
+      if (detail.kind === 'delta') {
+        yawDelta = -THREE.MathUtils.degToRad(detail.x * this.data.touchDegreesPerPixel);
+        pitchDelta = -THREE.MathUtils.degToRad(detail.y * this.data.touchDegreesPerPixel);
+      } else {
+        var seconds = Math.min(detail.deltaMs || 0, 50) / 1000;
+        yawDelta = -THREE.MathUtils.degToRad(detail.x * this.data.gamepadDegreesPerSecond * seconds);
+        pitchDelta = -THREE.MathUtils.degToRad(detail.y * this.data.gamepadDegreesPerSecond * seconds);
+      }
+      if (this.data.invertY) pitchDelta *= -1;
+      var look = this.data.camera.components['look-controls'];
+      if (look && look.yawObject) {
+        look.yawObject.rotation.y += yawDelta;
+        if (look.pitchObject) {
+          look.pitchObject.rotation.x = THREE.MathUtils.clamp(
+            look.pitchObject.rotation.x + pitchDelta,
+            -Math.PI / 2,
+            Math.PI / 2
+          );
+        }
+        if (look.updateOrientation) look.updateOrientation();
+      } else {
+        this.data.camera.object3D.rotation.y += yawDelta;
+        this.data.camera.object3D.rotation.x = THREE.MathUtils.clamp(
+          this.data.camera.object3D.rotation.x + pitchDelta,
+          -Math.PI / 2,
+          Math.PI / 2
+        );
+      }
+    },
+
+    remove: function () {
+      this.el.removeEventListener('semantic-look', this.onLook);
+    },
+  });
+
+  AFRAME.registerComponent('gamepad-input', {
+    schema: {
+      leftHand: { type: 'selector' },
+      rightHand: { type: 'selector' },
+      dominantHand: { default: 'right', oneOf: ['left', 'right'] },
+      alternateHands: { default: true },
+      primaryAction: { default: 'activate' },
+      secondaryAction: { default: 'secondary' },
+      interactAction: { default: 'interact' },
+      grabAction: { default: 'grab' },
+      watchAction: { default: 'watch' },
+      backAction: { default: 'back' },
+      crouchAction: { default: 'crouch' },
+      sprintAction: { default: 'none' },
+      aimAction: { default: 'none' },
+      deadzone: { default: 0.18 },
+      chargeMs: { default: 900 },
+      minimumStrength: { default: 0.35 },
+    },
+
+    init: function () {
+      this.router = this.el.sceneEl.systems['input-router'];
+      this.activeButtons = new Map();
+      this.nextHand = this.data.dominantHand;
+      this.buttonBindings = createStandardGamepadButtonBindings({
+        primary: this.data.primaryAction,
+        secondary: this.data.secondaryAction,
+        interact: this.data.interactAction,
+        grab: this.data.grabAction,
+        watch: this.data.watchAction,
+        back: this.data.backAction,
+        crouch: this.data.crouchAction,
+        sprint: this.data.sprintAction,
+        aim: this.data.aimAction,
+      });
+    },
+
+    chooseHand: function () {
+      var side = this.nextHand;
+      var handEl = side === 'left' ? this.data.leftHand : this.data.rightHand;
+      if (!handEl) {
+        side = side === 'left' ? 'right' : 'left';
+        handEl = side === 'left' ? this.data.leftHand : this.data.rightHand;
+      }
+      if (this.data.alternateHands) this.nextHand = side === 'left' ? 'right' : 'left';
+      return handEl;
+    },
+
+    emitAction: function (action, phase, button, handEl, heldMs) {
+      if (!action || action === 'none') return;
+      this.el.setAttribute('data-last-semantic-action', action + ':' + phase + ':gamepad');
+      this.el.emit('semantic-action-intent', {
+        action: action,
+        phase: phase,
+        button: button,
+        handEl: handEl,
+        heldMs: heldMs,
+        strength: chargedActionStrength(heldMs, this.data.chargeMs, this.data.minimumStrength),
+        source: 'gamepad',
+      }, true);
+    },
+
+    updateButtons: function (gamepad) {
+      var self = this;
+      Object.keys(this.buttonBindings).forEach(function (key) {
+        var index = Number(key);
+        var button = gamepad.buttons[index];
+        var pressed = Boolean(button && (button.pressed || button.value > 0.55));
+        var pending = self.activeButtons.get(index);
+        if (pressed && !pending) {
+          pending = {
+            action: self.buttonBindings[index],
+            handEl: self.chooseHand(),
+            startedAt: performance.now(),
+          };
+          self.activeButtons.set(index, pending);
+          self.emitAction(pending.action, 'start', index, pending.handEl, 0);
+        } else if (!pressed && pending) {
+          self.activeButtons.delete(index);
+          var heldMs = Math.max(0, performance.now() - pending.startedAt);
+          self.emitAction(pending.action, 'perform', index, pending.handEl, heldMs);
+        }
+      });
+    },
+
+    cancelButtons: function () {
+      var self = this;
+      this.activeButtons.forEach(function (pending, index) {
+        self.emitAction(pending.action, 'cancel', index, pending.handEl, 0);
+      });
+      this.activeButtons.clear();
+    },
+
+    tick: function (time, delta) {
+      var gamepad = this.router.getGamepad();
+      if (!gamepad || this.el.sceneEl.systems['control-mode'].isMode('xr')) {
+        if (this.activeButtons.size) this.cancelButtons();
+        return;
+      }
+      var moveX = applyInputDeadzone(gamepad.axes[0], this.data.deadzone);
+      var moveY = applyInputDeadzone(gamepad.axes[1], this.data.deadzone);
+      if (moveX || moveY) {
+        this.el.emit('semantic-move', {
+          x: moveX,
+          z: moveY,
+          deltaMs: delta,
+          source: 'gamepad',
+        }, false);
+      }
+      var lookX = applyInputDeadzone(gamepad.axes[2], this.data.deadzone);
+      var lookY = applyInputDeadzone(gamepad.axes[3], this.data.deadzone);
+      if (lookX || lookY) {
+        this.el.emit('semantic-look', {
+          x: lookX,
+          y: lookY,
+          deltaMs: delta,
+          kind: 'rate',
+          source: 'gamepad',
+        }, false);
+      }
+      this.updateButtons(gamepad);
+    },
+
+    remove: function () {
+      this.cancelButtons();
+    },
+  });
+
+  AFRAME.registerComponent('touch-controls', {
+    schema: {
+      leftHand: { type: 'selector' },
+      rightHand: { type: 'selector' },
+      dominantHand: { default: 'right', oneOf: ['left', 'right'] },
+      alternateHands: { default: true },
+      primaryAction: { default: 'activate' },
+      primaryLabel: { default: 'USE' },
+      secondaryAction: { default: 'none' },
+      secondaryLabel: { default: 'ALT' },
+      interactAction: { default: 'none' },
+      interactLabel: { default: 'INTERACT' },
+      grabAction: { default: 'none' },
+      grabLabel: { default: 'GRAB' },
+      watchAction: { default: 'none' },
+      watchLabel: { default: 'MENU' },
+      crouchAction: { default: 'none' },
+      crouchLabel: { default: 'CROUCH' },
+      hotbar1Action: { default: 'none' },
+      hotbar1Label: { default: '1' },
+      hotbar2Action: { default: 'none' },
+      hotbar2Label: { default: '2' },
+      hotbar3Action: { default: 'none' },
+      hotbar3Label: { default: '3' },
+      hotbar4Action: { default: 'none' },
+      hotbar4Label: { default: '4' },
+      hotbar5Action: { default: 'none' },
+      hotbar5Label: { default: '5' },
+      aimAction: { default: 'none' },
+      aimLabel: { default: 'AIM' },
+      chargeMs: { default: 900 },
+      minimumStrength: { default: 0.35 },
+    },
+
+    init: function () {
+      this.router = this.el.sceneEl.systems['input-router'];
+      this.hintSystem = this.el.sceneEl.systems['interaction-hints'];
+      this.move = { x: 0, z: 0 };
+      this.joystickPointer = null;
+      this.lookPointer = null;
+      this.lookLast = null;
+      this.activeActions = new Map();
+      this.buttonsByAction = {};
+      this.nextHand = this.data.dominantHand;
+      this.interactionMode = 'normal';
+      this.hintedButtonAction = null;
+      this.onFamilyChanged = this.updateVisibility.bind(this);
+      this.onInteractionModeChanged = this.handleInteractionModeChanged.bind(this);
+      this.el.sceneEl.addEventListener('input-family-changed', this.onFamilyChanged);
+      this.el.sceneEl.addEventListener('desktop-interaction-mode-changed', this.onInteractionModeChanged);
+      this.createUi();
+      this.updateVisibility();
+    },
+
+    handleInteractionModeChanged: function (evt) {
+      this.interactionMode = (evt.detail && evt.detail.mode) || 'normal';
+      this.updateVisibility();
+    },
+
+    createUi: function () {
+      var root = document.createElement('div');
+      root.className = 'semantic-touch-controls';
+      root.innerHTML = '<div class="semantic-touch-look" aria-label="Look area"></div>' +
+        '<div class="semantic-touch-stick" aria-label="Movement joystick"><div class="semantic-touch-stick-knob"></div></div>' +
+        '<div class="semantic-touch-actions"></div>' +
+        '<div class="semantic-touch-hotbar"></div>';
+      var style = document.createElement('style');
+      style.textContent = [
+        '.semantic-touch-controls{position:fixed;inset:0;z-index:30;pointer-events:none;touch-action:none;user-select:none;-webkit-user-select:none}',
+        '.semantic-touch-look{position:absolute;inset:0 0 0 38%;pointer-events:auto;touch-action:none}',
+        '.semantic-touch-stick{position:absolute;left:max(22px,env(safe-area-inset-left));bottom:max(24px,env(safe-area-inset-bottom));width:112px;height:112px;border-radius:50%;border:2px solid rgba(255,255,255,.65);background:rgba(10,15,25,.38);pointer-events:auto;touch-action:none}',
+        '.semantic-touch-stick-knob{position:absolute;left:31px;top:31px;width:50px;height:50px;border-radius:50%;background:rgba(255,255,255,.72);box-shadow:0 2px 8px #0008;transform:translate(0,0)}',
+        '.semantic-touch-actions{position:absolute;right:max(18px,env(safe-area-inset-right));bottom:max(72px,calc(env(safe-area-inset-bottom) + 12px));display:grid;grid-template-columns:repeat(2,74px);gap:12px;pointer-events:none}',
+        // A single row along the bottom for numbered hotbar slots
+        // specifically (Pistols' holster/equipment keys) — kept apart
+        // from the general action grid above and sized smaller, since a
+        // whole hand's worth of slots reads better as one compact strip
+        // than folded into the same grid as watch/crouch/interact/etc.
+        '.semantic-touch-hotbar{position:absolute;left:50%;bottom:max(14px,env(safe-area-inset-bottom));transform:translateX(-50%);display:flex;gap:8px;pointer-events:none}',
+        '.semantic-touch-hotbar .semantic-touch-button{width:44px;height:40px;border-radius:12px;font-size:11px}',
+        '.semantic-touch-button{width:74px;height:56px;border:2px solid #fff;border-radius:18px;background:rgba(12,18,30,.7);color:#fff;font:700 12px system-ui;letter-spacing:.03em;pointer-events:auto;touch-action:none;box-shadow:0 2px 9px #0008}',
+        // The hotbar row is persistent loadout state, not a touch-only
+        // affordance -- it stays up (see updateVisibility) as a
+        // display-only HUD on keyboard, reusing these exact same
+        // buttons/colors rather than a second parallel UI. Non-touch
+        // hotbar buttons are never real tap targets, so they default to
+        // pointer-events:none, overriding the general button rule above
+        // -- only re-enabled while touch is the family actually driving
+        // this root (is-touch-input, set in updateVisibility).
+        '.semantic-touch-hotbar .semantic-touch-button{pointer-events:none}',
+        '.semantic-touch-controls.is-touch-input .semantic-touch-hotbar .semantic-touch-button{pointer-events:auto}',
+        '.semantic-touch-button[data-primary="true"]{height:74px;border-radius:50%;background:rgba(20,105,155,.78)}',
+        '.semantic-touch-button.is-held{transform:scale(.94);background:rgba(38,170,225,.88)}',
+        // Contextual coloring (setButtonState) — a holster button reads
+        // differently depending on what it currently means: "empty" (dim,
+        // there's nothing there to draw), "holstered" (default look,
+        // ready to draw) and "held" (highlighted, this is what pressing it
+        // again puts away).
+        '.semantic-touch-button[data-state="empty"]{opacity:.45}',
+        '.semantic-touch-button[data-state="held"]{background:rgba(210,150,40,.85);border-color:#ffd48a}',
+        'html[data-input-family="touch"] #debug-controls,html[data-input-family="touch"] #reset-button-html{display:none!important}',
+        '@media (orientation:portrait){.semantic-touch-stick{width:96px;height:96px}.semantic-touch-stick-knob{left:27px;top:27px;width:42px;height:42px}.semantic-touch-actions{grid-template-columns:repeat(2,66px)}.semantic-touch-button{width:66px}.semantic-touch-hotbar .semantic-touch-button{width:38px;height:34px}}',
+      ].join('');
+      document.head.appendChild(style);
+      document.body.appendChild(root);
+      this.root = root;
+      this.styleEl = style;
+      this.stickEl = root.querySelector('.semantic-touch-stick');
+      this.knobEl = root.querySelector('.semantic-touch-stick-knob');
+      this.lookEl = root.querySelector('.semantic-touch-look');
+      this.actionsEl = root.querySelector('.semantic-touch-actions');
+      this.hotbarEl = root.querySelector('.semantic-touch-hotbar');
+      this.bindJoystick();
+      this.bindLook();
+      this.addActionButton(this.data.watchAction, this.data.watchLabel, false);
+      this.crouchButtonEl = this.addActionButton(this.data.crouchAction, this.data.crouchLabel, false);
+      // Interact/grab start hidden -- they're the touch equivalent of the
+      // flat corner hint (interaction-hints.js's own system), appearing
+      // only once a matching hint-zone is actually in reach, instead of
+      // that corner hint (see updateHintedButtons below). Aim starts
+      // hidden too -- there's nothing to aim with empty hands -- but
+      // unlike the other two it has no proximity signal of its own to
+      // key off; a game shows it via setButtonVisible once it knows
+      // (e.g. Pistols' hotbar-equip, core-equip.js, toggling it with
+      // whether either hand currently holds a firearm). Hotbar slots
+      // and every other button here are persistent actions unrelated to
+      // proximity or what's in hand, and stay visible as before.
+      var interactButton = this.addActionButton(this.data.interactAction, this.data.interactLabel, false);
+      if (interactButton) interactButton.hidden = true;
+      var grabButton = this.addActionButton(this.data.grabAction, this.data.grabLabel, false);
+      if (grabButton) grabButton.hidden = true;
+      this.addActionButton(this.data.hotbar1Action, this.data.hotbar1Label, false, true);
+      this.addActionButton(this.data.hotbar2Action, this.data.hotbar2Label, false, true);
+      this.addActionButton(this.data.hotbar3Action, this.data.hotbar3Label, false, true);
+      this.addActionButton(this.data.hotbar4Action, this.data.hotbar4Label, false, true);
+      this.addActionButton(this.data.hotbar5Action, this.data.hotbar5Label, false, true);
+      var aimButton = this.addActionButton(this.data.aimAction, this.data.aimLabel, false);
+      if (aimButton) aimButton.hidden = true;
+      this.addActionButton(this.data.secondaryAction, this.data.secondaryLabel, true);
+      // addActionButton no-ops for 'none' -- a game with no more use for
+      // a dedicated FIRE button (e.g. Pistols, once a plain tap already
+      // fires on its own -- see onSemanticTap's trigger-fallback branch,
+      // desktop-controls.js, the same way a plain PC click does) just
+      // sets primaryAction: none in its own markup instead of this file
+      // needing to know that; other games keep using this normally.
+      this.addActionButton(this.data.primaryAction, this.data.primaryLabel, true);
+    },
+
+    bindJoystick: function () {
+      var self = this;
+      this.stickEl.addEventListener('pointerdown', function (evt) {
+        if (self.joystickPointer !== null) return;
+        evt.preventDefault(); evt.stopPropagation();
+        self.joystickPointer = evt.pointerId;
+        self.stickEl.setPointerCapture(evt.pointerId);
+        self.updateJoystick(evt);
+      });
+      this.stickEl.addEventListener('pointermove', function (evt) {
+        if (evt.pointerId !== self.joystickPointer) return;
+        evt.preventDefault(); evt.stopPropagation(); self.updateJoystick(evt);
+      });
+      ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(function (name) {
+        self.stickEl.addEventListener(name, function (evt) {
+          if (evt.pointerId !== self.joystickPointer) return;
+          self.joystickPointer = null;
+          self.move.x = 0; self.move.z = 0;
+          self.knobEl.style.transform = 'translate(0px,0px)';
+        });
+      });
+    },
+
+    updateJoystick: function (evt) {
+      var rect = this.stickEl.getBoundingClientRect();
+      var dx = evt.clientX - (rect.left + rect.width / 2);
+      var dy = evt.clientY - (rect.top + rect.height / 2);
+      var radius = rect.width * 0.32;
+      var length = Math.hypot(dx, dy);
+      if (length > radius) { dx *= radius / length; dy *= radius / length; }
+      this.move.x = dx / radius;
+      this.move.z = dy / radius;
+      this.knobEl.style.transform = 'translate(' + dx.toFixed(1) + 'px,' + dy.toFixed(1) + 'px)';
+    },
+
+    bindLook: function () {
+      var self = this;
+      this.lookEl.addEventListener('pointerdown', function (evt) {
+        if (self.lookPointer !== null) return;
+        evt.preventDefault(); evt.stopPropagation();
+        self.lookPointer = evt.pointerId;
+        self.lookLast = { x: evt.clientX, y: evt.clientY };
+        // The look area covers most of the screen so it's also where a
+        // menu-item tap lands (the watch no longer locks the view — see
+        // desktop-controls.js's setMode — so this still needs to double
+        // as free look). Track whether the press stayed put; a real drag
+        // clears this via the movement check in pointermove below.
+        self.lookDown = { x: evt.clientX, y: evt.clientY, time: performance.now(), moved: false };
+        self.lookEl.setPointerCapture(evt.pointerId);
+      });
+      this.lookEl.addEventListener('pointermove', function (evt) {
+        if (evt.pointerId !== self.lookPointer || !self.lookLast) return;
+        evt.preventDefault(); evt.stopPropagation();
+        var dx = evt.clientX - self.lookLast.x;
+        var dy = evt.clientY - self.lookLast.y;
+        self.lookLast = { x: evt.clientX, y: evt.clientY };
+        if (self.lookDown && !self.lookDown.moved) {
+          var totalMove = Math.hypot(evt.clientX - self.lookDown.x, evt.clientY - self.lookDown.y);
+          if (totalMove > TAP_MOVE_THRESHOLD) self.lookDown.moved = true;
+        }
+        self.el.emit('semantic-look', { x: dx, y: dy, kind: 'delta', source: 'touch' }, false);
+      });
+      ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(function (name) {
+        self.lookEl.addEventListener(name, function (evt) {
+          if (evt.pointerId !== self.lookPointer) return;
+          var down = self.lookDown;
+          self.lookPointer = null; self.lookLast = null; self.lookDown = null;
+          var isTap = name === 'pointerup' && down && !down.moved && performance.now() - down.time < TAP_MAX_MS;
+          if (isTap) self.el.sceneEl.emit('semantic-tap', { clientX: evt.clientX, clientY: evt.clientY, source: 'touch' }, false);
+        });
+      });
+    },
+
+    chooseHand: function () {
+      var side = this.nextHand;
+      var handEl = side === 'left' ? this.data.leftHand : this.data.rightHand;
+      if (!handEl) handEl = side === 'left' ? this.data.rightHand : this.data.leftHand;
+      if (this.data.alternateHands) this.nextHand = side === 'left' ? 'right' : 'left';
+      return handEl;
+    },
+
+    addActionButton: function (action, label, primary, hotbar) {
+      if (!action || action === 'none') return null;
+      var self = this;
+      var button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'semantic-touch-button';
+      button.textContent = label;
+      button.dataset.action = action;
+      button.dataset.primary = primary ? 'true' : 'false';
+      button.setAttribute('aria-label', label);
+      this.buttonsByAction[action] = button;
+      button.addEventListener('pointerdown', function (evt) {
+        evt.preventDefault(); evt.stopPropagation();
+        button.setPointerCapture(evt.pointerId);
+        button.classList.add('is-held');
+        var pending = { action: action, handEl: self.chooseHand(), startedAt: performance.now() };
+        self.activeActions.set(evt.pointerId, pending);
+        self.emitAction(pending, 'start', 0);
+      });
+      function finish(evt, phase) {
+        var pending = self.activeActions.get(evt.pointerId);
+        if (!pending) return;
+        evt.preventDefault(); evt.stopPropagation();
+        self.activeActions.delete(evt.pointerId);
+        button.classList.remove('is-held');
+        self.emitAction(pending, phase, Math.max(0, performance.now() - pending.startedAt));
+      }
+      button.addEventListener('pointerup', function (evt) { finish(evt, 'perform'); });
+      button.addEventListener('pointercancel', function (evt) { finish(evt, 'cancel'); });
+      button.addEventListener('lostpointercapture', function (evt) { finish(evt, 'cancel'); });
+      (hotbar ? this.hotbarEl : this.actionsEl).appendChild(button);
+      return button;
+    },
+
+    // Lets a game show/hide one of its own action buttons based on
+    // context this file has no way to know on its own (e.g. Pistols'
+    // AIM button, which only means something once a hand actually
+    // holds a firearm — see hotbar-equip, core-equip.js). A no-op if
+    // that action's button doesn't exist (action disabled, or a family
+    // other than touch active).
+    setButtonVisible: function (action, visible) {
+      var button = this.buttonsByAction[action];
+      if (button) button.hidden = !visible;
+    },
+
+    // Lets a game color one of its own action buttons contextually (e.g.
+    // Pistols' numbered holster buttons: empty/holstered/held) without
+    // this file needing to know what any of that means — it just tags the
+    // button `data-state`, and the CSS above (or a game's own added rules)
+    // decides what each state looks like. A no-op if that action's button
+    // doesn't exist (action disabled, or a family other than touch active).
+    setButtonState: function (action, state) {
+      var button = this.buttonsByAction[action];
+      if (!button) return;
+      if (state) button.dataset.state = state;
+      else delete button.dataset.state;
+    },
+
+    // For a button whose meaning flips with context (GRAB vs. DROP,
+    // say) rather than just its visual state — see hotbar-equip
+    // (Pistols' own core-equip.js), which keeps the grab button's label
+    // in sync with whether the dominant hand is currently holding
+    // anything.
+    setButtonLabel: function (action, label) {
+      var button = this.buttonsByAction[action];
+      if (!button || button.textContent === label) return;
+      button.textContent = label;
+      button.setAttribute('aria-label', label);
+    },
+
+    emitAction: function (pending, phase, heldMs) {
+      this.el.setAttribute('data-last-semantic-action', pending.action + ':' + phase + ':touch');
+      this.el.emit('semantic-action-intent', {
+        action: pending.action,
+        phase: phase,
+        handEl: pending.handEl,
+        heldMs: heldMs,
+        strength: chargedActionStrength(heldMs, this.data.chargeMs, this.data.minimumStrength),
+        source: 'touch',
+      }, true);
+    },
+
+    updateVisibility: function () {
+      if (!this.root) return;
+      var flat = !this.el.sceneEl.systems['control-mode'].isMode('xr');
+      var family = this.router.getActiveFamily();
+      var touchActive = flat && this.router.hasTouch && family === 'touch';
+      // The numbered hotbar is persistent loadout state (what's in each
+      // slot right now), not a touch-only affordance the way the
+      // joystick/look-area/action-grid below are -- so unlike those, it
+      // stays up as a display-only HUD on keyboard too, reusing the
+      // exact same buttons and colors Pistols' own hotbar-equip
+      // (core-equip.js) already keeps in sync via setButtonState/
+      // setButtonLabel, just non-interactive there (see the CSS above).
+      // Gamepad has no hotbar bindings yet
+      // (createStandardGamepadButtonBindings above), so showing it
+      // there would advertise slots there's no way to actually press.
+      var hotbarActive = flat && (touchActive || family === 'keyboard');
+      this.root.style.display = (touchActive || hotbarActive) ? 'block' : 'none';
+      this.root.classList.toggle('is-touch-input', touchActive);
+      if (this.hotbarEl) this.hotbarEl.style.display = hotbarActive ? '' : 'none';
+      if (!touchActive) {
+        if (this.stickEl) this.stickEl.style.display = 'none';
+        if (this.actionsEl) this.actionsEl.style.display = 'none';
+        // The look area covers most of the screen and is pointer-events:
+        // auto unconditionally in its own CSS -- harmless while the
+        // whole root was display:none for a flat family, but the root
+        // now stays up on keyboard for the hotbar HUD above, so this
+        // needs its own explicit hide or it silently swallows the click
+        // a desktop player needs to acquire pointer lock with.
+        if (this.lookEl) this.lookEl.style.display = 'none';
+        return;
+      }
+      if (this.lookEl) this.lookEl.style.display = '';
+      // Movement and crouch still work while the watch is open
+      // (desktop-controls.js/locomotion.js), so the joystick and crouch
+      // button stay up. Everything else hides: the watch button is
+      // redundant once the panel has its own close button, and
+      // interact/grab/primary/secondary don't apply to a menu — tapping
+      // activates whatever the laser points at instead (see bindLook,
+      // which doubles a stationary tap in the look area as a selection).
+      var watchOpen = this.interactionMode === 'watch';
+      var self = this;
+      this.stickEl.style.display = '';
+      this.actionsEl.style.display = '';
+      Array.prototype.forEach.call(this.actionsEl.children, function (button) {
+        button.style.display = (watchOpen && button !== self.crouchButtonEl) ? 'none' : '';
+      });
+    },
+
+    // The touch counterpart to interaction-hints.js's own flat corner
+    // hint: interact/grab only ever mean something when a matching
+    // hint-zone is actually in reach (see common/desktop-controls.js's
+    // identical 'interact'->'mounted', 'grab'->'grab' mapping for why
+    // those two specific action/zone names pair up), so their buttons
+    // stay hidden (see createUi's initial .hidden = true) until
+    // interaction-hints' own desktopCandidate says otherwise. Uses the
+    // plain `hidden` attribute rather than style.display so it composes
+    // safely with updateVisibility's own display toggling above (an
+    // empty inline style never overrides an attribute-driven `[hidden]`
+    // rule) instead of the two fighting over the same property.
+    updateHintedButtons: function () {
+      if (!this.hintSystem) return;
+      var candidate = this.hintSystem.desktopCandidate;
+      var action = candidate ? candidate.zone.data.action : null;
+      if (action === this.hintedButtonAction) return;
+      this.hintedButtonAction = action;
+
+      var interactButton = this.buttonsByAction[this.data.interactAction];
+      if (interactButton) interactButton.hidden = action !== 'mounted';
+      var grabButton = this.buttonsByAction[this.data.grabAction];
+      if (grabButton) grabButton.hidden = action !== 'grab';
+    },
+
+    tick: function (time, delta) {
+      this.updateHintedButtons();
+      if (!this.root || this.root.style.display === 'none' || (!this.move.x && !this.move.z)) return;
+      this.el.emit('semantic-move', {
+        x: this.move.x,
+        z: this.move.z,
+        deltaMs: delta,
+        source: 'touch',
+      }, false);
+    },
+
+    remove: function () {
+      this.el.sceneEl.removeEventListener('input-family-changed', this.onFamilyChanged);
+      var self = this;
+      this.activeActions.forEach(function (pending) {
+        self.emitAction(pending, 'cancel', 0);
+      });
+      this.activeActions.clear();
+      if (this.root) this.root.remove();
+      if (this.styleEl) this.styleEl.remove();
+    },
+  });
+
+  AFRAME.registerComponent('semantic-gaze-action', {
+    schema: {
+      cursor: { type: 'selector' },
+      action: { default: 'activate' },
+    },
+
+    init: function () {
+      this.onAction = this.onAction.bind(this);
+      this.el.addEventListener('semantic-action-intent', this.onAction);
+    },
+
+    onAction: function (evt) {
+      if (!evt.detail || evt.detail.action !== this.data.action || evt.detail.phase !== 'perform') return;
+      var cursor = this.data.cursor && this.data.cursor.components.cursor;
+      var raycaster = this.data.cursor && this.data.cursor.components.raycaster;
+      var target = (cursor && cursor.intersectedEl) ||
+        (raycaster && raycaster.intersectedEls && raycaster.intersectedEls[0]);
+      this.el.setAttribute('data-last-gaze-target', target ? (target.id || target.className || target.tagName) : 'none');
+      if (target) target.emit('click', { source: evt.detail.source }, false);
+    },
+
+    remove: function () {
+      this.el.removeEventListener('semantic-action-intent', this.onAction);
+    },
+  });
+}

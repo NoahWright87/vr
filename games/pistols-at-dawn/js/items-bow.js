@@ -421,7 +421,7 @@
           var lit = !!(lightable && lightable.lit);
 
           var visual = this.el.components['boxy-arrow'];
-          if (visual && visual.ember) visual.ember.setAttribute('visible', lit);
+          if (visual && visual.ember) visual.ember.object3D.visible = lit;
 
           var source = this.el.components['ignition-source'];
           if (source) source.hot = lit;

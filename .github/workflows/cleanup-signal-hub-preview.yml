@@ -1,0 +1,22 @@
+name: Clean up signal hub preview (Cloudflare Worker)
+
+# Deletes the per-PR preview Worker that preview-signal-hub.yml
+# deploys, whether the PR was merged or just closed — otherwise these
+# accumulate as real (if free-tier, harmless) Workers on the account
+# forever. Safe to run even if no preview was ever deployed for this
+# PR (e.g. the PR never touched worker/**): continue-on-error treats
+# "nothing to delete" as a no-op rather than a failing job.
+on:
+  pull_request:
+    types: [closed]
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete preview Worker
+        continue-on-error: true
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          command: delete vr-signal-relay-pr-${{ github.event.pull_request.number }} --force

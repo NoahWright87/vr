@@ -1,0 +1,23 @@
+{
+  "name": "vr-experiments",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "node --test",
+    "relay:hosted:dev": "wrangler dev --config worker/wrangler.toml",
+    "relay:hosted:deploy": "wrangler deploy --config worker/wrangler.toml"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^6.1.0",
+    "vite": "^8.1.5",
+    "wrangler": "^4.125.0"
+  },
+  "dependencies": {
+    "@noahwright/design": "1.3.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  }
+}
