@@ -16,6 +16,10 @@ Deployed as a static site (planned: `vr.noahwright.dev` via Netlify).
 
 To add a new prototype: create `games/<name>/index.html`, and add a link to it from the root `index.html`. Nothing else needs to change — each game manages its own A-Frame version, components, and assets.
 
+The landing page uses the styles and Wright Sans fonts from **@noahwright/design 1.3.0**, vendored locally without adding a build step (see [vendor/README.md](vendor/README.md)). Its orange/purple light and dark palettes match [NoahWrightDev2026](https://github.com/NoahWright87/NoahWrightDev2026). The header theme switch remembers the visitor's choice, defaulting to their system preference. Site overrides live in `assets/site.css`; `assets/theme.js` applies the theme before first paint.
+
+The header and SVG favicon adapt the developer site's original silhouette with a VR headset in place of glasses. The silhouette, collar, and tie paths come from its `src/lib/logo.ts`. Keep the header SVG in `index.html` and `assets/noah-vr.svg` shapes in sync when editing the logo; the favicon follows the OS color scheme and the header follows the selected site theme.
+
 A-Frame itself is vendored into `/vendor` rather than loaded from the `aframe.io` CDN — see [`vendor/README.md`](vendor/README.md) for why and how to bump versions.
 
 See **[DESIGN.md](DESIGN.md)** for the design philosophy these prototypes are built on — shared systems over features, so that unplanned combinations happen — plus the patterns that produce it, the rules learned the hard way, and measured performance notes.
