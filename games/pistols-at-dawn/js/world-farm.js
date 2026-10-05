@@ -25,6 +25,14 @@
       var FARM_YARD_NORTH_Z = -21; // far fence, 20m deep yard
       var FARM_GATE_WIDTH = 3; // gap in the south fence, centered on x=0
       var FARM_GROUND_COLOR = '#4f7a3d';
+      var FARM_GROUND_TEXTURE = 'assets/textures/farm-grass-ground-v1.png';
+      // The source tile is deliberately small-scale: repeating it here lets
+      // the grass stay readable at VR standing distance across the whole yard.
+      var FARM_GROUND_TEXTURE_REPEAT = '12 12';
+      var FARM_WOOD_TEXTURE = 'assets/textures/western-wood-planks-v1.png';
+      var FARM_BARN_SIDING_TEXTURE = 'assets/textures/barn-red-siding-v1.png';
+      var FARM_ROOF_TEXTURE = 'assets/textures/weathered-roof-shingles-v1.png';
+      var FARM_FENCE_TEXTURE = 'assets/textures/weathered-white-fence-v1.png';
       var FARM_GROUND_MARGIN = 3; // meters the grass patch extends past the fence on every side, so the fence doesn't look like it's floating at the edge of a color change
 
       // FENCE — plain axis-aligned picket runs. Real picket spacing
@@ -78,6 +86,7 @@
           picket.setAttribute('height', FENCE_PICKET_HEIGHT);
           picket.setAttribute('depth', FENCE_PICKET_THICKNESS);
           picket.setAttribute('color', FENCE_PICKET_COLOR);
+          picket.setAttribute('material', { src: FARM_FENCE_TEXTURE, repeat: '1 2', color: '#ffffff', shader: 'flat' });
           picket.setAttribute('position', { x: x0 + step * i, y: FENCE_PICKET_HEIGHT / 2, z: z });
           parentEl.appendChild(picket);
         }
@@ -88,6 +97,7 @@
           rail.setAttribute('height', FENCE_RAIL_HEIGHT);
           rail.setAttribute('depth', FENCE_RAIL_THICKNESS);
           rail.setAttribute('color', FENCE_PICKET_COLOR);
+          rail.setAttribute('material', { src: FARM_FENCE_TEXTURE, repeat: '4 1', color: '#ffffff', shader: 'flat' });
           rail.setAttribute('position', { x: (x0 + x1) / 2, y: y, z: z });
           parentEl.appendChild(rail);
         });
@@ -104,6 +114,7 @@
           picket.setAttribute('height', FENCE_PICKET_HEIGHT);
           picket.setAttribute('depth', FENCE_PICKET_THICKNESS);
           picket.setAttribute('color', FENCE_PICKET_COLOR);
+          picket.setAttribute('material', { src: FARM_FENCE_TEXTURE, repeat: '1 2', color: '#ffffff', shader: 'flat' });
           picket.setAttribute('position', { x: x, y: FENCE_PICKET_HEIGHT / 2, z: z0 + step * i });
           parentEl.appendChild(picket);
         }
@@ -114,6 +125,7 @@
           rail.setAttribute('height', FENCE_RAIL_HEIGHT);
           rail.setAttribute('depth', FENCE_RAIL_THICKNESS);
           rail.setAttribute('color', FENCE_PICKET_COLOR);
+          rail.setAttribute('material', { src: FARM_FENCE_TEXTURE, repeat: '4 1', color: '#ffffff', shader: 'flat' });
           rail.setAttribute('rotation', '0 90 0');
           rail.setAttribute('position', { x: x, y: y, z: (z0 + z1) / 2 });
           parentEl.appendChild(rail);
@@ -153,6 +165,11 @@
             z: (FARM_YARD_SOUTH_Z + FARM_YARD_NORTH_Z) / 2,
           });
           ground.setAttribute('color', FARM_GROUND_COLOR);
+          ground.setAttribute('material', {
+            src: FARM_GROUND_TEXTURE,
+            repeat: FARM_GROUND_TEXTURE_REPEAT,
+            shader: 'flat',
+          });
           this.el.appendChild(ground);
         },
 
@@ -178,6 +195,7 @@
             post.setAttribute('height', FENCE_POST_HEIGHT);
             post.setAttribute('depth', FENCE_POST_SIZE);
             post.setAttribute('color', FENCE_PICKET_COLOR);
+            post.setAttribute('material', { src: FARM_FENCE_TEXTURE, repeat: '1 2', color: '#ffffff', shader: 'flat' });
             post.setAttribute('position', { x: x, y: FENCE_POST_HEIGHT / 2, z: FARM_YARD_SOUTH_Z });
             el.appendChild(post);
           });
@@ -194,6 +212,7 @@
           body.setAttribute('depth', FARM_BARN_DEPTH);
           body.setAttribute('position', { x: 0, y: FARM_BARN_WALL_HEIGHT / 2, z: 0 });
           body.setAttribute('color', FARM_BARN_WALL_COLOR);
+          body.setAttribute('material', { src: FARM_BARN_SIDING_TEXTURE, repeat: '4 2', color: '#ffffff', shader: 'flat' });
           barn.appendChild(body);
 
           // Trim board along the eaves — plain color break, no
@@ -213,6 +232,8 @@
             wallHeight: FARM_BARN_WALL_HEIGHT,
             pitchDeg: FARM_ROOF_PITCH_DEG,
             color: FARM_ROOF_COLOR,
+            texture: FARM_ROOF_TEXTURE,
+            textureRepeat: '4 3',
             thickness: FARM_ROOF_THICKNESS,
             overhang: FARM_ROOF_OVERHANG,
           });
@@ -227,6 +248,7 @@
             door.setAttribute('height', doorHeight);
             door.setAttribute('depth', 0.06);
             door.setAttribute('color', FARM_BARN_DOOR_COLOR);
+            door.setAttribute('material', { src: FARM_WOOD_TEXTURE, repeat: '1 2', color: '#ffffff', shader: 'flat' });
             door.setAttribute('position', { x: (side * doorWidth) / 2, y: doorHeight / 2, z: doorFaceZ });
             barn.appendChild(door);
           });
