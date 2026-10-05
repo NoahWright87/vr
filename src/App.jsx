@@ -36,6 +36,16 @@ export function App() {
             your way through.
           </Card>
           <Card
+            title="The Rainbow Hotel"
+            subtitle="Impossible spaces"
+            href="/games/rainbow-hotel/"
+            interactive
+            footer={<Text tone="muted">Play →</Text>}
+          >
+            Six floors of a building, folded into one small room. Walk up all of
+            them without ever leaving your play space.
+          </Card>
+          <Card
             title="Cube Pop"
             href="/games/cube-pop/"
             interactive

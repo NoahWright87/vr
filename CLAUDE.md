@@ -31,6 +31,19 @@ checking that the page loads without errors; a shortcut can pass while
 the actual code path it's standing in for is broken. See DESIGN.md's
 "Testing without a headset" section for more.
 
+## Two conventions for a prototype's own JS
+
+Pistols at Dawn predates the Vite build and keeps ordered classic
+`<script src>` files with implicit globals (see below). **New
+prototypes should use ES modules instead** — The Rainbow Hotel
+(`games/rainbow-hotel/js/`) is the example: real `import`/`export`,
+loaded by one `<script type="module">`, bundled by Vite, and importing
+shared code from `common/` directly. Keep the pure logic (geometry,
+rules, maths) in files with no `AFRAME` reference at import time so
+`node --test` can exercise it; guard any component registration with
+`if (typeof AFRAME !== 'undefined')`, the way `common/control-mode.js`
+does.
+
 ## Pistols at Dawn's file layout
 
 Pistols at Dawn's own logic outgrew a single file and now lives in
