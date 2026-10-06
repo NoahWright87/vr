@@ -1,7 +1,8 @@
 import type { Level, Vec } from './core/types.ts';
 import type { RuntimeState } from './core/runtime.ts';
 import { renderWalls } from './core/runtime.ts';
-import { centroid, len, sub } from './core/geometry.ts';
+import { centroid, len, sub, wallSegments, clipSegToConvex } from './core/geometry.ts';
+import { insetWallFace } from './core/wall-surfaces.ts';
 
 const THREE = AFRAME.THREE;
 export const pieceColor = (i: number) => `hsl(${(i * 137.5 + 200) % 360}, 55%, 62%)`;
@@ -21,6 +22,7 @@ export class LevelView {
   }
   makeView(state: RuntimeState) {
     const group = new THREE.Group();
+    const backingPositions: number[] = [];
     for (const draw of renderWalls(this.level, state)) {
       const color = this.colors.get(draw.pieceId)!;
       const positions: number[] = [], uv: number[] = [], colors: number[] = [];
@@ -35,11 +37,24 @@ export class LevelView {
           triangle(vertices.map(p => [p.x, 2.5, p.y]), texCoords, .4);
         }
       }
-      for (const [a, b] of draw.walls) {
-        const distance = len(sub(b, a)), shade = Math.abs(b.x - a.x) / distance * .15 + .75;
-        // Use wall distance/height UVs, avoiding distorted grids on diagonal walls.
-        triangle([[a.x, 0, a.y], [b.x, 0, b.y], [b.x, 2.5, b.y]], [[0,0],[distance*2,0],[distance*2,5]], shade);
-        triangle([[a.x, 0, a.y], [b.x, 2.5, b.y], [a.x, 2.5, a.y]], [[0,0],[distance*2,5],[0,5]], shade);
+      const piece = this.level.pieces.find(p => p.id === draw.pieceId)!;
+      const physicalWalls = wallSegments(piece, this.level.doors);
+      for (const [edgeA, edgeB] of draw.walls) {
+        if (len(sub(edgeB, edgeA)) < 1e-8) continue;
+        // Keep exact occlusion at door/visibility cuts behind the separated color faces.
+        backingPositions.push(edgeA.x,0,edgeA.y, edgeB.x,0,edgeB.y, edgeB.x,2.5,edgeB.y,
+          edgeA.x,0,edgeA.y, edgeB.x,2.5,edgeB.y, edgeA.x,2.5,edgeA.y);
+        const face = insetWallFace(piece, physicalWalls, edgeA, edgeB);
+        // Insets at a clipped corner must not extend outside declared visible regions.
+        const faces = draw.regions.map(region => clipSegToConvex(face[0], face[1], region, 1e-8)).filter(Boolean) as [Vec, Vec][];
+        for (const [a, b] of faces) {
+          const distance = len(sub(b, a));
+          if (distance < 1e-8) continue;
+          const shade = Math.abs(b.x - a.x) / distance * .15 + .75;
+          // Use wall distance/height UVs, avoiding distorted grids on diagonal walls.
+          triangle([[a.x, 0, a.y], [b.x, 0, b.y], [b.x, 2.5, b.y]], [[0,0],[distance*2,0],[distance*2,5]], shade);
+          triangle([[a.x, 0, a.y], [b.x, 2.5, b.y], [a.x, 2.5, a.y]], [[0,0],[distance*2,5],[0,5]], shade);
+        }
       }
       const canvas = document.createElement('canvas'); canvas.width = canvas.height = 64;
       const ctx = canvas.getContext('2d')!;
@@ -51,7 +66,7 @@ export class LevelView {
       geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
       geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
       const mesh = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ map: texture, vertexColors: true, side: THREE.DoubleSide }));
-      mesh.name = draw.pieceId; group.add(mesh);
+      mesh.name = draw.pieceId; mesh.userData.colorFaces = true; group.add(mesh);
       const points: number[] = [];
       for (const poly of draw.regions) for (let i = 0; i < poly.length; i++) points.push(poly[i].x, 0.008, poly[i].y, poly[(i + 1) % poly.length].x, 0.008, poly[(i + 1) % poly.length].y);
       const lineGeo = new THREE.BufferGeometry(); lineGeo.setAttribute('position', new THREE.Float32BufferAttribute(points, 3));
@@ -66,6 +81,11 @@ export class LevelView {
         const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex })); sprite.position.set(c.x, 2.15, c.y); sprite.scale.set(0.9, 0.225, 1); group.add(sprite);
       }
     }
+    const backingGeometry = new THREE.BufferGeometry();
+    backingGeometry.setAttribute('position', new THREE.Float32BufferAttribute(backingPositions, 3));
+    // A uniform backing avoids color/UV flicker between coincident structural faces.
+    const backing = new THREE.Mesh(backingGeometry, new THREE.MeshBasicMaterial({ color: '#172a41', side: THREE.DoubleSide }));
+    backing.name = 'wall-backing'; group.add(backing);
     return group;
   }
   show(state: RuntimeState) {

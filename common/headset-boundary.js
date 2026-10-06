@@ -1,5 +1,8 @@
+import { fitBoundaryRectangle } from './boundary-geometry.js';
+
 // Boundary Lab boundary detection, shared by room-scale experiences.
 AFRAME.registerComponent('headset-boundary', {
+  schema: { showFit: { default: false } },
   init: function () {
     var THREE = AFRAME.THREE;
     this.session = null;
@@ -10,9 +13,16 @@ AFRAME.registerComponent('headset-boundary', {
     this.matrix = new THREE.Matrix4();
     this.point = new THREE.Vector3();
     this.lastMatrix = null;
+    this.lastBounds = null;
+    this.fit = null;
     this.revision = (this.revision || 0) + 1;
     this.geometry = new THREE.BufferGeometry();
     this.cornerGeometry = new THREE.BufferGeometry();
+    this.fitGeometry = new THREE.BufferGeometry();
+    this.fitOutline = new THREE.LineLoop(this.fitGeometry,
+      new THREE.LineDashedMaterial({ color: '#fbbf24', transparent: true, opacity: 1, dashSize: 0.12, gapSize: 0.08, depthTest: false }));
+    this.fitOutline.renderOrder = 2;
+    this.fitOutline.visible = false;
     this.outline = new THREE.LineLoop(
       this.geometry,
       new THREE.LineBasicMaterial({ color: '#22d3ee', transparent: true, opacity: 0.95, depthTest: false })
@@ -30,6 +40,7 @@ AFRAME.registerComponent('headset-boundary', {
     this.renderRoot = this.el.sceneEl.object3D;
     this.renderRoot.add(this.outline);
     this.renderRoot.add(this.corners);
+    this.renderRoot.add(this.fitOutline);
 
     this.onEnterVR = this.start.bind(this);
     this.onExitVR = this.stop.bind(this);
@@ -63,21 +74,21 @@ AFRAME.registerComponent('headset-boundary', {
     if (!session || this.pending || this.session === session) return;
     this.pending = true;
     this.session = session;
-    this.setStatus('Requesting headset boundaryâ€¦', 'Reading the room-scale play space\nfrom this XR session.');
+    this.setStatus('Requesting headset boundary…', 'Reading the room-scale play space\nfrom this XR session.');
 
     var self = this;
     session.requestReferenceSpace('bounded-floor').then(function (space) {
       if (self.session !== session) return;
       self.pending = false;
       self.boundedSpace = space;
-      self.onSpaceReset = function () { self.lastMatrix = null; self.revision++; self.el.sceneEl.emit('headset-boundary-reset', {}, false); };
+      self.onSpaceReset = function () { self.lastMatrix = null; self.lastBounds = null; self.revision++; self.el.sceneEl.emit('headset-boundary-reset', {}, false); };
       space.addEventListener('reset', self.onSpaceReset);
       if (!space.boundsGeometry || space.boundsGeometry.length < 3) {
         self.el.sceneEl.emit('headset-boundary-unavailable', {}, false);
         self.setStatus('No boundary geometry supplied', 'This headset/browser supports XR,\nbut did not expose a play-space outline.');
-        return;
+      } else {
+        self.setStatus('Boundary detected', 'Compare the cyan reported polygon\nwith your headset safety boundary.');
       }
-      self.setStatus('Boundary detected', 'Align the cyan outline with your\nheadset safety boundary.');
       session.requestAnimationFrame(function onXRFrame(time, frame) {
         if (self.session !== session) return;
         self.updateFromFrame(frame);
@@ -98,7 +109,9 @@ AFRAME.registerComponent('headset-boundary', {
     this.pending = false;
     this.lastMatrix = null;
     this.el.sceneEl.emit('headset-boundary-ended', {}, false);
-    this.outline.visible = this.corners.visible = false;
+    this.outline.visible = this.corners.visible = this.fitOutline.visible = false;
+    this.lastBounds = null;
+    this.fit = null;
     this.setStatus('Enter VR to detect', 'The cyan outline appears only when\na headset supplies boundary data.');
   },
 
@@ -106,9 +119,31 @@ AFRAME.registerComponent('headset-boundary', {
     var renderer = this.el.sceneEl.renderer;
     var baseSpace = renderer && renderer.xr && renderer.xr.getReferenceSpace && renderer.xr.getReferenceSpace();
     if (!baseSpace || !this.boundedSpace) return;
+    var bounds = this.boundedSpace.boundsGeometry;
+    if (!bounds || bounds.length < 3 || Array.from(bounds).some(function (p) { return !Number.isFinite(p.x) || !Number.isFinite(p.y) || !Number.isFinite(p.z); })) {
+      if (this.lastBounds !== null) this.revision++;
+      this.lastBounds = this.lastMatrix = null;
+      this.fit = null;
+      this.outline.visible = this.corners.visible = this.fitOutline.visible = false;
+      this.el.sceneEl.emit('headset-boundary-unavailable', {}, false);
+      this.setStatus('No boundary geometry supplied', 'Waiting for a headset-reported polygon.');
+      return;
+    }
+    var boundsKey = Array.from(bounds, function (p) { return p.x + ',' + p.y + ',' + p.z; }).join(';');
+    var boundsChanged = this.lastBounds !== boundsKey;
+    if (this.lastBounds !== null && boundsChanged) {
+      this.revision++;
+      this.el.sceneEl.emit('headset-boundary-reset', {}, false);
+    }
+    if (boundsChanged) {
+      this.fit = this.data && this.data.showFit ? fitBoundaryRectangle(Array.from(bounds, function (p) { return { x: p.x, y: p.z }; })) : null;
+      this.lastBounds = boundsKey;
+    }
     var pose = frame.getPose(this.boundedSpace, baseSpace);
     var viewer = frame.getViewerPose(this.boundedSpace);
     if (!pose || !viewer) {
+      this.lastMatrix = null;
+      this.outline.visible = this.corners.visible = this.fitOutline.visible = false;
       this.el.sceneEl.emit('headset-boundary-tracking-lost', {}, false);
       return;
     }
@@ -121,12 +156,11 @@ AFRAME.registerComponent('headset-boundary', {
 
     this.matrix.fromArray(pose.transform.matrix);
     var elements = this.matrix.elements;
-    if (this.lastMatrix && elements.every(function (value, index) {
+    if (!boundsChanged && this.lastMatrix && elements.every(function (value, index) {
       return Math.abs(value - this.lastMatrix[index]) < 0.0001;
     }, this)) return;
     this.lastMatrix = elements.slice();
 
-    var bounds = this.boundedSpace.boundsGeometry;
     var positions = new Float32Array(bounds.length * 3);
     var minX = Infinity;
     var maxX = -Infinity;
@@ -148,9 +182,22 @@ AFRAME.registerComponent('headset-boundary', {
     this.geometry.computeBoundingSphere();
     this.cornerGeometry.computeBoundingSphere();
     this.outline.visible = this.corners.visible = this.showOutline !== false;
+    this.fitOutline.visible = !!this.fit && this.showOutline !== false;
+    if (this.fit) {
+      var fittedPositions = [];
+      for (var corner of this.fit.points) {
+        this.point.set(corner.x, 0.034, corner.y).applyMatrix4(this.matrix);
+        fittedPositions.push(this.point.x, this.point.y, this.point.z);
+      }
+      this.fitGeometry.setAttribute('position', new AFRAME.THREE.Float32BufferAttribute(fittedPositions, 3));
+      this.fitGeometry.computeBoundingSphere();
+      this.fitOutline.computeLineDistances();
+    }
     this.setStatus(
-      'Boundary detected Â· ' + bounds.length + ' corners',
-      (maxX - minX).toFixed(1) + ' Ã— ' + (maxZ - minZ).toFixed(1) + ' m play-space bounds\nCyan line = exact detected outline.'
+      'Boundary detected · ' + bounds.length + ' corners',
+      this.data && this.data.showFit
+        ? (this.fit ? 'Cyan: reported polygon (' + this.fit.polygonArea.toFixed(2) + ' m²)\nAmber dashed: fitted rectangle\n' + this.fit.width.toFixed(2) + ' × ' + this.fit.depth.toFixed(2) + ' m (' + this.fit.area.toFixed(2) + ' m²)' : 'Cyan: reported polygon\nNo contained rectangle found.')
+        : (maxX - minX).toFixed(1) + ' × ' + (maxZ - minZ).toFixed(1) + ' m play-space bounds\nCyan: headset-reported polygon.'
     );
   },
 
@@ -161,8 +208,11 @@ AFRAME.registerComponent('headset-boundary', {
     this.el.sceneEl.removeEventListener('watch-menu-ready', this.onWatchReady);
     this.renderRoot.remove(this.outline);
     this.renderRoot.remove(this.corners);
+    this.renderRoot.remove(this.fitOutline);
     this.geometry.dispose();
     this.cornerGeometry.dispose();
+    this.fitGeometry.dispose();
+    this.fitOutline.material.dispose();
     this.outline.material.dispose();
     this.corners.material.dispose();
   },

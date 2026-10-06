@@ -27,8 +27,8 @@ and marks your last valid floor position with an amber ring. Walk back there, or
 regenerate from your current position. The camera is never clamped or slid.
 
 The boundary is a footprint, not an obstacle scan. The headset's own safety
-boundary remains authoritative. The 25 cm default inset is adjustable; it does
-not estimate arm reach or detect furniture.
+boundary remains authoritative. The default inset is 10 cm and the default doorway width is 80 cm. The inset
+is adjustable; it does not estimate arm reach or detect furniture.
 
 ## Desktop preview
 
@@ -48,7 +48,9 @@ movement is disabled as soon as VR starts.
   visibility graph. `vr-runtime.ts` adds the manual door cycle and tracked walking.
 - Floors, ceilings, and wall segments are clipped by `visibleRegions`;
   drawing complete neighboring rooms would reveal hidden overlaps. Render groups
-  are cached per active room and closed-cabin state and disposed on regeneration.
+  use colored faces inset by 1 mm into each owner, with joined corners and a
+  uniform backing at the original wall line to preserve occlusion. Colored
+  faces are clipped again after insetting. Render groups are cached per active room and closed-cabin state and disposed on regeneration.
 - Generation runs in a cancellable worker. Settings and seeds reproduce a level
   for the same boundary and starting pose. Short levels retain the POC warning.
 - Very small/narrow spaces can contain only a short level or no valid layout.
@@ -77,7 +79,7 @@ whole pieces in irregular polygons, independent sightline tracing, clipped
 rendering, walking to every room and back, manual elevator closure and pose
 preservation, unavailable/tracking/reset boundary states, and reference runtime
 behavior. Browser smoke checks exercise real desktop key input and rendered
-button events, 3D wall raycasts, and simulated boundary events with a fixed XR rig.
+button events, 3D structural wall raycasts, colored-face containment and spacing, and simulated boundary events with a fixed XR rig.
 
 Still requires headset playtesting: exact guardian alignment, both-eye seams at
 doorways, button reach, boundary redraw/recentering on hardware, real controller

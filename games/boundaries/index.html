@@ -41,7 +41,8 @@
       <span>
         Boundary + Haptics Lab — grab the orange cube with Grip. Enter its
         reach radius for a brief tactile cue; use the wrist watch for boundary
-        and controller-haptics tests.
+        and controller-haptics tests. Cyan: reported polygon. Amber dashed: a
+        rectangle fitted inside it. Compare the cyan shape with your Guardian.
       </span>
       <a href="../../index.html">All prototypes</a>
     </div>
@@ -111,9 +112,11 @@
       // WebXR exposes a real room-scale boundary through a bounded-floor
       // reference space. The points are measured in metres at y=0, relative
       // to that space's origin. We transform them into A-Frame's active
-      // reference space each XR frame, then render an exact ground outline.
+      // reference space each XR frame, then render the full reported outline.
       // The API may return an irregular polygon, so a made-up rectangle would
       // be less useful for checking alignment with the physical guardian.
+      // The amber dashed rectangle is a conservative, approximate diagnostic
+      // fit computed by this lab; it is not a second shape returned by WebXR.
       document.addEventListener('DOMContentLoaded', function () {
         var scene = document.querySelector('a-scene');
         if (scene.hasLoaded) applyCheckerTexture(document.querySelector('#boundary-floor'), '#263550', '#1c2940', 15, 15);
@@ -151,7 +154,7 @@
       });
     </script>
 
-    <a-scene background="color: #08101f">
+    <a-scene background="color: #08101f" webxr="referenceSpaceType: local-floor; optionalFeatures: bounded-floor">
       <a-plane id="boundary-floor" rotation="-90 0 0" width="30" height="30" color="#263550"></a-plane>
       <a-sky color="#08101f"></a-sky>
 
@@ -160,7 +163,7 @@
            in XR; semantic-hand supplies the equivalent desktop hands. -->
       <a-entity
         id="boundary-rig"
-        headset-boundary
+        headset-boundary="showFit: true"
         locomotion-demo="speed: 1.5"
         semantic-look-controls="camera: #boundary-camera"
         gamepad-input="leftHand: #left-hand; rightHand: #right-hand"

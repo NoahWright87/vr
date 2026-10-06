@@ -2,8 +2,9 @@
 const {chromium}=require(process.env.VR_PLAYWRIGHT_PATH || 'playwright');
 const base=process.env.VR_TEST_URL || 'http://127.0.0.1:8088';
 const assert=require('node:assert/strict');
+let browser;
 (async()=>{
-  const browser=await chromium.launch({headless:true});
+  browser=await chromium.launch({headless:true});
   const page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[];
   page.on('pageerror',e=>errors.push(e.message));
   page.on('response',r=>{if(r.status()>=400)errors.push(`${r.status()} ${r.url()}`);});
@@ -28,7 +29,8 @@ const assert=require('node:assert/strict');
     g.state.activeId=portal.a;g.state.pos=c;g.updatePanel();g.view.show(g.state);
     document.querySelector('#ride-button').emit('click',{},false);
     const initial=g.ride.phase;const rigBefore=document.querySelector('#player').object3D.position.toArray();
-    await new Promise(r=>setTimeout(r,2400));
+    const deadline=performance.now()+8000;
+    while(g.ride.phase!=='idle' && performance.now()<deadline) await new Promise(r=>setTimeout(r,25));
     return {initial,phase:g.ride.phase,active:g.state.activeId,destination:portal.b,before:c,after:g.state.pos,rigBefore,rigAfter:document.querySelector('#player').object3D.position.toArray()};
   });
   assert.equal(rideResult.initial,'closing');assert.equal(rideResult.active,rideResult.destination);assert.equal(rideResult.phase,'idle');assert.deepEqual(rideResult.before,rideResult.after);
@@ -40,10 +42,12 @@ const assert=require('node:assert/strict');
     const snapshot=await page.evaluate(()=>{const g=document.querySelector('[impossible-game]').components['impossible-game'];return {corners:g.footprint.polygon.length,count:g.level.pieces.length};});
     assert.ok(snapshot.corners>=6);console.log(JSON.stringify({shape,...snapshot}));
   }
-  // Raycast the actual 3D triangles: neighboring hidden walls must never be drawn.
+  // Raycast the exact structural backing triangles: hidden walls must never be drawn.
+  // Colored faces sit 1 mm in front, are clipped again, and have separate spacing checks.
   const geometryResult=await page.evaluate(()=>{
     const g=document.querySelector('[impossible-game]').components['impossible-game'],T=AFRAME.THREE;
-    let rays=0;const problems=[];
+    let rays=0,coloredVertices=0;const problems=[];
+    const contains=(p,poly)=>{let sign=0;for(let i=0;i<poly.length;i++){const a=poly[i],b=poly[(i+1)%poly.length],cross=(b.x-a.x)*(p.y-a.y)-(b.y-a.y)*(p.x-a.x);if(Math.abs(cross)<1e-6)continue;const s=Math.sign(cross);if(sign&&sign!==s)return false;sign=s;}return true;};
     const raySeg=(o,v,a,b)=>{const sx=b.x-a.x,sy=b.y-a.y,den=v.x*sy-v.y*sx;if(Math.abs(den)<1e-12)return null;const t=((a.x-o.x)*sy-(a.y-o.y)*sx)/den,u=((a.x-o.x)*v.y-(a.y-o.y)*v.x)/den;return t>=0&&u>=-1e-9&&u<=1+1e-9?t:null;};
     // Independent analytic traversal through door openings.
     function truth(id,origin,dir){let start=0,current=id;for(let hop=0;hop<30;hop++){const piece=g.level.pieces.find(p=>p.id===current);let best=Infinity,point=null;
@@ -55,12 +59,19 @@ const assert=require('node:assert/strict');
       if(!door)return best;current=door.a===current?door.b:door.a;start=best;
     }return Infinity;}
     for(const piece of g.level.pieces){g.state.activeId=piece.id;g.state.doorsClosed=false;g.view.show(g.state);g.view.root.updateWorldMatrix(true,true);
+      for(const mesh of g.view.current.children.filter(o=>o.isMesh&&o.userData.colorFaces)) {
+        const positions=mesh.geometry.attributes.position.array,regions=g.level.visibleRegions[piece.id][mesh.name];
+        for(let i=0;i<positions.length;i+=3) {
+          const p={x:positions[i],y:positions[i+2]};coloredVertices++;
+          if(!regions.some(region=>contains(p,region)))problems.push({piece:piece.id,coloredMesh:mesh.name,outsideVisibleRegion:p});
+        }
+      }
       for(const poly of piece.parts){const origin={x:poly.reduce((s,v)=>s+v.x,0)/poly.length,y:poly.reduce((s,v)=>s+v.y,0)/poly.length};for(let i=0;i<120;i++){const angle=(i+.123)*Math.PI*2/120,dir={x:Math.cos(angle),y:Math.sin(angle)},expected=truth(piece.id,origin,dir);
-        const caster=new T.Raycaster(new T.Vector3(origin.x,1.5,origin.y),new T.Vector3(dir.x,0,dir.y));const actual=caster.intersectObjects(g.view.current.children.filter(o=>o.isMesh),false)[0]?.distance??Infinity;rays++;
-        if(Math.abs(actual-expected)>.015)problems.push({piece:piece.id,actual,expected});
+        const caster=new T.Raycaster(new T.Vector3(origin.x,1.5,origin.y),new T.Vector3(dir.x,0,dir.y));const actual=caster.intersectObjects(g.view.current.children.filter(o=>o.isMesh&&!o.userData.colorFaces),false)[0]?.distance??Infinity;rays++;
+        if(Math.abs(actual-expected)>.015)problems.push({piece:piece.id,actual,expected,origin,dir,parts:piece.parts,regions:g.level.visibleRegions[piece.id]});
       }}
     }
-    return {rays,problems:problems.slice(0,5),count:problems.length};
+    return {rays,coloredVertices,problems:problems.slice(0,5),count:problems.length};
   });
   assert.equal(geometryResult.count,0,JSON.stringify(geometryResult));console.log(JSON.stringify({geometryResult}));
   // Simulate the public boundary events and ensure keyboard input cannot move an XR rig.
@@ -87,5 +98,4 @@ const assert=require('node:assert/strict');
   console.log(JSON.stringify({xrResult}));assert.deepEqual(errors,[]);
   await page.goto(base+'/games/boundaries/');await page.waitForFunction(()=>document.querySelector('#boundary-rig')?.components['headset-boundary']);
   assert.equal(await page.evaluate(()=>!!document.querySelector('#boundary-floor').getObject3D('mesh').material.map),true);assert.deepEqual(errors,[]);
-  await browser.close();
-})().catch(e=>{console.error(e);process.exit(1);});
+})().catch(e=>{console.error(e);process.exitCode=1;}).finally(async()=>{await browser?.close();});

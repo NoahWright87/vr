@@ -22,7 +22,9 @@ test('Boundary Lab uses the headset-reported bounded floor rather than a guessed
   assert.match(page, /boundsGeometry/);
   assert.match(page, /frame\.getPose\(this\.boundedSpace, baseSpace\)/);
   assert.match(page, /this\.renderRoot = this\.el\.sceneEl\.object3D/);
-  assert.match(page, /Cyan line = exact detected outline/);
+  assert.match(page, /headset-boundary="showFit: true"/);
+  assert.match(page, /Amber dashed: fitted rectangle/);
+  assert.match(page, /Cyan: reported polygon/);
 });
 
 test('Boundary Lab combines haptics controls with a shared grabbable cube', () => {
