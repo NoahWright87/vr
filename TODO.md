@@ -166,6 +166,20 @@ demo panel in `primitives/menus/`. Deliberately not done yet:
   extends the outline-before-commit guarantee to every contested input.
   Bigger than the menu work; worth doing on its own.
 
+- **Visor rows could face your eye vertically too.** The visor's
+  layout spreads five rows down most of an eye's field (`Height`,
+  default 64°), but the panel is still flat: it is pitched to face you
+  at its centre, so the top and bottom rows are seen ~32° off-axis and
+  from ~18% further away, and render at roughly 70% the size of the
+  selected row. The fix is to put the rows on an arc of radius `d`
+  around the eye — row at angle φ goes to `y = d·sin φ`,
+  `z = d·(1 − cos φ)`, `rotation.x = φ` — in `crossbar-menu`'s
+  `render()` when a panel opts in, with the title, breadcrumb line,
+  footer and progress arc following the same arc. Deferred because the
+  outer rows are faded on purpose and the change touches every
+  vertical placement in `layout()`; worth doing if the outer rows read
+  as too small in a headset.
+
 ## Liquids
 
 - **Dissipation rates per surface.** Right now a puddle dries at a rate

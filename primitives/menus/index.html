@@ -311,7 +311,7 @@
          hand beside your head until the edge-of-vision pip fills. -->
     <a-scene
       keyboard-shortcuts="enterVR: false"
-      visor-menu="leftPage: visor-system; rightPage: visor-game; dwellMs: 1200"
+      visor-menu="page: visor; dwellMs: 1200"
     >
       <a-light type="ambient" color="#fff" intensity="0.7"></a-light>
       <a-light type="directional" position="2 3 2" intensity="0.7"></a-light>
@@ -1093,53 +1093,14 @@
       // Exit VR live at your left temple in every prototype, so a
       // player who has bailed out of one knows how to bail out of all
       // of them. Right belongs to the game.
-      registerMenuPage('visor-system', {
-        title: 'VISOR',
-        items: [
-          // First on purpose: whether the visor draws to one eye is the
-          // open question, and this is how it gets answered in a
-          // headset rather than from a rebuild.
-          {
-            kind: 'select', id: 'visor-eyes', label: 'Eyes', value: 'both',
-            options: [
-              { value: 'both', label: 'Both' },
-              { value: 'inboard', label: 'One (this side)' },
-            ],
-          },
-          {
-            kind: 'select', id: 'visor-scrim', label: 'Scrim', value: 'off',
-            options: [{ value: 'on', label: 'On' }, { value: 'off', label: 'Off' }],
-          },
-          // World: a real object at 1.8m drawn over everything, so both
-          // eyes converge where it actually is. Screen: painted onto the
-          // display, identical in both eyes, no depth or parallax. The
-          // second is the one that might feel wrong in a headset, which
-          // is exactly why it is a row you can flip while wearing one.
-          {
-            kind: 'select', id: 'visor-draw', label: 'Draw', value: 'world',
-            options: [
-              { value: 'world', label: 'In world (stereo)' },
-              { value: 'screen', label: 'On screen (flat)' },
-            ],
-          },
-          {
-            kind: 'number', id: 'visor-curve', label: 'Curve',
-            value: 0.11, min: 0, max: 0.24, step: 0.01,
-            format: function (value) { return (Math.atan(value / 1.8) * 180 / Math.PI).toFixed(1) + '\u00b0'; },
-          },
-          {
-            kind: 'submenu', id: 'visor-comfort', label: 'Comfort',
-            items: [
-              { kind: 'toggle', id: 'visor-vignette', label: 'Vignette', value: false },
-              { kind: 'action', id: 'visor-recenter', label: 'Recenter' },
-            ],
-          },
-          { kind: 'action', id: 'visor-exit', label: 'Exit VR' },
-        ],
-      });
+      var DEG = function (value) { return value + '\u00b0'; };
 
-      registerMenuPage('visor-game', {
-        title: 'GAME',
+      // One visor menu, the same whichever side of your head you open it
+      // on. The layout rows are live: they move and resize the menu you
+      // are looking at, so it can be tuned in a headset rather than from
+      // a rebuild.
+      registerMenuPage('visor', {
+        title: 'VISOR',
         items: [
           { kind: 'action', id: 'spawn-box', label: 'Spawn box' },
           { kind: 'toggle', id: 'visor-grid', label: 'Floor grid', value: true },
@@ -1149,6 +1110,54 @@
               return { kind: 'action', id: 'visor-teleport-' + i, label: name };
             }),
           },
+          {
+            kind: 'submenu', id: 'visor-settings', label: 'Settings',
+            items: [
+              // Where the selected row sits, in degrees from straight ahead.
+              { kind: 'number', id: 'visor-position', label: 'Position', value: 4, min: 0, max: 30, step: 1, format: DEG },
+              // Up (+) or down (-) from eye level.
+              { kind: 'number', id: 'visor-lift', label: 'Lift', value: -3, min: -20, max: 20, step: 1, format: DEG },
+              // How wide, which is also how big the text is.
+              { kind: 'number', id: 'visor-width', label: 'Width', value: 30, min: 16, max: 50, step: 1, format: DEG },
+              // Top row to bottom row.
+              { kind: 'number', id: 'visor-height', label: 'Height', value: 64, min: 20, max: 90, step: 2, format: DEG },
+              // How much further in the selected row reaches.
+              { kind: 'number', id: 'visor-curve', label: 'Curve', value: 9, min: 0, max: 25, step: 0.5, format: DEG },
+              // Where a submenu's title goes: under the menu title, or up
+              // its inner or outer edge.
+              {
+                kind: 'select', id: 'visor-crumbs', label: 'Titles', value: 'title',
+                options: [
+                  { value: 'title', label: 'Top' },
+                  { value: 'inside', label: 'Inner' },
+                  { value: 'outside', label: 'Outer' },
+                ],
+              },
+              {
+                kind: 'select', id: 'visor-eyes', label: 'Eyes', value: 'both',
+                options: [{ value: 'both', label: 'Both' }, { value: 'inboard', label: 'One' }],
+              },
+              // World: a real object drawn over everything, so both eyes
+              // converge where it actually is. Screen: painted onto the
+              // display, identical in both eyes.
+              {
+                kind: 'select', id: 'visor-draw', label: 'Draw', value: 'world',
+                options: [{ value: 'world', label: 'World' }, { value: 'screen', label: 'Screen' }],
+              },
+              {
+                kind: 'select', id: 'visor-scrim', label: 'Scrim', value: 'off',
+                options: [{ value: 'on', label: 'On' }, { value: 'off', label: 'Off' }],
+              },
+            ],
+          },
+          {
+            kind: 'submenu', id: 'visor-comfort', label: 'Comfort',
+            items: [
+              { kind: 'toggle', id: 'visor-vignette', label: 'Vignette', value: false },
+              { kind: 'action', id: 'visor-recenter', label: 'Recenter' },
+            ],
+          },
+          { kind: 'action', id: 'visor-exit', label: 'Exit VR' },
         ],
       });
 
@@ -1237,27 +1246,34 @@
       // changes on the two visor panels. That is the whole in-headset
       // test for the one-eye question -- no rebuild, no flag file.
       var sceneEl = document.querySelector('a-scene');
+      var LAYOUT = {
+        'visor-position': 'position', 'visor-lift': 'lift', 'visor-width': 'width',
+        'visor-height': 'height', 'visor-curve': 'curve', 'visor-crumbs': 'crumbs',
+      };
       sceneEl.addEventListener('menu-commit', function (evt) {
         var visor = sceneEl.systems['visor-menu'];
         if (!visor) return;
-        // Not per-panel: which way the visor draws and which eye it
-        // draws to are properties of the surface, and both sides plus
-        // their pips move together. These two compose — one eye AND
-        // painted on the screen is a combination worth trying, and the
-        // point of having both as live rows is that it can be.
-        if (evt.detail.id === 'visor-draw') { visor.setDraw(evt.detail.value); return; }
-        if (evt.detail.id === 'visor-eyes') { visor.setEyes(evt.detail.value); return; }
-        var sides = ['left', 'right'];
-        sides.forEach(function (side) {
-          var panel = visor.panels[side];
-          var component = panel && panel.components['crossbar-menu'];
-          if (!component) return;
-          if (evt.detail.id === 'visor-scrim') component.setScrim(evt.detail.value === 'on' ? 0.7 : 0);
-          if (evt.detail.id === 'visor-curve') {
-            panel.setAttribute('crossbar-menu', 'curve', evt.detail.value);
-            component.render();
-          }
-        });
+        var id = evt.detail.id;
+        var value = evt.detail.value;
+        if (LAYOUT[id]) {
+          var change = {};
+          change[LAYOUT[id]] = value;
+          visor.setLayout(change);
+        }
+        if (id === 'visor-draw') visor.setDraw(value);
+        if (id === 'visor-eyes') visor.setEyes(value);
+        if (id === 'visor-scrim') visor.setScrim(value === 'on' ? 0.7 : 0);
+      });
+      // Number rows preview while you scroll them, so the menu moves as
+      // you change its size or position rather than only when you back
+      // out — which is the only way to find the right value by eye.
+      sceneEl.addEventListener('menu-preview', function (evt) {
+        var visor = sceneEl.systems['visor-menu'];
+        var key = LAYOUT[evt.detail.id];
+        if (!visor || !key) return;
+        var change = {};
+        change[key] = evt.detail.value;
+        visor.setLayout(change);
       });
       sceneEl.addEventListener('menu-action', function (evt) {
         if (evt.detail.id === 'visor-exit' && sceneEl.is('vr-mode')) sceneEl.exitVR();

@@ -253,6 +253,9 @@ if (typeof AFRAME !== 'undefined') {
   var CRUMB_WRAP = 18;
   var CRUMB_FLY_MS = 260;
   var CRUMB_STAGGER_MS = 22;
+  var CRUMB_PITCH = 0.64;
+  // Segments in the progress arc. Enough that the fill moves smoothly.
+  var ARC_SEGMENTS = 48;
 
   // The confirm flash: the focused row's plate jumps to full and falls
   // back to its resting highlight. Short enough to read as a press
@@ -410,6 +413,16 @@ if (typeof AFRAME !== 'undefined') {
       // backing the lines are most of what makes it look like a box
       // floating in front of you rather than text at the edge of view.
       frame: { default: true },
+      // Distance between row centres, when it should differ from the row
+      // itself. 0 means "the same as rowHeight", which is right for a
+      // panel on a wall. The visor spreads five rows down most of an
+      // eye's field of view without making each row a slab.
+      rowSpacing: { default: 0 },
+      // Where the breadcrumb rail goes: up the outboard edge, up the
+      // inboard edge, or flat under the title. See layoutCrumbs.
+      crumbs: { default: 'outside', oneOf: ['outside', 'inside', 'title'] },
+      // The visor's open/close bar, drawn on the rows' own curve.
+      progressArc: { default: false },
       // Where this surface lives.
       //
       //   'none'   — a thing in the room. Depth-tested, occluded by
@@ -555,46 +568,46 @@ if (typeof AFRAME !== 'undefined') {
     // or destroyed while a menu is being used.
     build: function () {
       var data = this.data;
-      var outward = data.side === 'left' ? -1 : 1;
-      this.outward = outward;
+      // Everything a panel will ever show is created here, once. Where it
+      // sits and how big it is belongs to layout(), which can run again
+      // at any time — so the visor can move to the other side of your
+      // head, or be resized from its own settings, without creating or
+      // destroying a single entity. Entity creation is the expensive
+      // thing in A-Frame, and doing it at the moment a menu appears is a
+      // dropped frame you would feel.
+      //
+      // Content sits under its own root so the progress arc can be shown
+      // while the menu itself is still closed.
+      var content = document.createElement('a-entity');
+      this.el.appendChild(content);
+      this.contentEl = content;
 
       if (data.plate) {
         var backing = document.createElement('a-plane');
         backing.classList.add('pm-surface');
-        backing.setAttribute('width', data.width);
-        backing.setAttribute('height', data.rowHeight * (data.windowSize + 2));
         backing.setAttribute('material', 'color: #0b1220; shader: flat; opacity: 0.55; transparent: true');
-        backing.setAttribute('position', '0 0 -0.012');
         // Named so the hint zone can highlight this one plate. Left to
         // itself, hint-zone highlights every mesh under the entity it
         // is on — which for a menu is an additive copy of all five row
         // plates and their text, and reads as banding across the whole
         // panel.
         backing.setAttribute('id', (this.el.id || 'crossbar') + '-backing-' + (panelSerial++));
-        this.el.appendChild(backing);
+        content.appendChild(backing);
         this.backingEl = backing;
       }
 
-      // Title bar. No close button: a world panel is dismissed by
-      // walking away, a watch by dropping your wrist, the visor by
-      // taking your hand off your head. An X you can only reach by
-      // pointing would be unreachable to someone driving with a stick.
-      var titleY = data.rowHeight * (data.windowSize / 2 + 0.7);
       var title = document.createElement('a-text');
       title.setAttribute('value', (this.data.title || this.menu.getTitle() || '').toUpperCase());
       title.setAttribute('color', data.accent);
-      // a-text's `width` is the width of the whole text block, so it
-      // has to track the panel rather than exceed it, or every label
-      // renders wider than the surface it sits on.
-      title.setAttribute('width', data.width * 0.92);
-      title.setAttribute('wrapCount', 14);
-      title.setAttribute('align', this.textAlign === 'center' ? 'center' : this.textAlign);
-      title.setAttribute('position', {
-        x: edgeX(this.textAlign, data.width, 0.04),
-        y: titleY,
-        z: 0.001,
-      });
-      this.el.appendChild(title);
+      // 'wrap-count', not 'wrapCount': a-text maps attributes by their
+      // HTML name, and HTML lowercases attribute names, so the camelCase
+      // spelling was silently dropped and every title, chevron and
+      // breadcrumb letter fell back to the default of 40 characters
+      // across — about a third of the size they were meant to be.
+      // Row-sized: set apart by colour and capitals rather than by size,
+      // which on a narrow surface would push it off the panel.
+      title.setAttribute('wrap-count', data.maxChars);
+      content.appendChild(title);
       this.titleEl = title;
 
       // The close button. It is a focus target, not only a click
@@ -602,39 +615,33 @@ if (typeof AFRAME !== 'undefined') {
       // press confirms. That is the whole reason closing is no longer
       // something a stray press can do by accident.
       if (data.closable) {
-      var close = document.createElement('a-entity');
-      close.classList.add('menu-target');
-      close.setAttribute('geometry', 'primitive: plane; width: ' + data.rowHeight * 0.8 + '; height: ' + data.rowHeight * 0.8);
-      close.setAttribute('material', 'color: ' + data.accent + '; shader: flat; opacity: 0; transparent: true; depthWrite: false');
-      close.setAttribute('position', { x: data.width / 2 - data.rowHeight * 0.5, y: titleY - data.rowHeight * 0.12, z: 0.002 });
-      var closeGlyph = document.createElement('a-text');
-      closeGlyph.setAttribute('value', 'X');
-      closeGlyph.setAttribute('align', 'center');
-      closeGlyph.setAttribute('color', data.accent);
-      closeGlyph.setAttribute('width', data.width * 0.92);
-      closeGlyph.setAttribute('wrapCount', data.maxChars);
-      closeGlyph.setAttribute('position', '0 0 0.004');
-      close.appendChild(closeGlyph);
-      close.addEventListener('click', this.onCloseClick);
-      this.el.appendChild(close);
-      this.closeEl = close;
-      this.closeGlyphEl = closeGlyph;
+        var close = document.createElement('a-entity');
+        close.classList.add('menu-target');
+        close.setAttribute('material', 'color: ' + data.accent + '; shader: flat; opacity: 0; transparent: true; depthWrite: false');
+        var closeGlyph = document.createElement('a-text');
+        closeGlyph.setAttribute('value', 'X');
+        closeGlyph.setAttribute('align', 'center');
+        closeGlyph.setAttribute('color', data.accent);
+        closeGlyph.setAttribute('wrap-count', data.maxChars);
+        closeGlyph.setAttribute('position', '0 0 0.004');
+        close.appendChild(closeGlyph);
+        close.addEventListener('click', this.onCloseClick);
+        content.appendChild(close);
+        this.closeEl = close;
+        this.closeGlyphEl = closeGlyph;
       }
 
       if (data.frame) {
         var rule = document.createElement('a-plane');
-        rule.setAttribute('width', data.width * 0.92);
         rule.setAttribute('height', 0.004);
         rule.setAttribute('material', 'color: ' + data.accent + '; shader: flat; opacity: 0.5; transparent: true');
-        rule.setAttribute('position', '0 ' + (titleY - data.rowHeight * 0.45) + ' 0');
-        this.el.appendChild(rule);
+        content.appendChild(rule);
+        this.ruleEl = rule;
       }
 
-      // Rows.
       for (var i = 0; i < data.windowSize; i++) {
         var row = document.createElement('a-entity');
         row.classList.add('menu-target');
-        row.setAttribute('geometry', 'primitive: plane; width: ' + data.width * 0.94 + '; height: ' + data.rowHeight * 0.92);
         // depthWrite off: an invisible plate that still writes depth
         // punches a hole in the panel glow behind it, which reads as a
         // band across every row. It has to stay a real (raycastable)
@@ -646,56 +653,37 @@ if (typeof AFRAME !== 'undefined') {
 
         var text = document.createElement('a-text');
         text.setAttribute('color', data.color);
-        text.setAttribute('align', this.textAlign === 'center' ? 'center' : this.textAlign);
-        text.setAttribute('width', data.width * 0.92);
-        text.setAttribute('position', {
-          x: edgeX(this.textAlign, data.width, data.width * 0.06),
-          y: 0,
-          z: 0.004,
-        });
         row.appendChild(text);
 
         // Marks a row you can go deeper into. Sits on the inboard edge
-        // so it reads as "this way in" rather than decoration.
+        // so it reads as "this way in" rather than decoration. Same block
+        // width and wrap as a row label, so it is the size of one
+        // character of body text rather than its own arbitrary scale.
         var chevron = document.createElement('a-text');
-        chevron.setAttribute('value', outward < 0 ? '›' : '‹');
         chevron.setAttribute('color', data.accent);
         chevron.setAttribute('align', 'center');
-        // Same block width and wrap as a row label, so the chevron is
-        // the size of one character of body text rather than its own
-        // arbitrary scale.
-        chevron.setAttribute('width', data.width * 0.92);
-        chevron.setAttribute('wrapCount', data.maxChars);
-        chevron.setAttribute('position', { x: -outward * data.width * 0.44, y: 0, z: 0.004 });
+        chevron.setAttribute('wrap-count', data.maxChars);
         chevron.object3D.visible = false;
         row.appendChild(chevron);
 
-        this.el.appendChild(row);
+        content.appendChild(row);
         this.rows.push({ el: row, textEl: text, chevronEl: chevron, offset: 0, row: null });
       }
 
-      // Breadcrumb rail: the level you're in, rotated onto the outboard
-      // edge, with ancestors pushed further out and faded. Tapping any
-      // of them goes up exactly one level — never several — so the
-      // gesture means the same thing wherever you hit it.
+      // Breadcrumb rail: the level you're in, and its ancestors fading
+      // behind it. Where it goes is a setting (see `crumbs`). Tapping any
+      // of it goes up exactly one level — never several — so the gesture
+      // means the same thing wherever you hit it.
       //
       // Built one character at a time rather than as a single a-text,
-      // because the letters have to fly into place individually when
-      // you change level: one text mesh can only move as a block.
+      // because the letters have to fly into place individually when you
+      // change level: one text mesh can only move as a block.
       for (var c = 0; c < Math.max(0, data.breadcrumbDepth); c++) {
         var crumb = document.createElement('a-entity');
-        crumb.setAttribute('rotation', '0 0 ' + (outward < 0 ? 90 : -90));
-        crumb.setAttribute('position', {
-          x: outward * (data.width / 2 + 0.05 + c * 0.075),
-          y: 0,
-          z: 0.002,
-        });
-
         // A hit target for pointing, since individual letters are far
         // too small to aim at.
         var crumbTarget = document.createElement('a-entity');
         crumbTarget.classList.add('menu-target');
-        crumbTarget.setAttribute('geometry', 'primitive: plane; width: ' + data.rowHeight * (data.windowSize * 0.7) + '; height: ' + data.rowHeight * 0.7);
         crumbTarget.setAttribute('material', 'color: ' + data.accent + '; shader: flat; opacity: 0; transparent: true; depthWrite: false');
         crumbTarget.addEventListener('click', this.onCrumbClick);
         crumb.appendChild(crumbTarget);
@@ -706,14 +694,13 @@ if (typeof AFRAME !== 'undefined') {
           charEl.setAttribute('value', '');
           charEl.setAttribute('align', 'center');
           charEl.setAttribute('color', data.accent);
-          charEl.setAttribute('width', data.width * 0.92);
-          charEl.setAttribute('wrapCount', CRUMB_WRAP);
+          charEl.setAttribute('wrap-count', CRUMB_WRAP);
           charEl.object3D.visible = false;
           crumb.appendChild(charEl);
           chars.push(charEl);
         }
 
-        this.el.appendChild(crumb);
+        content.appendChild(crumb);
         this.crumbs.push({ el: crumb, chars: chars, targetEl: crumbTarget, title: '' });
       }
 
@@ -724,18 +711,8 @@ if (typeof AFRAME !== 'undefined') {
       // least.
       if (data.scrim > 0 || !data.plate) {
         var scrim = document.createElement('a-entity');
-        scrim.setAttribute('geometry', 'primitive: plane; width: ' + data.width * 2.1 + '; height: ' + data.rowHeight * (data.windowSize + 3));
-        // The colour is set explicitly rather than left to the texture:
-        // an unset a-frame material is white, so a scrim whose map has
-        // not applied yet flashes as a bright slab across your view.
-        scrim.setAttribute('material', {
-          color: '#040a12', shader: 'flat', transparent: true, depthWrite: false,
-          opacity: data.scrim, src: buildScrimCanvas(outward),
-        });
-        // The wash sits outboard of the rows and fades toward centre.
-        scrim.setAttribute('position', { x: outward * data.width * 0.55, y: 0, z: -0.03 });
         scrim.object3D.visible = data.scrim > 0;
-        this.el.appendChild(scrim);
+        content.appendChild(scrim);
         this.scrimEl = scrim;
       }
 
@@ -744,28 +721,17 @@ if (typeof AFRAME !== 'undefined') {
       // sits in front of it, so on a plateless surface it washes the
       // whole panel pale instead of framing it.
       if (data.frame) {
-      var glowWidth = data.width + 0.05;
-      var glowHeight = data.rowHeight * (data.windowSize + 2) + 0.05;
-      var bar = 0.008;
-      var glow = document.createElement('a-entity');
-      var edges = [
-        { w: glowWidth, h: bar, x: 0, y: glowHeight / 2 },
-        { w: glowWidth, h: bar, x: 0, y: -glowHeight / 2 },
-        { w: bar, h: glowHeight, x: -glowWidth / 2, y: 0 },
-        { w: bar, h: glowHeight, x: glowWidth / 2, y: 0 },
-      ];
-      this.glowBars = edges.map(function (edge) {
-        var edgeEl = document.createElement('a-entity');
-        edgeEl.setAttribute('geometry', 'primitive: plane; width: ' + edge.w + '; height: ' + edge.h);
-        edgeEl.setAttribute('material', 'color: ' + data.accent + '; shader: flat; opacity: 0.55; transparent: true; depthWrite: false; side: double');
-        edgeEl.setAttribute('position', { x: edge.x, y: edge.y, z: 0 });
-        glow.appendChild(edgeEl);
-        return edgeEl;
-      });
-      glow.setAttribute('position', '0 0 -0.005');
-      glow.object3D.visible = false;
-      this.el.appendChild(glow);
-      this.glowEl = glow;
+        var glow = document.createElement('a-entity');
+        this.glowBars = [0, 1, 2, 3].map(function () {
+          var edgeEl = document.createElement('a-entity');
+          edgeEl.setAttribute('material', 'color: ' + data.accent + '; shader: flat; opacity: 0.55; transparent: true; depthWrite: false; side: double');
+          glow.appendChild(edgeEl);
+          return edgeEl;
+        });
+        glow.setAttribute('position', '0 0 -0.005');
+        glow.object3D.visible = false;
+        content.appendChild(glow);
+        this.glowEl = glow;
       }
 
       // What the controls are, shown only while this menu actually has
@@ -773,18 +739,15 @@ if (typeof AFRAME !== 'undefined') {
       // complaint; a border alone did not carry it.
       var footer = document.createElement('a-text');
       footer.setAttribute('value', '');
-      footer.setAttribute('align', this.textAlign === 'center' ? 'center' : this.textAlign);
       footer.setAttribute('color', data.accent);
-      footer.setAttribute('width', data.width * 0.92);
-      footer.setAttribute('wrapCount', 46);
-      footer.setAttribute('position', {
-        x: edgeX(this.textAlign, data.width, 0.04),
-        y: -data.rowHeight * (data.windowSize / 2 + 0.45),
-        z: 0.002,
-      });
+      footer.setAttribute('wrap-count', 46);
       footer.object3D.visible = false;
-      this.el.appendChild(footer);
+      content.appendChild(footer);
       this.footerEl = footer;
+
+      if (data.progressArc) this.buildArc();
+
+      this.layout();
 
       // Proximity prompt. The hint system resolves this against every
       // other zone in the scene, so walking up to a menu and walking up
@@ -799,11 +762,256 @@ if (typeof AFRAME !== 'undefined') {
         desktopLabel: data.hintLabel,
         touchKey: 'TAP',
         touchLabel: data.hintLabel,
-        hintOffset: { x: 0, y: data.rowHeight * (data.windowSize / 2 + 1.25), z: 0 },
+        hintOffset: this.hintOffset(),
       };
       if (this.backingEl) hint.highlight = '#' + this.backingEl.getAttribute('id');
       else hint.highlightOpacity = 0;
       this.el.setAttribute('hint-zone', hint);
+    },
+
+    hintOffset: function () {
+      var m = this.metrics;
+      return { x: 0, y: m.reach + this.data.rowHeight * 1.75, z: 0 };
+    },
+
+    // Where everything goes, for the current side and size. Safe to run
+    // again at any time: it only moves, sizes and re-aligns what build()
+    // made. Row *spacing* and row *size* are separate on purpose — the
+    // visor spreads five rows down most of an eye's field of view, and if
+    // the gap and the text grew together the highlight plate would be a
+    // slab and the title would leave the screen.
+    layout: function () {
+      var data = this.data;
+      var outward = data.side === 'left' ? -1 : 1;
+      this.outward = outward;
+      this.textAlign = resolveAlign(data.align, data.side);
+      var align = this.textAlign === 'center' ? 'center' : this.textAlign;
+      var W = data.width;
+      var rh = data.rowHeight;
+      var spacing = data.rowSpacing > 0 ? data.rowSpacing : rh;
+      var half = (data.windowSize - 1) / 2;
+      var reach = half * spacing;
+      // In 'title' mode the submenu's name gets its own line between the
+      // menu title and the top row, so the title moves up to make room.
+      var crumbLine = data.crumbs === 'title' && this.crumbs.length;
+      var titleY = reach + rh * (crumbLine ? 1.95 : 1.2);
+      this.metrics = { spacing: spacing, reach: reach, titleY: titleY, half: half,
+        crumbY: reach + rh * 1.05 };
+
+      if (this.backingEl) {
+        this.backingEl.setAttribute('width', W);
+        this.backingEl.setAttribute('height', 2 * reach + 3 * rh);
+        this.backingEl.setAttribute('position', '0 0 -0.012');
+      }
+
+      this.titleEl.setAttribute('width', W * 0.92);
+      this.titleEl.setAttribute('align', align);
+      this.titleEl.setAttribute('position', { x: edgeX(this.textAlign, W, 0.04), y: titleY, z: 0.001 });
+
+      if (this.closeEl) {
+        this.closeEl.setAttribute('geometry', { primitive: 'plane', width: rh * 0.8, height: rh * 0.8 });
+        this.closeEl.setAttribute('position', { x: W / 2 - rh * 0.5, y: titleY - rh * 0.12, z: 0.002 });
+        this.closeGlyphEl.setAttribute('width', W * 0.92);
+      }
+
+      if (this.ruleEl) {
+        this.ruleEl.setAttribute('width', W * 0.92);
+        this.ruleEl.setAttribute('position', { x: 0, y: titleY - rh * 0.45, z: 0 });
+      }
+
+      for (var i = 0; i < this.rows.length; i++) {
+        var slot = this.rows[i];
+        slot.el.setAttribute('geometry', { primitive: 'plane', width: W * 0.94, height: rh * 0.92 });
+        slot.textEl.setAttribute('align', align);
+        slot.textEl.setAttribute('width', W * 0.92);
+        slot.textEl.setAttribute('position', { x: edgeX(this.textAlign, W, W * 0.06), y: 0, z: 0.004 });
+        slot.chevronEl.setAttribute('value', outward < 0 ? '›' : '‹');
+        slot.chevronEl.setAttribute('width', W * 0.92);
+        slot.chevronEl.setAttribute('position', { x: -outward * W * 0.44, y: 0, z: 0.004 });
+      }
+
+      this.layoutCrumbs();
+
+      if (this.scrimEl) {
+        this.scrimEl.setAttribute('geometry', { primitive: 'plane', width: W * 2.1, height: 2 * reach + 4 * rh });
+        this.scrimEl.setAttribute('position', { x: outward * W * 0.55, y: 0, z: -0.03 });
+        // The wash sits outboard of the rows and fades toward centre, so
+        // which way it fades depends on the side. A canvas handed to the
+        // material component as its src, so the component owns it — see
+        // buildScrimCanvas.
+        if (this.scrimSide !== outward) {
+          this.scrimSide = outward;
+          this.scrimEl.setAttribute('material', {
+            color: '#040a12', shader: 'flat', transparent: true, depthWrite: false,
+            opacity: Math.max(data.scrim, 0.0001), src: buildScrimCanvas(outward),
+          });
+        }
+      }
+
+      if (this.glowBars) {
+        var gw = W + 0.05;
+        var gh = 2 * reach + 3 * rh + 0.05;
+        var bar = 0.008;
+        var edges = [
+          { w: gw, h: bar, x: 0, y: gh / 2 },
+          { w: gw, h: bar, x: 0, y: -gh / 2 },
+          { w: bar, h: gh, x: -gw / 2, y: 0 },
+          { w: bar, h: gh, x: gw / 2, y: 0 },
+        ];
+        this.glowBars.forEach(function (edgeEl, k) {
+          edgeEl.setAttribute('geometry', { primitive: 'plane', width: edges[k].w, height: edges[k].h });
+          edgeEl.setAttribute('position', { x: edges[k].x, y: edges[k].y, z: 0 });
+        });
+      }
+
+      this.footerEl.setAttribute('align', align);
+      this.footerEl.setAttribute('width', W * 0.92);
+      this.footerEl.setAttribute('position', { x: edgeX(this.textAlign, W, 0.04), y: -(reach + 0.95 * rh), z: 0.002 });
+
+      if (this.arcEl) this.layoutArc();
+      if (this.el.components['hint-zone']) this.el.setAttribute('hint-zone', 'hintOffset', this.hintOffset());
+    },
+
+    // Change side, size or spacing on a live panel. Takes any of the
+    // schema's layout values; nothing is rebuilt.
+    setLayout: function (values) {
+      this.el.setAttribute('crossbar-menu', values);
+      this.layout();
+      this.render();
+    },
+
+    // The breadcrumb rail, in one of three places:
+    //   'outside' — rotated up the outboard edge. Tidy on a wall panel,
+    //               but on the visor the outboard edge is the edge of
+    //               your view, and the title went off it.
+    //   'inside'  — rotated up the inboard edge, past the curve.
+    //   'title'   — flat, just under the menu's title, so going deeper
+    //               reads as a heading changing rather than a label
+    //               appearing at the side.
+    layoutCrumbs: function () {
+      var data = this.data;
+      var m = this.metrics;
+      var W = data.width;
+      var rh = data.rowHeight;
+      var outward = this.outward;
+      for (var c = 0; c < this.crumbs.length; c++) {
+        var crumb = this.crumbs[c];
+        if (data.crumbs === 'title') {
+          crumb.el.setAttribute('rotation', '0 0 0');
+          crumb.el.setAttribute('position', { x: 0, y: m.crumbY - c * rh * 0.6, z: 0.002 });
+          crumb.targetEl.setAttribute('geometry', { primitive: 'plane', width: W * 0.6, height: rh * 0.5 });
+        } else {
+          var railSide = data.crumbs === 'inside' ? -outward : outward;
+          // Inside, the rail clears the curve as well as the panel, or
+          // the focused row would reach through it.
+          var clear = data.crumbs === 'inside' ? data.curve + 0.06 : 0;
+          crumb.el.setAttribute('rotation', '0 0 ' + (railSide < 0 ? 90 : -90));
+          crumb.el.setAttribute('position', { x: railSide * (W / 2 + 0.05 + clear + c * 0.075), y: 0, z: 0.002 });
+          crumb.targetEl.setAttribute('geometry', { primitive: 'plane', width: (2 * m.reach + rh) * 0.7, height: rh * 0.7 });
+        }
+        for (var k = 0; k < crumb.chars.length; k++) crumb.chars[k].setAttribute('width', W * 0.92);
+        // Lay the letters out again in their new place.
+        crumb.dirty = true;
+      }
+    },
+
+    // Letter pitch for the breadcrumb. Each letter is its own a-text, so
+    // spacing is ours to choose; a full character cell reads as
+    // "S e t t i n g s", because proportional glyphs are much narrower
+    // than the cell. About two thirds of it reads as a word.
+    crumbAdvance: function () {
+      return (this.data.width * 0.92) / CRUMB_WRAP * CRUMB_PITCH;
+    },
+
+    // How far a flat (title-mode) crumb is shifted so its letters line
+    // up with the title instead of centring on the panel.
+    crumbShift: function (length) {
+      if (this.data.crumbs !== 'title' || this.textAlign === 'center') return 0;
+      var advance = this.crumbAdvance();
+      var edge = this.data.width / 2 - 0.04 - (length * advance) / 2;
+      return this.textAlign === 'right' ? edge : -edge;
+    },
+
+    // ---------- the progress arc ----------
+    //
+    // The visor's open/close bar, drawn on the same curve the rows
+    // follow, along their inboard edge. It fills from the bottom up while
+    // your hand and the menu disagree; when it is full the menu appears
+    // in its place, or leaves. It lives inside the panel so it inherits
+    // everything the panel already does: which side, which eye, drawn
+    // over the world or painted on the screen.
+    buildArc: function () {
+      var arc = document.createElement('a-entity');
+      var group = new THREE.Group();
+      var accent = new THREE.Color(this.data.accent);
+      this.arcTrack = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicMaterial({
+        color: accent, transparent: true, opacity: 0.22, depthWrite: false, side: THREE.DoubleSide,
+      }));
+      this.arcFill = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicMaterial({
+        color: accent, transparent: true, opacity: 0.95, depthWrite: false, side: THREE.DoubleSide,
+      }));
+      // Drawn after the track so it sits on top of it.
+      this.arcFill.renderOrder = 1;
+      group.add(this.arcTrack);
+      group.add(this.arcFill);
+      arc.setObject3D('arc', group);
+      arc.object3D.visible = false;
+      this.el.appendChild(arc);
+      this.arcEl = arc;
+      this.arcShown = false;
+      this.arcFilled = 0;
+    },
+
+    layoutArc: function () {
+      var data = this.data;
+      var m = this.metrics;
+      var inward = -this.outward;
+      // Just inboard of the row plates, which is where the text ends.
+      var baseX = inward * (data.width * 0.47 + 0.035);
+      var thickness = data.rowHeight * 0.16;
+      var positions = new Float32Array((ARC_SEGMENTS + 1) * 2 * 3);
+      var indices = [];
+      for (var k = 0; k <= ARC_SEGMENTS; k++) {
+        // u runs bottom (+1) to top (-1), so a partial draw range is a
+        // bar filling upwards.
+        var u = 1 - (2 * k) / ARC_SEGMENTS;
+        // The same bulge the rows use, sampled continuously.
+        var x = baseX + inward * data.curve * (1 - u * u);
+        var y = -u * m.reach;
+        var o = k * 6;
+        positions[o] = x - thickness / 2; positions[o + 1] = y; positions[o + 2] = 0.003;
+        positions[o + 3] = x + thickness / 2; positions[o + 4] = y; positions[o + 5] = 0.003;
+        if (k < ARC_SEGMENTS) {
+          var a = k * 2;
+          indices.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
+        }
+      }
+      [this.arcTrack, this.arcFill].forEach(function (mesh) {
+        var geometry = new THREE.BufferGeometry();
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions.slice(), 3));
+        geometry.setIndex(indices);
+        geometry.computeBoundingSphere();
+        mesh.geometry.dispose();
+        mesh.geometry = geometry;
+      });
+      this.arcFill.geometry.setDrawRange(0, this.arcFilled * 6);
+    },
+
+    // fraction 0..1 of the bar; `shown` draws the track at all. Cheap to
+    // call every frame — it only touches anything when a value changes.
+    setProgress: function (fraction, shown) {
+      if (!this.arcEl) return;
+      var filled = Math.round(Math.max(0, Math.min(1, fraction)) * ARC_SEGMENTS);
+      shown = Boolean(shown);
+      if (shown === this.arcShown && filled === this.arcFilled) return;
+      this.arcShown = shown;
+      this.arcFilled = filled;
+      this.arcEl.object3D.visible = shown;
+      this.arcFill.visible = filled > 0;
+      this.arcFill.geometry.setDrawRange(0, filled * 6);
+      // The arc can be up while the menu is still closed, so the panel's
+      // root has to be visible for it.
+      this.el.object3D.visible = this.contentEl.object3D.visible || shown;
     },
 
     // ---------- drawing ----------
@@ -819,7 +1027,8 @@ if (typeof AFRAME !== 'undefined') {
       // its backing and title so it still reads as a thing in the room,
       // and keeps its hint zone so E opens it again.
       var collapsed = !open && data.closeBehavior === 'collapse';
-      this.el.object3D.visible = open || collapsed;
+      this.contentEl.object3D.visible = open || collapsed;
+      this.el.object3D.visible = open || collapsed || Boolean(this.arcShown);
       if (this.footerEl && !open) this.footerEl.object3D.visible = false;
       if (this.titleEl) this.titleEl.setAttribute('text', 'opacity', open ? (this.locked ? 1 : 0.6) : 0.4);
       if (collapsed) {
@@ -868,7 +1077,7 @@ if (typeof AFRAME !== 'undefined') {
           : 0;
         slot.el.object3D.position.set(
           -this.outward * bulge,
-          -offset * data.rowHeight,
+          -offset * this.metrics.spacing,
           0
         );
 
@@ -918,12 +1127,17 @@ if (typeof AFRAME !== 'undefined') {
     // being swapped for another.
     setCrumb: function (crumb, title, depth, animate) {
       var text = truncate(title || '', CRUMB_MAX_CHARS);
-      if (crumb.title === text) return;
-      var previous = crumb.title;
+      // dirty: the rail moved (layout ran), so the same title still has
+      // to be laid out again in its new place.
+      if (crumb.title === text && !crumb.dirty) return;
+      var previous = crumb.dirty ? '' : (crumb.title || '');
+      if (crumb.dirty) animate = false;
+      crumb.dirty = false;
       crumb.title = text;
+      var shift = this.crumbShift(text.length);
 
       var data = this.data;
-      var advance = (data.width * 0.92) / CRUMB_WRAP;
+      var advance = this.crumbAdvance();
       var opacity = FADE[Math.min(depth, FADE.length - 1)];
       var fly = animate && data.titleMotion === 'fly';
       var now = (this.el.sceneEl && this.el.sceneEl.time) || performance.now();
@@ -943,7 +1157,7 @@ if (typeof AFRAME !== 'undefined') {
       for (var i = 0; i < crumb.chars.length; i++) {
         var charEl = crumb.chars[i];
         var glyph = text.charAt(i);
-        var targetX = (i - (text.length - 1) / 2) * advance;
+        var targetX = shift + (i - (text.length - 1) / 2) * advance;
 
         if (!glyph) {
           // Letters that are no longer part of the title fly back out
