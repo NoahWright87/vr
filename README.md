@@ -25,6 +25,10 @@ Every prototype/primitive page is still vanilla A-Frame with no build-time frame
 
 To add a new prototype: create `games/<name>/index.html`, add it to the Vite inputs in `vite.config.js`, add a card to `src/App.jsx`, and import only the shared modules it uses. `watch-menu.js` imports its menu dependency; locomotion remains independent.
 
+The landing and About pages use **@noahwright/design 1.3.0**, with orange/purple light and dark palettes matching [NoahWrightDev2026](https://github.com/NoahWright87/NoahWrightDev2026). The header theme switch remembers the visitor's choice and defaults to their system preference. Theme tokens live in `src/theme.js` and site overrides in `src/site.css`.
+
+The header and favicon share `assets/noah-vr.svg`: the developer site's original silhouette, collar, and tie paths, with a VR headset replacing the glasses. The header follows the selected site theme; the favicon follows the OS color scheme.
+
 ## Development
 
 ```sh
@@ -33,6 +37,8 @@ npm run dev
 ```
 
 `npm run build` produces the deployable site in `dist/`, and `npm run preview` serves that production build locally. Existing prototype URLs are preserved by the multi-page inputs.
+
+
 
 A-Frame itself is vendored into `/vendor` rather than loaded from the `aframe.io` CDN — see [`vendor/README.md`](vendor/README.md) for why and how to bump versions.
 
