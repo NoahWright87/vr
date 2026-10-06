@@ -299,7 +299,12 @@ if (typeof AFRAME !== 'undefined') {
   // inboard edge fades out instead of cutting across your view — the
   // same "generate the texture at runtime" approach the floor
   // checkerboard and the blood splatter already use.
-  function buildScrimTexture(outward) {
+  // A canvas rather than a texture, handed to the material component as
+  // its `src`, so the component owns it. Setting material.map directly
+  // on three.js is undone by the next update through the component —
+  // which the overlay pass and setScrim both make — and the wash then
+  // silently turns into a flat dark slab.
+  function buildScrimCanvas(outward) {
     var size = 128;
     var canvas = document.createElement('canvas');
     canvas.width = size;
@@ -313,7 +318,7 @@ if (typeof AFRAME !== 'undefined') {
     gradient.addColorStop(1, 'rgba(4,10,18,0)');
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, size, 4);
-    return new THREE.CanvasTexture(canvas);
+    return canvas;
   }
 
   function edgeX(align, width, inset) {
@@ -397,6 +402,14 @@ if (typeof AFRAME !== 'undefined') {
       // by taking your hand away from your head; a wall panel closes by
       // walking away from it. Neither needs a button that can strand it.
       closable: { default: true },
+      // The lines that frame a panel: the rule under the title and the
+      // outline that lights while a hand or the keyboard has it. A wall
+      // panel needs both to read as one object in the room. The visor
+      // turns them off — it is always the thing your hand is driving
+      // while it is up, so the outline says nothing, and without a
+      // backing the lines are most of what makes it look like a box
+      // floating in front of you rather than text at the edge of view.
+      frame: { default: true },
       // Where this surface lives.
       //
       //   'none'   — a thing in the room. Depth-tested, occluded by
@@ -496,6 +509,13 @@ if (typeof AFRAME !== 'undefined') {
       this.el.sceneEl.addEventListener('enter-vr', this.applyEyeLayer);
       this.el.sceneEl.addEventListener('exit-vr', this.applyEyeLayer);
       this.applyEyeLayer();
+    },
+
+    setScrim: function (opacity) {
+      this.el.setAttribute('crossbar-menu', 'scrim', opacity);
+      if (!this.scrimEl) return;
+      this.scrimEl.object3D.visible = opacity > 0;
+      if (opacity > 0) this.scrimEl.setAttribute('material', 'opacity', opacity);
     },
 
     // ---------- one eye, or both ----------
@@ -601,12 +621,14 @@ if (typeof AFRAME !== 'undefined') {
       this.closeGlyphEl = closeGlyph;
       }
 
-      var rule = document.createElement('a-plane');
-      rule.setAttribute('width', data.width * 0.92);
-      rule.setAttribute('height', 0.004);
-      rule.setAttribute('material', 'color: ' + data.accent + '; shader: flat; opacity: 0.5; transparent: true');
-      rule.setAttribute('position', '0 ' + (titleY - data.rowHeight * 0.45) + ' 0');
-      this.el.appendChild(rule);
+      if (data.frame) {
+        var rule = document.createElement('a-plane');
+        rule.setAttribute('width', data.width * 0.92);
+        rule.setAttribute('height', 0.004);
+        rule.setAttribute('material', 'color: ' + data.accent + '; shader: flat; opacity: 0.5; transparent: true');
+        rule.setAttribute('position', '0 ' + (titleY - data.rowHeight * 0.45) + ' 0');
+        this.el.appendChild(rule);
+      }
 
       // Rows.
       for (var i = 0; i < data.windowSize; i++) {
@@ -695,32 +717,33 @@ if (typeof AFRAME !== 'undefined') {
         this.crumbs.push({ el: crumb, chars: chars, targetEl: crumbTarget, title: '' });
       }
 
-      if (data.scrim > 0) {
+      // Built for any plateless surface even at zero, so it can be turned
+      // on later; hidden while zero, which costs nothing to draw. Worth
+      // not drawing: it is a transparent quad over twice the panel's
+      // width, and full-coverage blending is what a Quest's GPU likes
+      // least.
+      if (data.scrim > 0 || !data.plate) {
         var scrim = document.createElement('a-entity');
         scrim.setAttribute('geometry', 'primitive: plane; width: ' + data.width * 2.1 + '; height: ' + data.rowHeight * (data.windowSize + 3));
         // The colour is set explicitly rather than left to the texture:
         // an unset a-frame material is white, so a scrim whose map has
         // not applied yet flashes as a bright slab across your view.
-        scrim.setAttribute('material', 'color: #040a12; shader: flat; transparent: true; depthWrite: false; opacity: ' + data.scrim);
+        scrim.setAttribute('material', {
+          color: '#040a12', shader: 'flat', transparent: true, depthWrite: false,
+          opacity: data.scrim, src: buildScrimCanvas(outward),
+        });
         // The wash sits outboard of the rows and fades toward centre.
         scrim.setAttribute('position', { x: outward * data.width * 0.55, y: 0, z: -0.03 });
+        scrim.object3D.visible = data.scrim > 0;
         this.el.appendChild(scrim);
         this.scrimEl = scrim;
-        var self2 = this;
-        var applyScrim = function () {
-          var mesh = scrim.getObject3D('mesh');
-          if (!mesh || !mesh.material) return;
-          mesh.material.map = buildScrimTexture(self2.outward);
-          mesh.material.needsUpdate = true;
-        };
-        if (scrim.getObject3D('mesh')) applyScrim();
-        else scrim.addEventListener('loaded', applyScrim, { once: true });
       }
 
       // The engaged-panel outline. Four bars rather than one plane: a
       // filled plane only reads as an outline while an opaque backing
-      // sits in front of it, so on a plateless surface like the visor
-      // it washes the whole panel pale instead of framing it.
+      // sits in front of it, so on a plateless surface it washes the
+      // whole panel pale instead of framing it.
+      if (data.frame) {
       var glowWidth = data.width + 0.05;
       var glowHeight = data.rowHeight * (data.windowSize + 2) + 0.05;
       var bar = 0.008;
@@ -743,6 +766,7 @@ if (typeof AFRAME !== 'undefined') {
       glow.object3D.visible = false;
       this.el.appendChild(glow);
       this.glowEl = glow;
+      }
 
       // What the controls are, shown only while this menu actually has
       // them. "No sense of I'm using this right now" was the whole
@@ -834,14 +858,16 @@ if (typeof AFRAME !== 'undefined') {
         slot.row = model;
         slot.offset = offset;
 
-        // The curve: the focused row sits furthest outboard, the ones
-        // above and below pull inboard. Zero on flat surfaces, which
-        // makes this a no-op everywhere but the visor.
+        // The curve: the focused row reaches inboard, toward the middle
+        // of your view, and the ones above and below fall back outboard
+        // — so two visor panels read as ") (" around what you are
+        // looking at, not "( )" turned away from it. Zero on flat
+        // surfaces, which makes this a no-op everywhere but the visor.
         var bulge = data.curve
           ? data.curve * (1 - Math.pow(distance / Math.max(1, half), 2))
           : 0;
         slot.el.object3D.position.set(
-          this.outward * bulge,
+          -this.outward * bulge,
           -offset * data.rowHeight,
           0
         );

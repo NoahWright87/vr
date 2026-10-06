@@ -1107,7 +1107,7 @@
             ],
           },
           {
-            kind: 'select', id: 'visor-scrim', label: 'Scrim', value: 'on',
+            kind: 'select', id: 'visor-scrim', label: 'Scrim', value: 'off',
             options: [{ value: 'on', label: 'On' }, { value: 'off', label: 'Off' }],
           },
           // World: a real object at 1.8m drawn over everything, so both
@@ -1252,10 +1252,7 @@
           var panel = visor.panels[side];
           var component = panel && panel.components['crossbar-menu'];
           if (!component) return;
-          if (evt.detail.id === 'visor-scrim') {
-            panel.setAttribute('crossbar-menu', 'scrim', evt.detail.value === 'on' ? 0.7 : 0);
-            if (component.scrimEl) component.scrimEl.setAttribute('material', 'opacity', evt.detail.value === 'on' ? 0.7 : 0);
-          }
+          if (evt.detail.id === 'visor-scrim') component.setScrim(evt.detail.value === 'on' ? 0.7 : 0);
           if (evt.detail.id === 'visor-curve') {
             panel.setAttribute('crossbar-menu', 'curve', evt.detail.value);
             component.render();

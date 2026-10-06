@@ -30,26 +30,47 @@ if (typeof AFRAME !== 'undefined') {
   // The temple zone, in head-local metres. Beside and slightly BEHIND
   // the eyes on purpose: that keeps it out of the volume where you hold
   // something up to aim, which in Pistols is most of the time.
+  // Generous on purpose. The first version was a 19x26x32cm box that
+  // only filled with the hand in exactly the right spot; this is roughly
+  // where its approach hint used to light up, which is where people
+  // actually put their hand. Still off to the side of the face and
+  // reaching back past the ear, and a hand holding anything is ignored
+  // outright (readHand), so aiming a gun never comes near it.
   var TEMPLE = {
-    xMin: 0.13, xMax: 0.32,
-    yMin: -0.14, yMax: 0.12,
-    zMin: -0.08, zMax: 0.24,
+    xMin: 0.08, xMax: 0.42,
+    yMin: -0.24, yMax: 0.22,
+    zMin: -0.18, zMax: 0.34,
   };
-  // Leaving takes more room than arriving, so a hand resting on the
-  // boundary doesn't flicker the pip.
-  var TEMPLE_EXIT_MARGIN = 0.05;
-  // A wider box around the temple zone. A hand inside THIS is on its
-  // way; a hand inside the zone proper is there. The pip is drawn only
-  // once you are on your way, so at rest there is nothing at the edge
-  // of vision at all.
-  var TEMPLE_APPROACH_MARGIN = 0.14;
-  // A hand swung past your ear is not a menu press.
-  var TEMPLE_MAX_SPEED = 0.7;
+  // Once a side is open or its bar is filling, the zone grows by this
+  // much, so a hand resting on the boundary does not stutter the bar.
+  var TEMPLE_HOLD_MARGIN = 0.06;
+  // The panel's size and where it sits, as fractions of the focal
+  // distance and degrees off centre. See buildSide.
+  var VISOR_WIDTH = 0.5;
+  var VISOR_ROW = 0.1;
+  var VISOR_CENTRE_DEG = 28.5;
+  var PIP_DEG = 43;
+
+  // A band around the zone where the pip appears, dim, so you can see
+  // where you are heading before anything starts.
+  var TEMPLE_APPROACH_MARGIN = 0.08;
+  // How much faster a bar drains than it fills when your hand and the
+  // menu agree again. Draining rather than snapping to zero is what
+  // makes the gesture survive tracking noise: controllers beside your
+  // head sit at the edge of the headset cameras' view, and one bad
+  // frame used to throw away a second of holding still. Now it costs a
+  // few frames. A real change of mind still empties a full bar in well
+  // under half a second.
+  var DWELL_DRAIN_RATE = 3;
+  // Never closer to the middle of your face than this, even with
+  // margins added — otherwise a hand in front of your nose would count
+  // as "approaching" whichever side its sign happened to land on.
+  var TEMPLE_X_FLOOR = 0.04;
 
   function insideTemple(local, margin) {
     var m = margin || 0;
     var x = Math.abs(local.x);
-    return x >= TEMPLE.xMin - m && x <= TEMPLE.xMax + m &&
+    return x >= Math.max(TEMPLE_X_FLOOR, TEMPLE.xMin - m) && x <= TEMPLE.xMax + m &&
       local.y >= TEMPLE.yMin - m && local.y <= TEMPLE.yMax + m &&
       local.z >= TEMPLE.zMin - m && local.z <= TEMPLE.zMax + m;
   }
@@ -110,7 +131,6 @@ if (typeof AFRAME !== 'undefined') {
       this.drawMode = this.data.draw;
       this.eyesMode = this.data.eyes;
       this._local = new THREE.Vector3();
-      this._previous = {};
       this.onKeyDown = this.onKeyDown.bind(this);
       window.addEventListener('keydown', this.onKeyDown);
 
@@ -159,23 +179,34 @@ if (typeof AFRAME !== 'undefined') {
       // distance wide, that puts its centre at 0.45 of the distance to
       // the side. Yawed to roughly face the eye rather than lying flat
       // across the view.
+      // Bigger than the first cut, which was hard to read: 0.5 of the
+      // focal distance wide puts a character at about 1.65 degrees, a
+      // third larger. The extra size goes outboard rather than inboard —
+      // the panel's centre moves out to 28.5 degrees and it is yawed to
+      // face the eye, so its inboard edge stays near 16 degrees, outside
+      // the part of the view you aim with, and its outboard edge lands
+      // around 41.
+      var centreAngle = VISOR_CENTRE_DEG * Math.PI / 180;
       panel.setAttribute('position', {
-        x: sign * data.distance * 0.45,
+        x: sign * data.distance * Math.tan(centreAngle),
         y: -data.distance * 0.035,
         z: -data.distance,
       });
-      panel.setAttribute('rotation', { x: 0, y: -sign * 22, z: 0 });
+      panel.setAttribute('rotation', { x: 0, y: -sign * VISOR_CENTRE_DEG, z: 0 });
       panel.setAttribute('crossbar-menu', {
         page: page,
         side: side,
         align: 'inboard',
-        // The focused row bulges outboard; see FIG 05 in the design
-        // notes. 3.5 degrees at 1.8m.
+        // The focused row reaches inboard, so the two sides read as
+        // ") (" around the middle of your view. 3.5 degrees at 1.8m.
         curve: 0.11,
-        scrim: 0.7,
+        // Floating text: no backing, no wash behind it, no frame. The
+        // visor's own Scrim row can still bring the wash back.
+        scrim: 0,
         plate: false,
-        width: data.distance * 0.36,
-        rowHeight: data.distance * 0.078,
+        frame: false,
+        width: data.distance * VISOR_WIDTH,
+        rowHeight: data.distance * VISOR_ROW,
         maxChars: 14,
         windowSize: 5,
         breadcrumbDepth: 1,
@@ -201,8 +232,10 @@ if (typeof AFRAME !== 'undefined') {
         // and paints it onto the display; see setDraw.
         overlay: this.drawMode,
         eye: this.eyesMode,
-        screenAnchor: { x: sign * 0.46, y: 0 },
-        screenWidth: 0.34,
+        // The same enlargement in screen space: a wider slice, its inner
+        // edge held about where it was.
+        screenAnchor: { x: sign * 0.55, y: 0 },
+        screenWidth: 0.42,
       });
       panel.setAttribute('crossbar-menu-registration', '');
       this.cameraEl.appendChild(panel);
@@ -213,14 +246,16 @@ if (typeof AFRAME !== 'undefined') {
       // hold. Without it the gesture is invisible — you would be
       // holding your hand next to your head hoping something happens.
       var pip = document.createElement('a-entity');
-      // Just beyond the menu's outboard edge, so it is visible whether
-      // or not the menu is open and never sits under the rows.
+      // Just beyond the menu's outboard edge (about 41 degrees), so it
+      // is visible whether or not the menu is open and never sits under
+      // the rows.
+      var pipAngle = PIP_DEG * Math.PI / 180;
       pip.setAttribute('position', {
-        x: sign * data.distance * 0.68,
+        x: sign * data.distance * Math.tan(pipAngle),
         y: -data.distance * 0.035,
         z: -data.distance,
       });
-      pip.setAttribute('rotation', { x: 0, y: -sign * 30, z: 0 });
+      pip.setAttribute('rotation', { x: 0, y: -sign * PIP_DEG, z: 0 });
 
       var track = document.createElement('a-entity');
       track.setAttribute('geometry', 'primitive: plane; width: ' + data.distance * 0.022 + '; height: ' + data.distance * 0.17);
@@ -241,7 +276,7 @@ if (typeof AFRAME !== 'undefined') {
       // can lose behind a doorframe is not a hint — and it follows the
       // panel between world and screen drawing.
       pip.dataset.pipWidth = String(data.distance * 0.022);
-      pip.dataset.pipAnchorX = String(sign * 0.72);
+      pip.dataset.pipAnchorX = String(sign * 0.82);
       var applyPip = function () { setPipDraw(pip, self.drawMode); };
       pip.addEventListener('object3dset', applyPip);
       applyPip();
@@ -409,21 +444,14 @@ if (typeof AFRAME !== 'undefined') {
       if (!mode || !mode.isMode('xr') || !this.cameraEl) return this.hidePips();
       if (!this.hands.length) return this.hidePips();
 
-      // Where each hand is, once per hand per frame: reading the pose
-      // twice would measure the second reading against the first and
-      // always see a stationary hand, quietly disabling the speed guard.
       var atTemple = {};
       var approaching = {};
       for (var i = 0; i < this.hands.length; i++) {
         var handEl = this.hands[i];
-        var state = this.readHand(handEl, delta);
+        var state = this.readHand(handEl);
         if (!state) continue;
         if (state.approachSide) approaching[state.approachSide] = true;
         if (!state.side || !this.panels[state.side]) continue;
-        // A hand flung past your ear is not a menu press, so speed
-        // blocks arriving. It does not block leaving: putting your hand
-        // down quickly is still putting your hand down.
-        if (state.fast && !this.isOpen(state.side)) continue;
         if (!atTemple[state.side]) atTemple[state.side] = handEl;
       }
 
@@ -439,17 +467,17 @@ if (typeof AFRAME !== 'undefined') {
         var wantOpen = Boolean(hand);
         var dwelling = wantOpen !== open;
 
-        this.setPipPresence(side, dwelling || Boolean(approaching[side]), Boolean(hand));
         if (!dwelling) {
-          this.dwellMs[side] = 0;
-          this.setPipProgress(side, 0);
-          continue;
+          // Drain, don't snap: see DWELL_DRAIN_RATE.
+          this.dwellMs[side] = Math.max(0, (this.dwellMs[side] || 0) - delta * DWELL_DRAIN_RATE);
+        } else {
+          this.dwellMs[side] = (this.dwellMs[side] || 0) + delta;
         }
-
-        this.dwellMs[side] = (this.dwellMs[side] || 0) + delta;
         var progress = Math.min(1, this.dwellMs[side] / this.data.dwellMs);
+        this.setPipPresence(side,
+          dwelling || progress > 0 || Boolean(approaching[side]), Boolean(hand));
         this.setPipProgress(side, progress);
-        if (progress < 1) continue;
+        if (!dwelling || progress < 1) continue;
 
         this.dwellMs[side] = 0;
         this.setPipProgress(side, 0);
@@ -461,38 +489,39 @@ if (typeof AFRAME !== 'undefined') {
     // Everything the gesture needs to know about one hand this frame:
     // where it is in head space, how fast it is moving, whether it is on
     // its way to a temple, and whether it has arrived.
-    readHand: function (handEl, delta) {
+    // Purely geometric: whether the hand is in a temple zone, and which
+    // side of your HEAD it is on rather than which hand it is, so
+    // reaching across works. What that means is the tick's business.
+    //
+    // There is no speed check any more. It existed so a hand swung past
+    // your ear would not open anything — but the dwell already does
+    // that, since a swing spends a fifth of a second in the zone and the
+    // bar needs well over a second. Meanwhile the check was the main
+    // reason the gesture felt finicky: a centimetre of tracking jitter
+    // in one 72Hz frame is over the old limit, and that one frame threw
+    // away the whole bar.
+    readHand: function (handEl) {
       var semantic = handEl.components['semantic-hand'];
       if (semantic && semantic.heldEl) return null;
 
       handEl.object3D.getWorldPosition(this._local);
-      var previous = this._previous[handEl.id];
-      var speed = 0;
-      if (previous && delta > 0) speed = previous.distanceTo(this._local) / (delta / 1000);
-      if (!previous) this._previous[handEl.id] = new THREE.Vector3();
-      this._previous[handEl.id].copy(this._local);
-
-      this.cameraEl.object3D.updateMatrixWorld(true);
+      // worldToLocal refreshes the camera's own world matrix on the way
+      // (updateWorldMatrix up its parents), which is all this needs. The
+      // recursive updateMatrixWorld(true) that used to sit here re-ran
+      // the camera's whole subtree — both visor panels included — once
+      // per hand per frame for nothing.
       this.cameraEl.object3D.worldToLocal(this._local);
 
       var approachSide = insideTemple(this._local, TEMPLE_APPROACH_MARGIN)
         ? (this._local.x < 0 ? 'left' : 'right')
         : null;
 
-      // Purely geometric: whether the hand is in a temple zone, and
-      // which side of your HEAD it is on rather than which hand it is,
-      // so reaching across works. What that means is the tick's
-      // business. The zone grows a little once that side is open, so a
-      // hand resting at the boundary does not start a close dwell every
-      // time it drifts a centimetre.
       var side = this._local.x < 0 ? 'left' : 'right';
-      var margin = this.isOpen(side) ? TEMPLE_EXIT_MARGIN : 0;
+      // Hold on harder once something is under way on that side.
+      var holding = this.isOpen(side) || this.dwellMs[side] > 0;
+      var margin = holding ? TEMPLE_HOLD_MARGIN : 0;
       if (!insideTemple(this._local, margin)) return { approachSide: approachSide, side: null };
-      return {
-        approachSide: approachSide,
-        side: side,
-        fast: speed > TEMPLE_MAX_SPEED,
-      };
+      return { approachSide: approachSide, side: side };
     },
 
     // Present only while a hand is on its way to the temple, and
@@ -505,7 +534,13 @@ if (typeof AFRAME !== 'undefined') {
         this.setPipProgress(side, 0);
         return;
       }
-      pip.trackEl.setAttribute('material', 'opacity', arrived ? 0.5 : 0.2);
+      // Every frame while visible, so only touch the component when the
+      // value actually changes.
+      var opacity = arrived ? 0.5 : 0.2;
+      if (pip.trackOpacity !== opacity) {
+        pip.trackOpacity = opacity;
+        pip.trackEl.setAttribute('material', 'opacity', opacity);
+      }
     },
 
     hidePips: function () {

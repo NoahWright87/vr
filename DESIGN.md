@@ -627,6 +627,22 @@ Measured, not guessed. On a scene of ~490 meshes:
 - Next win if it's ever needed: ~210 of the meshes are five separate
   ring discs on each of 37 target faces. Baking a bullseye into one
   texture would collapse those to 37.
+- **A-Frame's `obb-collider` is O(n²) and blind to visibility.** Its
+  system tests every collider against every other one each frame, a
+  full separating-axis test per pair, and each collider's own tick
+  re-runs `updateMatrixWorld(true)` on its subtree. `common/menus.js`
+  gives every menu item a poke collider, on every page, open or not.
+  The menus showcase had 120 colliders (114 hidden) — 7,140 tests and
+  **55ms a frame** on a desktop CPU, before the Quest's slower one gets
+  a go; Pistols had 136 (131 hidden), 9,180 tests. That was "this is
+  just rectangles and text, why is it so laggy".
+  `common/obb-collider-visibility.js` skips any collider that
+  is not visible in the scene graph — the same rule pointing already
+  follows — taking it to **under 0.1ms**, with every real consumer (a
+  fingertip poking something you can see) unchanged. The whole tick
+  budget for the showcase is now ~1.5ms. The general lesson: profile
+  per component tick before touching the renderer; 73 draw calls and
+  9k triangles were never the problem.
 
 ## Testing without a headset
 

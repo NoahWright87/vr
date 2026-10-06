@@ -1,5 +1,8 @@
 import { chooseAutomaticMenuIntent, chooseProjectedMenuMode } from './projected-menu-mode.js';
 import { cycleMenuOptionIndex, parseMenuOptions } from './menu-options.js';
+// Every item on every page gets a poke collider below; this keeps the
+// ones on closed pages from costing a frame. See the module for numbers.
+import './obb-collider-visibility.js';
 
   AFRAME.registerComponent('menu-item', {
     schema: {
