@@ -25,6 +25,10 @@ Every prototype/primitive page is still vanilla A-Frame with no build-time frame
 
 To add a new prototype: create `games/<name>/index.html`, add it to the Vite inputs in `vite.config.js`, add a card to `src/App.jsx`, and import only the shared modules it uses. `watch-menu.js` imports its menu dependency; locomotion remains independent.
 
+The landing and About pages use **@noahwright/design 1.3.0**, with orange/purple light and dark palettes matching [NoahWrightDev2026](https://github.com/NoahWright87/NoahWrightDev2026). The header theme switch remembers the visitor's choice and defaults to their system preference. Theme tokens live in `src/theme.js` and site overrides in `src/site.css`.
+
+The header and favicon share `assets/noah-vr.svg`: the developer site's original silhouette, collar, and tie paths, with a VR headset replacing the glasses. The header follows the selected site theme; the favicon follows the OS color scheme.
+
 ## Development
 
 ```sh
@@ -34,6 +38,8 @@ npm run dev
 
 `npm run build` produces the deployable site in `dist/`, and `npm run preview` serves that production build locally. Existing prototype URLs are preserved by the multi-page inputs.
 
+
+
 A-Frame itself is vendored into `/vendor` rather than loaded from the `aframe.io` CDN — see [`vendor/README.md`](vendor/README.md) for why and how to bump versions.
 
 See **[DESIGN.md](DESIGN.md)** for the design philosophy these prototypes are built on — shared systems over features, so that unplanned combinations happen — plus the patterns that produce it, the rules learned the hard way, and measured performance notes.
@@ -41,6 +47,7 @@ See **[DESIGN.md](DESIGN.md)** for the design philosophy these prototypes are bu
 ## Prototypes
 
 - **[Cube Pop](games/cube-pop/index.html)** — point a Quest controller at a floating cube and pull the trigger to pop it. Counter tracks progress; popping all cubes shows a win state with an in-VR reset button. Also has a gaze-reticle fallback so you can validate it from a phone or desktop browser without a headset — see below.
+- **[Boundary Lab](games/boundaries/index.html)** — reads the headset-reported play-space boundary, includes left/right haptics tests at 20%, 60%, or 100%, and has a shared grab cube that gives each controller a short reach cue when Grip can grab it.
 - **[Punch Pop](games/punch-pop/index.html)** — punch-to-move locomotion POC. There are no laser pointers here; you move by physically throwing punches, and you pop cubes by hitting them with a fist that's moving fast enough. See below for how it works and how to tune it.
 
 ### Punch Pop: how it works
@@ -164,7 +171,7 @@ gameplay-facing hand entities. The V1 box has only a small shared held/falling/
 resting state machine; Pistols at Dawn's larger holster/stack/throw/catch graph
 remains isolated until it can be migrated incrementally.
 
-Coming soon: broader object manipulation, vibration/haptics, and spatial audio.
+Coming soon: broader object manipulation and spatial audio.
 
 ## Running locally
 

@@ -1,5 +1,6 @@
 import './control-mode.js';
 import './menus.js';
+import { pulseHaptics } from './haptics.js';
 
   var WATCH_OFFSET = { x: -0.009, y: -0.006, z: 0.100 };
   var FACE_Y_OFFSET = 0.0345;
@@ -291,10 +292,21 @@ import './menus.js';
       return { position: position, quaternion: quaternion };
     },
 
-    triggerHaptics: function () {
-      var tracked = this.el.components['tracked-controls'];
-      var actuators = tracked && tracked.controller && tracked.controller.hapticActuators;
-      if (actuators && actuators[0]) actuators[0].pulse(1.0, 200);
+    triggerHaptics: function (intensity, durationMs) {
+      var self = this;
+      var level = intensity === undefined ? 1 : intensity;
+      var duration = durationMs === undefined ? 200 : durationMs;
+      return pulseHaptics(this.el, level, duration).then(function (result) {
+        self.el.emit('haptics-pulse-result', {
+          hand: self.data.hand,
+          intensity: level,
+          durationMs: duration,
+          status: result.status,
+          api: result.api || null,
+          error: result.error || null,
+        }, true);
+        return result;
+      });
     },
 
     showAbout: function () {
