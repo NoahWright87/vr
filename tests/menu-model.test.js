@@ -529,3 +529,30 @@ test('dynamic item lists are resolved when their level opens', () => {
   menu.activate();
   assert.deepEqual(labels(menu), ['Ghost Town', 'The Range', 'The Farm'], 'picked up the new destination');
 });
+
+// Page data can mark a submenu so a surface shows something extra while
+// you are in it — the visor's settings readout, its activation zones.
+test('inside() reports a flagged submenu at any depth below it', () => {
+  const menu = createMenu({ title: 'T', items: [
+    { kind: 'action', id: 'a', label: 'A' },
+    { kind: 'submenu', id: 'settings', label: 'Settings', readout: true, items: [
+      { kind: 'number', id: 'w', label: 'Width', value: 30, min: 0, max: 50, step: 1 },
+      { kind: 'submenu', id: 'act', label: 'Activation', zones: true, items: [
+        { kind: 'number', id: 'r', label: 'Radius', value: 16, min: 0, max: 40, step: 1 },
+      ] },
+    ] },
+  ] });
+  menu.open();
+  assert.equal(menu.inside('readout'), false, 'not at the root');
+  menu.moveFocus(1); menu.activate();
+  assert.equal(menu.inside('readout'), true);
+  assert.equal(menu.inside('zones'), false);
+  menu.activate();               // into the Width value row
+  assert.equal(menu.inside('readout'), true, 'still inside while editing a value');
+  menu.back();
+  menu.moveFocus(1); menu.activate();
+  assert.equal(menu.inside('zones'), true);
+  assert.equal(menu.inside('readout'), true, 'an ancestor still counts');
+  menu.back(); menu.back();
+  assert.equal(menu.inside('readout'), false);
+});

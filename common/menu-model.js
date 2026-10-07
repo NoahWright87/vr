@@ -241,6 +241,18 @@ MenuModel.prototype.emit = function (event, detail) {
   if (event !== 'change') this.emit('change', { event: event, detail: detail });
 };
 
+// Whether you are anywhere inside a submenu whose item carries `flag`
+// — at that level or deeper, including inside one of its value rows.
+// Lets page data say "while you're in here, show X" without the surface
+// knowing anything about the page.
+MenuModel.prototype.inside = function (flag) {
+  for (var i = 0; i < this.stack.length; i++) {
+    var source = this.stack[i].source;
+    if (source && source[flag]) return true;
+  }
+  return false;
+};
+
 MenuModel.prototype.level = function () {
   return this.stack[this.stack.length - 1];
 };

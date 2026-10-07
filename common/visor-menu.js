@@ -23,55 +23,56 @@
 // menu, with the same place remembered, whichever side it opens on.
 // ============================================================
 
-import './menu-crossbar.js';
+import { overlayAll } from './menu-crossbar.js';
 
 if (typeof AFRAME !== 'undefined') {
   var THREE = AFRAME.THREE;
 
-  // The temple zone, in head-local metres. Beside and slightly BEHIND
-  // the eyes on purpose: that keeps it out of the volume where you hold
-  // something up to aim, which in Pistols is most of the time.
-  // Generous on purpose. The first version was a 19x26x32cm box that
-  // only filled with the hand in exactly the right spot; this is roughly
-  // where its approach hint used to light up, which is where people
-  // actually put their hand. Still off to the side of the face and
-  // reaching back past the ear, and a hand holding anything is ignored
-  // outright (readHand), so aiming a gun never comes near it.
-  var TEMPLE = {
-    xMin: 0.08, xMax: 0.42,
-    yMin: -0.24, yMax: 0.22,
-    zMin: -0.18, zMax: 0.34,
-  };
+  // The temple zones are two spheres in head-local space, mirrored left
+  // and right, set live from the menu (Settings > Activation): how big,
+  // how far out from the middle of your head, and how far forward or
+  // back. Beside and a little behind the eyes by default, which keeps
+  // them out of the volume where you hold something up to aim, and a
+  // hand holding anything is ignored outright (readHand), so aiming a
+  // gun never comes near them.
+  //
   // Once a side is open or its bar is filling, the zone grows by this
   // much, so a hand resting on the boundary does not stutter the bar.
-  var TEMPLE_HOLD_MARGIN = 0.06;
+  var HOLD_MARGIN = 0.06;
+  // A band around each sphere where the arc's dim track appears, so you
+  // can see where you are heading before anything starts.
+  var APPROACH_MARGIN = 0.08;
   // Where a row's highlight plate ends, as a fraction of the panel's
   // width from its centre (crossbar-menu draws plates 0.94 wide). The
   // Position setting measures to here.
   var ROW_EDGE = 0.47;
-
-  // A band around the zone where the arc's track appears, dim, so you
-  // can see where you are heading before anything starts.
-  var TEMPLE_APPROACH_MARGIN = 0.08;
-  // How much faster a bar drains than it fills when your hand and the
+  // How much faster the bar drains than it fills when your hand and the
   // menu agree again. Draining rather than snapping to zero is what
   // makes the gesture survive tracking noise: controllers beside your
-  // head sit at the edge of the headset cameras' view, and one bad
-  // frame used to throw away a second of holding still. Now it costs a
-  // few frames. A real change of mind still empties a full bar in well
-  // under half a second.
+  // head sit at the edge of the headset cameras' view, and one bad frame
+  // used to throw away a second of holding still.
   var DWELL_DRAIN_RATE = 3;
-  // Never closer to the middle of your face than this, even with
-  // margins added — otherwise a hand in front of your nose would count
-  // as "approaching" whichever side its sign happened to land on.
-  var TEMPLE_X_FLOOR = 0.04;
 
-  function insideTemple(local, margin) {
-    var m = margin || 0;
-    var x = Math.abs(local.x);
-    return x >= Math.max(TEMPLE_X_FLOOR, TEMPLE.xMin - m) && x <= TEMPLE.xMax + m &&
-      local.y >= TEMPLE.yMin - m && local.y <= TEMPLE.yMax + m &&
-      local.z >= TEMPLE.zMin - m && local.z <= TEMPLE.zMax + m;
+  // The zone view: metres of diagram per metre of real space, how far
+  // out from your head it shows, how thick its lines are, and roughly
+  // how big a head is, for scale.
+  var ZONE_VIEW_SCALE = 0.4;
+  var ZONE_VIEW_REACH = 0.55;
+  var ZONE_LINE = 0.008;
+  var HEAD_RADIUS = 0.09;
+  // How far in front of you the readout and the zone view float.
+  var EXTRAS_DISTANCE = 1.5;
+
+  function ringGeometry(radius, thickness) {
+    return new THREE.RingGeometry(Math.max(0.0005, radius - thickness / 2), radius + thickness / 2, 48);
+  }
+
+  // Distance from a head-local point to one side's sphere centre.
+  function zoneDistance(local, activation, sign) {
+    var dx = local.x - sign * activation.side;
+    var dy = local.y;
+    var dz = local.z + activation.forward;
+    return Math.sqrt(dx * dx + dy * dy + dz * dz);
   }
 
   // ============================================================
@@ -86,10 +87,19 @@ if (typeof AFRAME !== 'undefined') {
       // Older two-page markup; the first one given is used.
       leftPage: { type: 'string', default: '' },
       rightPage: { type: 'string', default: '' },
-      // How long a hand has to stay at your temple. Long enough that
-      // brushing past your ear doesn't open anything, short enough that
-      // it doesn't feel like waiting.
-      dwellMs: { default: 1200 },
+      // How long a hand has to stay at your temple to open it. Long enough
+      // that brushing past your ear doesn't open anything, short enough
+      // that it doesn't feel like waiting.
+      openMs: { default: 1200 },
+      // How long it has to be away to close it. Much shorter: putting
+      // your hand down is a clear intent, and a menu that lingers after
+      // you have stopped using it is in the way.
+      closeMs: { default: 400 },
+      // The temple spheres, in metres: radius, how far out from the
+      // middle of your head, and how far forward (+) or back (-).
+      zoneRadius: { default: 0.15 },
+      zoneSide: { default: 0.22 },
+      zoneForward: { default: -0.06 },
       distance: { default: 1.8 },
       // 'world' keeps the panel a real object at `distance`, drawn over
       // everything — stereo-correct, so both eyes converge where it
@@ -121,10 +131,11 @@ if (typeof AFRAME !== 'undefined') {
       this.openSide = null;
       this.panelSide = 'left';
       this.hands = [];
-      // How long the menu has spent disagreeing with where your hand is.
-      // Drained (not reset) the moment they agree again, which is what
-      // lets you call off a close by bringing your hand back.
-      this.dwellMs = 0;
+      // How far the bar has got, 0..1, while the menu disagrees with
+      // where your hand is. Drained (not reset) the moment they agree
+      // again, which is what lets you call off a close by bringing your
+      // hand back.
+      this.progress = 0;
       // The schema seeds these; from then on they are the truth. They
       // cannot live in the scene attribute: `visor-menu` is a system with
       // no component of the same name, so setAttribute(name, prop, value)
@@ -136,6 +147,13 @@ if (typeof AFRAME !== 'undefined') {
         position: this.data.position, lift: this.data.lift, width: this.data.width,
         height: this.data.height, curve: this.data.curve, crumbs: this.data.crumbs,
       };
+      this.activation = {
+        radius: this.data.zoneRadius, side: this.data.zoneSide, forward: this.data.zoneForward,
+        openMs: this.data.openMs, closeMs: this.data.closeMs,
+      };
+      this.scrim = 0;
+      // Where each hand was last frame, head-local, for the zone view.
+      this.handReadings = [];
       this._local = new THREE.Vector3();
       this.onKeyDown = this.onKeyDown.bind(this);
       window.addEventListener('keydown', this.onKeyDown);
@@ -207,9 +225,12 @@ if (typeof AFRAME !== 'undefined') {
       // components['crossbar-menu'] exists the moment the entity is
       // attached, but its init — which builds the panel's parts — waits
       // for the entity to load. Placing it before then lays out nothing.
+      this.buildExtras();
+
       var self = this;
       var ready = function () {
         self.component = panel.components['crossbar-menu'];
+        self.component.menu.on('change', function () { self.updateExtras(); });
         self.placeFor(self.panelSide);
       };
       if (panel.hasLoaded) ready();
@@ -278,6 +299,7 @@ if (typeof AFRAME !== 'undefined') {
         z: -d * Math.cos(c) * Math.cos(l),
       });
       this.panel.setAttribute('rotation', { x: s.lift, y: -sign * centre, z: 0 });
+      this.placeExtras(side);
     },
 
     // Change any of the layout settings live, with the menu open.
@@ -286,6 +308,193 @@ if (typeof AFRAME !== 'undefined') {
         if (Object.prototype.hasOwnProperty.call(this.settings, key)) this.settings[key] = values[key];
       }
       this.placeFor(this.panelSide);
+      this.updateReadout();
+    },
+
+    // ---------- the settings readout and the zone view ----------
+    //
+    // Two things shown only while you are inside the submenus that ask for
+    // them (page data: `readout: true`, `zones: true`), on the side of
+    // your view opposite the menu so neither covers it. Both eyes and
+    // drawn over the world, so a headset screenshot catches them whatever
+    // the Eyes and Draw settings are.
+    //
+    //   readout — every visor setting at once, so a tuned layout can be
+    //             sent as one screenshot rather than read off row by row.
+    //   zones   — the temple spheres and your hands, live. The spheres
+    //             sit beside and behind your eyes, so you could never see
+    //             them directly even if your head were not inside one;
+    //             this draws them as two small maps instead, from above
+    //             and from behind, with each hand's dot lit while it is
+    //             actually inside a sphere.
+    buildExtras: function () {
+      var accent = '#7fe3ff';
+
+      var readout = document.createElement('a-entity');
+      var readoutBack = document.createElement('a-plane');
+      readoutBack.setAttribute('width', 1.12);
+      readoutBack.setAttribute('height', 0.42);
+      readoutBack.setAttribute('material', 'color: #040a12; shader: flat; transparent: true; opacity: 0.82; depthWrite: false');
+      readout.appendChild(readoutBack);
+      var readoutText = document.createElement('a-text');
+      readoutText.setAttribute('width', 1.04);
+      readoutText.setAttribute('wrap-count', 46);
+      readoutText.setAttribute('align', 'left');
+      readoutText.setAttribute('color', '#dff3ff');
+      readoutText.setAttribute('position', '-0.52 0 0.002');
+      readout.appendChild(readoutText);
+      readout.object3D.visible = false;
+      this.cameraEl.appendChild(readout);
+      this.readoutEl = readout;
+      this.readoutTextEl = readoutText;
+
+      var zones = document.createElement('a-entity');
+      var zonesBack = document.createElement('a-plane');
+      zonesBack.setAttribute('width', 1.0);
+      zonesBack.setAttribute('height', 0.58);
+      zonesBack.setAttribute('material', 'color: #040a12; shader: flat; transparent: true; opacity: 0.82; depthWrite: false');
+      zones.appendChild(zonesBack);
+      var group = new THREE.Group();
+      var mat = function (color, opacity) {
+        return new THREE.MeshBasicMaterial({ color: new THREE.Color(color), transparent: true, opacity: opacity, depthWrite: false });
+      };
+      var views = [
+        { name: 'FROM ABOVE', x: -0.25, flip: function (p) { return [p.x, -p.z]; } },
+        { name: 'FROM BEHIND', x: 0.25, flip: function (p) { return [p.x, p.y]; } },
+      ];
+      this.zoneViews = views.map(function (view) {
+        var g = new THREE.Group();
+        g.position.set(view.x, -0.025, 0.003);
+        group.add(g);
+        var mk = function (material) { var m = new THREE.Mesh(new THREE.BufferGeometry(), material); g.add(m); return m; };
+        var head = mk(mat('#9fb0d4', 0.6));
+        head.geometry = ringGeometry(HEAD_RADIUS * ZONE_VIEW_SCALE, ZONE_LINE);
+        var label = document.createElement('a-text');
+        label.setAttribute('value', view.name);
+        label.setAttribute('align', 'center');
+        label.setAttribute('width', 0.42);
+        label.setAttribute('wrap-count', 16);
+        label.setAttribute('color', accent);
+        label.setAttribute('position', { x: view.x, y: 0.245, z: 0.003 });
+        zones.appendChild(label);
+        return {
+          flip: view.flip,
+          rings: [mk(mat(accent, 0.55)), mk(mat(accent, 0.55))],
+          approach: [mk(mat(accent, 0.15)), mk(mat(accent, 0.15))],
+          dots: [0, 1].map(function () {
+            var dot = mk(mat('#9fb0d4', 0.9));
+            dot.geometry = new THREE.CircleGeometry(0.017, 20);
+            return dot;
+          }),
+        };
+      });
+      zones.setObject3D('zones', group);
+      zones.object3D.visible = false;
+      this.cameraEl.appendChild(zones);
+      this.zonesEl = zones;
+
+      var lift = function (el) {
+        var apply = function () { overlayAll(el); };
+        el.addEventListener('object3dset', apply);
+        apply();
+      };
+      lift(readout);
+      lift(zones);
+      this.rebuildZones();
+      this.updateReadout();
+    },
+
+    // Opposite the menu, so the two can be read together.
+    placeExtras: function (side) {
+      if (!this.readoutEl) return;
+      var opposite = side === 'left' ? 1 : -1;
+      var put = function (el, across, up) {
+        var a = across * Math.PI / 180;
+        var u = up * Math.PI / 180;
+        el.setAttribute('position', {
+          x: opposite * EXTRAS_DISTANCE * Math.sin(a) * Math.cos(u),
+          y: EXTRAS_DISTANCE * Math.sin(u),
+          z: -EXTRAS_DISTANCE * Math.cos(a) * Math.cos(u),
+        });
+        el.setAttribute('rotation', { x: up, y: -opposite * across, z: 0 });
+      };
+      put(this.readoutEl, 20, 9);
+      put(this.zonesEl, 20, -15);
+    },
+
+    updateExtras: function () {
+      if (!this.readoutEl || !this.component) return;
+      var menu = this.component.menu;
+      var readout = menu.isOpen && menu.inside('readout');
+      var zones = menu.isOpen && menu.inside('zones');
+      if (readout && !this.readoutEl.object3D.visible) this.updateReadout();
+      this.readoutEl.object3D.visible = readout;
+      if (zones && !this.zonesEl.object3D.visible) this.rebuildZones();
+      this.zonesEl.object3D.visible = zones;
+    },
+
+    describe: function () {
+      var s = this.settings;
+      var a = this.activation;
+      var deg = function (v) { return (Math.round(v * 10) / 10) + '°'; };
+      var cm = function (m) { return Math.round(m * 100) + ' cm'; };
+      var sec = function (ms) { return (ms / 1000).toFixed(2) + ' s'; };
+      var titles = { title: 'Top', inside: 'Inner', outside: 'Outer' };
+      return [
+        'VISOR SETTINGS',
+        'Position ' + deg(s.position) + '    Lift ' + deg(s.lift),
+        'Width ' + deg(s.width) + '    Height ' + deg(s.height) + '    Curve ' + deg(s.curve),
+        'Titles ' + titles[s.crumbs] + '    Eyes ' + (this.eyesMode === 'inboard' ? 'One' : 'Both') +
+          '    Draw ' + (this.drawMode === 'screen' ? 'Screen' : 'World') + '    Scrim ' + (this.scrim > 0 ? 'On' : 'Off'),
+        '',
+        'ACTIVATION',
+        'Radius ' + cm(a.radius) + '    Side ' + cm(a.side) + '    Forward ' + cm(a.forward),
+        'Open ' + sec(a.openMs) + '    Close ' + sec(a.closeMs),
+      ].join('\n');
+    },
+
+    updateReadout: function () {
+      if (this.readoutTextEl) this.readoutTextEl.setAttribute('value', this.describe());
+    },
+
+    // Rings for the current sphere settings. Rebuilt only when a setting
+    // changes or the view opens — the per-frame work is just the dots.
+    rebuildZones: function () {
+      if (!this.zoneViews) return;
+      var a = this.activation;
+      this.zoneViews.forEach(function (view) {
+        [-1, 1].forEach(function (sign, k) {
+          var centre = view.flip({ x: sign * a.side, y: 0, z: -a.forward });
+          [[view.rings[k], a.radius], [view.approach[k], a.radius + APPROACH_MARGIN]].forEach(function (pair) {
+            var mesh = pair[0];
+            mesh.geometry.dispose();
+            mesh.geometry = ringGeometry(pair[1] * ZONE_VIEW_SCALE, ZONE_LINE);
+            mesh.position.set(centre[0] * ZONE_VIEW_SCALE, centre[1] * ZONE_VIEW_SCALE, 0);
+          });
+        });
+      });
+    },
+
+    updateZones: function () {
+      var readings = this.handReadings;
+      var limit = ZONE_VIEW_REACH;
+      var lit = { left: false, right: false };
+      for (var r = 0; r < readings.length; r++) if (readings[r].side) lit[readings[r].side] = true;
+      this.zoneViews.forEach(function (view) {
+        view.rings[0].material.opacity = lit.left ? 1 : 0.55;
+        view.rings[1].material.opacity = lit.right ? 1 : 0.55;
+        view.dots.forEach(function (dot, k) {
+          var reading = readings[k];
+          dot.visible = Boolean(reading);
+          if (!reading) return;
+          var p = view.flip(reading);
+          dot.position.set(
+            Math.max(-limit, Math.min(limit, p[0])) * ZONE_VIEW_SCALE,
+            Math.max(-limit, Math.min(limit, p[1])) * ZONE_VIEW_SCALE,
+            0.001);
+          dot.material.color.set(reading.side ? '#7fe3ff' : (reading.held ? '#c97a5a' : '#9fb0d4'));
+        });
+      });
     },
 
     // A corner hint off a headset, so the key is discoverable rather
@@ -336,16 +545,20 @@ if (typeof AFRAME !== 'undefined') {
     setDraw: function (mode) {
       this.drawMode = mode;
       this.applySurface();
+      this.updateReadout();
     },
 
     // Which eye. One panel now, so this is one decision.
     setEyes: function (mode) {
       this.eyesMode = mode;
       this.applySurface();
+      this.updateReadout();
     },
 
     setScrim: function (opacity) {
+      this.scrim = opacity;
       if (this.component) this.component.setScrim(opacity);
+      this.updateReadout();
     },
 
     applySurface: function () {
@@ -422,31 +635,35 @@ if (typeof AFRAME !== 'undefined') {
     tick: function (time, delta) {
       var component = this.component;
       if (!component) return;
+      // The zone view needs hand positions whether or not anything is
+      // under way, and off a headset too, so it can be checked on a
+      // desktop; the gesture itself is XR-only below.
+      this.readHands();
+      if (this.zonesEl && this.zonesEl.object3D.visible) this.updateZones();
+
       var mode = this.sceneEl.systems['control-mode'];
       // Off a headset there is no hand to hold to your head, so the arc
       // would advertise a gesture that does not exist. Backtick and the
       // corner button are the flat story.
       if (!mode || !mode.isMode('xr') || !this.cameraEl || !this.hands.length) {
-        this.dwellMs = 0;
+        this.progress = 0;
         component.setProgress(0, false);
         return;
       }
 
       var atTemple = {};
       var near = {};
-      for (var i = 0; i < this.hands.length; i++) {
-        var handEl = this.hands[i];
-        var state = this.readHand(handEl);
-        if (!state) continue;
-        if (state.approachSide) near[state.approachSide] = true;
-        if (state.side && !atTemple[state.side]) atTemple[state.side] = handEl;
+      for (var i = 0; i < this.handReadings.length; i++) {
+        var reading = this.handReadings[i];
+        if (reading.near && !near[reading.near]) near[reading.near] = true;
+        if (reading.side && !atTemple[reading.side]) atTemple[reading.side] = reading.el;
       }
 
       var open = component.menu.isOpen;
       // While the menu is closed and nothing is under way, the panel
       // follows whichever temple your hand is heading for, so the arc
       // fills on the side you are actually reaching to.
-      if (!open && this.dwellMs === 0) {
+      if (!open && this.progress === 0) {
         var want = atTemple.left ? 'left' : atTemple.right ? 'right'
           : near.left ? 'left' : near.right ? 'right' : null;
         if (want && want !== this.panelSide) this.placeFor(want);
@@ -458,51 +675,78 @@ if (typeof AFRAME !== 'undefined') {
       // what "open" means; away is what "closed" means. The arc is the
       // delay before the menu catches up with your hand, in whichever
       // direction they currently disagree — so bring your hand back
-      // mid-close and the arc simply drains and nothing happens.
+      // mid-close and the arc simply drains and nothing happens. Closing
+      // is quicker than opening (closeMs vs openMs): putting your hand
+      // down is a clear intent, and a menu that lingers is in the way.
       var dwelling = Boolean(hand) !== open;
-      this.dwellMs = dwelling
-        ? this.dwellMs + delta
+      var duration = Math.max(1, open ? this.activation.closeMs : this.activation.openMs);
+      this.progress = dwelling
+        ? Math.min(1, this.progress + delta / duration)
         // Drain, don't snap: see DWELL_DRAIN_RATE.
-        : Math.max(0, this.dwellMs - delta * DWELL_DRAIN_RATE);
-      var progress = Math.min(1, this.dwellMs / this.data.dwellMs);
+        : Math.max(0, this.progress - (delta * DWELL_DRAIN_RATE) / duration);
       // The dim track shows on approach only while closed — next to an
       // open menu it would be a permanent bar saying nothing.
-      component.setProgress(progress, progress > 0 || (!open && Boolean(near[side])));
+      component.setProgress(this.progress, this.progress > 0 || (!open && Boolean(near[side])));
 
-      if (!dwelling || progress < 1) return;
-      this.dwellMs = 0;
+      if (!dwelling || this.progress < 1) return;
+      this.progress = 0;
       component.setProgress(0, false);
       if (hand) this.open(side, hand);
       else this.close();
     },
 
-    // Purely geometric: whether the hand is in a temple zone, and which
-    // side of your HEAD it is on rather than which hand it is, so
-    // reaching across works. What that means is the tick's business.
-    //
-    // There is no speed check: a swing past your ear spends a fifth of a
-    // second in the zone and the dwell needs well over a second, while a
-    // speed limit tripped on a centimetre of tracking jitter and threw
-    // the whole bar away.
-    readHand: function (handEl) {
-      var semantic = handEl.components['semantic-hand'];
-      if (semantic && semantic.heldEl) return null;
+    // Every hand, once a frame: where it is in head space and which zone,
+    // if any, it is in or near. Which side of your HEAD, not which hand,
+    // so reaching across works. There is no speed check: a swing past
+    // your ear spends a fifth of a second in a zone and the dwell needs
+    // far longer, while a speed limit tripped on a centimetre of tracking
+    // jitter and threw the whole bar away.
+    readHands: function () {
+      var readings = this.handReadings;
+      readings.length = 0;
+      if (!this.cameraEl) return;
+      for (var i = 0; i < this.hands.length; i++) {
+        var handEl = this.hands[i];
+        var semantic = handEl.components['semantic-hand'];
+        var holdingSomething = Boolean(semantic && semantic.heldEl);
+        handEl.object3D.getWorldPosition(this._local);
+        // worldToLocal refreshes the camera's own world matrix on the way,
+        // which is all this needs.
+        this.cameraEl.object3D.worldToLocal(this._local);
+        var reading = { el: handEl, x: this._local.x, y: this._local.y, z: this._local.z,
+          side: null, near: null, held: holdingSomething };
+        if (!holdingSomething) this.classify(reading);
+        readings.push(reading);
+      }
+    },
 
-      handEl.object3D.getWorldPosition(this._local);
-      // worldToLocal refreshes the camera's own world matrix on the way,
-      // which is all this needs.
-      this.cameraEl.object3D.worldToLocal(this._local);
+    classify: function (reading) {
+      var a = this.activation;
+      var bestIn = Infinity;
+      var bestNear = Infinity;
+      for (var k = 0; k < 2; k++) {
+        var side = k === 0 ? 'left' : 'right';
+        var d = zoneDistance(reading, a, side === 'left' ? -1 : 1);
+        // Hold on harder once something is under way on that side.
+        var holding = side === this.panelSide && (this.isOpen() || this.progress > 0);
+        if (d <= a.radius + (holding ? HOLD_MARGIN : 0) && d < bestIn) {
+          bestIn = d;
+          reading.side = side;
+        }
+        if (d <= a.radius + APPROACH_MARGIN && d < bestNear) {
+          bestNear = d;
+          reading.near = side;
+        }
+      }
+    },
 
-      var approachSide = insideTemple(this._local, TEMPLE_APPROACH_MARGIN)
-        ? (this._local.x < 0 ? 'left' : 'right')
-        : null;
-
-      var side = this._local.x < 0 ? 'left' : 'right';
-      // Hold on harder once something is under way on that side.
-      var holding = side === this.panelSide && (this.isOpen() || this.dwellMs > 0);
-      var margin = holding ? TEMPLE_HOLD_MARGIN : 0;
-      if (!insideTemple(this._local, margin)) return { approachSide: approachSide, side: null };
-      return { approachSide: approachSide, side: side };
+    // Change the activation zones or timings live. Metres and ms.
+    setActivation: function (values) {
+      for (var key in values) {
+        if (Object.prototype.hasOwnProperty.call(this.activation, key)) this.activation[key] = values[key];
+      }
+      this.rebuildZones();
+      this.updateReadout();
     },
 
     remove: function () {

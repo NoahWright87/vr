@@ -312,7 +312,7 @@
          hand beside your head until the edge-of-vision pip fills. -->
     <a-scene
       keyboard-shortcuts="enterVR: false"
-      visor-menu="page: visor; dwellMs: 1200"
+      visor-menu="page: visor"
     >
       <a-light type="ambient" color="#fff" intensity="0.7"></a-light>
       <a-light type="directional" position="2 3 2" intensity="0.7"></a-light>
@@ -1095,6 +1095,8 @@
       // player who has bailed out of one knows how to bail out of all
       // of them. Right belongs to the game.
       var DEG = function (value) { return value + '\u00b0'; };
+      var CM = function (value) { return value + 'cm'; };
+      var SEC = function (value) { return (Math.round(value * 100) / 100) + 's'; };
 
       // One visor menu, the same whichever side of your head you open it
       // on. The layout rows are live: they move and resize the menu you
@@ -1113,6 +1115,9 @@
           },
           {
             kind: 'submenu', id: 'visor-settings', label: 'Settings',
+            // Shows every setting at once beside the menu while you are in
+            // here, so a tuned layout goes out as one screenshot.
+            readout: true,
             items: [
               // Where the selected row sits, in degrees from straight ahead.
               { kind: 'number', id: 'visor-position', label: 'Position', value: 4, min: 0, max: 30, step: 1, format: DEG },
@@ -1148,6 +1153,21 @@
               {
                 kind: 'select', id: 'visor-scrim', label: 'Scrim', value: 'off',
                 options: [{ value: 'on', label: 'On' }, { value: 'off', label: 'Off' }],
+              },
+              // How the temple gesture triggers. While you are in here the
+              // two spheres and your hands are drawn as maps beside the
+              // menu, since you can never see the real ones.
+              {
+                kind: 'submenu', id: 'visor-activation', label: 'Activation', readout: true, zones: true,
+                items: [
+                  { kind: 'number', id: 'visor-zone-radius', label: 'Radius', value: 15, min: 4, max: 40, step: 1, format: CM },
+                  // How far out from the middle of your head.
+                  { kind: 'number', id: 'visor-zone-side', label: 'Side', value: 22, min: 4, max: 50, step: 1, format: CM },
+                  // Forward (+) or back (-) from your eyes.
+                  { kind: 'number', id: 'visor-zone-forward', label: 'Forward', value: -6, min: -30, max: 30, step: 1, format: CM },
+                  { kind: 'number', id: 'visor-open-ms', label: 'Open', value: 1.2, min: 0.2, max: 3, step: 0.1, format: SEC },
+                  { kind: 'number', id: 'visor-close-ms', label: 'Close', value: 0.4, min: 0.1, max: 2, step: 0.05, format: SEC },
+                ],
               },
             ],
           },
@@ -1247,6 +1267,14 @@
       // changes on the two visor panels. That is the whole in-headset
       // test for the one-eye question -- no rebuild, no flag file.
       var sceneEl = document.querySelector('a-scene');
+      // Menu units (cm, seconds) to the system's (metres, ms).
+      var ACTIVATION = {
+        'visor-zone-radius': function (v) { return { radius: v / 100 }; },
+        'visor-zone-side': function (v) { return { side: v / 100 }; },
+        'visor-zone-forward': function (v) { return { forward: v / 100 }; },
+        'visor-open-ms': function (v) { return { openMs: v * 1000 }; },
+        'visor-close-ms': function (v) { return { closeMs: v * 1000 }; },
+      };
       var LAYOUT = {
         'visor-position': 'position', 'visor-lift': 'lift', 'visor-width': 'width',
         'visor-height': 'height', 'visor-curve': 'curve', 'visor-crumbs': 'crumbs',
@@ -1264,14 +1292,18 @@
         if (id === 'visor-draw') visor.setDraw(value);
         if (id === 'visor-eyes') visor.setEyes(value);
         if (id === 'visor-scrim') visor.setScrim(value === 'on' ? 0.7 : 0);
+        if (ACTIVATION[id]) visor.setActivation(ACTIVATION[id](value));
       });
       // Number rows preview while you scroll them, so the menu moves as
       // you change its size or position rather than only when you back
       // out — which is the only way to find the right value by eye.
       sceneEl.addEventListener('menu-preview', function (evt) {
         var visor = sceneEl.systems['visor-menu'];
+        if (!visor) return;
+        // The spheres move on the map as you scroll, too.
+        if (ACTIVATION[evt.detail.id]) { visor.setActivation(ACTIVATION[evt.detail.id](evt.detail.value)); return; }
         var key = LAYOUT[evt.detail.id];
-        if (!visor || !key) return;
+        if (!key) return;
         var change = {};
         change[key] = evt.detail.value;
         visor.setLayout(change);
