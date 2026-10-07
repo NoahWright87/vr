@@ -74,34 +74,42 @@ this is only for work that has been decided on and postponed.
 (the A-Frame renderer plus stick engagement) exist, with an in-world
 demo panel in `primitives/menus/`. Deliberately not done yet:
 
-- **Migrate the surfaces, one at a time.** Agreed order: the watch
-  first (most used, smallest content, biggest win from stick
-  navigation), then Pistols' teleport page (worst offender — 12
-  hand-positioned entities on a `4.38`-tall plane, whose destinations
-  already exist as data in `TOWN_LOCATIONS`), then the wall and
-  pedestal panels, then Punch Pop's `createTabbedPanel` (tabs become
-  the top level of the drill). The old markup path goes when the last
-  consumer is off it, not before. `crossbar-menu` already re-emits
-  `menu-item-select` in the shape `menu-item` uses, so existing
-  handlers survive a page moving across.
-
-- **Give the temple pip a stronger presence.** It exists and fills, but
-  it is a thin bar at ~34° off centre, which is the edge of what a
-  Quest shows. If it turns out to be missable in a headset, the fix is
-  a larger or animated mark rather than moving it inboard, since
-  anything closer to centre is in the way during play.
+- **Migrate the surfaces, one at a time.** Surveyed: the old path is
+  `common/menus.js` (`projected-menu`, `menu-pages`, `menu-item`,
+  `menu-option`; 683 lines) plus `watch-menu.js`'s raise/aim/poke.
+  Consumers: the watch in Pistols (5 pages — main, targets, teleport,
+  debug, debug-motion; 23 items, 10 multi-value options), the watch in
+  Boundaries (7 items) and the showcase; mounted `projected-menu`
+  panels in the showcase (wall slab, pedestal, MAIN MENU) and Pistols'
+  carriage; and Punch Pop's separate `createTabbedPanel`. Order:
+  1. **The watch, with Pistols' teleport page folded in** — teleport is
+     one of the watch's pages, so the agreed "watch, then teleport"
+     collapses into one step, and its destinations come from
+     `TOWN_LOCATIONS` instead of 12 hand-placed entities. Needs: a
+     wrist surface on `crossbar-menu`; the pages as data; a compat
+     re-emit of `menu-option-change` for select items (`menu-item-select`
+     is already re-emitted); a decision on poking (old menus are
+     fingertip-poked — cheapest is a poke collider on the five row
+     plates only); and keeping the haptics main added to the watch.
+     Behaviour change to expect: multi-value rows stop cycling with
+     arrows and open as a list, per "everything is a submenu".
+  2. The mounted panels — needs a decision on whether desktop
+     `mounted` mode (the camera flying to the panel) survives or the
+     E-lock replaces it.
+  3. Punch Pop's tabbed panel — tabs become the top level of the drill.
+  4. Delete the old path once nothing uses it, including
+     `obb-collider-visibility.js` and the mounted-mode code in
+     `desktop-controls.js`. The crossbar uses no OBB colliders, so this
+     is also where that performance trap goes away for good.
 
 - **The one-eye test, now runnable.** The visor ships defaulting to
   BOTH eyes on purpose: per-eye rendering is a `layers.set(1|2)` call
-  that only means anything once WebXR's two cameras exist, and it has
-  never been run in a headset here — defaulting to it risked a menu
-  that is simply invisible on first try, which is a miserable thing to
-  diagnose while wearing one. So `Eyes: Both / One` is the first row of
-  the visor's own menu, with `Scrim: On / Off` under it. That covers
-  the three variants agreed earlier (mono + dark scrim, mono + no
-  scrim, binocular + scrim) as two menu selections rather than a
-  rebuild. The answer decides how dark the visor's backing can be, and
-  whether `eye: inboard` becomes the default.
+  that only means anything once WebXR's two cameras exist, and
+  defaulting to it risked a menu that is invisible on first try. `Eyes:
+  Both / One` and `Scrim: On / Off` are rows in the visor's own
+  `Settings`, so the variants are menu selections rather than a
+  rebuild. The answer decides how dark the backing can be and whether
+  one eye becomes the default — and arrives in a readout screenshot.
 
 - **Text overflow options.** Long labels currently shrink to fit and
   then ellipsize. Agreed but not built: wrapping to a second line
