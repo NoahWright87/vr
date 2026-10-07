@@ -21,7 +21,9 @@
 // select something by aiming slightly wrong.
 // ============================================================
 
-import { createMenu } from './menu-model.js';
+import { createMenu, findMenuItem } from './menu-model.js';
+
+export { findMenuItem };
 
 // Pages are registered by name because an A-Frame schema can only hold
 // strings and numbers, and the alternative (building menus from
@@ -222,6 +224,9 @@ if (typeof AFRAME !== 'undefined') {
   // Leaving takes a little more room than arriving, so a hand hovering
   // right on the boundary doesn't chatter in and out.
   var RELEASE_MARGIN = 0.06;
+  // How long after a menu press the laser it lit is ignored. Covers a
+  // press and release plus watch-menu's 250ms laser linger.
+  var PRESS_GRACE_MS = 700;
   // Flat play aims by looking, so engagement is a cone rather than a
   // reach: ~25 degrees off the view centre.
   var FLAT_GAZE_MIN = 0.9;
@@ -397,7 +402,21 @@ if (typeof AFRAME !== 'undefined') {
       // this past about 1.2 buys nothing. Walking right up to a panel is
       // the intended gesture anyway; mounted-interaction uses 0.75.
       hintRadius: { default: 1.2 },
+      // Whether to offer that prompt at all. A watch is opened by raising
+      // your wrist (or Tab), not by walking up to it, so it has no
+      // business competing with the room's own prompts.
+      hint: { default: true },
       plate: { default: true },
+      // How solid the backing is at rest. A panel across the room is
+      // half see-through so it sits in the space; a watch held under your
+      // nose has the room right behind it, and text bleeding through from
+      // a wall panel is the last thing it needs.
+      plateOpacity: { default: 0.55 },
+      // What leaves this menu, for the controls footer: the walk-up E
+      // and INTERACT for a panel in the room, but Tab and WATCH for the
+      // watch, which is opened and put away with those.
+      exitKey: { type: 'string', default: 'E' },
+      exitButton: { type: 'string', default: 'INTERACT' },
       // Whether this menu can be dismissed from inside itself. A fixture
       // — a panel on a wall, the visor — is not something you should be
       // able to lose: it gets no X, and pressing back at the root does
@@ -491,6 +510,12 @@ if (typeof AFRAME !== 'undefined') {
       this.el.addEventListener('object3dset', this.onObject3DSet);
       this.menu.on('change', function () { self.render(); });
       this.menu.on('activate', function () { self.beginFlash(); });
+      // A page can read the world's current values into its items as it
+      // opens — how you move, a preference set from another menu — so
+      // what it shows is never last time's. Runs before the first render.
+      this.menu.on('open', function () {
+        if (typeof page.onOpen === 'function') page.onOpen(self);
+      });
       this.menu.on('close', function () { self.el.emit('crossbar-menu-close', {}, false); });
       this.menu.on('action', function (detail) {
         // Bubbles, so a game can listen on the scene rather than on
@@ -504,6 +529,7 @@ if (typeof AFRAME !== 'undefined') {
       });
       this.menu.on('commit', function (detail) {
         self.el.emit('menu-commit', { id: detail.item.id, value: detail.value, item: detail.item }, true);
+        self.emitCompatible(detail.item, detail.value);
       });
       this.menu.on('preview', function (detail) {
         self.el.emit('menu-preview', { id: detail.item.id, value: detail.value, item: detail.item }, true);
@@ -585,7 +611,7 @@ if (typeof AFRAME !== 'undefined') {
       if (data.plate) {
         var backing = document.createElement('a-plane');
         backing.classList.add('pm-surface');
-        backing.setAttribute('material', 'color: #0b1220; shader: flat; opacity: 0.55; transparent: true');
+        backing.setAttribute('material', 'color: #0b1220; shader: flat; transparent: true; opacity: ' + data.plateOpacity);
         // Named so the hint zone can highlight this one plate. Left to
         // itself, hint-zone highlights every mesh under the entity it
         // is on — which for a menu is an additive copy of all five row
@@ -766,7 +792,39 @@ if (typeof AFRAME !== 'undefined') {
       };
       if (this.backingEl) hint.highlight = '#' + this.backingEl.getAttribute('id');
       else hint.highlightOpacity = 0;
-      this.el.setAttribute('hint-zone', hint);
+      if (data.hint) this.el.setAttribute('hint-zone', hint);
+    },
+
+    // Committed values, re-announced in the shapes the older menus used,
+    // so a page can move onto this system without its handlers moving
+    // with it. Opt-in per item, because most items have no older shape to
+    // be compatible with.
+    //
+    //   emitSelect: true     - menu-item-select carrying the committed
+    //                          value itself (a select whose options are
+    //                          the old buttons' values: 'move-smooth').
+    //   emitSelect: 'name'   - menu-item-select carrying that fixed value
+    //                          (a toggle standing in for a button that
+    //                          flipped something: 'comfort-toggle').
+    //   emitOption: 'key'    - menu-option-change, as a menu-option row
+    //                          with that key would have sent it.
+    emitCompatible: function (item, value) {
+      if (item.emitSelect) {
+        var selectValue = item.emitSelect === true ? value : item.emitSelect;
+        this.el.emit('menu-item-select', { value: selectValue, label: item.label }, true);
+      }
+      if (item.emitOption) {
+        var option = null;
+        var options = typeof item.options === 'function' ? item.options() : (item.options || []);
+        for (var i = 0; i < options.length; i++) if (options[i].value === value) option = options[i];
+        this.el.emit('menu-option-change', {
+          key: item.emitOption,
+          controlLabel: item.label,
+          value: value,
+          label: option ? option.label : String(value),
+          index: option ? options.indexOf(option) : -1,
+        }, true);
+      }
     },
 
     hintOffset: function () {
@@ -1040,7 +1098,10 @@ if (typeof AFRAME !== 'undefined') {
       }
       if (!open) return;
       if (this.closeEl) this.closeEl.object3D.visible = true;
-      if (this.backingEl) this.backingEl.setAttribute('material', 'opacity', this.locked ? 0.82 : 0.55);
+      if (this.backingEl) {
+        this.backingEl.setAttribute('material', 'opacity',
+          this.locked ? Math.max(0.82, data.plateOpacity) : data.plateOpacity);
+      }
 
       var half = (data.windowSize - 1) / 2;
       var inChrome = this.menu.inChrome();
@@ -1340,8 +1401,8 @@ if (typeof AFRAME !== 'undefined') {
       var family = router && typeof router.getActiveFamily === 'function'
         ? router.getActiveFamily() : null;
       return family === 'touch'
-        ? 'Tap a row, tap again to pick   INTERACT leaves'
-        : 'W/S move   D enter   A back   E exit';
+        ? 'Tap a row, tap again to pick   ' + this.data.exitButton + ' leaves'
+        : 'W/S move   D enter   A back   ' + this.data.exitKey + ' exit';
     },
 
     // Off a headset there is no hand to light up, so the panel has to
@@ -1363,7 +1424,7 @@ if (typeof AFRAME !== 'undefined') {
       }
       // While a menu holds the keys it stops advertising itself, and
       // says how to leave instead.
-      this.el.setAttribute('hint-zone', 'desktopLabel', locked ? 'Exit menu' : this.data.hintLabel);
+      if (this.data.hint) this.el.setAttribute('hint-zone', 'desktopLabel', locked ? 'Exit menu' : this.data.hintLabel);
       this.el.emit(locked ? 'crossbar-menu-locked' : 'crossbar-menu-unlocked', {}, false);
       this.render();
     },
@@ -1458,6 +1519,7 @@ if (typeof AFRAME !== 'undefined') {
           candidateSince: 0,
           menu: null,
           glowEl: null,
+          pressedAt: -Infinity,
         };
         handEl.addEventListener('axismove', function (evt) {
           if (evt.detail && evt.detail.axis) state.axes = evt.detail.axis;
@@ -1466,6 +1528,7 @@ if (typeof AFRAME !== 'undefined') {
           handEl.addEventListener(name, function (evt) {
             if (!state.menu) return;
             evt.stopPropagation();
+            state.pressedAt = performance.now();
             state.menu.activate();
           });
         });
@@ -1474,6 +1537,7 @@ if (typeof AFRAME !== 'undefined') {
           handEl.addEventListener(name, function (evt) {
             if (!state.menu) return;
             evt.stopPropagation();
+            state.pressedAt = performance.now();
             state.menu.back();
           });
         });
@@ -1497,6 +1561,16 @@ if (typeof AFRAME !== 'undefined') {
       var watch = handEl.components['hand-with-watch'];
       if (watch && watch.laserActive) return false;
       return true;
+    },
+
+    // The buttons that drive a menu are the same ones that light the
+    // finger laser (watch-menu's wireUpFingertipPointing turns it on for
+    // any trigger or face button, and for grip), so confirming a row
+    // with the trigger made the hand count as pointing and let go of the
+    // menu for a moment. A press the menu itself just consumed is not
+    // pointing.
+    justPressed: function (state) {
+      return Boolean(state.menu) && performance.now() - state.pressedAt < PRESS_GRACE_MS;
     },
 
     tick: function (time, delta) {
@@ -1534,6 +1608,7 @@ if (typeof AFRAME !== 'undefined') {
         }
         // A locked menu that gets closed releases the keys with it.
         if (this.lockedMenu && !this.lockedMenu.menu.isOpen) this.unlock();
+        this.publishCapturedSticks();
         return;
       }
       // Entering a headset drops the flat lock: in XR a hand takes the
@@ -1570,10 +1645,13 @@ if (typeof AFRAME !== 'undefined') {
         var best = null;
         var bestDistance = Infinity;
 
-        if (this.handIsAvailable(state.el)) {
+        if (this.handIsAvailable(state.el) || this.justPressed(state)) {
           state.el.object3D.getWorldPosition(this._handPosition);
           for (var i = 0; i < menus.length; i++) {
             var component = menus[i];
+            // A surface can rule one hand out: the watch's own hand is
+            // the one you raised to read it, so the other hand drives.
+            if (component.ignoreHand === state.el) continue;
             component.getWorldPosition(this._menuPosition);
             var distance = this._handPosition.distanceTo(this._menuPosition);
             // Once engaged, a little extra room before letting go.
@@ -1647,6 +1725,7 @@ if (typeof AFRAME !== 'undefined') {
 
         if (hand.menu) this.pumpStick(hand, time);
       }
+      this.publishCapturedSticks();
     },
 
     // ---------- the flat lock ----------
@@ -1688,14 +1767,23 @@ if (typeof AFRAME !== 'undefined') {
     // locomotion does not need to know what a menu is, only that this
     // particular stick is spoken for — which leaves the other hand's
     // stick doing its usual job rather than freezing the player.
+    //
+    // Every hand that currently drives a menu counts — pinned (the
+    // visor) or engaged by reaching toward a panel. Only counting pinned
+    // ones left a hand engaged with a wall panel or the watch walking and
+    // turning you while it scrolled the list.
     publishCapturedSticks: function () {
       var hands = [];
-      for (var i = 0; i < this.pinned.length; i++) {
-        var el = this.pinned[i].state.el;
-        var side = handSide(el);
+      for (var i = 0; i < this.hands.length; i++) {
+        var state = this.hands[i];
+        if (!state.menu) continue;
+        var side = handSide(state.el);
         if (side && hands.indexOf(side) === -1) hands.push(side);
       }
-      this.el.setAttribute('data-menu-sticks', hands.join(' '));
+      var value = hands.join(' ');
+      if (value === this.capturedSticks) return;
+      this.capturedSticks = value;
+      this.el.setAttribute('data-menu-sticks', value);
     },
 
     unpinHand: function (component) {

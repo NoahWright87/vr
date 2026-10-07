@@ -100,6 +100,22 @@ function resolveItems(source) {
   return Array.isArray(items) ? items : [];
 }
 
+// An item anywhere in a page, by id, for code outside the menu that has
+// to read or set a value — syncing a setting that changed elsewhere
+// before the menu draws it. Function item lists are resolved, so this
+// sees what the menu would show right now.
+export function findMenuItem(items, id) {
+  var list = resolveItems(items);
+  for (var i = 0; i < list.length; i++) {
+    if (list[i].id === id) return list[i];
+    if (list[i].kind === 'submenu') {
+      var found = findMenuItem(list[i].items, id);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
 // A select row reads "Targets: 8" at rest but its submenu is titled
 // just "Targets" - the value slides out of the label and becomes the
 // thing you're choosing.
@@ -251,6 +267,22 @@ MenuModel.prototype.inside = function (flag) {
     if (source && source[flag]) return true;
   }
   return false;
+};
+
+// Re-read every level whose rows come from a function, for when the
+// world changed underneath an open menu — a multiplayer page that should
+// now show End instead of Host. Each level keeps its focus where it can;
+// one whose list got shorter clamps rather than pointing past the end.
+MenuModel.prototype.refresh = function () {
+  for (var i = 0; i < this.stack.length; i++) {
+    var level = this.stack[i];
+    if (level.kind !== 'list') continue;
+    var source = i === 0 ? this.page.items : level.source && level.source.items;
+    if (typeof source !== 'function') continue;
+    level.items = resolveItems(source);
+    level.index = clampInt(level.index, 0, Math.max(0, level.items.length - 1));
+  }
+  this.emit('refresh', {});
 };
 
 MenuModel.prototype.level = function () {

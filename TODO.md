@@ -85,22 +85,33 @@ demo panel in `primitives/menus/`. Deliberately not done yet:
   1. **The watch, with Pistols' teleport page folded in** — teleport is
      one of the watch's pages, so the agreed "watch, then teleport"
      collapses into one step, and its destinations come from
-     `TOWN_LOCATIONS` instead of 12 hand-placed entities. Needs: a
-     wrist surface on `crossbar-menu`; the pages as data; a compat
-     re-emit of `menu-option-change` for select items (`menu-item-select`
-     is already re-emitted); a decision on poking (old menus are
-     fingertip-poked — cheapest is a poke collider on the five row
-     plates only); and keeping the haptics main added to the watch.
-     Behaviour change to expect: multi-value rows stop cycling with
-     arrows and open as a list, per "everything is a submenu".
+     `TOWN_LOCATIONS` instead of 12 hand-placed entities. The plumbing
+     now exists and is proven on the showcase's watch, side by side
+     with the classic one (visor `Watch: Classic / New`): the crossbar
+     copy built by `hand-with-watch` from a `#watch-crossbar-template`,
+     the `emitSelect` / `emitOption` compat re-emits, `onOpen`,
+     `menu.refresh()`, poke targets on the rows, and haptics. Agreed:
+     swapping Pistols (and Boundaries) over is a **new PR**, once the
+     showcase copy has been tried in a headset. What it takes: write
+     each game's watch pages as a `registerMenuPage` page (Pistols: 5
+     pages, 23 items, 10 options — its `menu-option` keys go through
+     `emitOption`, its buttons through action ids or `emitSelect`), add
+     the template, and set `menuStyle: crossbar`. Behaviour change to
+     expect: multi-value rows stop cycling with arrows and open as a
+     list, per "everything is a submenu". Once both games are over,
+     the classic half of `hand-with-watch` (and the second face) goes.
+     Not carried over on purpose: the classic multiplayer sidecar card —
+     the room code is a row in the list now.
   2. The mounted panels — needs a decision on whether desktop
      `mounted` mode (the camera flying to the panel) survives or the
      E-lock replaces it.
   3. Punch Pop's tabbed panel — tabs become the top level of the drill.
   4. Delete the old path once nothing uses it, including
      `obb-collider-visibility.js` and the mounted-mode code in
-     `desktop-controls.js`. The crossbar uses no OBB colliders, so this
-     is also where that performance trap goes away for good.
+     `desktop-controls.js`. The crossbar itself uses no OBB colliders —
+     only the watch's own handful of poke targets (rows, breadcrumb,
+     close), registered by `projected-menu` — so this is also where that
+     performance trap goes away for good.
 
 - **The one-eye test, now runnable.** The visor ships defaulting to
   BOTH eyes on purpose: per-eye rendering is a `layers.set(1|2)` call

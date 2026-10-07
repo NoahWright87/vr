@@ -361,6 +361,10 @@ import './obb-collider-visibility.js';
       orientationGrace: { default: 250 },
       automaticOpenDelay: { default: 320 },
       automatic: { default: false },
+      // A switched-off menu stays shut whatever the pose or a poke says.
+      // Lets one trigger carry two menus — the watch's classic panel and
+      // its crossbar copy — with only one of them answering.
+      enabled: { default: true },
     },
 
     init: function () {
@@ -467,7 +471,10 @@ import './obb-collider-visibility.js';
     },
 
     tick: function (time, delta) {
-      if (this.data.automatic) {
+      if (this.data.enabled === false) {
+        this.active = false;
+        this.automaticOpenSince = null;
+      } else if (this.data.automatic) {
         var automaticIntent = this.computeAutomaticIntent();
         if (automaticIntent !== 'open') {
           this.automaticDismissed = false;
@@ -673,6 +680,7 @@ import './obb-collider-visibility.js';
     },
 
     open: function () {
+      if (this.data.enabled === false) return;
       this.automaticDismissed = false;
       this.active = true;
     },

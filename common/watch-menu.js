@@ -1,6 +1,7 @@
 import './control-mode.js';
 import './menus.js';
 import { pulseHaptics } from './haptics.js';
+import { findMenuItem } from './menu-model.js';
 
   var WATCH_OFFSET = { x: -0.009, y: -0.006, z: 0.100 };
   var FACE_Y_OFFSET = 0.0345;
@@ -148,12 +149,31 @@ import { pulseHaptics } from './haptics.js';
     });
   }
 
+  // Both watch panels sit the same way on the wrist: flat on the face
+  // when poking, pushed a little off it so a fingertip meets the panel
+  // rather than the band.
+  function poseLikeWatchFace(pm, side) {
+    pm.pokeQuat = new AFRAME.THREE.Quaternion().setFromEuler(new AFRAME.THREE.Euler(
+      -Math.PI / 2, 0, side * Math.PI / 2, 'XYZ'
+    ));
+    var outward = new AFRAME.THREE.Vector3(0, 0, 1).applyQuaternion(pm.pokeQuat);
+    pm.data.offset = { x: outward.x * 0.045, y: outward.y * 0.045, z: outward.z * 0.045 };
+  }
+
   // Shared wrist hardware and interaction. Applications provide only a
   // menu template and react to its bubbling menu-item-select events.
   AFRAME.registerComponent('hand-with-watch', {
     schema: {
       hand: { default: 'left', oneOf: ['left', 'right'] },
       menuTemplate: { type: 'selector', default: '#watch-menu-template' },
+      // The same watch drawn by the shared crossbar menu instead of a
+      // hand-built page stack. Only built when the page provides the
+      // template, so a game that has not moved over yet gets exactly the
+      // watch it always had.
+      crossbarTemplate: { type: 'selector', default: '#watch-crossbar-template' },
+      // Which of the two answers the wrist. Switchable at runtime with
+      // setMenuStyle, so the two can be compared on the same hand.
+      menuStyle: { default: 'classic', oneOf: ['classic', 'crossbar'] },
       gazeCursor: { type: 'selector', default: '#gaze-cursor' },
     },
 
@@ -223,18 +243,16 @@ import { pulseHaptics } from './haptics.js';
       function finishMenuSetup() {
         var pm = face.components['projected-menu'];
         self.projectedMenu = pm;
-        pm.pokeQuat = new AFRAME.THREE.Quaternion().setFromEuler(new AFRAME.THREE.Euler(
-          -Math.PI / 2, 0, side * Math.PI / 2, 'XYZ'
-        ));
-        var outward = new AFRAME.THREE.Vector3(0, 0, 1).applyQuaternion(pm.pokeQuat);
-        pm.data.offset = { x: outward.x * 0.045, y: outward.y * 0.045, z: outward.z * 0.045 };
+        self.classicMenu = pm;
+        poseLikeWatchFace(pm, side);
         if (pm.chromes[0]) {
-          self.panelTimeEl = pm.chromes[0].titleEl;
-          self.panelTimeEl.setAttribute('font', 'sourcecodepro');
+          self.classicTimeEl = pm.chromes[0].titleEl;
+          self.classicTimeEl.setAttribute('font', 'sourcecodepro');
+          self.panelTimeEl = self.classicTimeEl;
         }
         face.addEventListener('projected-menu-opened', function () { face.setAttribute('visible', false); });
         face.addEventListener('projected-menu-closed', function () {
-          face.setAttribute('visible', true);
+          if (!self.crossbarMenu || !self.crossbarMenu.visible) face.setAttribute('visible', true);
           var pages = pm.panelEl.components['menu-pages'];
           if (pages) pages.showPage('main');
         });
@@ -270,9 +288,132 @@ import { pulseHaptics } from './haptics.js';
           if (value === 'about') self.showAbout();
         });
         el.emit('watch-menu-ready', { panelEl: pm.panelEl, projectedMenu: pm }, true);
+        self.setMenuStyle(self.data.menuStyle);
       }
       if (face.hasLoaded) finishMenuSetup();
       else face.addEventListener('loaded', finishMenuSetup);
+
+      if (this.data.crossbarTemplate) this.buildCrossbarWatch(wrapper, face, side);
+    },
+
+    // The crossbar copy of the watch. It gets its own trigger rather than
+    // sharing the face, because projected-menu owns its trigger outright
+    // (collider, open/close events, panel placement) — so this is a
+    // second, undrawn face in exactly the same place, carrying a second
+    // projected-menu whose panel holds a crossbar-menu instead of pages.
+    // Everything about *when* the watch opens (raising your wrist, a
+    // poke, palm-up for the larger layout, Tab off a headset) is still
+    // projected-menu's, unchanged; only what you see once it is open
+    // differs.
+    buildCrossbarWatch: function (wrapper, face, side) {
+      var self = this;
+      var trigger = document.createElement('a-entity');
+      trigger.classList.add('watch-face-crossbar');
+      trigger.setAttribute('geometry', 'primitive: box; width: 0.032; height: 0.007; depth: 0.032');
+      // Not drawn — the classic face above is the one you see, clock and
+      // all — but still a real mesh, so the poke collider sizes itself
+      // from it exactly as it does for the face.
+      trigger.setAttribute('material', 'visible: false');
+      trigger.setAttribute('position', face.getAttribute('position'));
+      trigger.setAttribute('projected-menu', {
+        template: this.data.crossbarTemplate,
+        mode: 'auto',
+        automatic: true,
+        pokeScale: 0.12,
+        laserScale: 0.26,
+        enabled: false,
+      });
+      wrapper.appendChild(trigger);
+      this.crossbarTriggerEl = trigger;
+
+      function finish() {
+        var pm = trigger.components['projected-menu'];
+        self.crossbarMenu = pm;
+        poseLikeWatchFace(pm, side);
+        var menuEl = pm.panelEl.querySelector('[crossbar-menu]');
+        if (!menuEl) return;
+        function bind() {
+          var component = menuEl.components['crossbar-menu'];
+          self.crossbarComponent = component;
+          // The hand wearing the watch is the one you raised to read it;
+          // the other hand's stick drives it.
+          component.ignoreHand = self.el;
+          self.crossbarTimeEl = component.titleEl;
+          self.crossbarTimeEl.setAttribute('font', 'sourcecodepro');
+
+          // Rows, breadcrumbs and the close button are what a fingertip
+          // pokes, so projected-menu needs to know about them. They were
+          // built after it scanned the panel.
+          Array.prototype.forEach.call(menuEl.querySelectorAll('.menu-target'), function (target) {
+            target.classList.add('pm-target');
+          });
+          pm.panelEl.emit('menu-targets-changed', null, false);
+
+          // The two halves of "open": projected-menu decides the panel is
+          // up; the menu inside it starts again from the top.
+          trigger.addEventListener('projected-menu-opened', function () {
+            face.setAttribute('visible', false);
+            self.syncCrossbarValues();
+            component.menu.open();
+            // Off a headset the keyboard drives the open watch the way it
+            // drives any other menu you are in — W/S, D, A, Enter.
+            var sticks = self.el.sceneEl.systems['menu-stick-control'];
+            var mode = self.el.sceneEl.systems['control-mode'];
+            if (sticks && mode && !mode.isMode('xr')) sticks.lock(component);
+          });
+          trigger.addEventListener('projected-menu-closed', function () {
+            face.setAttribute('visible', true);
+            component.menu.close();
+            var sticks = self.el.sceneEl.systems['menu-stick-control'];
+            if (sticks && sticks.lockedMenu === component) sticks.unlock();
+          });
+          // And the other way: confirming the menu's own Close puts the
+          // panel away.
+          menuEl.addEventListener('crossbar-menu-close', function () {
+            if (pm.active) pm.close();
+          });
+          menuEl.addEventListener('menu-item-select', function (evt) {
+            var value = evt.detail.value;
+            if (value === 'haptics') self.triggerHaptics();
+            if (value === 'about') self.showAbout();
+          });
+          menuEl.addEventListener('menu-commit', function (evt) {
+            if (evt.detail.id === 'watch-automatic') pm.setAutomatic(evt.detail.value);
+          });
+          self.setMenuStyle(self.data.menuStyle);
+          self.el.emit('watch-crossbar-ready', { panelEl: pm.panelEl, projectedMenu: pm, menu: component }, true);
+        }
+        if (menuEl.hasLoaded && menuEl.components['crossbar-menu']) bind();
+        else menuEl.addEventListener('loaded', bind);
+      }
+      if (trigger.hasLoaded) finish();
+      else trigger.addEventListener('loaded', finish);
+    },
+
+    // The one value that belongs to this particular watch rather than to
+    // the page: whether raising it opens it. Both watches share the page,
+    // so it is read back from whichever one is opening. Everything else
+    // the page reads for itself (see crossbar-menu's onOpen).
+    syncCrossbarValues: function () {
+      var component = this.crossbarComponent;
+      if (!component) return;
+      var automatic = findMenuItem(component.menu.page.items, 'watch-automatic');
+      if (automatic) automatic.value = Boolean(this.crossbarMenu.data.automatic);
+    },
+
+    // Classic or crossbar. Whichever is not chosen is switched off rather
+    // than removed, so flipping back and forth costs nothing and loses no
+    // state. Everything outside that reaches for "the watch's menu" —
+    // desktop-controls' Tab, the clock — follows projectedMenu.
+    setMenuStyle: function (style) {
+      var crossbar = style === 'crossbar' && Boolean(this.crossbarComponent);
+      this.data.menuStyle = style;
+      if (!this.classicMenu) return;
+      this.classicMenu.data.enabled = !crossbar;
+      if (this.crossbarMenu) this.crossbarMenu.data.enabled = crossbar;
+      this.projectedMenu = crossbar ? this.crossbarMenu : this.classicMenu;
+      this.panelTimeEl = crossbar ? this.crossbarTimeEl : this.classicTimeEl;
+      this.updateDisplay();
     },
 
     // Back-solves the hand root's world transform from a desired world
@@ -310,6 +451,17 @@ import { pulseHaptics } from './haptics.js';
     },
 
     showAbout: function () {
+      if (this.projectedMenu === this.crossbarMenu && this.crossbarComponent) {
+        var component = this.crossbarComponent;
+        var item = findMenuItem(component.menu.page.items, 'about');
+        if (!item) return;
+        var restore = item.aboutLabel || item.label;
+        item.aboutLabel = restore;
+        item.label = 'WebXR Primitives';
+        component.render();
+        setTimeout(function () { item.label = restore; component.render(); }, 1500);
+        return;
+      }
       var label = this.projectedMenu.panelEl.querySelector('.watch-menu-about-label');
       if (!label) return;
       var original = label.getAttribute('text').value;

@@ -671,7 +671,10 @@ AFRAME.registerComponent('desktop-controls', {
     if (!watch || !watch.projectedMenu) return;
     this.activeWatchHand = watchHand;
     this.activePointerHand = pointerHand;
-    this.trackActiveMenu(watch.faceEl);
+    // The trigger of whichever menu the watch is using — the face itself
+    // for the classic watch, its undrawn twin for the crossbar one — so
+    // closing either from inside drops back out of watch mode.
+    this.trackActiveMenu(watch.projectedMenu.el);
     this.setMode('watch');
     // Snapshot the reference direction the watch face gets held up along
     // (see captureWatchAnchor/watchViewQuaternion) instead of freezing the

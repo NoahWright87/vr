@@ -556,3 +556,44 @@ test('inside() reports a flagged submenu at any depth below it', () => {
   menu.back(); menu.back();
   assert.equal(menu.inside('readout'), false);
 });
+
+// A page whose rows depend on the world — multiplayer showing Host while
+// idle and End once connected — has to change under an open menu, not
+// only the next time that level is entered.
+test('refresh() re-reads dynamic lists at every level and clamps the focus', () => {
+  let connected = false;
+  const menu = createMenu({ title: 'T', items: () => [
+    { kind: 'action', id: 'a', label: 'A' },
+    { kind: 'submenu', id: 'mp', label: 'Multiplayer', items: () => connected
+      ? [{ kind: 'action', id: 'end', label: 'End' }]
+      : [
+        { kind: 'action', id: 'host', label: 'Host' },
+        { kind: 'action', id: 'code', label: 'Code' },
+        { kind: 'action', id: 'join', label: 'Join' },
+      ] },
+  ].concat(connected ? [{ kind: 'action', id: 'z', label: 'Room' }] : []) });
+  menu.open();
+  menu.moveFocus(1); menu.activate();
+  menu.moveFocus(2);
+  assert.equal(focusLabel(menu), 'Join');
+  let refreshed = 0;
+  menu.on('change', (change) => { if (change.event === 'refresh') refreshed++; });
+
+  connected = true;
+  menu.refresh();
+  assert.equal(refreshed, 1, 'a surface hears about it through change');
+  assert.equal(focusLabel(menu), 'End', 'the shorter list clamped the focus');
+  assert.deepEqual(labels(menu), ['End']);
+  menu.back();
+  assert.deepEqual(labels(menu), ['A', 'Multiplayer', 'Room'], 'the root was re-read too');
+  assert.equal(focusLabel(menu), 'Multiplayer', 'and kept its place');
+});
+
+test('refresh() leaves static lists alone', () => {
+  const menu = createMenu(samplePage());
+  menu.open();
+  menu.moveFocus(4); menu.activate();
+  const before = menu.level().items;
+  menu.refresh();
+  assert.equal(menu.level().items, before);
+});

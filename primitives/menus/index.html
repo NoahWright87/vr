@@ -348,13 +348,13 @@
         </a-camera>
 
         <a-entity id="left-hand" position="-0.2 1.35 -0.4"
-          hand-with-watch="hand: left"
+          hand-with-watch="hand: left; menuStyle: crossbar"
           semantic-hand="hand: left; maxReach: 1.0"
         ></a-entity>
         <a-entity id="tracked-hand-visual-left" control-mode-visibility="modes: xr" hand-controls="hand: left; handModelStyle: lowPoly"></a-entity>
 
         <a-entity id="right-hand" position="0.2 1.35 -0.4"
-          hand-with-watch="hand: right"
+          hand-with-watch="hand: right; menuStyle: crossbar"
           semantic-hand="hand: right; maxReach: 1.0"
         ></a-entity>
         <a-entity id="tracked-hand-visual-right" control-mode-visibility="modes: xr" hand-controls="hand: right; handModelStyle: lowPoly"></a-entity>
@@ -820,6 +820,22 @@
         </a-entity>
       </template>
 
+      <!-- The same watch on the shared crossbar menu: one five-row list
+           instead of the five hand-laid pages above, built from the
+           "watch" page registered further down. hand-with-watch builds it
+           beside the classic one and the visor's Watch row switches
+           between them, so the two can be compared on the same wrist.
+           Everything about opening it (raise, poke, palm-up, Tab) is the
+           same projected-menu as the classic watch. -->
+      <template id="watch-crossbar-template">
+        <a-entity class="watch-crossbar-panel" visible="false">
+          <a-entity class="watch-crossbar"
+            crossbar-menu="page: watch; width: 1.2; rowHeight: 0.2; maxChars: 20; open: false; closeBehavior: hide; memory: none; hint: false; stickRange: 0.35; crumbs: title; breadcrumbDepth: 1; plateOpacity: 0.94; exitKey: Tab; exitButton: WATCH"
+            crossbar-menu-registration
+          ></a-entity>
+        </a-entity>
+      </template>
+
       <!-- Two entities per hand, deliberately decoupled — same pattern
            Pistols at Dawn uses, for the same reason: hand-controls'
            rendered mesh applies its own "looks natural" corrective
@@ -1080,6 +1096,7 @@
       // window, since "the list got taller than the player" is the
       // failure this system exists to fix.
       import { registerMenuPage } from '../../common/menu-crossbar.js';
+      import { ROOM_CODE_CHARS } from '../../worker/src/signal-rooms.js';
 
       var TOWNS = [
         'Ghost Town', 'The Range', 'The Saloon', "Sheriff's Office",
@@ -1107,6 +1124,14 @@
         items: [
           { kind: 'action', id: 'spawn-box', label: 'Spawn box' },
           { kind: 'toggle', id: 'visor-grid', label: 'Floor grid', value: true },
+          // Which watch your wrists wear: the original hand-built pages, or
+          // the same watch on this menu system. Here rather than on the
+          // watch, because switching a menu from inside itself would pull
+          // the floor out from under you.
+          {
+            kind: 'select', id: 'visor-watch', label: 'Watch', value: 'crossbar',
+            options: [{ value: 'classic', label: 'Classic' }, { value: 'crossbar', label: 'New' }],
+          },
           {
             kind: 'submenu', id: 'visor-destinations', label: 'Destinations',
             items: TOWNS.map(function (name, i) {
@@ -1180,6 +1205,203 @@
           },
           { kind: 'action', id: 'visor-exit', label: 'Exit VR' },
         ],
+      });
+
+      // ------------------------------------------------------------
+      // The watch, on the crossbar menu. Every value here maps onto
+      // something the classic watch template above does, and mostly by
+      // re-emitting the classic watch's own values (emitSelect /
+      // emitOption — see crossbar-menu's emitCompatible), so the
+      // handlers further down drive both watches unchanged. The
+      // exceptions are the vignette knobs, which the classic watch could
+      // only nudge a step at a time and which are numbers here.
+      // ------------------------------------------------------------
+      var watchScene = document.querySelector('a-scene');
+      var watchRig = document.querySelector('#rig');
+
+      function inXR () {
+        var mode = watchScene.systems['control-mode'];
+        return Boolean(mode && mode.isMode('xr'));
+      }
+
+      // The classic watch hides its headset-only rows (teleport, turning,
+      // comfort, haptics) off a headset with control-mode-visibility.
+      // Here the list is simply built without them; the watch reopens at
+      // the top every time, so it is rebuilt each time it opens.
+      function forThisMode (list) {
+        return function () {
+          return list.filter(function (entry) { return !entry.xrOnly || inXR(); });
+        };
+      }
+
+      var PERCENT = function (value) { return Math.round(value * 100) + '%'; };
+
+      var watchMove = {
+        kind: 'select', id: 'watch-move', label: 'Move', value: 'move-smooth', emitSelect: true,
+        options: forThisMode([
+          { value: 'move-smooth', label: 'Smooth' },
+          { value: 'move-teleport', label: 'Teleport', xrOnly: true },
+          { value: 'move-disabled', label: 'Off' },
+        ]),
+      };
+      var watchTurn = {
+        kind: 'select', id: 'watch-turn', label: 'Turn', value: 'turn-snap', emitSelect: true, xrOnly: true,
+        options: [{ value: 'turn-snap', label: 'Snap' }, { value: 'turn-smooth', label: 'Smooth' }],
+      };
+      // The classic watch's Vignette button sends "comfort-toggle", which
+      // flips whatever locomotion currently has; onOpen below keeps this
+      // row's value in step with that.
+      var watchVignette = { kind: 'toggle', id: 'watch-vignette', label: 'Vignette', value: true, emitSelect: 'comfort-toggle', xrOnly: true };
+      var watchDrift = {
+        kind: 'select', id: 'watch-drift', label: 'Drift', value: 'drift-medium', emitSelect: true,
+        options: [
+          { value: 'drift-off', label: 'Off' }, { value: 'drift-low', label: 'Low' },
+          { value: 'drift-medium', label: 'Medium' }, { value: 'drift-high', label: 'High' },
+        ],
+      };
+      var watchStrength = { kind: 'number', id: 'watch-vignette-strength', label: 'Strength', value: 0.2, min: 0, max: 1, step: 0.1, format: PERCENT };
+      var watchInset = { kind: 'number', id: 'watch-vignette-inset', label: 'Inset', value: 0.8, min: 0.25, max: 1.2, step: 0.05 };
+      var watchRadius = { kind: 'number', id: 'watch-vignette-radius', label: 'Radius', value: 0.95, min: 0.4, max: 1.4, step: 0.05 };
+      var watchTeleportHand = {
+        kind: 'select', id: 'watch-teleport-hand', label: 'Teleport', value: 'teleport-left', emitSelect: true,
+        options: [{ value: 'teleport-left', label: 'Left hand' }, { value: 'teleport-right', label: 'Right hand' }],
+      };
+      var watchHandedness = {
+        kind: 'select', id: 'watch-handedness', label: 'Hand', value: 'right', emitOption: 'handedness',
+        options: [{ value: 'right', label: 'Right' }, { value: 'left', label: 'Left' }],
+      };
+      var watchHints = {
+        kind: 'select', id: 'watch-hints', label: 'Hints', value: 'delayed', emitOption: 'interaction-hints',
+        options: [{ value: 'always', label: 'Always' }, { value: 'delayed', label: 'Delayed' }, { value: 'never', label: 'Never' }],
+      };
+
+      // Multiplayer. The room code was a four-square dial with a popup
+      // grid of characters; here it is four letter rows you scroll, with
+      // the code itself in the row's label so you can see what you are
+      // about to join without going in.
+      var watchCodeLetters = [0, 1, 2, 3].map(function (index) {
+        return {
+          kind: 'select', id: 'watch-mp-code-' + index, label: 'Letter ' + (index + 1), value: ROOM_CODE_CHARS[0],
+          options: ROOM_CODE_CHARS.split('').map(function (char) { return { value: char, label: char }; }),
+        };
+      });
+      function watchRoomCode () {
+        return watchCodeLetters.map(function (item) { return item.value; }).join('');
+      }
+      var watchCode = { kind: 'submenu', id: 'watch-mp-code', label: 'Code: ' + watchRoomCode(), items: watchCodeLetters };
+      var watchIdle = [
+        { kind: 'action', id: 'mp-host', label: 'Host' },
+        watchCode,
+        { kind: 'action', id: 'mp-join', label: 'Join' },
+      ];
+
+      function watchInfoRow (label, index) {
+        return { kind: 'action', id: 'watch-info-' + index, label: label, disabled: true };
+      }
+
+      var WATCH_HELP = {
+        xr: ['Raise wrist: open', 'Other stick: scroll', 'Stick right: enter', 'Stick left: back', 'Trigger: pick', 'Or point and poke', 'Palm up: big menu'],
+        keyboard: ['Tab: watch', 'W/S: scroll', 'D: enter  A: back', 'Enter: pick', 'Or click a row', 'WASD move  C crouch', 'E mounted  F grab'],
+        gamepad: ['Y/Start: watch', 'Stick: scroll', 'A: pick  B: exit', 'X mounted  LB grab'],
+        touch: ['WATCH: open', 'Tap a row: scroll', 'Tap again: pick', 'Joystick + drag look'],
+      };
+
+      var watchPage = registerMenuPage('watch', {
+        // The clock: hand-with-watch writes the time into the title.
+        title: '',
+        // Written by the multiplayer script below as a session starts,
+        // changes and ends; each watch then refreshes its open menu.
+        multiplayer: { code: '', players: [] },
+        items: forThisMode([
+          watchMove,
+          watchTurn,
+          watchVignette,
+          {
+            kind: 'submenu', id: 'watch-tuning', label: 'Tuning', xrOnly: true,
+            items: [watchDrift, watchStrength, watchInset, watchRadius, watchTeleportHand],
+          },
+          { kind: 'action', id: 'station-center', label: 'Station: Center' },
+          {
+            kind: 'submenu', id: 'watch-input', label: 'Input',
+            items: [
+              watchHandedness,
+              watchHints,
+              // What the classic watch's A/M title-bar button did: whether
+              // raising your wrist opens it, or only a poke does.
+              { kind: 'toggle', id: 'watch-automatic', label: 'Auto-open', value: true },
+            ],
+          },
+          { kind: 'action', id: 'haptics', label: 'Haptics test', xrOnly: true },
+          { kind: 'action', id: 'about', label: 'About' },
+          {
+            kind: 'submenu', id: 'watch-multiplayer', label: 'Multiplayer',
+            items: function () {
+              var session = watchPage.multiplayer;
+              if (!session.code) return watchIdle;
+              return [
+                { kind: 'action', id: 'mp-end', label: 'End session' },
+                watchInfoRow('Room: ' + session.code, 0),
+              ].concat(session.players.map(function (player, index) {
+                return watchInfoRow(player.peerId, index + 1);
+              }));
+            },
+          },
+          {
+            kind: 'submenu', id: 'watch-help', label: 'Help',
+            items: function () {
+              var router = watchScene.systems['input-router'];
+              var family = inXR() ? 'xr'
+                : (router && typeof router.getActiveFamily === 'function' ? router.getActiveFamily() : 'keyboard');
+              return (WATCH_HELP[family] || WATCH_HELP.keyboard).map(watchInfoRow);
+            },
+          },
+        ]),
+        // Read the live values in as the watch opens: any of them can have
+        // been changed by the classic watch, the keyboard or the other
+        // hand's watch since this one was last up.
+        onOpen: function () {
+          var locomotion = watchRig && watchRig.components['locomotion-demo'];
+          if (locomotion) {
+            var data = locomotion.data;
+            watchMove.value = 'move-' + data.moveMode;
+            watchTurn.value = 'turn-' + data.turnMode;
+            watchVignette.value = Boolean(data.comfortVignette);
+            watchDrift.value = 'drift-' + data.driftMode;
+            watchStrength.value = data.vignetteStrength;
+            watchInset.value = data.vignetteInset;
+            watchRadius.value = data.vignetteRadius;
+            watchTeleportHand.value = 'teleport-' + locomotion.getTeleportHand();
+          }
+          var desktop = watchRig && watchRig.components['desktop-controls'];
+          if (desktop && desktop.preferences) {
+            watchHandedness.value = desktop.preferences.handedness;
+            watchHints.value = desktop.preferences.hintMode;
+          }
+        },
+      });
+
+      // The vignette numbers act as you scroll them, like every number.
+      var WATCH_VIGNETTE = {
+        'watch-vignette-strength': 'setVignetteStrength',
+        'watch-vignette-inset': 'setVignetteInset',
+        'watch-vignette-radius': 'setVignetteRadius',
+      };
+      function applyWatchValue (evt) {
+        var id = evt.detail.id;
+        var locomotion = watchRig && watchRig.components['locomotion-demo'];
+        if (WATCH_VIGNETTE[id] && locomotion) locomotion[WATCH_VIGNETTE[id]](evt.detail.value);
+        if (id && id.indexOf('watch-mp-code-') === 0) watchCode.label = 'Code: ' + watchRoomCode();
+      }
+      watchScene.addEventListener('menu-preview', applyWatchValue);
+      watchScene.addEventListener('menu-commit', applyWatchValue);
+
+      // Which watch you see: the visor's Watch row, applied to both hands.
+      watchScene.addEventListener('menu-commit', function (evt) {
+        if (evt.detail.id !== 'visor-watch') return;
+        document.querySelectorAll('[hand-with-watch]').forEach(function (el) {
+          var watch = el.components['hand-with-watch'];
+          if (watch) watch.setMenuStyle(evt.detail.value);
+        });
       });
 
       registerMenuPage('showcase-crossbar-b', {
@@ -1917,6 +2139,7 @@
       import { createJoinConnection, createHostSession } from '../../common/multiplayer.js';
       import { hostSessionViaRelay, joinViaRelay } from '../../common/signal-relay.js';
       import { RELAY_URL } from '../../common/relay-config.js';
+      import { getMenuPage, findMenuItem } from '../../common/menu-crossbar.js';
 
       var sceneEl = document.querySelector('a-scene');
 
@@ -2465,12 +2688,41 @@
       // watches (left and right hand both show the same connection
       // state, same idea as updateAllDisplays keeping both watches'
       // clocks in sync).
+      // The classic watch's panels specifically — not whichever style is
+      // showing — so switching to the crossbar watch and back finds them
+      // up to date. The crossbar watch reads the same state from its page
+      // instead (see refreshCrossbarWatches).
       function forEachWatchPanel (fn) {
         document.querySelectorAll('[hand-with-watch]').forEach(function (el) {
           var comp = el.components['hand-with-watch'];
-          var panelEl = comp && comp.projectedMenu && comp.projectedMenu.panelEl;
+          var menu = comp && (comp.classicMenu || comp.projectedMenu);
+          var panelEl = menu && menu.panelEl;
           if (panelEl) fn(panelEl);
         });
+      }
+
+      // Hand the session to the crossbar watch's page and have every open
+      // copy re-read it, so Host turns into End under your finger rather
+      // than the next time you open the menu.
+      function refreshCrossbarWatches (players) {
+        var page = getMenuPage('watch');
+        if (!page || !page.multiplayer) return;
+        page.multiplayer.code = currentRoomCode;
+        if (players) page.multiplayer.players = players;
+        if (!currentRoomCode) page.multiplayer.players = [];
+        document.querySelectorAll('[hand-with-watch]').forEach(function (el) {
+          var comp = el.components['hand-with-watch'];
+          if (comp && comp.crossbarComponent) comp.crossbarComponent.menu.refresh();
+        });
+      }
+
+      function crossbarRoomCode () {
+        var page = getMenuPage('watch');
+        if (!page) return '';
+        return [0, 1, 2, 3].map(function (index) {
+          var item = findMenuItem(page.items, 'watch-mp-code-' + index);
+          return item ? item.value : '';
+        }).join('');
       }
 
       function ensureSidecar (panelEl) {
@@ -2518,6 +2770,7 @@
           var codeText = sidecar.querySelector('.watch-mp-sidecar-code');
           if (codeText) codeText.setAttribute('text', 'value', currentRoomCode);
         });
+        refreshCrossbarWatches(null);
       }
 
       function renderPlayerList (players) {
@@ -2535,6 +2788,7 @@
             container.appendChild(row);
           });
         });
+        refreshCrossbarWatches(players);
       }
 
       function currentRosterPlayers () {
@@ -2561,6 +2815,10 @@
           // each watch's room-code-entry holds its own independent
           // dial-in state, since only one is ever being used at a
           // time in practice.
+          if (evt.target.closest && evt.target.closest('.watch-crossbar-panel')) {
+            beginJoiningViaRelay(RELAY_URL, crossbarRoomCode(), {});
+            return;
+          }
           var panelEl = evt.target.closest && evt.target.closest('.watch-menu-panel');
           var entryEl = panelEl && panelEl.querySelector('.watch-mp-room-code-entry');
           var entry = entryEl && entryEl.components['room-code-entry'];
