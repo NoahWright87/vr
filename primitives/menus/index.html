@@ -135,7 +135,10 @@
       ============================================================ -->
       <template id="watch-crossbar-template">
         <a-entity class="watch-crossbar-panel" visible="false">
+          <!-- Raised a little within the panel so its title (the clock)
+               sits where the old hand-built watch's title bar did. -->
           <a-entity class="watch-crossbar"
+            position="0 0.17 0"
             crossbar-menu="page: watch; width: 1.2; rowHeight: 0.2; maxChars: 20; open: false; closeBehavior: hide; memory: none; hint: false; stickRange: 0.35; crumbs: title; breadcrumbDepth: 1; plateOpacity: 0.94; exitKey: Tab; exitButton: WATCH; sidecarWidth: 1; sidecarChars: 22"
             crossbar-menu-registration
           ></a-entity>

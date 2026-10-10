@@ -322,7 +322,12 @@ import { findMenuItem } from './menu-model.js';
       // all — but still a real mesh, so the poke collider sizes itself
       // from it exactly as it does for the face.
       trigger.setAttribute('material', 'visible: false');
-      trigger.setAttribute('position', face.getAttribute('position'));
+      // Exactly where the face is, from the same constants. Not read back
+      // off the face: it has not loaded yet at this point, so its position
+      // read back as the origin — the middle of the hand — which put this
+      // watch's panel (and its poke collider) 10 cm up the hand and 3.5 cm
+      // low compared with the classic one.
+      trigger.setAttribute('position', side * WATCH_OFFSET.x + ' ' + FACE_Y_OFFSET + ' ' + WATCH_OFFSET.z);
       trigger.setAttribute('projected-menu', {
         template: this.data.crossbarTemplate,
         mode: 'auto',
