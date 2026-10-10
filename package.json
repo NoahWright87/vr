@@ -6,9 +6,12 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node --test",
+    "test": "node --test tests/*.test.js && npm run test:impossible",
+    "test:impossible": "node --experimental-strip-types --test games/impossible-spaces/reference-tests/*.test.ts",
+    "test:impossible:browser": "node tests/impossible-spaces.browser.cjs",
     "relay:hosted:dev": "wrangler dev --config worker/wrangler.toml",
-    "relay:hosted:deploy": "wrangler deploy --config worker/wrangler.toml"
+    "relay:hosted:deploy": "wrangler deploy --config worker/wrangler.toml",
+    "test:boundary:browser": "node tests/boundary-lab.browser.cjs"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^6.1.0",
