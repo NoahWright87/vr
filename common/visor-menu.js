@@ -713,13 +713,18 @@ if (typeof AFRAME !== 'undefined') {
         var handEl = this.hands[i];
         var semantic = handEl.components['semantic-hand'];
         var holdingSomething = Boolean(semantic && semantic.heldEl);
+        // Off a headset, a hand desktop-controls has posed for something
+        // else (pointing at the watch, reaching for a panel) is busy, the
+        // way a hand holding something is.
+        var posed = handEl.getAttribute('data-desktop-pose');
+        var busy = holdingSomething || Boolean(posed && posed !== 'visor');
         handEl.object3D.getWorldPosition(this._local);
         // worldToLocal refreshes the camera's own world matrix on the way,
         // which is all this needs.
         this.cameraEl.object3D.worldToLocal(this._local);
         var reading = { el: handEl, x: this._local.x, y: this._local.y, z: this._local.z,
-          side: null, near: null, held: holdingSomething };
-        if (!holdingSomething) this.classify(reading);
+          side: null, near: null, held: busy };
+        if (!busy) this.classify(reading);
         readings.push(reading);
       }
     },

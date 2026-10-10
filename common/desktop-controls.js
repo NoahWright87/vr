@@ -5,6 +5,10 @@ var THREE = AFRAME.THREE;
 var PREFERENCES_KEY = 'vr-showcase-player-preferences-v1';
 var AIM_PITCH_LIMIT_DEG = 55; // see aimLookQuaternion -- a plausible wrist range, not a camera-comfort limit
 var ADS_HAND_OFFSET = { x: 0.06, y: -0.09, z: -0.32 }; // camera-relative ADS hand position (dominant side), before a weapon's own aimOffset -- tune by feel per DESIGN.md; z is forward (camera-local -Z), matching every other offset in this file
+// Where the pointing hand's fingertip sits while you look at the watch,
+// camera-relative: toward its own side, below eye level, out in front.
+// Clear of the visor's temple zones by a wide margin and in view.
+var WATCH_POINTER = { side: 0.14, down: 0.1, forward: 0.36 };
 var TWO_HAND_SPAN_FALLBACK = 0.4; // meters, only used if a supported weapon somehow declares heldPosition/supportGrip at the same point
 
 function xrIsPresenting(sceneEl) {
@@ -534,21 +538,43 @@ AFRAME.registerComponent('desktop-controls', {
 
   setMode: function (mode) {
     this.mode = mode;
-    // Only the watch you asked for may open. Every other hand is being
-    // posed for something else (pointing at that watch, held to your
-    // temple, reaching for a panel), and its own watch must not read
-    // that pose as a raised wrist.
-    ['left', 'right'].forEach(function (side) {
-      var hand = this.hands[side];
-      var watch = hand && hand.el.components['hand-with-watch'];
-      if (watch && watch.setSuppressed) watch.setSuppressed(mode !== 'normal' && hand !== this.activeWatchHand);
-    }, this);
+    this.updatePosedHands();
     this.cursorNdc.set(0, 0);
     this.el.setAttribute('data-desktop-mode', mode);
     this.hintSystem.setTargetingEnabled(mode === 'normal');
     this.setGazeEnabled(mode === 'normal');
     this.updateCursorStyle();
     this.sceneEl.emit('desktop-interaction-mode-changed', { mode: mode }, false);
+  },
+
+  // Which hands desktop is currently posing, and for what — read by the
+  // hands' own watches and by the visor. Re-run on every mode change and
+  // when an interaction ends, including the end that hands over to a
+  // headset without a mode change of its own.
+  updatePosedHands: function () {
+    // Only the watch you asked for may open. Every other hand is being
+    // posed for something else (pointing at that watch, held to your
+    // temple, reaching for a panel), and its own watch must not read
+    // that pose as a raised wrist.
+    // Keyed on whether anything is actually being posed rather than on
+    // the mode alone, because handing over to a headset ends the
+    // interaction without leaving the mode.
+    var posing = Boolean(this.activeWatchHand || this.activePointerHand || this.activeVisorHand || this.activeMounted);
+    ['left', 'right'].forEach(function (side) {
+      var hand = this.hands[side];
+      var watch = hand && hand.el.components['hand-with-watch'];
+      if (watch && watch.setSuppressed) watch.setSuppressed(posing && hand !== this.activeWatchHand);
+      // Same idea for the visor's temple zones: a hand posed to point at
+      // the watch or a panel is not a hand raised to your head, wherever
+      // the zones have been tuned to. The visor reads this.
+      if (!hand) return;
+      var posedFor = null;
+      if (this.mode === 'visor' && hand === this.activeVisorHand) posedFor = 'visor';
+      else if ((this.mode === 'watch' || this.mode === 'mounted') &&
+        (hand === this.activePointerHand || hand === this.activeWatchHand)) posedFor = this.mode;
+      if (posedFor) hand.el.setAttribute('data-desktop-pose', posedFor);
+      else hand.el.removeAttribute('data-desktop-pose');
+    }, this);
   },
 
   updateCursorStyle: function () {
@@ -963,6 +989,7 @@ AFRAME.registerComponent('desktop-controls', {
     this.mountedPokingUntil = 0;
     this.cursorNdc.set(0, 0);
     if (restoreMode !== false) this.setMode('normal');
+    else this.updatePosedHands();
   },
 
   trackActiveMenu: function (menuEl) {
@@ -1333,10 +1360,14 @@ AFRAME.registerComponent('desktop-controls', {
     var right = new THREE.Vector3(1, 0, 0).applyQuaternion(viewQuat);
     var up = new THREE.Vector3(0, 1, 0).applyQuaternion(viewQuat);
     var side = this.activePointerHand.data.hand === 'left' ? -1 : 1;
+    // Out in front and below, where you would actually see it reaching
+    // toward the watch. It used to sit beside your cheek (24 cm out, 13
+    // cm forward), which put the hand right on the visor's temple zone:
+    // the visor's arc started to fill every time you looked at the watch.
     var fingertip = camPos.clone()
-      .addScaledVector(right, side * 0.24)
-      .addScaledVector(up, -0.16)
-      .addScaledVector(forward, 0.13);
+      .addScaledVector(right, side * WATCH_POINTER.side)
+      .addScaledVector(up, -WATCH_POINTER.down)
+      .addScaledVector(forward, WATCH_POINTER.forward);
     this.activePointerHand.setPointPose(fingertip, this.currentAimDirection(fingertip), 'Point');
   },
 
