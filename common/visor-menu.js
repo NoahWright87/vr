@@ -139,6 +139,9 @@ if (typeof AFRAME !== 'undefined') {
       // again, which is what lets you call off a close by bringing your
       // hand back.
       this.progress = 0;
+      // Set once backtick has been answered by something that moves a
+      // hand (desktop-controls); see request.
+      this.flatHands = false;
       // The schema seeds these; from then on they are the truth. They
       // cannot live in the scene attribute: `visor-menu` is a system with
       // no component of the same name, so setAttribute(name, prop, value)
@@ -622,6 +625,10 @@ if (typeof AFRAME !== 'undefined') {
     request: function () {
       var detail = { handled: false };
       this.sceneEl.emit('visor-menu-request', detail, false);
+      // Whether anything off a headset moves hands to your temple. If not
+      // (a page with no desktop-controls), the gesture has nothing to
+      // read, and would only close a visor opened directly here.
+      this.flatHands = detail.handled;
       if (!detail.handled) this.toggle(this.panelSide);
     },
 
@@ -649,7 +656,9 @@ if (typeof AFRAME !== 'undefined') {
       // headset does (desktop-controls puts one to your temple on
       // backtick), so the gesture is the one way the visor opens. A
       // resting desktop hand sits in front of you, nowhere near a zone.
-      if (!this.cameraEl || !this.hands.length) {
+      var mode = this.sceneEl.systems['control-mode'];
+      var xr = mode ? mode.isMode('xr') : this.sceneEl.is('vr-mode');
+      if (!this.cameraEl || !this.hands.length || (!xr && !this.flatHands)) {
         this.progress = 0;
         component.setProgress(0, false);
         return;
