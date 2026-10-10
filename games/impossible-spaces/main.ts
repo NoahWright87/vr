@@ -1,9 +1,20 @@
+import { registerMenuPage } from '../../common/menu-crossbar.js';
 import { DEFAULT_MIX } from './core/templates.ts';
 import { createRuntime, movePlayer, renderWalls } from './core/runtime.ts';
 import { centroid } from './core/geometry.ts';
 import { normalizeFootprint } from './core/footprint.ts';
 import { createRide, beginRide, advanceRide, doorClosure, followPhysicalPose, nearWall } from './core/vr-runtime.ts';
 import { LevelView } from './render.ts';
+
+registerMenuPage('impossible-watch', {
+  title: '', info: () => { const g=document.querySelector('[impossible-game]')?.components['impossible-game'];return [g?.message||'Reading boundary',g?.detail||'Walk with your feet.'].join('\n'); },
+  items: [
+    {kind:'action',id:'regenerate',label:'Generate new level'},
+    {kind:'action',id:'outline',label:'Show / hide boundary'},
+    {kind:'action',id:'margin',label:'Cycle margin'},
+    {kind:'action',id:'width',label:'Cycle door width'}
+  ]
+});
 
 const THREE = AFRAME.THREE;
 const $ = (id: string) => document.getElementById(id)!;
@@ -51,14 +62,15 @@ AFRAME.registerComponent('impossible-game', {
     });
     this.listen(this.scene, 'headset-boundary-tracking-lost', () => { if (this.xr) { this.tracking = false; this.world.object3D.visible = false; this.panel.object3D.visible = false; this.status('Tracking paused', 'Wait for headset tracking to return.'); } });
     this.listen(this.scene, 'headset-boundary-unavailable', () => { if (this.xr) this.status('Boundary unavailable', 'This browser must provide bounded-floor data. No guessed VR footprint.'); });
-    this.listen(this.scene, 'menu-item-select', (event: any) => {
-      if (event.detail.value === 'ride') this.requestRide();
-      if (event.detail.value === 'regenerate') this.generate(true);
-      if (event.detail.value === 'outline') this.toggleOutline();
-      if (event.detail.value === 'margin') this.cycleSetting('margin', [.1,.25,.4]);
-      if (event.detail.value === 'width') this.cycleSetting('door-width', [.8,1,1.2]);
+    this.listen(this.scene, 'menu-action', (event: any) => {
+      if (event.detail.id === 'ride') this.requestRide();
+      if (event.detail.id === 'regenerate') this.generate(true);
+      if (event.detail.id === 'outline') this.toggleOutline();
+      if (event.detail.id === 'margin') this.cycleSetting('margin', [.1,.25,.4]);
+      if (event.detail.id === 'width') this.cycleSetting('door-width', [.8,1,1.2]);
     });
     this.listen(this.scene, 'watch-menu-ready', () => this.renderStatus());
+    this.listen($('ride-button'), 'click', () => this.requestRide());
     this.listen($('generate'), 'click', () => this.generate(true));
     this.listen($('boundary-toggle'), 'click', () => this.toggleOutline());
     for (const id of ['shape','width','depth','door-width','margin','pieces','seed']) this.listen($(id), 'change', () => this.generate(false));
@@ -97,6 +109,7 @@ AFRAME.registerComponent('impossible-game', {
     $('head-status').setAttribute('text', 'value', this.message);
     const text = $('head-status').getObject3D('text');
     if (text) { text.material.depthTest = false; text.material.depthWrite = false; text.renderOrder = 100; }
+    document.querySelectorAll('[hand-with-watch]').forEach(el=>{const watch=el.components['hand-with-watch'];if(watch?.crossbarComponent?.menu.isOpen)watch.crossbarComponent.render();});
     document.querySelectorAll('.game-status').forEach(el => el.setAttribute('text','value',this.message));
     document.querySelectorAll('.game-detail').forEach(el => el.setAttribute('text','value',this.detail));
   },

@@ -41,20 +41,7 @@
     <p><a href="../../">All prototypes</a></p>
   </aside>
   <canvas id="map" width="480" height="440" aria-label="Top-down diagnostic map"></canvas>
-  <template id="watch-menu-template">
-    <a-entity class="watch-menu-panel" visible="false">
-      <a-entity data-menu-page="main">
-        <a-plane width="1.15" height="1.9" color="#101827" position="0 -0.31 -0.01"></a-plane>
-        <a-entity class="menu-chrome-slot" data-title="IMPOSSIBLE SPACES" data-help="false" data-close="true" data-width="1.15" data-bar-y="0.52"></a-entity>
-        <a-text font="sourcecodepro" class="game-status" value="Enter VR to detect boundary" align="center" color="#b6e5ff" width="1.65" wrap-count="32" position="0 0.24 0.01"></a-text>
-        <a-text font="sourcecodepro" class="game-detail" value="Walk with your feet.\nPoke RIDE inside an elevator." align="center" color="#e8f3ff" width="1.55" wrap-count="34" position="0 0.01 0.01"></a-text>
-        <a-entity class="pm-target" geometry="primitive: plane; width: 0.9; height: 0.16" material="color: #20334f" menu-item="value: regenerate; label: Generate" position="0 -0.27 0"><a-text font="sourcecodepro" value="Generate new level" align="center" width="2" position="0 0 0.01"></a-text></a-entity>
-        <a-entity class="pm-target" geometry="primitive: plane; width: 0.9; height: 0.16" material="color: #20334f" menu-item="value: outline; label: Boundary outline" position="0 -0.49 0"><a-text font="sourcecodepro" value="Show / hide boundary" align="center" width="2" position="0 0 0.01"></a-text></a-entity>
-        <a-entity class="pm-target" geometry="primitive: plane; width: 0.9; height: 0.16" material="color: #20334f" menu-item="value: margin; label: Change margin" position="0 -0.71 0"><a-text font="sourcecodepro" value="Margin: 0.10 / 0.25 / 0.40 m" align="center" width="2" position="0 0 0.01"></a-text></a-entity>
-        <a-entity class="pm-target" geometry="primitive: plane; width: 0.9; height: 0.16" material="color: #20334f" menu-item="value: width; label: Door width" position="0 -0.93 0"><a-text font="sourcecodepro" value="Doors: 0.8 / 1.0 / 1.2 m" align="center" width="2" position="0 0 0.01"></a-text></a-entity>
-      </a-entity>
-    </a-entity>
-  </template>
+  <template id="watch-crossbar-template"><a-entity visible="false"><a-entity crossbar-menu="page: impossible-watch; open: false; closeBehavior: hide; memory: none; width: 1.2; sidecarWidth: 1; maxChars: 24; sidecarChars: 30" crossbar-menu-registration></a-entity></a-entity></template>
   <a-scene background="color: #101827" webxr="referenceSpaceType: local-floor; optionalFeatures: bounded-floor" renderer="antialias: true; colorManagement: true">
     <a-entity id="boundary-reader" headset-boundary></a-entity>
     <!-- The rig stays at the XR origin throughout play. No virtual VR locomotion. -->
@@ -71,7 +58,7 @@
     <a-entity id="world"></a-entity>
     <a-entity id="elevator-panel" visible="false">
       <a-plane class="elevator-surface" width="0.5" height="0.35" color="#172a41" position="0 0 -0.008"></a-plane>
-      <a-plane id="ride-button" class="menu-target" width="0.36" height="0.17" color="#3a7895" menu-item="value: ride; label: Ride"><a-text font="sourcecodepro" value="RIDE" align="center" width="1" position="0 0 0.012"></a-text></a-plane>
+      <a-plane id="ride-button" class="menu-target" width="0.36" height="0.17" color="#3a7895"><a-text font="sourcecodepro" value="RIDE" align="center" width="1" position="0 0 0.012"></a-text></a-plane>
       <a-text font="sourcecodepro" id="ride-label" value="Press to change rooms" align="center" color="#d4e4f5" width="0.8" position="0 -0.12 0.01"></a-text>
     </a-entity>
     <a-entity impossible-game></a-entity>

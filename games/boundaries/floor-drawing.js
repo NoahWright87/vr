@@ -34,46 +34,190 @@ function intersects(a,b,c,d) {
 }
 
 export function validateFloor(points,boundary) {
-  if(points.length<3)return 'Draw at least three corners.';
+  if(points.length<3)return 'Walk around the perimeter before saving.';
   if(points.some(p=>!Number.isFinite(p.x)||!Number.isFinite(p.y)))return 'Invalid floor coordinates.';
   if(!boundary || boundary.length<3)return 'Wait for the headset boundary.';
   for(let i=0;i<points.length;i++) {
     const a=points[i],b=points[(i+1)%points.length];
-    if(distance(a,b)<.001)return 'Two corners overlap. Move or undo one.';
-    if(!segmentInside(a,b,boundary))return 'Outside the cyan boundary. Move or undo the red section.';
+    if(distance(a,b)<.001)return 'Two corners overlap. Continue walking a clean lap.';
+    if(!segmentInside(a,b,boundary))return 'Outside the cyan boundary. Walk a lap inside it.';
     for(let j=i+1;j<points.length;j++) {
       if(j===i+1 || (i===0&&j===points.length-1))continue;
-      if(intersects(a,b,points[j],points[(j+1)%points.length]))return 'The outline crosses itself. Move or undo a corner.';
+      if(intersects(a,b,points[j],points[(j+1)%points.length]))return 'The outline crosses itself. Walk a clean lap around the perimeter.';
     }
     const c=points[(i+2)%points.length],r=sub(b,a),s=sub(c,b);
-    if(Math.abs(cross(r,s))<EPS && r.x*s.x+r.y*s.y<0)return 'The outline doubles back. Move or undo a corner.';
+    if(Math.abs(cross(r,s))<EPS && r.x*s.x+r.y*s.y<0)return 'The outline doubles back. Continue around the perimeter.';
   }
-  if(Math.abs(polygonArea(points))<.02)return 'The drawn area is too small. Draw a wider outline.';
+  if(Math.abs(polygonArea(points))<.02)return 'The area is too small. Walk a wider outline.';
   return '';
 }
 
-export class FloorDrawing {
-  constructor() {this.points=[];this.history=[];this.closed=false;this.saved=false;}
-  checkpoint() {this.history.push({points:copy(this.points),closed:this.closed});if(this.history.length>50)this.history.shift();this.saved=false;}
-  add(point, spacing=.03) {
-    if(this.closed || this.points.length>=512)return;
-    const points=this.points,last=points.at(-1);
-    if(last&&distance(last,point)<spacing)return;
-    // Reduce straight strokes without smoothing away corners or concavity.
-    const previous=points.at(-2);
-    if(previous) {
-      const r=sub(last,previous),s=sub(point,last),length=distance(previous,point);
-      if(length>0 && Math.abs(cross(r,s))/length<.008 && r.x*s.x+r.y*s.y>0)points.pop();
+const projection = (p,a,b) => {
+  const r=sub(b,a),length=r.x*r.x+r.y*r.y;
+  const t=length?Math.max(0,Math.min(1,((p.x-a.x)*r.x+(p.y-a.y)*r.y)/length)):0;
+  return {x:a.x+r.x*t,y:a.y+r.y*t,t};
+};
+const clean = points => {
+  const result=points.filter((p,i)=>i===0||distance(p,points[i-1])>1e-7);
+  if(result.length>3&&distance(result[0],result.at(-1))<.06)result.pop();
+  // A lap may begin with a short adjustment onto the perimeter. Remove a
+  // collinear return over that approach, rather than rejecting every later
+  // lap for a doubled-back starting tail. Preserve even tiny concave notches.
+  for(let changed=true;changed&&result.length>3;) {
+    changed=false;
+    for(let i=0;i<result.length;i++) {
+      const a=result[(i+result.length-1)%result.length],b=result[i],c=result[(i+1)%result.length],r=sub(b,a),s=sub(c,b);
+      if(Math.abs(cross(r,s))<1e-7 && r.x*s.x+r.y*s.y<0 && Math.min(distance(a,b),distance(b,c))<.3){result.splice(i,1);changed=true;break;}
     }
-    points.push({...point});this.saved=false;
   }
-  finish() {
-    this.checkpoint();
-    if(this.points.length>3 && distance(this.points[0],this.points.at(-1))<.03)this.points.pop();
-    this.closed=true;
+  return copy(result);
+};
+
+function reduceOpen(points,tolerance,head,boundary) {
+  if(points.length<3)return copy(points);
+  const keep=new Set([0,points.length-1]);
+  points.forEach((p,i)=>{if(head&&distance(p,head)<.75)keep.add(i);});
+  const anchors=Array.from(keep).sort((a,b)=>a-b),stack=anchors.slice(1).map((end,i)=>[anchors[i],end]);
+  while(stack.length) {
+    const [start,end]=stack.pop();if(end-start<2)continue;
+    const a=points[start],b=points[end];let split=-1,max=tolerance;
+    for(let i=start+1;i<end;i++){const d=distance(points[i],projection(points[i],a,b));if(d>max){max=d;split=i;}}
+    if(split<0&&boundary&&!segmentInside(a,b,boundary))split=Math.floor((start+end)/2);
+    if(split>=0){keep.add(split);stack.push([start,split],[split,end]);}
   }
-  nearest(point) {let best=-1,min=.12;this.points.forEach((p,i)=>{const d=distance(p,point);if(d<min){best=i;min=d;}});return best;}
-  undo() {const state=this.history.pop();if(state){this.points=state.points;this.closed=state.closed;this.saved=false;}}
-  clear() {this.checkpoint();this.points=[];this.closed=false;}
-  accept(boundary) {const error=validateFloor(this.points,boundary);this.saved=this.closed&&!error;return error || (this.closed?'':'Finish the outline first.');}
+  return Array.from(keep).sort((a,b)=>a-b).map(i=>({...points[i]}));
+}
+
+export function simplifyWalk(points,{closed=false,head=null,boundary=null,tolerance=.035}={}) {
+  if(points.length<3)return copy(points);
+  if(!closed)return reduceOpen(points,tolerance,head,boundary);
+  const source=clean(points);
+  // Two separated anchors avoid the coincident endpoints of a closed RDP pass.
+  let opposite=1;
+  for(let i=2;i<source.length;i++)if(distance(source[0],source[i])>distance(source[0],source[opposite]))opposite=i;
+  const first=reduceOpen(source.slice(0,opposite+1),tolerance,head,boundary);
+  const second=reduceOpen(source.slice(opposite).concat([source[0]]),tolerance,head,boundary);
+  const result=first.slice(0,-1).concat(second.slice(0,-1));
+  // Simplification never turns a valid polygon into an invalid one.
+  if(boundary&&validateFloor(result,boundary)&&!validateFloor(source,boundary))return source;
+  return result;
+}
+
+function nearestOn(p,polygon) {
+  let best=null;
+  polygon.forEach((a,i)=>{
+    const hit=projection(p,a,polygon[(i+1)%polygon.length]),d=distance(p,hit);
+    if(!best||d<best.distance)best={...hit,index:i,distance:d};
+  });
+  return best;
+}
+function dense(points) {
+  const result=[];
+  points.forEach((a,i)=>{
+    const b=points[(i+1)%points.length],steps=Math.max(1,Math.ceil(distance(a,b)/.08));
+    for(let n=0;n<steps;n++)result.push({x:a.x+(b.x-a.x)*n/steps,y:a.y+(b.y-a.y)*n/steps});
+  });
+  return result;
+}
+function blend(previous,current) {
+  if(!previous.length)return copy(current);
+  return current.map(p=>{
+    const old=nearestOn(p,previous);
+    return old.distance<.3?{x:p.x*.65+old.x*.35,y:p.y*.65+old.y*.35}:{...p};
+  });
+}
+
+// Raw samples survive display simplification, so revisiting a wall can restore
+// its detail and move the estimate. Only one active lap and one dense estimate
+// are retained; laps never append as overlapping rings or form a convex hull.
+export class WalkingBoundary {
+  constructor(boundary) {
+    this.boundary=copy(boundary);this.lap=[];this.estimate=[];this.points=[];
+    this.laps=0;this.length=0;this.closure=null;this.error='';this.closed=false;
+  }
+  add(point) {
+    if(!Number.isFinite(point.x)||!Number.isFinite(point.y))return false;
+    if(this.lap.length&&distance(point,this.lap.at(-1))<.04)return false;
+    if(this.lap.length>=8192){this.error='Too many samples in one lap. Restart calibration.';return false;}
+    if(this.lap.length)this.length+=distance(point,this.lap.at(-1));
+    this.lap.push({...point});
+    if(this.lap.length>8&&this.length>2) {
+      // Find a return to ANY earlier section. The player may have started in
+      // the room's middle and walked out to the perimeter before doing laps.
+      if(!this.closure) {
+        let travelled=0;
+        const perimeter=this.estimate.reduce((n,p,i)=>n+distance(p,this.estimate[(i+1)%this.estimate.length]),0);
+        for(let i=0;i<this.lap.length-8;i++) {
+          if(i)travelled+=distance(this.lap[i-1],this.lap[i]);
+          if(this.length-travelled<Math.max(2,perimeter*.6))break;
+          const d=distance(point,this.lap[i]);
+          if(d<.1){this.closure={start:i,index:this.lap.length-1,distance:d};break;}
+        }
+      }
+      const d=this.closure?distance(point,this.lap[this.closure.start]):Infinity;
+      if(this.closure&&d<this.closure.distance){this.closure.index=this.lap.length-1;this.closure.distance=d;}
+      // Wait until we pass the closest return, instead of shaving a corner
+      // as soon as we enter a radius around the starting position.
+      if(this.closure&&d>this.closure.distance+.08) {
+        const index=this.closure.index;
+        if(this.complete(this.lap.slice(this.closure.start,index+1))) {
+          this.lap=this.lap.slice(index);this.length=this.lap.slice(1).reduce((n,p,i)=>n+distance(p,this.lap[i]),0);
+          this.closure=null;
+        } else this.closure=null;
+      }
+    }
+    if(!this.lastHead||distance(point,this.lastHead)>=.08){this.lastHead={...point};this.preview(point);return true;}
+    return false;
+  }
+  complete(raw) {
+    const outline=simplifyWalk(clean(raw),{closed:true,boundary:this.boundary});
+    const error=validateFloor(outline,this.boundary);
+    if(error){this.error=error;return false;}
+    const samples=dense(outline),merged=blend(this.estimate,samples);
+    const candidate=simplifyWalk(merged,{closed:true,boundary:this.boundary});
+    this.estimate=validateFloor(candidate,this.boundary)?samples:merged;
+    this.laps++;this.error='';return true;
+  }
+  preview(head) {
+    if(!this.estimate.length) {
+      this.closed=false;this.points=simplifyWalk(this.lap,{head,boundary:this.boundary});return;
+    }
+    let source=this.estimate;
+    // Replace the visited arc with this lap's detail, retaining the unvisited
+    // arc. Validate the splice so close parallel walls cannot swap branches.
+    if(this.lap.length>2) {
+      const start=nearestOn(this.lap[0],source),end=nearestOn(this.lap.at(-1),source);
+      const next=nearestOn(this.lap[1],source),n=source.length;
+      let delta=(next.index+next.t-start.index-start.t+n)%n;
+      const direction=delta<=n/2?1:-1;
+      const visited=((end.index+end.t-start.index-start.t)*direction+n)%n;
+      if(start.distance<.3&&end.distance<.3&&visited>1&&visited<n-1) {
+        const rest=[];
+        let index=direction===1?(end.index+1)%n:end.index;
+        const stop=direction===1?(start.index+1)%n:start.index;
+        for(let count=0;index!==stop&&count<n;count++,index=(index+direction+n)%n)rest.push(source[index]);
+        const fresh=this.lap.map(p=>distance(p,head)<.75?{...p}:blend(source,[p])[0]);
+        const candidate=simplifyWalk(clean(fresh.concat(rest)),{closed:true,head,boundary:this.boundary});
+        if(!validateFloor(candidate,this.boundary))source=candidate;
+      }
+    }
+    this.closed=true;this.points=simplifyWalk(source,{closed:true,head,boundary:this.boundary});
+  }
+  finalise() {
+    // A partial extra lap refines only the visited arc. It cannot close an
+    // overlapping second ring over an already completed perimeter.
+    if(!this.estimate.length) {
+      const raw=this.closure?this.lap.slice(this.closure.start,this.closure.index+1):this.lap;
+      if(!this.complete(raw))return {error:this.error,points:[]};
+    } else if(this.closure) {
+      this.complete(this.lap.slice(this.closure.start,this.closure.index+1));
+    }
+    this.preview(this.lap.at(-1)||this.estimate[0]);
+    const points=simplifyWalk(this.points,{closed:true,boundary:this.boundary});
+    const error=validateFloor(points,this.boundary);
+    // Returning from the confirmation preview starts a fresh partial lap,
+    // rather than counting the already reviewed loop a second time.
+    if(!error){this.lap=this.lap.length?[{...this.lap.at(-1)}]:[];this.length=0;this.closure=null;}
+    return {error,points:error?[]:copy(points)};
+  }
 }

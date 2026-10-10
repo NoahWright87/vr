@@ -5,6 +5,17 @@ import test from 'node:test';
 const page = readFileSync(new URL('../games/pistols-at-dawn/index.html', import.meta.url), 'utf8');
 const loader = readFileSync(new URL('../games/pistols-at-dawn/js/world-town.js', import.meta.url), 'utf8');
 const menu = readFileSync(new URL('../games/pistols-at-dawn/js/world-menu.js', import.meta.url), 'utf8');
+const pages = readFileSync(new URL('../games/pistols-at-dawn/js/menu-pages.js', import.meta.url), 'utf8');
+
+// The watch's Teleport submenu is built from TOWN_LOCATIONS — one
+// teleport-<id> row per destination — so a destination listed in the
+// town's loader is reachable from the watch.
+test('the watch teleports to every town location', () => {
+  assert.match(pages, /\(window\.TOWN_LOCATIONS \|\| \[\]\)\.map/);
+  assert.match(pages, /id: 'teleport-' \+ loc\.id, label: loc\.label/);
+  assert.match(loader, /addEventListener\('menu-action', this\.onMenuSelect\)/);
+  assert.match(loader, /id\.indexOf\('teleport-'\) !== 0/);
+});
 const ghostTown = readFileSync(new URL('../games/pistols-at-dawn/areas/ghost-town.html', import.meta.url), 'utf8');
 const saloonInterior = readFileSync(new URL('../games/pistols-at-dawn/js/world-saloon-interior.js', import.meta.url), 'utf8');
 const hubInteriors = readFileSync(new URL('../games/pistols-at-dawn/js/world-hub-interiors.js', import.meta.url), 'utf8');
@@ -25,7 +36,6 @@ test('Ghost Town is the startup hub with its two welcome gateways, nine building
   assert.match(loader, /this\.switchTo\('ghost-town'\)/);
   assert.match(loader, /id: 'ghost-town', label: 'Ghost Town', position: \{ x: 0, y: 0, z: 24 \}/);
   assert.match(loader, /rig\.object3D\.position\.set\(location\.position\.x, location\.position\.y, location\.position\.z\)/);
-  assert.match(page, /menu-item="value: teleport-ghost-town; label: Ghost Town"/);
   assert.equal((ghostTown.match(/class="ghost-town-welcome-gateway/g) || []).length, 2);
   assert.equal((ghostTown.match(/Welcome to Ghost Town!/g) || []).length, 2);
   assert.match(ghostTown, /class="ghost-town-welcome-gateway" position="0 0 20">/);
@@ -44,7 +54,6 @@ test('the Shooting Gallery facade leads to an intentionally oversized indoor tar
   const gallery = readFileSync(new URL('../games/pistols-at-dawn/areas/shooting-gallery.html', import.meta.url), 'utf8');
   const galleryBuilder = readFileSync(new URL('../games/pistols-at-dawn/js/world-ghost-town-gallery.js', import.meta.url), 'utf8');
   assert.match(loader, /id: 'shooting-gallery', label: 'Shooting Gallery'/);
-  assert.match(page, /menu-item="value: teleport-shooting-gallery; label: Shooting Gallery"/);
   assert.match(galleryBuilder, /ghost-town-gallery-door/);
   assert.match(galleryBuilder, /destination: shooting-gallery/);
   assert.match(gallery, /shooting-gallery-interior/);
@@ -96,8 +105,6 @@ test('Ghost Town connects to a Sheriff’s Office and stocked General Store', ()
   assert.match(loader, /id: 'sheriff-office', label: "Sheriff's Office"/);
   assert.match(loader, /id: 'general-store', label: 'General Store'/);
   assert.match(loader, /js\/world-hub-interiors\.js/);
-  assert.match(page, /menu-item="value: teleport-sheriff-office; label: Sheriff's Office"/);
-  assert.match(page, /menu-item="value: teleport-general-store; label: General Store"/);
   assert.match(ghostTown, /id="ghost-town-sheriff-door"/);
   assert.match(ghostTown, /town-door="destination: sheriff-office"/);
   assert.match(ghostTown, /id="ghost-town-store-door"/);
@@ -120,7 +127,6 @@ test('Ghost Town connects to a Sheriff’s Office and stocked General Store', ()
 test('the Bank is a hub interior with a street door and vault', () => {
   const bank = readFileSync(new URL('../games/pistols-at-dawn/areas/bank.html', import.meta.url), 'utf8');
   assert.match(loader, /id: 'bank', label: 'The Bank'/);
-  assert.match(page, /menu-item="value: teleport-bank; label: The Bank"/);
   assert.match(ghostTown, /id="ghost-town-bank-door"/);
   assert.match(ghostTown, /town-door="destination: bank"/);
   assert.match(bank, /bank-interior/);
@@ -132,7 +138,6 @@ test('the Bank is a hub interior with a street door and vault', () => {
 test('the Pharmacy brings elixirs, soda, and medical supplies to Ghost Town', () => {
   const pharmacy = readFileSync(new URL('../games/pistols-at-dawn/areas/pharmacy.html', import.meta.url), 'utf8');
   assert.match(loader, /id: 'pharmacy', label: 'The Pharmacy'/);
-  assert.match(page, /menu-item="value: teleport-pharmacy; label: The Pharmacy"/);
   assert.match(ghostTown, /id="ghost-town-pharmacy-door"/);
   assert.match(ghostTown, /town-door="destination: pharmacy"/);
   assert.match(pharmacy, /pharmacy-interior/);
@@ -146,8 +151,6 @@ test('the Post Office and Boots & Suits fill the final town building slots', () 
   const bootsSuits = readFileSync(new URL('../games/pistols-at-dawn/areas/boots-suits.html', import.meta.url), 'utf8');
   assert.match(loader, /id: 'post-office', label: 'Post Office'/);
   assert.match(loader, /id: 'boots-suits', label: 'Boots & Suits'/);
-  assert.match(page, /menu-item="value: teleport-post-office; label: Post Office"/);
-  assert.match(page, /menu-item="value: teleport-boots-suits; label: Boots &amp; Suits"/);
   assert.match(ghostTown, /town-door="destination: post-office"/);
   assert.match(ghostTown, /town-door="destination: boots-suits"/);
   assert.match(postOffice, /post-office-interior/);
@@ -162,10 +165,13 @@ test('Carriage Tickets use the projected menu to reach out-of-town destinations'
   const carriage = readFileSync(new URL('../games/pistols-at-dawn/js/world-ghost-town-carriage.js', import.meta.url), 'utf8');
   assert.match(carriage, /registerComponent\('carriage-ticket-stall'/);
   assert.match(carriage, /projected-menu/);
+  assert.match(carriage, /projected-crossbar/);
+  assert.match(carriage, /crossbar-menu="page: carriage/);
+  for (const id of ['range', 'farm', 'stable']) assert.match(pages, new RegExp(`id: 'carriage-${id}'`));
   assert.match(carriage, /laserScale: 1; offset: 0 \.45 0/);
   assert.match(carriage, /radius: 1\.6; maxReach: 1\.65; gazeThreshold: \.72/);
-  for (const id of ['range', 'farm', 'stable']) assert.match(carriage, new RegExp(`carriage-${id}`));
-  assert.match(carriage, /hub\.teleportTo\(value\.slice\('carriage-'\.length\)\)/);
+  assert.match(carriage, /addEventListener\('menu-action', this\.onTicket\)/);
+  assert.match(carriage, /hub\.teleportTo\(id\.slice\('carriage-'\.length\)\)/);
 });
 
 test('destination builders are absent from the eager script list', () => {
@@ -180,8 +186,8 @@ test('destination builders are absent from the eager script list', () => {
 });
 
 test('HUD visibility is exposed through the watch menu', () => {
-  assert.match(page, /menu-item="value: toggle-hud; label: Hide HUD"/);
+  assert.match(pages, /id: 'pistols-hud', label: 'HUD', value: true/);
   assert.match(page, /id="player-hud"/);
+  assert.match(menu, /id === 'pistols-hud'\) \{ this\.setHudVisible\(value\)/);
   assert.match(menu, /PLAYER_HUD_VISIBLE = this\.hudVisible/);
-  assert.match(page, /menu-item="value: toggle-performance; label: Show Performance"/);
 });

@@ -320,10 +320,10 @@
       // TELEPORT page covered the same ground and the flat list had
       // nothing left to justify the screen space it took on mobile.
       // Both hands sit inside #player-rig (see index.html's own comment
-      // on that), so a menu-item-select from either watch's panel
-      // bubbles up through this.el on its way to <a-scene> — no
-      // separate listener needed on the watch's own markup. The
-      // template (index.html's TELEPORT page) names each destination
+      // on that), so a menu-action from either watch's panel bubbles
+      // up through this.el on its way to <a-scene> — no separate
+      // listener needed on the watch's own markup. The Teleport submenu
+      // (js/menu-pages.js) names each destination's row
       // "teleport-<id>"; this only needs to strip that prefix and hand
       // the id to teleportTo().
       // ==============================================================
@@ -333,17 +333,17 @@
           this.fading = false;
 
           this.onMenuSelect = this.onMenuSelect.bind(this);
-          this.el.addEventListener('menu-item-select', this.onMenuSelect);
+          this.el.addEventListener('menu-action', this.onMenuSelect);
         },
 
         remove: function () {
-          this.el.removeEventListener('menu-item-select', this.onMenuSelect);
+          this.el.removeEventListener('menu-action', this.onMenuSelect);
         },
 
         onMenuSelect: function (evt) {
-          var value = evt.detail.value;
-          if (value.indexOf('teleport-') !== 0) return;
-          this.teleportTo(value.slice('teleport-'.length));
+          var id = evt.detail.id || '';
+          if (id.indexOf('teleport-') !== 0) return;
+          this.teleportTo(id.slice('teleport-'.length));
         },
 
         teleportTo: function (id, arrival) {

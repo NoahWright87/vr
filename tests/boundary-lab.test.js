@@ -8,14 +8,13 @@ const viteConfig = readFileSync(new URL('../vite.config.js', import.meta.url), '
 test('Boundary Lab is built as an experience and starts with shared watch hands', () => {
   assert.match(viteConfig, /boundaries: resolve\(root, 'games\/boundaries\/index\.html'\)/);
   assert.match(page, /src="\.\.\/\.\.\/common\/watch-menu\.js"/);
-  assert.match(page, /<template id="watch-menu-template">/);
+  assert.match(page, /<template id="watch-crossbar-template">/);
 
   ['left-hand', 'right-hand'].forEach((id) => {
     const hand = page.match(new RegExp('<a-entity id="' + id + '"[^>]*>'))[0];
     assert.ok(hand.indexOf('hand-with-watch') < hand.indexOf('semantic-hand'));
   });
 });
-
 test('Boundary Lab uses the headset-reported bounded floor rather than a guessed room box', () => {
   assert.match(page, /applyCheckerTexture\(document\.querySelector\('#boundary-floor'\), '#263550', '#1c2940', 15, 15\)/);
   assert.match(page, /requestReferenceSpace\('bounded-floor'\)/);
@@ -33,10 +32,6 @@ test('Boundary Lab combines haptics controls with a shared grabbable cube', () =
   assert.match(page, /hint-zone="action: grab; radius: 0\.3/);
   assert.match(page, /grabAction: grab; grabLabel: GRAB/);
   assert.match(page, /grabbable-proximity-haptics="intensity: 0\.35; duration: 45"/);
-  assert.match(page, /page-haptics/);
-  ['left', 'right'].forEach((hand) => {
-    ['low', 'medium', 'high'].forEach((level) => {
-      assert.match(page, new RegExp('menu-item="value: haptic-' + hand + '-' + level));
-    });
-  });
+  assert.match(page, /boundary-haptics/);
+  assert.ok(page.includes("id: 'haptic-' + hand + '-' + level"));
 });
