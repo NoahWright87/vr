@@ -12,7 +12,7 @@ globalThis.registerComponent = (name, definition) => { definitions[name] = defin
 await import('../games/pistols-at-dawn/js/world-menu.js');
 
 test('hot interaction lists use the mutation-invalidated scene index', () => {
-  assert.match(page, /<a-scene pistols-watch-menu area-manager scene-index hotbar-equip>/);
+  assert.match(page, /<a-scene pistols-watch-menu area-manager scene-index hotbar-equip[ >]/);
   assert.match(core, /registerComponent\('scene-index'/);
   assert.match(core, /function sceneElements\(selector\)/);
   assert.doesNotMatch(hands, /document\.querySelectorAll\('\.grabbable'\)/);
@@ -24,7 +24,9 @@ test('proximity haptics are throttled and avoid square roots outside range', () 
 });
 
 test('performance counters are opt-in from the watch', () => {
-  assert.match(page, /menu-item="value: toggle-performance; label: Show Performance"/);
+  const pages = readFileSync(new URL('../games/pistols-at-dawn/js/menu-pages.js', import.meta.url), 'utf8');
+  assert.match(pages, /id: 'pistols-performance', label: 'Performance', value: false/);
+  assert.match(menu, /id === 'pistols-performance'\) \{ this\.setPerformanceVisible\(value\)/);
   assert.match(page, /id="performance-text"[\s\S]*performance-monitor[\s\S]*visible="false"/);
   assert.match(menu, /if \(!this\.data\.enabled\) return/);
   assert.match(menu, /render\.calls/);

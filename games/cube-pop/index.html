@@ -67,7 +67,7 @@
       <button id="reset-button-html">Reset (desktop)</button>
     </div>
 
-    <a-scene>
+    <a-scene visor-menu="page: visor">
       <!-- ============================================================
            ASSETS / LOOK OF THE SCENE
            A plain ground plane and a sky color so there's a sense of
@@ -207,6 +207,22 @@
 
     <script type="module" src="../../common/locomotion.js"></script>
     <script type="module" src="../../common/desktop-input.js"></script>
+    <script type="module" src="../../common/menu-crossbar.js"></script>
+    <script type="module" src="../../common/visor-menu.js"></script>
+    <script type="module">
+      // The visor (hold a hand beside your head; backtick off a headset):
+      // a Reset row, then what every visor has — its settings and Exit VR.
+      import { registerVisorPage } from '../../common/visor-page.js';
+      registerVisorPage('visor', {
+        title: 'CUBE POP',
+        items: [{ kind: 'action', id: 'cube-pop-reset', label: 'Reset cubes' }],
+      });
+      document.addEventListener('menu-action', function (evt) {
+        if (evt.detail.id !== 'cube-pop-reset') return;
+        var game = document.querySelector('#cube-manager').components['cube-game'];
+        if (game) game.reset();
+      });
+    </script>
     <script>
       // ==============================================================
       // COMPONENT: poppable

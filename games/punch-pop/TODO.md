@@ -1,5 +1,10 @@
 # Punch Pop — long-term design notes
 
+> Where these notes say "menu, X tab", the settings now live in the
+> visor (hold a hand beside your head) under the submenu of the same
+> name — the old face-button panel and its tabs are gone. "MORE tab →
+> Show Stats" is now Debug → Stats.
+
 The eventual goal, in Noah's words: give the player a growing set of
 ridiculous, over-the-top punching-based powers that are secretly
 full-body fitness moves. Fun and "feel like a damn superhero" come

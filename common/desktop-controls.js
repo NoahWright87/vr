@@ -5,6 +5,10 @@ var THREE = AFRAME.THREE;
 var PREFERENCES_KEY = 'vr-showcase-player-preferences-v1';
 var AIM_PITCH_LIMIT_DEG = 55; // see aimLookQuaternion -- a plausible wrist range, not a camera-comfort limit
 var ADS_HAND_OFFSET = { x: 0.06, y: -0.09, z: -0.32 }; // camera-relative ADS hand position (dominant side), before a weapon's own aimOffset -- tune by feel per DESIGN.md; z is forward (camera-local -Z), matching every other offset in this file
+// Where the pointing hand's fingertip sits while you look at the watch,
+// camera-relative: toward its own side, below eye level, out in front.
+// Clear of the visor's temple zones by a wide margin and in view.
+var WATCH_POINTER = { side: 0.14, down: 0.1, forward: 0.36 };
 var TWO_HAND_SPAN_FALLBACK = 0.4; // meters, only used if a supported weapon somehow declares heldPosition/supportGrip at the same point
 
 function xrIsPresenting(sceneEl) {
@@ -19,15 +23,21 @@ function visibleInHierarchy(object3D) {
   return true;
 }
 
+var PREFERENCE_VALUES = {
+  handedness: ['right', 'left'],
+  hintMode: ['always', 'delayed', 'never'],
+  aimMode: ['hold', 'toggle'],
+};
+
 function readPreferences() {
   // Toggle is the default: it's the more accessible option (no button
   // needs to be held down for the whole time you're aiming).
   var fallback = { handedness: 'right', hintMode: 'delayed', aimMode: 'toggle' };
   try {
     var saved = JSON.parse(localStorage.getItem(PREFERENCES_KEY));
-    if (saved && (saved.handedness === 'left' || saved.handedness === 'right')) fallback.handedness = saved.handedness;
-    if (saved && ['always', 'delayed', 'never'].indexOf(saved.hintMode) !== -1) fallback.hintMode = saved.hintMode;
-    if (saved && (saved.aimMode === 'hold' || saved.aimMode === 'toggle')) fallback.aimMode = saved.aimMode;
+    Object.keys(PREFERENCE_VALUES).forEach(function (name) {
+      if (saved && PREFERENCE_VALUES[name].indexOf(saved[name]) !== -1) fallback[name] = saved[name];
+    });
   } catch (err) {
     // Storage can be disabled in private or embedded browsers. Defaults are fine.
   }
@@ -55,7 +65,6 @@ AFRAME.registerComponent('desktop-controls', {
   },
 
   init: function () {
-    var self = this;
     this.sceneEl = this.el.sceneEl;
     this.cameraEl = this.data.camera || this.el.querySelector('a-camera') || document.querySelector('a-camera');
     // a-camera enables A-Frame's own WASD controller by default. Desktop
@@ -74,6 +83,8 @@ AFRAME.registerComponent('desktop-controls', {
     this.activeMounted = null;
     this.activePointerHand = null;
     this.activeWatchHand = null;
+    // The hand held to your temple while the visor is up (or opening).
+    this.activeVisorHand = null;
     this.activeMenuEl = null;
     this.cursorStyleEl = null;
     this.cursorNdc = new THREE.Vector2(0, 0);
@@ -132,31 +143,30 @@ AFRAME.registerComponent('desktop-controls', {
     this._aimActionHeld = false; // touch/gamepad's semantic 'aim' action -- see onSemanticAction
     // Both are literally "is the button down" in hold mode, and a
     // press-triggered flip-flop in toggle mode (this.preferences.aimMode,
-    // default 'toggle' -- see readPreferences/the aim-mode menu-option).
+    // default 'toggle' -- see readPreferences/setPreference).
     this.isAiming = false; // the two above, combined -- see updateAiming
     this.onSemanticTap = this.onSemanticTap.bind(this);
     this.onMountedRequest = this.onMountedRequest.bind(this);
     this.onActiveMenuClosed = this.onActiveMenuClosed.bind(this);
-    this.onPreferenceChange = this.onPreferenceChange.bind(this);
-    this.onWatchReady = this.syncPreferenceControls.bind(this);
     this.onControlModeChanged = this.handleControlModeChanged.bind(this);
     this.onSemanticAction = this.onSemanticAction.bind(this);
+    this.onVisorRequest = this.onVisorRequest.bind(this);
+    this.onVisorClosed = this.onVisorClosed.bind(this);
     document.addEventListener('keydown', this.onKeyDown, true);
     document.addEventListener('keyup', this.onKeyUp, true);
     document.addEventListener('pointerdown', this.onPointerDown, true);
     document.addEventListener('pointerup', this.onPointerUp, true);
     document.addEventListener('contextmenu', this.onContextMenu, true);
     this.sceneEl.addEventListener('mounted-interaction-request', this.onMountedRequest);
-    this.sceneEl.addEventListener('menu-option-change', this.onPreferenceChange);
-    this.sceneEl.addEventListener('watch-menu-ready', this.onWatchReady);
     this.sceneEl.addEventListener('control-mode-changed', this.onControlModeChanged);
     this.sceneEl.addEventListener('semantic-tap', this.onSemanticTap);
+    this.sceneEl.addEventListener('visor-menu-request', this.onVisorRequest);
+    this.sceneEl.addEventListener('visor-menu-closed', this.onVisorClosed);
     this.el.addEventListener('semantic-action-intent', this.onSemanticAction);
 
     this.ensureCursorStyleEl();
     this.setMode('normal');
     this.updateCrouchStateAttribute();
-    setTimeout(function () { self.syncPreferenceControls(); }, 0);
   },
 
   dominantSide: function () {
@@ -171,32 +181,18 @@ AFRAME.registerComponent('desktop-controls', {
     return this.hands[this.dominantSide()];
   },
 
-  onPreferenceChange: function (evt) {
-    var detail = evt.detail || {};
-    if (detail.key === 'handedness' && (detail.value === 'left' || detail.value === 'right')) {
-      this.preferences.handedness = detail.value;
-    } else if (detail.key === 'interaction-hints' && ['always', 'delayed', 'never'].indexOf(detail.value) !== -1) {
-      this.preferences.hintMode = detail.value;
-    } else if (detail.key === 'aim-mode' && (detail.value === 'hold' || detail.value === 'toggle')) {
-      this.preferences.aimMode = detail.value;
-    } else {
-      return;
-    }
+  // The player's persisted preferences, set from whichever menu row a
+  // page gives them: 'handedness' (left | right), 'hintMode' (always |
+  // delayed | never), 'aimMode' (hold | toggle). Returns whether the
+  // value was taken.
+  setPreference: function (name, value) {
+    var allowed = PREFERENCE_VALUES[name];
+    if (!allowed || allowed.indexOf(value) === -1) return false;
+    this.preferences[name] = value;
     writePreferences(this.preferences);
     this.hintSystem.setPreferences(this.preferences);
-    this.syncPreferenceControls();
     this.sceneEl.emit('player-preferences-changed', Object.assign({}, this.preferences), false);
-  },
-
-  syncPreferenceControls: function () {
-    var preferences = this.preferences;
-    Array.prototype.forEach.call(document.querySelectorAll('[menu-option]'), function (el) {
-      var component = el.components['menu-option'];
-      if (!component) return;
-      if (component.data.key === 'handedness') component.setValue(preferences.handedness);
-      if (component.data.key === 'interaction-hints') component.setValue(preferences.hintMode);
-      if (component.data.key === 'aim-mode') component.setValue(preferences.aimMode);
-    });
+    return true;
   },
 
   shouldHandleKeyboard: function (evt) {
@@ -214,18 +210,23 @@ AFRAME.registerComponent('desktop-controls', {
     }
     if (evt.repeat) return;
 
+    // A crossbar menu you have entered owns E and Esc (it leaves the
+    // menu — see menu-stick-control's release), so neither also starts
+    // something else here. Read before that handler runs: this listens
+    // in the capture phase, so the lock is still the one the key found.
+    var menuLocked = this.sceneEl.getAttribute('data-menu-locked') === 'true';
+
     if (evt.code === 'Tab') {
       evt.preventDefault();
-      if (this.mode === 'watch') this.exitInteraction();
-      else if (this.mode === 'normal') this.openWatch();
+      this.toggleWatch();
     } else if (evt.code === 'Escape') {
       if (this.mode !== 'normal') this.exitInteraction();
-      else this.openWatch();
+      else if (!menuLocked) this.openWatch();
     } else if (evt.code === 'KeyE') {
       evt.preventDefault();
       if (this.mode === 'mounted') {
         this.exitInteraction();
-      } else if (this.mode === 'normal') {
+      } else if (this.mode === 'normal' && !menuLocked) {
         var mountedCandidate = this.hintSystem.getDesktopCandidate('mounted');
         if (mountedCandidate) {
           this.hintSystem.activateForHand('mounted', mountedCandidate.hand.el, 'start', 'desktop');
@@ -421,8 +422,7 @@ AFRAME.registerComponent('desktop-controls', {
     if (detail.phase !== 'perform' || xrIsPresenting(this.sceneEl)) return;
     var source = detail.source || 'desktop';
     if (detail.action === 'watch') {
-      if (this.mode === 'watch') this.exitInteraction();
-      else if (this.mode === 'normal') this.openWatch();
+      this.toggleWatch();
     } else if (detail.action === 'back') {
       if (this.mode !== 'normal') this.exitInteraction();
     } else if (detail.action === 'interact') {
@@ -483,8 +483,7 @@ AFRAME.registerComponent('desktop-controls', {
     if (!scope) return false;
     var target = this.findNearestMenuTarget(scope, 0.055);
     if (!target) return false;
-    var menuItem = target.getAttribute('menu-item');
-    this.activePointerHand.el.setAttribute('data-ray-target', (menuItem && (menuItem.value || menuItem.label)) || target.id || 'target');
+    this.activePointerHand.el.setAttribute('data-ray-target', target.id || 'target');
     target.emit('click', null, false);
     return true;
   },
@@ -524,12 +523,43 @@ AFRAME.registerComponent('desktop-controls', {
 
   setMode: function (mode) {
     this.mode = mode;
+    this.updatePosedHands();
     this.cursorNdc.set(0, 0);
     this.el.setAttribute('data-desktop-mode', mode);
     this.hintSystem.setTargetingEnabled(mode === 'normal');
     this.setGazeEnabled(mode === 'normal');
     this.updateCursorStyle();
     this.sceneEl.emit('desktop-interaction-mode-changed', { mode: mode }, false);
+  },
+
+  // Which hands desktop is currently posing, and for what — read by the
+  // hands' own watches and by the visor. Re-run on every mode change and
+  // when an interaction ends, including the end that hands over to a
+  // headset without a mode change of its own.
+  updatePosedHands: function () {
+    // Only the watch you asked for may open. Every other hand is being
+    // posed for something else (pointing at that watch, held to your
+    // temple, reaching for a panel), and its own watch must not read
+    // that pose as a raised wrist.
+    // Keyed on whether anything is actually being posed rather than on
+    // the mode alone, because handing over to a headset ends the
+    // interaction without leaving the mode.
+    var posing = Boolean(this.activeWatchHand || this.activePointerHand || this.activeVisorHand || this.activeMounted);
+    ['left', 'right'].forEach(function (side) {
+      var hand = this.hands[side];
+      var watch = hand && hand.el.components['hand-with-watch'];
+      if (watch && watch.setSuppressed) watch.setSuppressed(posing && hand !== this.activeWatchHand);
+      // Same idea for the visor's temple zones: a hand posed to point at
+      // the watch or a panel is not a hand raised to your head, wherever
+      // the zones have been tuned to. The visor reads this.
+      if (!hand) return;
+      var posedFor = null;
+      if (this.mode === 'visor' && hand === this.activeVisorHand) posedFor = 'visor';
+      else if ((this.mode === 'watch' || this.mode === 'mounted') &&
+        (hand === this.activePointerHand || hand === this.activeWatchHand)) posedFor = this.mode;
+      if (posedFor) hand.el.setAttribute('data-desktop-pose', posedFor);
+      else hand.el.removeAttribute('data-desktop-pose');
+    }, this);
   },
 
   updateCursorStyle: function () {
@@ -663,6 +693,62 @@ AFRAME.registerComponent('desktop-controls', {
     gaze.setAttribute('visible', enabled);
   },
 
+  // The watch and the visor (and a mounted panel) are one-at-a-time, the
+  // same as in a headset where one hand cannot be at your wrist and your
+  // temple at once: asking for the watch puts down whatever else is up.
+  toggleWatch: function () {
+    if (this.mode === 'watch') { this.exitInteraction(); return; }
+    if (this.mode !== 'normal') this.exitInteraction();
+    this.openWatch();
+  },
+
+  // ---------- the visor ----------
+  //
+  // Off a headset the visor opens exactly the way it does in one: a hand
+  // goes to the side of your head and stays there until the visor's own
+  // gesture (common/visor-menu.js) has seen it long enough. Backtick or
+  // the corner button asks; this answers by moving the hand.
+  onVisorRequest: function (evt) {
+    if (xrIsPresenting(this.sceneEl)) return;
+    evt.detail.handled = true;
+    if (this.mode === 'visor') { this.exitInteraction(); return; }
+    if (this.mode !== 'normal') this.exitInteraction();
+    this.openVisor();
+  },
+
+  openVisor: function () {
+    // The off hand, as for the watch — unless it is holding something,
+    // which the visor ignores (as it would in a headset), and the other
+    // one is free.
+    var hand = this.hands[this.watchSide()];
+    var other = this.getDominantHand();
+    if (hand && hand.heldEl && other && !other.heldEl) hand = other;
+    if (!hand) return;
+    this.activeVisorHand = hand;
+    this.setMode('visor');
+    this.placeVisorHand();
+  },
+
+  // Into the middle of that side's temple zone, read live from the
+  // visor's own activation settings so tuning the zone moves the hand
+  // with it.
+  placeVisorHand: function () {
+    var hand = this.activeVisorHand;
+    var visor = this.sceneEl.systems['visor-menu'];
+    if (!hand || !visor) return;
+    var zone = visor.activation;
+    var sign = hand.data.hand === 'left' ? -1 : 1;
+    var position = this.cameraOffsetToWorld(new THREE.Vector3(sign * zone.side, 0, -zone.forward), true);
+    this.cameraEl.object3D.getWorldQuaternion(this._cameraQuaternion);
+    hand.setWorldTransform(position, this._cameraQuaternion.clone(), 'Open');
+  },
+
+  // The visor closed some other way — E or Esc from inside it, or a
+  // flat lock taken by another menu: the hand comes down too.
+  onVisorClosed: function () {
+    if (this.mode === 'visor' && this.activeVisorHand) this.exitInteraction();
+  },
+
   openWatch: function () {
     if (xrIsPresenting(this.sceneEl) || this.mode !== 'normal') return;
     var watchHand = this.hands[this.watchSide()];
@@ -671,7 +757,9 @@ AFRAME.registerComponent('desktop-controls', {
     if (!watch || !watch.projectedMenu) return;
     this.activeWatchHand = watchHand;
     this.activePointerHand = pointerHand;
-    this.trackActiveMenu(watch.faceEl);
+    // The watch menu's trigger (the face's undrawn twin), so closing the
+    // menu from inside drops back out of watch mode.
+    this.trackActiveMenu(watch.projectedMenu.el);
     this.setMode('watch');
     // Snapshot the reference direction the watch face gets held up along
     // (see captureWatchAnchor/watchViewQuaternion) instead of freezing the
@@ -866,6 +954,18 @@ AFRAME.registerComponent('desktop-controls', {
       if (watch && watch.projectedMenu) watch.projectedMenu.close();
     }
     if (this.activeMounted) this.activeMounted.close();
+    if (this.activeVisorHand) {
+      var visorHand = this.activeVisorHand;
+      // Cleared first: closing the visor announces it, and that comes
+      // straight back here (onVisorClosed).
+      this.activeVisorHand = null;
+      // Straight back down rather than eased: a hand drifting out of the
+      // zone over a few frames would read, to the gesture, as a hand at
+      // your temple next to a closed menu, and start the arc again.
+      this.placeRestHandNow(visorHand);
+      var visor = this.sceneEl.systems['visor-menu'];
+      if (visor && visor.isOpen()) visor.close();
+    }
     this.activeWatchHand = null;
     this.activePointerHand = null;
     this.activeMounted = null;
@@ -873,6 +973,7 @@ AFRAME.registerComponent('desktop-controls', {
     this.mountedPokingUntil = 0;
     this.cursorNdc.set(0, 0);
     if (restoreMode !== false) this.setMode('normal');
+    else this.updatePosedHands();
   },
 
   trackActiveMenu: function (menuEl) {
@@ -1027,10 +1128,14 @@ AFRAME.registerComponent('desktop-controls', {
     return menuPoint.sub(pointerOrigin).normalize();
   },
 
-  placeRestHand: function (hand) {
+  placeRestHand: function (hand, snap) {
     var sideX = hand.data.hand === 'left' ? -0.24 : 0.24;
     var position = this.cameraOffsetToWorld(new THREE.Vector3(sideX, -0.38, -0.42), true);
-    hand.setWorldTransform(position, this.cameraYawQuaternion(), hand.heldEl ? 'Hold' : 'Open');
+    hand.setWorldTransform(position, this.cameraYawQuaternion(), hand.heldEl ? 'Hold' : 'Open', snap);
+  },
+
+  placeRestHandNow: function (hand) {
+    this.placeRestHand(hand, true);
   },
 
   placeHeldHand: function (hand) {
@@ -1239,10 +1344,14 @@ AFRAME.registerComponent('desktop-controls', {
     var right = new THREE.Vector3(1, 0, 0).applyQuaternion(viewQuat);
     var up = new THREE.Vector3(0, 1, 0).applyQuaternion(viewQuat);
     var side = this.activePointerHand.data.hand === 'left' ? -1 : 1;
+    // Out in front and below, where you would actually see it reaching
+    // toward the watch. It used to sit beside your cheek (24 cm out, 13
+    // cm forward), which put the hand right on the visor's temple zone:
+    // the visor's arc started to fill every time you looked at the watch.
     var fingertip = camPos.clone()
-      .addScaledVector(right, side * 0.24)
-      .addScaledVector(up, -0.16)
-      .addScaledVector(forward, 0.13);
+      .addScaledVector(right, side * WATCH_POINTER.side)
+      .addScaledVector(up, -WATCH_POINTER.down)
+      .addScaledVector(forward, WATCH_POINTER.forward);
     this.activePointerHand.setPointPose(fingertip, this.currentAimDirection(fingertip), 'Point');
   },
 
@@ -1335,6 +1444,10 @@ AFRAME.registerComponent('desktop-controls', {
   },
 
   applyMovement: function (delta) {
+    // A crossbar menu holds W/A/S/D while it is entered -- see
+    // menu-stick-control's lock(). Checked here rather than in the
+    // callers so both normal and watch modes are covered.
+    if (this.sceneEl.getAttribute('data-menu-locked') === 'true') return;
     if (this.autoCrouch) return;
     var x = (this.keys.KeyD ? 1 : 0) - (this.keys.KeyA ? 1 : 0);
     var z = (this.keys.KeyS ? 1 : 0) - (this.keys.KeyW ? 1 : 0);
@@ -1364,6 +1477,13 @@ AFRAME.registerComponent('desktop-controls', {
       this.applyMovement(delta);
       this.placeWatchHand();
       this.placeWatchPointer();
+    } else if (this.mode === 'visor') {
+      // Walking still works until the visor opens and takes the keys
+      // (applyMovement checks the lock), as it would with a hand raised.
+      this.applyMovement(delta);
+      this.placeVisorHand();
+      var rest = this.hands[this.activeVisorHand && this.activeVisorHand.data.hand === 'left' ? 'right' : 'left'];
+      if (rest) this.placeRestHand(rest);
     } else if (this.mode === 'mounted') {
       if (this.updateMountedTransition(performance.now())) {
         var zone = this.activeMounted && this.activeMounted.el.components['hint-zone'];
@@ -1389,8 +1509,8 @@ AFRAME.registerComponent('desktop-controls', {
     document.removeEventListener('pointerup', this.onPointerUp, true);
     document.removeEventListener('contextmenu', this.onContextMenu, true);
     this.sceneEl.removeEventListener('mounted-interaction-request', this.onMountedRequest);
-    this.sceneEl.removeEventListener('menu-option-change', this.onPreferenceChange);
-    this.sceneEl.removeEventListener('watch-menu-ready', this.onWatchReady);
+    this.sceneEl.removeEventListener('visor-menu-request', this.onVisorRequest);
+    this.sceneEl.removeEventListener('visor-menu-closed', this.onVisorClosed);
     this.sceneEl.removeEventListener('control-mode-changed', this.onControlModeChanged);
     this.sceneEl.removeEventListener('semantic-tap', this.onSemanticTap);
     this.el.removeEventListener('semantic-action-intent', this.onSemanticAction);

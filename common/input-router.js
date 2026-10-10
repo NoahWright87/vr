@@ -31,6 +31,10 @@ if (typeof AFRAME !== 'undefined') {
   var TAP_MOVE_THRESHOLD = 12;
   var TAP_MAX_MS = 400;
 
+  // hint-zone actions the one INTERACT button stands for. Grab has its
+  // own button; everything else is not something you "interact" with.
+  var INTERACT_ZONES = ['mounted', 'menu'];
+
   AFRAME.registerSystem('input-router', {
     init: function () {
       this.gamepad = null;
@@ -715,7 +719,14 @@ if (typeof AFRAME !== 'undefined') {
       this.hintedButtonAction = action;
 
       var interactButton = this.buttonsByAction[this.data.interactAction];
-      if (interactButton) interactButton.hidden = action !== 'mounted';
+      // 'menu' rides the interact button alongside 'mounted'. A crossbar
+      // panel is entered with the same verb as a mounted one -- E off a
+      // headset, and menu-stick-control answers the same 'interact'
+      // intent this button emits -- so on touch it is the same button,
+      // and the hint system guarantees only one of them is offered at a
+      // time (getDesktopCandidate filters the single arbitrated winner
+      // by action).
+      if (interactButton) interactButton.hidden = INTERACT_ZONES.indexOf(action) === -1;
       var grabButton = this.buttonsByAction[this.data.grabAction];
       if (grabButton) grabButton.hidden = action !== 'grab';
     },

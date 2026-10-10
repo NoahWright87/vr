@@ -68,6 +68,132 @@ this is only for work that has been decided on and postponed.
   hand frames where useful) without making hint zones care which headset or
   controller supplied the action.
 
+## The shared menu system
+
+`common/menu-model.js` (the pure model) and `common/menu-crossbar.js`
+(the A-Frame renderer, stick engagement, and `projected-crossbar`, which
+puts a crossbar panel inside any `projected-menu` trigger) are the only
+menu system now. Every menu in every game is on them — the showcase, the
+watches in Pistols and Boundary Lab, Pistols' carriage stall, and a visor
+in every game (Punch Pop's settings live in its visor; the others carry
+the shared `Visor ▸` settings and `Exit VR` from `common/visor-page.js`).
+Nothing of the old menus is left: `common/menus.js` is just
+`projected-menu`, the trigger (poke, raised wrist, mounted mode, walking
+away) that the watch and every crossbar prop open through, and what a
+row does is handled by its id on `menu-action` / `menu-commit`.
+Deliberately not done yet:
+
+- **Games' own visor rows.** Pistols and Boundary Lab's visors hold only
+  the shared rows for now, and Cube Pop's only `Reset cubes`. Whatever a
+  game wants reachable mid-play without lifting the wrist belongs there.
+
+- **A crossbar page editor, if it is missed.** The showcase used to have
+  a `?edit=1` menu editor (title, item labels, positions, JSON out) for
+  its old fixed panel. It went with that panel. A crossbar page is
+  already data, so the replacement would edit page JSON — labels, kinds,
+  options, number ranges — and live-reload the panel, rather than
+  positions, which the crossbar lays out itself.
+
+- **Multiplayer boxes and per-player rooms.** The showcase now fits its
+  stations to each player's own boundary, but box spawns, releases and
+  held-box positions still go over the network as world coordinates. Two
+  players whose rooms differ see the host's box land where the host's
+  platform is, which may not be on theirs (or may be outside their room).
+  The fix is to send box positions relative to the box platform
+  (`#station-boxes`'s local space) and convert on receipt; remote aims
+  and heads have the same issue and would want a shared anchor instead.
+
+- **The one-eye test, now runnable.** The visor ships defaulting to
+  BOTH eyes on purpose: per-eye rendering is a `layers.set(1|2)` call
+  that only means anything once WebXR's two cameras exist, and
+  defaulting to it risked a menu that is invisible on first try. `Eyes:
+  Both / One` and `Scrim: On / Off` are rows in the visor's own
+  `Settings`, so the variants are menu selections rather than a
+  rebuild. The answer decides how dark the backing can be and whether
+  one eye becomes the default — and arrives in a sidecar screenshot.
+  One thing to watch for: the settings summary used to float on its own
+  in both eyes; now it is the visor's sidecar, so it follows the visor's
+  own `Eyes` and `Draw` settings. With `Eyes: One` it is in one eye only,
+  and a headset screenshot of the other eye will not show it. If that
+  bites, give the sidecar its own `eye` override (both, always).
+
+- **Text overflow options.** Long labels currently shrink to fit and
+  then ellipsize. Agreed but not built: wrapping to a second line
+  within the row's space, and a marquee that scrolls a too-long label
+  back and forth — on the focused row only, since text drifting in the
+  periphery is both noise and a comfort problem.
+
+- **A multi-slot item kind, for room codes.** Four letters is four
+  independent slots, where "inward" should move to the next slot rather
+  than drill deeper — the arcade high-score pattern. The 26-row
+  alphabet submenu in the showcase is the crude version, and exists to
+  find out whether hold-to-repeat scrolling is fast enough to live
+  with. Wrap-around already helps (Z is one step above A).
+
+- **A gamepad can't drive a menu off a headset.** `gamepad-input`
+  publishes `semantic-move` on the rig; `menu-stick-control` listens for
+  `axismove` on hands, which is the XR tracked-controller event. So a
+  desktop gamepad moves the player and the menu ignores it. Keyboard and
+  mouse both work. The fix wants care: movement must not be captured, so
+  a gamepad probably drives menus from the d-pad rather than the stick
+  that walks you around.
+
+- **On a phone, taps don't land where your finger is.** The showcase's
+  cursor is a *gaze* cursor (`rayOrigin: entity`), so a tap anywhere on
+  the canvas activates whatever the screen-centre reticle is pointing
+  at — verified by tapping an empty corner and watching the aimed-at row
+  fire. This is pre-existing and applies to every menu in the repo, new
+  and old, not just the crossbar. The model still works because aiming
+  at an off-centre row and tapping scrolls it to the middle, so a second
+  tap selects it — but it is "point the phone and tap", not "touch the
+  thing", which is not what anyone expects on a phone. The fix is to use
+  `rayOrigin: mouse` when `input-router` reports the touch family, so a
+  tap raycasts from the touch point. Small, but it changes mobile
+  behaviour for every existing menu, so it wants its own pass.
+
+- **The on-screen action buttons can enter a menu but not step it.**
+  INTERACT now appears next to a crossbar panel and enters/leaves it —
+  `menu-stick-control` answers the same `semantic-action-intent`
+  `touch-controls` publishes, and `input-router`'s `INTERACT_ZONES` lists
+  the `menu` zone alongside `mounted`. What is still missing is moving
+  the focus: there is no on-screen equivalent of W/S, so once entered you
+  drive the list by tapping rows, which works whether or not you entered
+  (and which the entered footer now says instead of naming keys). Worth
+  adding a small up/down pair to the action grid while a menu is entered,
+  which would also give the desktop gamepad above somewhere to point.
+
+- **Grip should stop meaning "point".** The fingertip laser enables on
+  `gripdown` (`common/watch-menu.js`), which is why reaching for the
+  watch in Pistols grabs your hat instead. The laser already has a
+  gesture route — it settles ~180ms after the point animation — so grip
+  can go back to meaning only "grab". Small change, touches every
+  existing menu, so it wants its own pass.
+
+- **Register menus as ordinary interaction candidates.**
+  `common/interaction-targeting.js` already arbitrates by direct hit →
+  priority → gaze → distance, and `interaction-hints.js` already
+  guarantees that the outlined object and the object an action reaches
+  cannot disagree. Menus don't participate: watch pointing is a
+  separate path bolted to grip, which is the actual reason the two
+  collide. Registering the watch, wall panels and the visor as
+  candidates makes one resolution point instead of two systems, and
+  extends the outline-before-commit guarantee to every contested input.
+  Bigger than the menu work; worth doing on its own.
+
+- **Visor rows could face your eye vertically too.** The visor's
+  layout spreads five rows down most of an eye's field (`Height`,
+  default 64°), but the panel is still flat: it is pitched to face you
+  at its centre, so the top and bottom rows are seen ~32° off-axis and
+  from ~18% further away, and render at roughly 70% the size of the
+  selected row. The fix is to put the rows on an arc of radius `d`
+  around the eye — row at angle φ goes to `y = d·sin φ`,
+  `z = d·(1 − cos φ)`, `rotation.x = φ` — in `crossbar-menu`'s
+  `render()` when a panel opts in, with the title, breadcrumb line,
+  footer and progress arc following the same arc. Deferred because the
+  outer rows are faded on purpose and the change touches every
+  vertical placement in `layout()`; worth doing if the outer rows read
+  as too small in a headset.
+
 ## Liquids
 
 - **Dissipation rates per surface.** Right now a puddle dries at a rate

@@ -614,7 +614,7 @@
       // watch's Debug page (world-menu.js's onOptionChange) and read by
       // world-systems.updateLaserSight, which draws a translucent line +
       // impact dot out of any held firearm's muzzle. Session-only, same
-      // as the shooting gallery's own menu-option settings -- no need to
+      // as the shooting gallery's own watch settings -- no need to
       // survive a reload.
       var LASER_SIGHT = 'none';
       var LASER_SIGHT_COLORS = { red: '#ff3b3b', green: '#3bff6a' };

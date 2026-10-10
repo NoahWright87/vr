@@ -1,269 +1,23 @@
+// ============================================================
+// PROJECTED MENU — the trigger half of a menu you summon.
+//
+// Put it on anything with geometry (a watch face, a wall button, a
+// pedestal button) with a <template> of panel content, and it decides
+// when that panel is up: a fingertip poke, a raised and turned wrist
+// ('auto' — small poke layout facing up at you, larger pointing layout
+// palm-up), desktop's mounted mode, walking away or looking away. It
+// places, scales and animates the panel and makes its poke targets
+// pokeable.
+//
+// What is ON the panel is a crossbar menu (common/menu-crossbar.js),
+// joined to this by projected-crossbar. The hand-built pages, rows and
+// title bars that used to live in this file are gone; every menu in the
+// repo is page data now.
+// ============================================================
 import { chooseAutomaticMenuIntent, chooseProjectedMenuMode } from './projected-menu-mode.js';
-import { cycleMenuOptionIndex, parseMenuOptions } from './menu-options.js';
-
-  AFRAME.registerComponent('menu-item', {
-    schema: {
-      value: { type: 'string' },
-      label: { type: 'string' },
-      hoverColor: { type: 'color', default: '#2a3a5c' },
-    },
-
-    init: function () {
-      this.baseColor = this.el.getAttribute('material').color;
-      this.onMouseEnter = this.onMouseEnter.bind(this);
-      this.onMouseLeave = this.onMouseLeave.bind(this);
-      this.onClick = this.onClick.bind(this);
-      this.hovered = false;
-      this.el.addEventListener('mouseenter', this.onMouseEnter);
-      this.el.addEventListener('mouseleave', this.onMouseLeave);
-      this.el.addEventListener('click', this.onClick);
-    },
-
-    onMouseEnter: function () {
-      this.hovered = true;
-      // The clickable mesh is also the raycast surface. Transforming it as
-      // feedback can invalidate the cursor's current intersection and cause
-      // enter/leave to alternate, especially with a tracked hand near an edge.
-      this.el.setAttribute('material', 'color', this.data.hoverColor);
-    },
-
-    onMouseLeave: function () {
-      this.hovered = false;
-      this.el.setAttribute('material', 'color', this.baseColor);
-    },
-
-    onClick: function () {
-      this.el.emit('menu-item-select', { value: this.data.value, label: this.data.label }, true);
-    },
-
-    remove: function () {
-      this.el.removeEventListener('mouseenter', this.onMouseEnter);
-      this.el.removeEventListener('mouseleave', this.onMouseLeave);
-      this.el.removeEventListener('click', this.onClick);
-    },
-  });
-
-  // A reusable multi-value row. Its left/right thirds cycle through the
-  // supplied values; the center opens a compact list of every choice.
-  AFRAME.registerComponent('menu-option', {
-    schema: {
-      key: { type: 'string' },
-      label: { type: 'string' },
-      values: { type: 'string' },
-      labels: { type: 'string', default: '' },
-      value: { type: 'string' },
-      width: { default: 0.78 },
-      height: { default: 0.2 },
-    },
-
-    init: function () {
-      this.options = parseMenuOptions(this.data.values, this.data.labels);
-      this.index = Math.max(0, this.options.findIndex(function (option) {
-        return option.value === this.data.value;
-      }, this));
-      this.popupEl = null;
-      this.suppressedTargets = [];
-      this.onInternalSelection = this.onInternalSelection.bind(this);
-      this.onDismissPopovers = this.closePopup.bind(this);
-      this.el.addEventListener('menu-item-select', this.onInternalSelection);
-      this.el.addEventListener('menu-dismiss-popovers', this.onDismissPopovers);
-      this.buildRow();
-    },
-
-    makeTarget: function (width, value, label, x) {
-      var target = document.createElement('a-entity');
-      target.classList.add('pm-target', 'menu-target');
-      target.setAttribute('geometry', 'primitive: plane; width: ' + width + '; height: ' + this.data.height);
-      target.setAttribute('material', 'color: #182238');
-      target.setAttribute('menu-item', 'value: ' + value + '; label: ' + label);
-      target.setAttribute('position', x + ' 0 0');
-      this.el.appendChild(target);
-      return target;
-    },
-
-    addText: function (target, value, width, color) {
-      var text = document.createElement('a-text');
-      text.setAttribute('value', value);
-      text.setAttribute('align', 'center');
-      text.setAttribute('color', color || '#eee');
-      text.setAttribute('width', width);
-      text.setAttribute('position', '0 0 0.01');
-      target.appendChild(text);
-      return text;
-    },
-
-    buildRow: function () {
-      var arrowWidth = this.data.height;
-      var gap = 0.01;
-      var centerWidth = this.data.width - arrowWidth * 2 - gap * 2;
-      this.previousEl = this.makeTarget(arrowWidth, 'menu-option-previous', 'Previous ' + this.data.label, -(centerWidth + arrowWidth) / 2 - gap);
-      this.addText(this.previousEl, '<', 3.5, '#9ad');
-      this.centerEl = this.makeTarget(centerWidth, 'menu-option-open', this.data.label, 0);
-      this.valueTextEl = this.addText(this.centerEl, '', 2.4, '#eee');
-      this.nextEl = this.makeTarget(arrowWidth, 'menu-option-next', 'Next ' + this.data.label, (centerWidth + arrowWidth) / 2 + gap);
-      this.addText(this.nextEl, '>', 3.5, '#9ad');
-      this.renderValue();
-      var self = this;
-      setTimeout(function () {
-        if (self.el.parentNode) self.el.emit('menu-targets-changed', null, true);
-      }, 0);
-    },
-
-    onInternalSelection: function (evt) {
-      if (evt.target === this.el || !this.el.contains(evt.target)) return;
-      var value = evt.detail.value;
-      if (value === 'menu-option-previous') {
-        evt.stopPropagation();
-        this.cycle(-1);
-      } else if (value === 'menu-option-next') {
-        evt.stopPropagation();
-        this.cycle(1);
-      } else if (value === 'menu-option-open') {
-        evt.stopPropagation();
-        if (this.popupEl) this.closePopup();
-        else this.openPopup();
-      } else if (value.indexOf('menu-option-choice-') === 0) {
-        evt.stopPropagation();
-        this.selectIndex(parseInt(value.slice('menu-option-choice-'.length), 10), true);
-        this.closePopup();
-      }
-    },
-
-    cycle: function (delta) {
-      this.selectIndex(cycleMenuOptionIndex(this.options.length, this.index, delta), true);
-    },
-
-    selectIndex: function (index, emitChange) {
-      if (index < 0 || index >= this.options.length) return;
-      this.index = index;
-      this.data.value = this.options[index].value;
-      this.renderValue();
-      if (emitChange) {
-        this.el.emit('menu-option-change', {
-          key: this.data.key,
-          controlLabel: this.data.label,
-          value: this.options[index].value,
-          label: this.options[index].label,
-          index: index,
-        }, true);
-      }
-    },
-
-    setValue: function (value) {
-      var stringValue = String(value);
-      var index = this.options.findIndex(function (option) { return option.value === stringValue; });
-      if (index >= 0) this.selectIndex(index, false);
-    },
-
-    renderValue: function () {
-      var option = this.options[this.index];
-      if (!option || !this.valueTextEl) return;
-      this.valueTextEl.setAttribute('text', 'value', this.data.label + ': ' + option.label);
-    },
-
-    openPopup: function () {
-      if (!this.options.length) return;
-      var scope = this.el.closest('[data-menu-page]') || this.el.parentNode;
-      Array.prototype.forEach.call(scope.querySelectorAll('[menu-option]'), function (item) {
-        if (item === this.el) return;
-        var component = item.components['menu-option'];
-        if (component) component.closePopup();
-      }, this);
-      this.el.emit('menu-dismiss-popovers', { except: this.el }, true);
-      // A popup is a modal interaction layer. Removing the underlying rows
-      // from the raycaster selector prevents a slightly angled ray from
-      // selecting a visually covered control on another depth plane.
-      this.suppressedTargets = Array.prototype.slice.call(scope.querySelectorAll('.menu-target'));
-      this.suppressedTargets.forEach(function (target) {
-        target.classList.remove('menu-target');
-      });
-      var popup = document.createElement('a-entity');
-      popup.classList.add('menu-option-popup');
-      popup.setAttribute('position', '0 0 0.04');
-      var optionHeight = 0.17;
-      var popupHeight = this.options.length * optionHeight + 0.06;
-      var background = document.createElement('a-plane');
-      background.setAttribute('width', this.data.width * 0.82);
-      background.setAttribute('height', popupHeight);
-      background.setAttribute('material', 'color: #0b1220; shader: flat');
-      background.setAttribute('position', '0 0 -0.01');
-      popup.appendChild(background);
-      var self = this;
-      this.options.forEach(function (option, index) {
-        var target = document.createElement('a-entity');
-        target.classList.add('pm-target', 'menu-target');
-        target.setAttribute('geometry', 'primitive: plane; width: ' + (self.data.width * 0.72) + '; height: 0.14');
-        target.setAttribute('material', 'color: ' + (index === self.index ? '#2a4a5c' : '#182238'));
-        target.setAttribute('menu-item', 'value: menu-option-choice-' + index + '; label: ' + option.label);
-        target.setAttribute('position', '0 ' + (((self.options.length - 1) / 2 - index) * optionHeight) + ' 0');
-        self.addText(target, option.label, 2.3, '#eee');
-        popup.appendChild(target);
-      });
-      this.el.appendChild(popup);
-      this.popupEl = popup;
-      setTimeout(function () {
-        if (self.popupEl) self.el.emit('menu-targets-changed', null, true);
-      }, 0);
-    },
-
-    closePopup: function (evt) {
-      if (evt && evt.detail && evt.detail.except === this.el) return;
-      if (!this.popupEl) return;
-      this.popupEl.parentNode.removeChild(this.popupEl);
-      this.popupEl = null;
-      this.suppressedTargets.forEach(function (target) {
-        if (target.parentNode && isVisibleInHierarchy(target.object3D)) target.classList.add('menu-target');
-      });
-      this.suppressedTargets = [];
-      this.el.emit('menu-targets-changed', null, true);
-    },
-
-    remove: function () {
-      this.closePopup();
-      this.el.removeEventListener('menu-item-select', this.onInternalSelection);
-      this.el.removeEventListener('menu-dismiss-popovers', this.onDismissPopovers);
-    },
-  });
-
-  AFRAME.registerComponent('menu-feedback', {
-    init: function () {
-      this.feedbackText = this.el.querySelector('.menu-feedback-text');
-      this.el.addEventListener('menu-item-select', (evt) => {
-        this.feedbackText.setAttribute('text', 'value', 'Selected: ' + evt.detail.label);
-      });
-      this.el.addEventListener('menu-option-change', (evt) => {
-        this.feedbackText.setAttribute('text', 'value', 'Selected: ' + evt.detail.controlLabel + ': ' + evt.detail.label);
-      });
-    },
-  });
-
-  AFRAME.registerComponent('menu-pages', {
-    schema: {
-      defaultPage: { default: 'main' },
-    },
-
-    init: function () {
-      this.pages = Array.prototype.slice.call(this.el.querySelectorAll('[data-menu-page]'));
-      this.currentPage = null;
-      this.pageOffsets = {
-        main: 0,
-        help: 0.01,
-        controls: 0.02,
-      };
-      this.showPage(this.data.defaultPage);
-    },
-
-    showPage: function (pageName) {
-      var nextPage = pageName || this.data.defaultPage;
-      var pageOffsets = this.pageOffsets;
-      this.pages.forEach(function (page) {
-        var matches = page.getAttribute('data-menu-page') === nextPage;
-        page.setAttribute('visible', matches);
-        if (matches) page.object3D.position.z = pageOffsets[nextPage] || 0;
-      });
-      this.currentPage = nextPage;
-    },
-  });
+// A panel's poke targets each get a collider; this keeps hidden ones
+// from costing a frame. See the module for numbers.
+import './obb-collider-visibility.js';
 
   function isVisibleInHierarchy(object3D) {
     var node = object3D;
@@ -272,70 +26,6 @@ import { cycleMenuOptionIndex, parseMenuOptions } from './menu-options.js';
       node = node.parent;
     }
     return true;
-  }
-
-  export function buildMenuChrome(containerEl, opts) {
-    var width = opts.width || 1;
-    var barY = opts.barY;
-    var barHeight = 0.18;
-    var btnSize = 0.15;
-    var margin = 0.05;
-    var gap = 0.02;
-
-    var bar = document.createElement('a-plane');
-    bar.classList.add('menu-chrome-bar');
-    bar.setAttribute('width', width);
-    bar.setAttribute('height', barHeight);
-    bar.setAttribute('material', 'color: #0b1220; shader: flat');
-    bar.setAttribute('position', '0 ' + barY + ' -0.001');
-    containerEl.appendChild(bar);
-
-    var rightOccupiedEdge = width / 2 - margin;
-    function addButton(value, label, glyph, glyphColor, hoverColor) {
-      var x = rightOccupiedEdge - btnSize / 2;
-      rightOccupiedEdge -= btnSize + gap;
-      var btn = document.createElement('a-entity');
-      // menu-chrome-item, not just pm-target: it's the marker
-      // control-mode-layout's default rowSelector excludes, so a
-      // page using both control-mode-layout AND chrome buttons
-      // (only "main" does today) doesn't sweep close/help/automatic
-      // into its vertical row stack — they carry menu-item too (for
-      // the same click handling every row uses), so rowSelector
-      // alone can't otherwise tell them apart from a real row.
-      btn.classList.add('pm-target', 'menu-chrome-item');
-      btn.setAttribute('geometry', 'primitive: plane; width: ' + btnSize + '; height: ' + btnSize);
-      btn.setAttribute('material', 'color: #182238');
-      btn.setAttribute('menu-item', 'value: ' + value + '; label: ' + label + '; hoverColor: ' + hoverColor);
-      btn.setAttribute('position', x + ' ' + barY + ' 0');
-      var glyphEl = document.createElement('a-text');
-      glyphEl.setAttribute('value', glyph);
-      glyphEl.setAttribute('align', 'center');
-      glyphEl.setAttribute('color', glyphColor);
-      glyphEl.setAttribute('width', 6);
-      glyphEl.setAttribute('position', '0 0 0.01');
-      btn.appendChild(glyphEl);
-      containerEl.appendChild(btn);
-      return btn;
-    }
-
-    var closeBtn = opts.showClose ? addButton(opts.closeValue || 'close', 'Close', 'X', '#f66', '#5c2a2a') : null;
-    var automaticBtn = opts.showAutomaticToggle
-      ? addButton('projected-menu-automatic', opts.automatic ? 'Automatic open' : 'Manual open', opts.automatic ? 'A' : 'M', '#7fd', '#2a5c50')
-      : null;
-    if (automaticBtn) automaticBtn.classList.add('menu-automatic-toggle');
-    var helpBtn = opts.showHelp ? addButton(opts.helpValue || 'help', 'Help', '?', '#7cf', '#2a4a5c') : null;
-    var titleLeftEdge = -width / 2 + margin;
-    var titleAvailableWidth = Math.max(0.25, rightOccupiedEdge - titleLeftEdge);
-    var titleEl = document.createElement('a-text');
-    titleEl.classList.add('menu-chrome-title');
-    titleEl.setAttribute('value', opts.title || '');
-    titleEl.setAttribute('align', 'left');
-    titleEl.setAttribute('color', '#9ad');
-    titleEl.setAttribute('width', titleAvailableWidth);
-    titleEl.setAttribute('wrap-count', 20);
-    titleEl.setAttribute('position', titleLeftEdge + ' ' + barY + ' 0');
-    containerEl.appendChild(titleEl);
-    return { titleEl: titleEl, closeBtn: closeBtn, automaticBtn: automaticBtn, helpBtn: helpBtn };
   }
 
   // Turns any collider-bearing trigger into a menu projected from a
@@ -358,6 +48,11 @@ import { cycleMenuOptionIndex, parseMenuOptions } from './menu-options.js';
       orientationGrace: { default: 250 },
       automaticOpenDelay: { default: 320 },
       automatic: { default: false },
+      // A switched-off menu stays shut whatever the pose or a poke says:
+      // desktop and touch pose hands for other things (pointing at the
+      // other wrist, held to your temple), and a scripted pose must not
+      // read as a raised watch. See hand-with-watch's setSuppressed.
+      enabled: { default: true },
     },
 
     init: function () {
@@ -372,7 +67,6 @@ import { cycleMenuOptionIndex, parseMenuOptions } from './menu-options.js';
       this.orientationLostSince = null;
       this.automaticDismissed = false;
       this.automaticOpenSince = null;
-      this.suppressPointing = false;
       this.cameraEl = document.querySelector('a-camera');
 
       var panel = this.data.template.content.cloneNode(true).firstElementChild;
@@ -387,31 +81,10 @@ import { cycleMenuOptionIndex, parseMenuOptions } from './menu-options.js';
       // below), so that one number is enough to size the laser dot/trail
       // to match this particular panel, watch-sized or wall-sized alike.
       panel.classList.add('pm-panel');
-      // Tags each page's own background plane (or the panel's own, for a
-      // single-page template) so a fingertip raycaster can register a hit
-      // on blank panel space, not just on an actual .menu-target — see
-      // fingertip-laser-indicator in watch-menu.js, which uses this to
-      // draw a laser dot instead of a beam that runs through the panel.
-      var pageHosts = panel.querySelectorAll('[data-menu-page]');
-      (pageHosts.length ? Array.prototype.slice.call(pageHosts) : [panel]).forEach(function (host) {
-        var background = host.querySelector('a-plane, a-box');
-        if (background) background.classList.add('pm-surface');
-      });
-      this.chromes = Array.prototype.slice.call(panel.querySelectorAll('.menu-chrome-slot')).map(function (slot) {
-        var chrome = buildMenuChrome(slot.parentNode, {
-          title: slot.getAttribute('data-title') || '',
-          showHelp: slot.getAttribute('data-help') !== 'false',
-          showClose: slot.getAttribute('data-close') !== 'false',
-          showAutomaticToggle: slot.getAttribute('data-automatic-toggle') !== 'false',
-          automatic: self.data.automatic,
-          helpValue: slot.getAttribute('data-help-value') || 'help',
-          closeValue: slot.getAttribute('data-close-value') || 'close',
-          width: parseFloat(slot.getAttribute('data-width')) || 1,
-          barY: parseFloat(slot.getAttribute('data-bar-y')),
-        });
-        slot.parentNode.removeChild(slot);
-        return chrome;
-      });
+      // A hit anywhere on the panel's backing (crossbar-menu tags it
+      // pm-surface) registers for the fingertip laser, which draws a dot
+      // there instead of a beam that runs through the panel — see
+      // fingertip-laser-indicator in watch-menu.js.
       this.updatePanelPosition();
 
       el.setAttribute('obb-collider', '');
@@ -430,7 +103,7 @@ import { cycleMenuOptionIndex, parseMenuOptions } from './menu-options.js';
           var poker = evt.detail.withEl;
           var now = performance.now();
           if (
-            self.mode === 'poke' && !self.suppressPointing &&
+            self.mode === 'poke' &&
             poker.handComponent && poker.handComponent.isPointing &&
             self.isMenuTargetInteractive(item) &&
             now - item._lastPokeAt > self.data.pokeCooldown
@@ -450,11 +123,6 @@ import { cycleMenuOptionIndex, parseMenuOptions } from './menu-options.js';
         self.refreshMenuTargets();
       });
 
-      panel.addEventListener('menu-item-select', function (evt) {
-        if (evt.detail.value === 'close') self.close();
-        else if (evt.detail.value === 'projected-menu-automatic') self.setAutomatic(!self.data.automatic);
-        else if (evt.detail.value === 'help') el.emit('projected-menu-help');
-      });
     },
 
     updatePanelPosition: function () {
@@ -464,7 +132,10 @@ import { cycleMenuOptionIndex, parseMenuOptions } from './menu-options.js';
     },
 
     tick: function (time, delta) {
-      if (this.data.automatic) {
+      if (this.data.enabled === false) {
+        this.active = false;
+        this.automaticOpenSince = null;
+      } else if (this.data.automatic) {
         var automaticIntent = this.computeAutomaticIntent();
         if (automaticIntent !== 'open') {
           this.automaticDismissed = false;
@@ -611,10 +282,6 @@ import { cycleMenuOptionIndex, parseMenuOptions } from './menu-options.js';
           this.panelEl.setAttribute('visible', false);
           this.visible = false;
           this.setItemsMode('closed');
-          Array.prototype.forEach.call(this.panelEl.querySelectorAll('[menu-option]'), function (item) {
-            var option = item.components['menu-option'];
-            if (option) option.closePopup();
-          });
           this.el.emit('projected-menu-closed');
         }
       } else {
@@ -628,7 +295,6 @@ import { cycleMenuOptionIndex, parseMenuOptions } from './menu-options.js';
     },
 
     setItemsMode: function (mode, force) {
-      if (this.suppressPointing) mode = 'closed';
       this.lastItemsMode = mode;
       var self = this;
       this.pmTargets.forEach(function (item) {
@@ -638,38 +304,20 @@ import { cycleMenuOptionIndex, parseMenuOptions } from './menu-options.js';
       });
     },
 
+    // You can only poke what you can see: a crossbar hides the rows it
+    // has nothing to put in.
     isMenuTargetInteractive: function (item) {
-      if (!isVisibleInHierarchy(item.object3D)) return false;
-      // Any open modal popup layer (menu-option's own list, or
-      // room-code-entry's character grid — common/room-code-entry.js)
-      // suppresses everything outside itself. Both popup types re-fire
-      // menu-targets-changed when they open (so the raycaster picks up
-      // their new cells), which lands here too — this needs to recognize
-      // either class or that refresh silently re-enables whatever the
-      // popup just suppressed.
-      var popup = this.panelEl.querySelector('.menu-option-popup, .room-code-popup');
-      return !popup || popup.contains(item);
-    },
-
-    updateAutomaticChrome: function () {
-      var automatic = this.data.automatic;
-      this.chromes.forEach(function (chrome) {
-        var button = chrome.automaticBtn;
-        if (!button) return;
-        var glyph = button.querySelector('a-text');
-        if (glyph) glyph.setAttribute('text', 'value', automatic ? 'A' : 'M');
-        button.setAttribute('menu-item', 'label', automatic ? 'Automatic open' : 'Manual open');
-      });
+      return isVisibleInHierarchy(item.object3D);
     },
 
     setAutomatic: function (automatic) {
       this.data.automatic = Boolean(automatic);
       this.automaticDismissed = false;
-      this.updateAutomaticChrome();
       this.el.emit('projected-menu-automatic-changed', { automatic: this.data.automatic });
     },
 
     open: function () {
+      if (this.data.enabled === false) return;
       this.automaticDismissed = false;
       this.active = true;
     },

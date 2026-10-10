@@ -35,7 +35,6 @@
       this._teleportAimY = 0;
       this._teleportAimMag = 0;
       this._teleportHand = 'left';
-      this.onMenuOptionChange = this.onMenuOptionChange.bind(this);
       this.onSemanticMove = this.onSemanticMove.bind(this);
       this.onSemanticAction = this.onSemanticAction.bind(this);
       this.gamepadSprinting = false;
@@ -48,7 +47,6 @@
 
       var self = this;
       var sceneEl = this.el.sceneEl;
-      sceneEl.addEventListener('menu-option-change', this.onMenuOptionChange);
       this.el.addEventListener('semantic-move', this.onSemanticMove);
       this.el.addEventListener('semantic-action-intent', this.onSemanticAction);
       sceneEl.addEventListener('loaded', function () {
@@ -97,11 +95,6 @@
       if (!Number.isFinite(next) || next <= 0) return;
       this.data.speedMultiplier = next;
       this.el.setAttribute('data-move-speed-multiplier', String(next));
-    },
-
-    onMenuOptionChange: function (evt) {
-      if (!evt.detail || evt.detail.key !== 'move-speed') return;
-      this.setSpeedMultiplier(evt.detail.value);
     },
 
     setVignette: function (enabled) {
@@ -178,6 +171,11 @@
       }
 
       var hand = this.getTeleportHand();
+      if (this.stickTakenBy(hand)) {
+        this.teleportPreview.setAttribute('visible', false);
+        this._teleportReady = false;
+        return;
+      }
       var axes = hand === 'right' ? this.rightAxes : this.leftAxes;
       var axisX = axes[2] !== undefined ? axes[2] : axes[0] || 0;
       var axisY = axes[3] !== undefined ? axes[3] : axes[1] || 0;
@@ -218,8 +216,20 @@
       this._teleportHand = hand === 'right' ? 'right' : 'left';
     },
 
+    // Which thumbsticks a menu has taken over, if any. Set by
+    // menu-stick-control as a scene attribute for the same reason
+    // data-menu-locked is: walking does not need to know what a menu is,
+    // only that this stick is spoken for. Per hand rather than
+    // all-or-nothing, so driving a menu with one hand leaves the other
+    // stick doing its usual job.
+    stickTakenBy: function (hand) {
+      var taken = this.el.sceneEl.getAttribute('data-menu-sticks');
+      return Boolean(taken) && taken.indexOf(hand) !== -1;
+    },
+
     applySmoothMove: function (deltaMs) {
       if (this.data.moveMode !== 'smooth') return;
+      if (this.stickTakenBy('left')) return;
       var moveX = this.leftAxes[2] !== undefined ? this.leftAxes[2] : this.leftAxes[0] || 0;
       var moveY = this.leftAxes[3] !== undefined ? this.leftAxes[3] : this.leftAxes[1] || 0;
       var moveAmount = Math.hypot(moveX, moveY);
@@ -264,6 +274,11 @@
       if (!this.controlMode.isMode('xr')) {
         var desktopControls = this.el.components['desktop-controls'];
         if (desktopControls && desktopControls.mode !== 'normal' && desktopControls.mode !== 'watch') return;
+        // A crossbar menu entered off a headset holds the movement keys
+        // and the joystick, since it drives the list with them. Set and
+        // cleared by menu-stick-control, checked here and in
+        // desktop-controls' applyMovement.
+        if (this.el.sceneEl.getAttribute('data-menu-locked') === 'true') return;
       }
       this.applyDesktopMove(evt.detail.x || 0, evt.detail.z || 0, evt.detail.deltaMs || 0, !!evt.detail.sprint);
     },
@@ -275,12 +290,14 @@
     },
 
     applySmoothTurn: function (deltaMs) {
+      if (this.stickTakenBy('right')) return;
       var turnX = this.rightAxes[2] !== undefined ? this.rightAxes[2] : this.rightAxes[0] || 0;
       if (Math.abs(turnX) < this.data.turnDeadzone) return;
       this.rigEl.object3D.rotation.y -= turnX * 1.25 * (deltaMs / 1000);
     },
 
     applySnapTurn: function () {
+      if (this.stickTakenBy('right')) { this.turnCooldown = 0; return; }
       var turnX = this.rightAxes[2] !== undefined ? this.rightAxes[2] : this.rightAxes[0] || 0;
       if (Math.abs(turnX) < Math.max(0.8, this.data.turnDeadzone + 0.4)) {
         this.turnCooldown = 0;
@@ -300,7 +317,7 @@
       this.isSprinting = false;
       if (this.data.moveMode === 'smooth') {
         this.applySmoothMove(delta);
-      } else if (this.data.moveMode === 'teleport') {
+      } else if (this.data.moveMode === 'teleport' && !this.stickTakenBy(this.getTeleportHand())) {
         this.updateTeleportPreview();
         var teleportAxes = this.getTeleportHand() === 'right' ? this.rightAxes : this.leftAxes;
         var moveX = teleportAxes[2] !== undefined ? teleportAxes[2] : teleportAxes[0] || 0;
@@ -366,7 +383,6 @@
     },
 
     remove: function () {
-      this.el.sceneEl.removeEventListener('menu-option-change', this.onMenuOptionChange);
       this.el.removeEventListener('semantic-move', this.onSemanticMove);
       this.el.removeEventListener('semantic-action-intent', this.onSemanticAction);
     },
