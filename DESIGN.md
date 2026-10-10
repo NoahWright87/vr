@@ -506,7 +506,10 @@ data: `world-town.js` generates the desktop teleport buttons from
 So a page is now a title and a list of items (`common/menu-model.js`),
 and the surface says how many rows it can show. Twelve destinations in
 a five-row window is not a layout problem, and a thirteenth changes
-nothing anywhere.
+nothing anywhere. That is literally true now: the watch's Teleport
+submenu (`js/menu-pages.js`) is built from `TOWN_LOCATIONS` itself, one
+row per destination, so adding a town to the loader adds it to the
+watch.
 
 Two consequences worth keeping:
 
@@ -703,7 +706,7 @@ invalidates cached lists when relevant nodes, classes, or component attributes
 change; hands, guns, fire, tanks, explosions, and slots reuse those lists
 instead of independently walking the DOM. Moving positions are never cached.
 The proximity buzz is advisory and checks at 12.5 Hz, staggered between hands;
-grip selection itself stays event-time and exact. Watch > Show Performance
+grip selection itself stays event-time and exact. Watch > Debug > Performance
 enables a twice-per-second headset overlay for FPS/frame time, draw calls,
 triangles, geometries, and textures. It does no measurement or text work while
 disabled.
