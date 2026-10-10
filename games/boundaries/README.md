@@ -1,99 +1,112 @@
 # Boundary Lab
 
-The floor shows two distinct outlines:
+The floor shows two diagnostic outlines:
 
-- **Solid cyan, with white corner dots:** every point supplied by the headset's
-  WebXR `bounded-floor` polygon, transformed into the active tracking space.
-- **Dashed amber:** a rectangle calculated to fit entirely inside that polygon.
-  This is an approximate conservative fit, not a second boundary returned by
-  the headset, and not a guarantee of the globally largest possible rectangle.
+- **Solid cyan, with white dots:** the full polygon reported by WebXR
+  `bounded-floor`, transformed into the current tracking space.
+- **Dashed amber:** an approximate rectangle fitted entirely inside that
+  polygon. It is calculated by the Lab, not returned by the headset.
 
-The headset and wrist displays show the reported corner count, polygon area,
-and fitted rectangle dimensions and area. No boundary margin is applied to this
-diagnostic rectangle. Rectangle fitting considers tracking axes and several
-boundary-edge orientations; it checks whole grid cells, including boundary
-segments, so a concave notch cannot be bridged by checking corners alone.
-The fitted rectangle never replaces the polygon sent to game consumers.
+The watch shows corner count, polygon area, and fitted rectangle dimensions.
+The fit checks complete cells and boundary segments so concave notches are
+excluded. It never replaces the reported polygon used by Impossible Spaces.
 
-Use `/games/boundaries/` in the headset's browser. These experiments stay in
-Boundary Lab; Room Setup data never replaces the Impossible Spaces footprint.
+## Calibrate by walking
 
-## Does boundary geometry arrive late?
+1. Enter the Lab and open either wrist watch. Choose **Calibrate by walking**,
+   then press **Calibrate by walking** on that page.
+2. The watch closes and passthrough reveals the real room. Walk slowly around
+   the outline of the usable floor, keeping clear of furniture and walls.
+   Pink follows the headset's horizontal location, projected onto the floor;
+   headset height and controller orientation do not affect the outline.
+3. Walk back near your starting point. Open the watch; recording pauses while
+   the watch is open and reopens directly on the calibration controls.
+   **Confirm boundary** closes the loop, checks it, and locks
+   a valid outline in green for this Lab session, restoring the virtual Lab.
+4. **Cancel** discards the calibration and restores your previous Lab outline.
+   **Continue walking** resumes tracing. **Undo last section** undoes the latest
+   uninterrupted walking section or closing/edit action. **Edit with controller**
+   opens the drawing page where you can drag corners, then return to calibration
+   to Confirm (or use **Save in Lab**).
 
-1. Enter normal VR and open the wrist watch. Cyan is the full polygon supplied
-   by `bounded-floor`; amber is the Lab's fitted rectangle.
-2. Watch the sampling counters for at least 30 seconds. Reads continue every
-   XR frame indefinitely, including after an empty array or unchanged pose.
-   The watch reports elapsed sampling time, frame count, first valid geometry,
-   empty frames, changes, and maximum corner count.
-3. Select **Save diagnostics** on the main watch page. The local JSON contains the
-   latest boundary points, a bounded change history, and browser identification.
-   A rectangle remaining after 30 seconds is an observation, not proof that a
-   different runtime could never expose more details. Corner count alone does
-   not determine whether a shape is rectangular.
+The path describes the perimeter you walked; it does not scan obstacles or
+prove that everything enclosed is clear. Trace inward around obstacles and
+leave room for your body. A table cutout can be an indentation in an L/U-shaped
+outline; disconnected outlines and interior holes are not supported.
 
-## What does Room Setup expose?
+There is no Quest Room Setup, plane-detection permission, native room launcher,
+or surface inference. On passthrough-capable devices, the initial entry gesture
+starts an AR-capable session with the ordinary opaque Lab visible. Calibration
+reveals passthrough in that same session. Walking calibration is blocked when
+passthrough is unavailable, including an opaque session. Ordinary VR entry and
+controller drawing remain available on other devices.
 
-1. Enter the Lab normally, open the watch, select **Room Setup**, then **Test
-   Room Setup**. No page buttons or exits from the headset view are required.
-   On devices supporting passthrough, the Lab uses an `immersive-ar` session
-   with its ordinary virtual world initially visible. Room access is requested
-   as optional `plane-detection` at entry; grant permission if prompted.
-   The watch reveals passthrough within that same session. Devices without
-   passthrough retain a VR session and show that limitation on the watch.
-2. Wait at least three seconds. Saved surfaces may arrive asynchronously.
-   Green outlines mean horizontal surfaces, purple vertical, pink unclassified.
-   All supplied polygon corners are rendered in their plane spaces, transformed
-   into the active XR reference space on every frame. A floor, ceiling, desk,
-   or couch can all be horizontal; green does not mean walkable.
-3. If no surfaces arrive, open **Room Setup** in the watch and select **Open
-   Quest Room Setup**. The app calls `initiateRoomCapture()` at most once per
-   session, only after waiting three seconds and only with no supplied planes.
-   If the launcher is unavailable, use the headset's Room Setup settings and
-   re-enter. A cancelled launch requires re-entering before another attempt.
-4. Compare surfaces with the physical room. Test tracking interruption and
-   recentering: stale outlines should disappear, and recovering poses should
-   align again. Moving or changing a plane's pose must update its outline even
-   when its polygon has not changed.
-5. Select **Return to virtual Lab** on the Room Setup watch page to restore the
-   virtual world and controls without leaving XR. The boundary timer continues.
-   Stopping/restarting the test cannot bypass the one-capture-per-session limit.
-6. Select **Save diagnostics** on the main watch page. It includes the last tracked surface polygons,
-   optional semantic labels, and their reference-space matrices. Data is saved
-   locally, not uploaded. A browser download is requested and a local copy is
-   retained under `boundary-lab-report` in this site's browser storage, including
-   when the browser blocks downloads in XR. The watch displays save feedback.
-   Starting another XR session starts a new observation.
+## Draw with a controller
 
-The virtual floor, sky, cube, and pedestal are hidden during passthrough.
-Lab locomotion is temporarily removed and the rig is reset so artificial movement
-cannot move hands or menus away from real-room outlines. The previous rig,
-controls, and visuals are restored by **Return to virtual Lab**, and on exit.
+1. Enter VR, open either wrist watch, and choose **Floor boundary**.
+2. Select **Start drawing**. The watch closes. Release the selecting trigger,
+   aim the controller at the floor, then hold Trigger to trace a pink outline.
+   You can also tap Trigger at individual corners, or release between strokes.
+   The cursor shows the floor intersection; point downward to see it.
+   On an AR-capable session this also reveals passthrough for drawing/editing;
+   otherwise the virtual checkerboard remains visible.
+3. Open the watch and choose **Finish / close outline** to connect the last
+   point to the first. The watch reports invalid or crossed outlines.
+4. Choose **Edit corners** to close the watch and hold Trigger within 12 cm
+   of a pink corner to drag it. Release to drop it. **Undo** restores the last
+   stroke, edit, finish, or clear action. **Clear** starts a new outline.
+5. Choose **Save in Lab** to accept a valid closed polygon. Green means saved.
+   **Stop drawing** pauses and keeps the preview. Editing a saved polygon
+   requires accepting it again.
 
-## Custom floor drawing: next experiment
+Draw only inside cyan. Sections crossing outside turn red and block saving.
+The test checks entire edges, including a closing edge across a concave notch,
+and rejects self-intersections, duplicate corners, doubled-back edges, and
+degenerate areas. An L-shaped outline can exclude an obstacle from a rectangle.
+It cannot recover any safe floor omitted by the headset's reported rectangle.
+Keep Guardian enabled; the drawing is your description of the floor, not an
+independent obstacle detector.
 
-Proposed interaction: aim at the floor, hold Trigger to paint, preview the closed
-polygon, Undo strokes, and optionally edit corners for straight walls or L shapes.
-Reject self-intersections and verify that the entire outline and filled footprint
-are contained in the reported boundary, including edges crossing concave notches.
-Mark outside sections red and prevent confirmation. This would allow excluding
-obstacles, but not recover safe areas that a rectangular API omitted.
+While calibrating, drawing and reviewing, artificial locomotion is disabled, the rig is
+aligned with the tracking origin, and the cube/pedestal are hidden. Saving or
+stopping restores the previous controls, backdrop and props. Trigger presses used on a
+watch never draw points; drawing resumes only after release. Rays come from
+the XR controller's target-ray pose in bounded-floor coordinates, without
+assuming a Quest-specific controller model orientation.
 
-Room Setup surfaces describe physical geometry. They are **not Guardian**, do not
-establish walkable floor, and do not validate a custom polygon beyond the reported
-boundary. Keep the headset's safety boundary enabled throughout these tests.
+Saved outlines are **Lab previews for the current XR session only**. They do
+not change the Impossible Spaces footprint. Tracking loss, boundary changes,
+recentring, and leaving VR discard them so old points cannot be treated as
+current room measurements. Tracking interruptions stop measurement while
+keeping passthrough visible; Cancel/Stop restores the virtual Lab. Diagnostics
+can retain a snapshot for inspection.
 
-References:
-- [Meta Browser mixed reality and Room Setup](https://developers.meta.com/vr/documentation/web/webxr-mixed-reality/)
-- [WebXR Plane Detection specification](https://immersive-web.github.io/plane-detection/)
+## Check delayed boundary data
 
-Automated checks use synthetic delayed boundaries and planes. They verify data
-and rendering behavior; actual Quest permissions, passthrough, Guardian geometry,
-and the native Room Setup flow still require headset testing.
+The shared boundary reader reads live `boundsGeometry` every XR frame,
+including after an initial empty array or an unchanged pose. Watch the counters
+for at least 30 seconds: elapsed time, frames, first geometry, empty frames,
+changes, and maximum corner count. A rectangle that stays a rectangle is the
+shape that browser session supplied; the Lab does not manufacture more corners.
 
-Run `npm test` for geometry and simulated XR lifecycle checks, and
-`npm run test:boundary:browser` against a served production build for actual
-outline buffers, Room Setup controls, report downloads, and restoration on exit.
-Set `VR_PLAYWRIGHT_PATH` to an installed Playwright package and `VR_TEST_URL` to
-override the default `http://127.0.0.1:8088`. `VR_SCREENSHOT_PATH` optionally saves
-a clearly labeled simulated L-shaped boundary check.
+**Save diagnostics** on the main watch page stores a local JSON copy under
+`boundary-lab-report` and requests a download. It includes the latest reported
+points, bounded change history, browser identification, and manual drawing
+snapshot. No data is uploaded. Watch feedback explains when only browser
+storage is available. A new XR session starts a new observation and drawing.
+
+## Validation
+
+Run `npm test` for geometry and simulated XR lifecycle checks. Run
+`npm run test:boundary:browser` against a production build for rendered
+concave/rotated boundaries, real watch selections, simulated controller strokes,
+corner edits, outside rejection, walking calibration, passthrough eligibility,
+Confirm/Cancel, watch pauses, interruption/reset handling, restoration, and
+report downloads. Set `VR_PLAYWRIGHT_PATH` to an installed Playwright package
+and `VR_TEST_URL` to override `http://127.0.0.1:8088`.
+
+These checks simulate XR inputs. Quest 2 testing still needs to confirm aiming,
+trigger interaction, watch usability, passthrough, walking alignment, and the actual
+reported Guardian shape.
+
+Passthrough API reference: [Meta Browser mixed reality](https://developers.meta.com/vr/documentation/web/webxr-mixed-reality/).
