@@ -397,11 +397,24 @@ import { findMenuItem } from './menu-model.js';
       // With only one of the two built, that one is the watch whatever
       // was asked for.
       var crossbar = Boolean(this.crossbarComponent) && (style === 'crossbar' || !this.data.menuTemplate);
-      if (this.classicMenu) this.classicMenu.data.enabled = !crossbar;
-      if (this.crossbarMenu) this.crossbarMenu.data.enabled = crossbar;
+      var on = !this.suppressed;
+      if (this.classicMenu) this.classicMenu.data.enabled = on && !crossbar;
+      if (this.crossbarMenu) this.crossbarMenu.data.enabled = on && crossbar;
       this.projectedMenu = crossbar ? this.crossbarMenu : (this.classicMenu || null);
       this.panelTimeEl = crossbar ? this.crossbarTimeEl : this.classicTimeEl;
       this.updateDisplay();
+    },
+
+    // Keep this watch shut, whatever its pose says. Desktop and touch
+    // script both hands into poses (one pointing at the other's watch,
+    // one at your temple), and a scripted pose can happen to face this
+    // watch at the camera — which in a headset would mean you raised it
+    // on purpose, and here means nothing. Whoever scripts the hand says
+    // so; see desktop-controls' setMode.
+    setSuppressed: function (suppressed) {
+      if (this.suppressed === Boolean(suppressed)) return;
+      this.suppressed = Boolean(suppressed);
+      this.setMenuStyle(this.data.menuStyle);
     },
 
     // Back-solves the hand root's world transform from a desired world

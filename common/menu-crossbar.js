@@ -1945,9 +1945,21 @@ if (typeof AFRAME !== 'undefined') {
       return false;
     },
 
+    // A menu that hides when closed — the watch, the visor, a panel that
+    // grew out of a wall — is something you have up, not something
+    // standing in the room. Leaving it means it goes away.
+    isTransient: function (component) {
+      return Boolean(component) && component.data.closeBehavior === 'hide';
+    },
+
     lock: function (component) {
       if (this.lockedMenu === component) return;
-      if (this.lockedMenu) this.lockedMenu.setLocked(false);
+      var previous = this.lockedMenu;
+      if (previous) previous.setLocked(false);
+      // One thing up at a time: taking the keys for a new menu puts away
+      // a transient one that had them, so the watch and the visor (say)
+      // are never both open with only one of them listening.
+      if (component && this.isTransient(previous) && previous.menu.isOpen) previous.menu.close();
       this.lockedMenu = component || null;
       if (component) {
         if (!component.menu.isOpen) component.menu.open();
@@ -1964,6 +1976,17 @@ if (typeof AFRAME !== 'undefined') {
       this.lock(null);
     },
 
+    // The flat "leave this menu" verb (E, Esc, INTERACT). A panel in the
+    // room hands the keys back and stays where it is; a transient menu
+    // actually closes, and whatever was holding it up (the watch hand,
+    // the hand at your temple, the mounted view) follows from that.
+    release: function () {
+      var menu = this.lockedMenu;
+      if (!menu) return;
+      this.unlock();
+      if (this.isTransient(menu) && menu.menu.isOpen) menu.menu.close();
+    },
+
     // The flat "enter or leave this menu" verb, wherever it came from:
     // E on a keyboard, the INTERACT button on a phone, the same button
     // on a gamepad. Answers whether a menu actually took it, so a
@@ -1971,7 +1994,7 @@ if (typeof AFRAME !== 'undefined') {
     toggleFlatLock: function () {
       var mode = this.el.systems['control-mode'];
       if (mode && mode.isMode('xr')) return false;
-      if (this.lockedMenu) { this.unlock(); return true; }
+      if (this.lockedMenu) { this.release(); return true; }
       var prompted = this.getPromptedMenu();
       if (!prompted) return false;
       this.lock(prompted);
@@ -2009,7 +2032,7 @@ if (typeof AFRAME !== 'undefined') {
         case 'KeyD': case 'ArrowRight': locked.forward(); break;
         case 'KeyA': case 'ArrowLeft': locked.back(); break;
         case 'Enter': case 'Space': locked.activate(); break;
-        case 'Escape': this.unlock(); break;
+        case 'Escape': this.release(); break;
         default: handled = false;
       }
       if (handled) {

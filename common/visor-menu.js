@@ -15,7 +15,10 @@
 //            appears in its place, and that hand drives it. Take the
 //            hand away and the arc fills again before it leaves.
 //   Desktop  backtick, next to Tab, which is the watch. A soft hint in
-//            the corner says so.
+//            the corner says so. It does what a headset player does:
+//            desktop-controls moves your hand to the side of your head,
+//            and the same gesture below opens the menu once the hand has
+//            been there long enough. Backtick again takes the hand away.
 //   Touch    the same hint, tapped.
 //
 // The side is chosen by which side of your head your hand is on, not
@@ -235,6 +238,11 @@ if (typeof AFRAME !== 'undefined') {
       var ready = function () {
         self.component = panel.components['crossbar-menu'];
         self.component.menu.on('change', function () { self.updateExtras(); });
+        // Closed from inside — E or Esc off a headset — is closed: the
+        // keys go back, and whoever put a hand to your head takes it away.
+        panel.addEventListener('crossbar-menu-close', function () {
+          if (self.openSide) self.close();
+        });
         self.placeFor(self.panelSide);
       };
       if (panel.hasLoaded) ready();
@@ -515,7 +523,7 @@ if (typeof AFRAME !== 'undefined') {
       document.head.appendChild(style);
       hint.addEventListener('click', function (evt) {
         evt.preventDefault();
-        self.toggle(self.openSide || 'left');
+        self.request();
       });
       document.body.appendChild(hint);
       this.hintEl = hint;
@@ -571,12 +579,14 @@ if (typeof AFRAME !== 'undefined') {
       this.openSide = this.panelSide;
 
       var system = this.sceneEl.systems['menu-stick-control'];
+      var mode = this.sceneEl.systems['control-mode'];
       if (system) {
         // In XR the hand that opened it drives it, wherever that hand
         // then goes: the panel is out in front of your face and the hand
         // is beside your head, so proximity is meaningless here. Off a
-        // headset it is a keyboard lock like any other menu.
-        if (handEl) system.pinHand(component, handEl);
+        // headset it is a keyboard lock like any other menu — even when a
+        // (simulated) hand opened it, since there is no stick to pin.
+        if (handEl && mode && mode.isMode('xr')) system.pinHand(component, handEl);
         else system.lock(component);
       }
       if (this.hintEl) this.hintEl.classList.add('is-open');
@@ -605,13 +615,23 @@ if (typeof AFRAME !== 'undefined') {
       return this.open(side, handEl);
     },
 
+    // Backtick or the corner button. Off a headset the input layer
+    // (desktop-controls) answers by moving a hand to your temple, or away
+    // again, and the gesture does the rest. Only a page with no such
+    // layer gets the menu toggled directly.
+    request: function () {
+      var detail = { handled: false };
+      this.sceneEl.emit('visor-menu-request', detail, false);
+      if (!detail.handled) this.toggle(this.panelSide);
+    },
+
     onKeyDown: function (evt) {
       if (evt.code !== this.data.key) return;
       // Never steal a keystroke from a text field.
       var active = document.activeElement;
       if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) return;
       evt.preventDefault();
-      this.toggle(this.panelSide);
+      if (!evt.repeat) this.request();
     },
 
     // ---------- the temple gesture ----------
@@ -625,11 +645,11 @@ if (typeof AFRAME !== 'undefined') {
       this.readHands();
       if (this.zonesEl && this.zonesEl.object3D.visible) this.updateZones();
 
-      var mode = this.sceneEl.systems['control-mode'];
-      // Off a headset there is no hand to hold to your head, so the arc
-      // would advertise a gesture that does not exist. Backtick and the
-      // corner button are the flat story.
-      if (!mode || !mode.isMode('xr') || !this.cameraEl || !this.hands.length) {
+      // Off a headset too: desktop and touch move the same hands a
+      // headset does (desktop-controls puts one to your temple on
+      // backtick), so the gesture is the one way the visor opens. A
+      // resting desktop hand sits in front of you, nowhere near a zone.
+      if (!this.cameraEl || !this.hands.length) {
         this.progress = 0;
         component.setProgress(0, false);
         return;
