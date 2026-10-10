@@ -2,7 +2,7 @@ import { fitBoundaryRectangle } from './boundary-geometry.js';
 
 // Boundary Lab boundary detection, shared by room-scale experiences.
 AFRAME.registerComponent('headset-boundary', {
-  schema: { showFit: { default: false } },
+  schema: { showFit: { default: false }, diagnostics: { default: false } },
   init: function () {
     var THREE = AFRAME.THREE;
     this.session = null;
@@ -52,6 +52,7 @@ AFRAME.registerComponent('headset-boundary', {
   },
 
   setStatus: function (status, detail) {
+    if (this.status === status && this.detail === detail) return;
     this.status = status;
     this.detail = detail;
     this.renderStatus();
@@ -91,7 +92,7 @@ AFRAME.registerComponent('headset-boundary', {
       }
       session.requestAnimationFrame(function onXRFrame(time, frame) {
         if (self.session !== session) return;
-        self.updateFromFrame(frame);
+        self.updateFromFrame(frame, time);
         session.requestAnimationFrame(onXRFrame);
       });
     }).catch(function () {
@@ -115,11 +116,18 @@ AFRAME.registerComponent('headset-boundary', {
     this.setStatus('Enter VR to detect', 'The cyan outline appears only when\na headset supplies boundary data.');
   },
 
-  updateFromFrame: function (frame) {
+  updateFromFrame: function (frame, time) {
     var renderer = this.el.sceneEl.renderer;
     var baseSpace = renderer && renderer.xr && renderer.xr.getReferenceSpace && renderer.xr.getReferenceSpace();
-    if (!baseSpace || !this.boundedSpace) return;
+    if (!this.boundedSpace) return;
     var bounds = this.boundedSpace.boundsGeometry;
+    // Read the live property on EVERY frame, before either pose or geometry
+    // caching. Quest can supply an empty array first or replace it much later.
+    if (this.data.diagnostics) this.el.sceneEl.emit('headset-boundary-sample', {
+      time: time,
+      points: Array.from(bounds || [], function (p) { return { x: p.x, y: p.y, z: p.z }; })
+    }, false);
+    if (!baseSpace) return;
     if (!bounds || bounds.length < 3 || Array.from(bounds).some(function (p) { return !Number.isFinite(p.x) || !Number.isFinite(p.y) || !Number.isFinite(p.z); })) {
       if (this.lastBounds !== null) this.revision++;
       this.lastBounds = this.lastMatrix = null;

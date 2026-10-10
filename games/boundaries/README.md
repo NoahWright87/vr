@@ -1,6 +1,6 @@
 # Boundary Lab
 
-Enter VR with a room-scale boundary. The floor shows two distinct outlines:
+The floor shows two distinct outlines:
 
 - **Solid cyan, with white corner dots:** every point supplied by the headset's
   WebXR `bounded-floor` polygon, transformed into the active tracking space.
@@ -15,32 +15,76 @@ boundary-edge orientations; it checks whole grid cells, including boundary
 segments, so a concave notch cannot be bridged by checking corners alone.
 The fitted rectangle never replaces the polygon sent to game consumers.
 
-## Headset checks
+Use `/games/boundaries/` in the headset's browser. These experiments stay in
+Boundary Lab; Room Setup data never replaces the Impossible Spaces footprint.
 
-1. Compare cyan with a rectangular Guardian. Cyan and amber should coincide;
-   the amber dashes leave portions of cyan visible.
-2. Repeat with a narrow oblong shape, including one angled relative to the
-   tracking axes. The fitted rectangle should follow its long direction.
-3. Draw an L-shaped boundary around an excluded corner. Check that cyan follows
-   the inside bend. Amber should remain in one usable portion of the L.
-4. If cyan remains rectangular despite drawing an L, the browser is supplying
-   a rectangle. The lab cannot recover corners absent from the reported data.
-5. Redraw or recenter the boundary and check that both outlines stay aligned.
-   Missing geometry or tracking hides the outlines until valid data returns.
+## Does boundary geometry arrive late?
 
-This tests reported floor geometry, not furniture recognition. The current
-polygon model does not describe interior obstacle holes. The headset's own
-safety boundary remains authoritative.
+1. Enter normal VR and open the wrist watch. Cyan is the full polygon supplied
+   by `bounded-floor`; amber is the Lab's fitted rectangle.
+2. Watch the sampling counters for at least 30 seconds. Reads continue every
+   XR frame indefinitely, including after an empty array or unchanged pose.
+   The watch reports elapsed sampling time, frame count, first valid geometry,
+   empty frames, changes, and maximum corner count.
+3. Exit XR and select **Download diagnostics**. The local JSON contains the
+   latest boundary points, a bounded change history, and browser identification.
+   A rectangle remaining after 30 seconds is an observation, not proof that a
+   different runtime could never expose more details. Corner count alone does
+   not determine whether a shape is rectangular.
 
-## Automated checks
+## What does Room Setup expose?
 
-`npm test` includes Boundary Lab geometry and simulated XR-frame checks for
-concave, oblong, rotated, invalid, changed, and temporarily unavailable bounds.
-These checks establish geometry handling, not what a particular headset reports.
+1. Before entering XR, select **Test Room Setup (passthrough)**. This explicit
+   action requests `immersive-ar` with required `plane-detection` and optional
+   `bounded-floor`. Grant room-data permission if prompted. Unsupported or
+   denied entry displays an error and restores the normal VR configuration.
+2. Wait at least three seconds. Saved surfaces may arrive asynchronously.
+   Green outlines mean horizontal surfaces, purple vertical, pink unclassified.
+   All supplied polygon corners are rendered in their plane spaces, transformed
+   into the active XR reference space on every frame. A floor, ceiling, desk,
+   or couch can all be horizontal; green does not mean walkable.
+3. If no surfaces arrive, open **Room Setup** in the watch and select **Open
+   Quest Room Setup**. The app calls `initiateRoomCapture()` at most once per
+   session, only after waiting three seconds and only with no supplied planes.
+   If the launcher is unavailable, use the headset's Room Setup settings and
+   re-enter. A cancelled launch requires re-entering before another attempt.
+4. Compare surfaces with the physical room. Test tracking interruption and
+   recentering: stale outlines should disappear, and recovering poses should
+   align again. Moving or changing a plane's pose must update its outline even
+   when its polygon has not changed.
+5. Exit and download the report. It includes the last tracked surface polygons,
+   optional semantic labels, and their reference-space matrices. Data is saved
+   locally, not uploaded. Starting another XR session starts a new observation.
 
-`npm run test:boundary:browser` checks actual outline buffers, dashed rendering,
-and reference-space updates in the built application. It also verifies the
-Impossible Spaces defaults and a 2 mm separation between a pair of wall faces.
-Use an existing Playwright package via `VR_PLAYWRIGHT_PATH`, and override the
-served build URL with `VR_TEST_URL` (default `http://127.0.0.1:8088`). An optional
-`VR_SCREENSHOT_PATH` saves a clearly labeled simulated L-shaped renderer check.
+The virtual floor, sky, cube, and pedestal are hidden during passthrough.
+Lab locomotion is temporarily removed and the rig is reset so artificial movement
+cannot move hands or menus away from real-room outlines. The previous rig,
+controls, and visuals are restored on exit.
+
+## Custom floor drawing: next experiment
+
+Proposed interaction: aim at the floor, hold Trigger to paint, preview the closed
+polygon, Undo strokes, and optionally edit corners for straight walls or L shapes.
+Reject self-intersections and verify that the entire outline and filled footprint
+are contained in the reported boundary, including edges crossing concave notches.
+Mark outside sections red and prevent confirmation. This would allow excluding
+obstacles, but not recover safe areas that a rectangular API omitted.
+
+Room Setup surfaces describe physical geometry. They are **not Guardian**, do not
+establish walkable floor, and do not validate a custom polygon beyond the reported
+boundary. Keep the headset's safety boundary enabled throughout these tests.
+
+References:
+- [Meta Browser mixed reality and Room Setup](https://developers.meta.com/vr/documentation/web/webxr-mixed-reality/)
+- [WebXR Plane Detection specification](https://immersive-web.github.io/plane-detection/)
+
+Automated checks use synthetic delayed boundaries and planes. They verify data
+and rendering behavior; actual Quest permissions, passthrough, Guardian geometry,
+and the native Room Setup flow still require headset testing.
+
+Run `npm test` for geometry and simulated XR lifecycle checks, and
+`npm run test:boundary:browser` against a served production build for actual
+outline buffers, Room Setup controls, report downloads, and restoration on exit.
+Set `VR_PLAYWRIGHT_PATH` to an installed Playwright package and `VR_TEST_URL` to
+override the default `http://127.0.0.1:8088`. `VR_SCREENSHOT_PATH` optionally saves
+a clearly labeled simulated L-shaped boundary check.
