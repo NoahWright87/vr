@@ -17,7 +17,8 @@ test('Boundary Lab is built as an experience and starts with shared watch hands'
 });
 
 test('Boundary Lab uses the headset-reported bounded floor rather than a guessed room box', () => {
-  assert.match(page, /applyCheckerTexture\(document\.querySelector\('#boundary-floor'\), '#263550', '#1c2940', 15, 15\)/);
+  assert.match(page, /src="\.\.\/\.\.\/common\/checker-floor\.js"/);
+  assert.match(page, /checker-floor="squareSize: 1"/);
   assert.match(page, /requestReferenceSpace\('bounded-floor'\)/);
   assert.match(page, /boundsGeometry/);
   assert.match(page, /frame\.getPose\(this\.boundedSpace, baseSpace\)/);

@@ -54,6 +54,7 @@ import { cycleMenuOptionIndex, parseMenuOptions } from './menu-options.js';
       value: { type: 'string' },
       width: { default: 0.78 },
       height: { default: 0.2 },
+      font: { type: 'string', default: '' },
     },
 
     init: function () {
@@ -83,6 +84,7 @@ import { cycleMenuOptionIndex, parseMenuOptions } from './menu-options.js';
 
     addText: function (target, value, width, color) {
       var text = document.createElement('a-text');
+      if (this.data.font) text.setAttribute('font', this.data.font);
       text.setAttribute('value', value);
       text.setAttribute('align', 'center');
       text.setAttribute('color', color || '#eee');

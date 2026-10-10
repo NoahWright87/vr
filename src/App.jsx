@@ -51,6 +51,15 @@ export function App() {
           >
             Read the headset boundary, test controller haptics, and grab a cube with tactile reach feedback.
           </Card>
+          <Card
+            title="Expansive Spaces"
+            href="/games/expansive-spaces/"
+            interactive
+            footer={<Text tone="muted">Explore →</Text>}
+          >
+            Start with a room the size of your play space and a live boundary map.
+            A lab for making small spaces feel bigger.
+          </Card>
         </CardGrid>
       </Container>
 

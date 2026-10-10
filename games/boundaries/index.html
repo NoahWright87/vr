@@ -13,6 +13,7 @@
     <script type="module" src="../../common/watch-menu.js"></script>
     <script type="module" src="../../common/locomotion.js"></script>
     <script type="module" src="../../common/desktop-controls.js"></script>
+    <script type="module" src="../../common/checker-floor.js"></script>
 
     <style>
       body {
@@ -80,33 +81,6 @@
     </template>
 
     <script>
-      // The floor texture is the same lightweight, canvas-generated checker
-      // pattern used by the other room-scale experiences. Its fixed squares
-      // make physical walking legible without an external image asset.
-      function applyCheckerTexture(el, colorA, colorB, repeatX, repeatY) {
-        var canvas = document.createElement('canvas');
-        canvas.width = canvas.height = 64;
-        var context = canvas.getContext('2d');
-        context.fillStyle = colorA;
-        context.fillRect(0, 0, 64, 64);
-        context.fillStyle = colorB;
-        context.fillRect(0, 0, 32, 32);
-        context.fillRect(32, 32, 32, 32);
-
-        var texture = new AFRAME.THREE.CanvasTexture(canvas);
-        texture.wrapS = texture.wrapT = AFRAME.THREE.RepeatWrapping;
-        texture.repeat.set(repeatX, repeatY);
-
-        function apply() {
-          var mesh = el.getObject3D('mesh');
-          if (!mesh || !mesh.material) return;
-          mesh.material.map = texture;
-          mesh.material.needsUpdate = true;
-        }
-        if (el.getObject3D('mesh')) apply();
-        else el.addEventListener('loaded', apply, { once: true });
-      }
-
       // WebXR exposes a real room-scale boundary through a bounded-floor
       // reference space. The points are measured in metres at y=0, relative
       // to that space's origin. We transform them into A-Frame's active
@@ -150,9 +124,6 @@
           this.el.sceneEl.addEventListener('enter-vr', this.onEnterVR);
           this.el.sceneEl.addEventListener('exit-vr', this.onExitVR);
           this.el.sceneEl.addEventListener('watch-menu-ready', this.onWatchReady);
-          this.el.sceneEl.addEventListener('loaded', function () {
-            applyCheckerTexture(document.querySelector('#boundary-floor'), '#263550', '#1c2940', 15, 15);
-          });
         },
 
         setStatus: function (status, detail) {
@@ -299,7 +270,7 @@
     </script>
 
     <a-scene background="color: #08101f">
-      <a-plane id="boundary-floor" rotation="-90 0 0" width="30" height="30" color="#263550"></a-plane>
+      <a-plane id="boundary-floor" rotation="-90 0 0" width="30" height="30" color="#263550" checker-floor="squareSize: 1"></a-plane>
       <a-sky color="#08101f"></a-sky>
 
       <!-- One rig keeps headset, controllers, and desktop fallback transforms

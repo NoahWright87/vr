@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Expansive Spaces | Noah's VR projects</title>
+    <link rel="icon" href="../../assets/noah-vr.svg" type="image/svg+xml" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <script>window.AFRAME_CDN_ROOT = '../../vendor/aframe-1.6.0/';</script>
+    <script src="../../vendor/aframe-1.6.0/aframe-v1.6.0.min.js"></script>
+    <script type="module" src="./room.js"></script>
+    <style>
+      body { margin: 0; font-family: system-ui, sans-serif; }
+      #overlay { position: absolute; top: 0; left: 0; right: 0; z-index: 1;
+        display: flex; justify-content: space-between; gap: 1rem; padding: .75rem 1rem;
+        background: rgba(4, 10, 22, .8); color: #f4f8ff; font-size: .9rem; }
+      #overlay a { color: #9ad; white-space: nowrap; }
+      #overlay small { display: block; margin-top: .3rem; color: #bac9df; }
+    </style>
+  </head>
+  <body>
+    <div id="overlay">
+      <span><strong>Expansive Spaces</strong> · A room at real-world scale.
+        <small>Enter VR to fit your boundary. Either watch has the map, movement gain, optional steering and turn gain.
+          Desktop: WASD / drag to look / Tab for watch. Preview room: 4 × 3 m.</small></span>
+      <a href="../../index.html">All prototypes</a>
+    </div>
+
+    <template id="watch-menu-template">
+      <a-entity class="watch-menu-panel" visible="false">
+        <a-entity data-menu-page="main">
+          <a-plane width="1.12" height="2.1" color="#101827" position="0 -.33 -.01"></a-plane>
+          <a-entity class="menu-chrome-slot" data-title="EXPANSIVE SPACES" data-help="false" data-close="true" data-width="1.12" data-bar-y=".64"></a-entity>
+          <a-text font="sourcecodepro" class="space-status" value="Preview room - 4.0 x 3.0 m" align="center" color="#e0f2fe" width="1.65" position="0 .43 .01"></a-text>
+          <a-entity boundary-map="width: .96; height: .72" position="0 -.02 .01"></a-entity>
+          <a-text font="sourcecodepro" value="Cyan: boundary   Orange: you\nArrow: direction you face" align="center" color="#bfcee2" width="1.6" position="0 -.48 .01"></a-text>
+          <a-text font="sourcecodepro" class="space-detail" value="Enter VR to read your boundary." align="center" color="#94a3b8" width="1.3" wrap-count="36" position="0 -.59 .01"></a-text>
+          <a-entity class="pm-target" geometry="primitive: plane; width: .96; height: .16" material="color: #182f4a" menu-item="value: page-gain; label: Movement gain" position="0 -.77 0">
+            <a-text font="sourcecodepro" value="Movement gain >" align="center" width="1.65" position="0 0 .01"></a-text>
+          </a-entity>
+          <a-entity class="pm-target" geometry="primitive: plane; width: .96; height: .16" material="color: #182f4a" menu-item="value: page-steering; label: Walking steering" position="0 -.98 0">
+            <a-text font="sourcecodepro" class="space-steering-link" value="Walking steering: OFF >" align="center" width="1.5" position="0 0 .01"></a-text>
+          </a-entity>
+          <a-entity class="pm-target" geometry="primitive: plane; width: .96; height: .16" material="color: #182f4a" menu-item="value: page-turn; label: Turn gain" position="0 -1.19 0">
+            <a-text font="sourcecodepro" class="space-turn-link" value="Turn gain: OFF >" align="center" width="1.5" position="0 0 .01"></a-text>
+          </a-entity>
+        </a-entity>
+        <a-entity data-menu-page="gain" visible="false">
+          <a-plane width="1.12" height="1.6" color="#101827" position="0 -.08 -.01"></a-plane>
+          <a-entity class="menu-chrome-slot" data-title="MOVEMENT GAIN" data-help="false" data-close="true" data-close-value="gain-close" data-width="1.12" data-bar-y=".64"></a-entity>
+          <a-text font="sourcecodepro" value="Faster steps, farther travel" align="center" color="#7dd3fc" width="1.5" position="0 .42 .01"></a-text>
+          <a-entity menu-option="key: space-max-gain; label: Max gain; values: 1|1.05|1.1|1.15|1.2|1.3|1.4|1.5|1.75|2; labels: 1.00x (off)|1.05x|1.10x|1.15x|1.20x|1.30x|1.40x|1.50x|1.75x|2.00x; value: 1.2; width: .96; height: .16; font: sourcecodepro" position="0 .19 0"></a-entity>
+          <a-entity menu-option="key: space-gain-speed; label: Full gain at; values: 0.8|1|1.2|1.5|2|2.5|3|4; labels: 0.8 m/s|1.0 m/s|1.2 m/s|1.5 m/s|2.0 m/s|2.5 m/s|3.0 m/s|4.0 m/s; value: 2; width: .96; height: .16; font: sourcecodepro" position="0 -.08 0"></a-entity>
+          <a-text font="sourcecodepro" value="Below 0.6 m/s: always 1x.\nGain ramps smoothly above that.\nThe map shows your real position." align="center" color="#bfcee2" width="1.35" wrap-count="36" position="0 -.35 .01"></a-text>
+          <a-text font="sourcecodepro" class="space-gain-live" value="0.00 m/s -> 1.00x" align="center" color="#ffad54" width="1.4" position="0 -.57 .01"></a-text>
+          <a-entity class="pm-target" geometry="primitive: plane; width: .96; height: .16" material="color: #182f4a" menu-item="value: space-reset-travel; label: Reset added travel" position="0 -.77 0">
+            <a-text font="sourcecodepro" value="Reset travel + rotation" align="center" width="1.45" position="0 0 .01"></a-text>
+          </a-entity>
+        </a-entity>
+        <a-entity data-menu-page="steering" visible="false">
+          <a-plane width="1.12" height="2.1" color="#101827" position="0 -.33 -.01"></a-plane>
+          <a-entity class="menu-chrome-slot" data-title="WALKING STEERING" data-help="false" data-close="true" data-close-value="steering-close" data-width="1.12" data-bar-y=".64"></a-entity>
+          <a-entity menu-option="key: space-steering-enabled; label: Steering; values: false|true; labels: OFF|ON; value: false; width: .96; height: .16; font: sourcecodepro" position="0 .4 0"></a-entity>
+          <a-entity menu-option="key: space-steering-mode; label: Path; values: center|left|right; labels: To center|Curve left|Curve right; value: center; width: .96; height: .16; font: sourcecodepro" position="0 .16 0"></a-entity>
+          <a-entity menu-option="key: space-curvature; label: Max curve; values: 0|1|2|3|5|8|10|15|20; labels: 0 deg/m|1 deg/m|2 deg/m|3 deg/m|5 deg/m|8 deg/m|10 deg/m|15 deg/m|20 deg/m; value: 5; width: .96; height: .16; font: sourcecodepro" position="0 -.08 0"></a-entity>
+          <a-entity menu-option="key: space-steering-speed; label: Full at; values: 0.8|1|1.2|1.5|2|2.5|3|4; labels: 0.8 m/s|1.0 m/s|1.2 m/s|1.5 m/s|2.0 m/s|2.5 m/s|3.0 m/s|4.0 m/s; value: 2; width: .96; height: .16; font: sourcecodepro" position="0 -.32 0"></a-entity>
+          <a-entity menu-option="key: space-steering-rate; label: Rate cap; values: 1|2|3|5|6|10|15|20|30; labels: 1 deg/s|2 deg/s|3 deg/s|5 deg/s|6 deg/s|10 deg/s|15 deg/s|20 deg/s|30 deg/s; value: 6; width: .96; height: .16; font: sourcecodepro" position="0 -.56 0"></a-entity>
+          <a-text font="sourcecodepro" value="Below 0.6 m/s: no steering.
+Uses physical metres, not gained.
+Left/right describe your real path.
+Pauses while the watch is open." align="center" color="#bfcee2" width="1.3" wrap-count="37" position="0 -.85 .01"></a-text>
+          <a-text font="sourcecodepro" class="space-steering-live" value="OFF" align="center" color="#ffad54" width="1.3" position="0 -1.08 .01"></a-text>
+          <a-entity class="pm-target" geometry="primitive: plane; width: .96; height: .16" material="color: #182f4a" menu-item="value: space-reset-effects; label: Reset travel and rotation" position="0 -1.25 0">
+            <a-text font="sourcecodepro" value="Reset travel + rotation" align="center" width="1.45" position="0 0 .01"></a-text>
+          </a-entity>
+        </a-entity>
+        <a-entity data-menu-page="turn" visible="false">
+          <a-plane width="1.12" height="1.6" color="#101827" position="0 -.08 -.01"></a-plane>
+          <a-entity class="menu-chrome-slot" data-title="TURN GAIN" data-help="false" data-close="true" data-close-value="turn-close" data-width="1.12" data-bar-y=".64"></a-entity>
+          <a-entity menu-option="key: space-turn-enabled; label: Turn gain; values: false|true; labels: OFF|ON; value: false; width: .96; height: .16; font: sourcecodepro" position="0 .4 0"></a-entity>
+          <a-entity menu-option="key: space-turn-gain; label: Max gain; values: 0.8|0.9|1|1.05|1.1|1.1111111111111112|1.15|1.2|1.3|1.5; labels: 0.80x|0.90x|1.00x|1.05x|1.10x|1.11x|1.15x|1.20x|1.30x|1.50x; value: 1.1111111111111112; width: .96; height: .16; font: sourcecodepro" position="0 .13 0"></a-entity>
+          <a-entity menu-option="key: space-turn-speed; label: Full at; values: 60|90|120|180|240|300|360; labels: 60 deg/s|90 deg/s|120 deg/s|180 deg/s|240 deg/s|300 deg/s|360 deg/s; value: 180; width: .96; height: .16; font: sourcecodepro" position="0 -.14 0"></a-entity>
+          <a-text font="sourcecodepro" value="Below 30 deg/s: always 1x.
+Fast turns ramp to max gain.
+1.11x: 180 becomes about 200 deg.
+Pauses while the watch is open." align="center" color="#bfcee2" width="1.3" wrap-count="38" position="0 -.41 .01"></a-text>
+          <a-text font="sourcecodepro" class="space-turn-live" value="OFF" align="center" color="#ffad54" width="1.3" position="0 -.61 .01"></a-text>
+          <a-entity class="pm-target" geometry="primitive: plane; width: .96; height: .16" material="color: #182f4a" menu-item="value: space-reset-effects; label: Reset travel and rotation" position="0 -.79 0">
+            <a-text font="sourcecodepro" value="Reset travel + rotation" align="center" width="1.45" position="0 0 .01"></a-text>
+          </a-entity>
+        </a-entity>
+      </a-entity>
+    </template>
+
+    <a-scene background="color: #08101f" webxr="referenceSpaceType: local-floor; optionalFeatures: bounded-floor">
+      <a-light type="ambient" color="#e4edff" intensity=".85"></a-light>
+      <a-light type="directional" color="#fff4df" intensity=".5" position="1 3 1"></a-light>
+      <a-entity id="space-room" expansive-space>
+        <a-plane id="space-floor" rotation="-90 0 0" width="4" height="3" checker-floor></a-plane>
+        <a-entity id="space-wall-panel" position="0 1.6 -1.48">
+          <a-plane width="1.48" height="1.55" color="#101827"></a-plane>
+          <a-text font="sourcecodepro" value="EXPANSIVE SPACES" align="center" color="#f8fafc" width="2.7" position="0 .6 .01"></a-text>
+          <a-text font="sourcecodepro" class="space-status" value="Preview room - 4.0 x 3.0 m" align="center" color="#7dd3fc" width="1.9" wrap-count="40" position="0 .4 .01"></a-text>
+          <a-entity boundary-map="width: 1.28; height: .96" position="0 -.13 .01"></a-entity>
+          <a-text font="sourcecodepro" value="Cyan: boundary   Orange: you" align="center" color="#bfcee2" width="1.85" position="0 -.68 .01"></a-text>
+        </a-entity>
+      </a-entity>
+
+      <!-- One pose transform combines translation gain and optional yaw effects.
+           The map and ground outline still represent the physical boundary. -->
+      <a-entity id="space-rig" speed-dependent-gain locomotion-demo="speed: 1.2; moveMode: none; turnMode: none; comfortVignette: false"
+        semantic-look-controls="camera: #space-camera"
+        gamepad-input="leftHand: #left-hand; rightHand: #right-hand"
+        touch-controls="leftHand: #left-hand; rightHand: #right-hand; primaryAction: none; interactAction: none; watchAction: watch; watchLabel: WATCH"
+        desktop-controls="camera: #space-camera; leftHand: #left-hand; rightHand: #right-hand">
+        <a-camera id="space-camera" wasd-controls="enabled: false" look-controls="pointerLockEnabled: true"></a-camera>
+        <a-entity id="left-hand" class="hand" hand-with-watch="hand: left" semantic-hand="hand: left; maxReach: 1"></a-entity>
+        <a-entity control-mode-visibility="modes: xr" hand-controls="hand: left; handModelStyle: lowPoly; color: #3a3a3a"></a-entity>
+        <a-entity id="right-hand" class="hand" hand-with-watch="hand: right" semantic-hand="hand: right; maxReach: 1"></a-entity>
+        <a-entity control-mode-visibility="modes: xr" hand-controls="hand: right; handModelStyle: lowPoly; color: #3a3a3a"></a-entity>
+      </a-entity>
+    </a-scene>
+  </body>
+</html>
