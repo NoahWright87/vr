@@ -507,8 +507,8 @@
               { kind: 'action', id: 'station-boxes', label: 'Boxes' },
             ],
           },
-          // Sent the way a menu-option row with this key would have sent
-          // it, so locomotion hears it with no menu code of its own.
+          // Re-sent as menu-option-change with this key, so locomotion
+          // hears it with no menu code of its own.
           {
             kind: 'number', id: 'showcase-move-speed', label: 'Move speed', emitOption: 'move-speed',
             value: 1, min: 0.5, max: 2.5, step: 0.1, suffix: 'x',

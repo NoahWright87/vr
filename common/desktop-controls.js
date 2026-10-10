@@ -59,7 +59,6 @@ AFRAME.registerComponent('desktop-controls', {
   },
 
   init: function () {
-    var self = this;
     this.sceneEl = this.el.sceneEl;
     this.cameraEl = this.data.camera || this.el.querySelector('a-camera') || document.querySelector('a-camera');
     // a-camera enables A-Frame's own WASD controller by default. Desktop
@@ -138,13 +137,12 @@ AFRAME.registerComponent('desktop-controls', {
     this._aimActionHeld = false; // touch/gamepad's semantic 'aim' action -- see onSemanticAction
     // Both are literally "is the button down" in hold mode, and a
     // press-triggered flip-flop in toggle mode (this.preferences.aimMode,
-    // default 'toggle' -- see readPreferences/the aim-mode menu-option).
+    // default 'toggle' -- see readPreferences/the aim-mode menu row).
     this.isAiming = false; // the two above, combined -- see updateAiming
     this.onSemanticTap = this.onSemanticTap.bind(this);
     this.onMountedRequest = this.onMountedRequest.bind(this);
     this.onActiveMenuClosed = this.onActiveMenuClosed.bind(this);
     this.onPreferenceChange = this.onPreferenceChange.bind(this);
-    this.onWatchReady = this.syncPreferenceControls.bind(this);
     this.onControlModeChanged = this.handleControlModeChanged.bind(this);
     this.onSemanticAction = this.onSemanticAction.bind(this);
     this.onVisorRequest = this.onVisorRequest.bind(this);
@@ -156,7 +154,6 @@ AFRAME.registerComponent('desktop-controls', {
     document.addEventListener('contextmenu', this.onContextMenu, true);
     this.sceneEl.addEventListener('mounted-interaction-request', this.onMountedRequest);
     this.sceneEl.addEventListener('menu-option-change', this.onPreferenceChange);
-    this.sceneEl.addEventListener('watch-menu-ready', this.onWatchReady);
     this.sceneEl.addEventListener('control-mode-changed', this.onControlModeChanged);
     this.sceneEl.addEventListener('semantic-tap', this.onSemanticTap);
     this.sceneEl.addEventListener('visor-menu-request', this.onVisorRequest);
@@ -166,7 +163,6 @@ AFRAME.registerComponent('desktop-controls', {
     this.ensureCursorStyleEl();
     this.setMode('normal');
     this.updateCrouchStateAttribute();
-    setTimeout(function () { self.syncPreferenceControls(); }, 0);
   },
 
   dominantSide: function () {
@@ -194,19 +190,7 @@ AFRAME.registerComponent('desktop-controls', {
     }
     writePreferences(this.preferences);
     this.hintSystem.setPreferences(this.preferences);
-    this.syncPreferenceControls();
     this.sceneEl.emit('player-preferences-changed', Object.assign({}, this.preferences), false);
-  },
-
-  syncPreferenceControls: function () {
-    var preferences = this.preferences;
-    Array.prototype.forEach.call(document.querySelectorAll('[menu-option]'), function (el) {
-      var component = el.components['menu-option'];
-      if (!component) return;
-      if (component.data.key === 'handedness') component.setValue(preferences.handedness);
-      if (component.data.key === 'interaction-hints') component.setValue(preferences.hintMode);
-      if (component.data.key === 'aim-mode') component.setValue(preferences.aimMode);
-    });
   },
 
   shouldHandleKeyboard: function (evt) {
@@ -497,8 +481,7 @@ AFRAME.registerComponent('desktop-controls', {
     if (!scope) return false;
     var target = this.findNearestMenuTarget(scope, 0.055);
     if (!target) return false;
-    var menuItem = target.getAttribute('menu-item');
-    this.activePointerHand.el.setAttribute('data-ray-target', (menuItem && (menuItem.value || menuItem.label)) || target.id || 'target');
+    this.activePointerHand.el.setAttribute('data-ray-target', target.id || 'target');
     target.emit('click', null, false);
     return true;
   },
@@ -772,9 +755,8 @@ AFRAME.registerComponent('desktop-controls', {
     if (!watch || !watch.projectedMenu) return;
     this.activeWatchHand = watchHand;
     this.activePointerHand = pointerHand;
-    // The trigger of whichever menu the watch is using — the face itself
-    // for the classic watch, its undrawn twin for the crossbar one — so
-    // closing either from inside drops back out of watch mode.
+    // The watch menu's trigger (the face's undrawn twin), so closing the
+    // menu from inside drops back out of watch mode.
     this.trackActiveMenu(watch.projectedMenu.el);
     this.setMode('watch');
     // Snapshot the reference direction the watch face gets held up along
@@ -1528,7 +1510,6 @@ AFRAME.registerComponent('desktop-controls', {
     this.sceneEl.removeEventListener('visor-menu-request', this.onVisorRequest);
     this.sceneEl.removeEventListener('visor-menu-closed', this.onVisorClosed);
     this.sceneEl.removeEventListener('menu-option-change', this.onPreferenceChange);
-    this.sceneEl.removeEventListener('watch-menu-ready', this.onWatchReady);
     this.sceneEl.removeEventListener('control-mode-changed', this.onControlModeChanged);
     this.sceneEl.removeEventListener('semantic-tap', this.onSemanticTap);
     this.el.removeEventListener('semantic-action-intent', this.onSemanticAction);

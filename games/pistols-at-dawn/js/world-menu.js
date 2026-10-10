@@ -62,10 +62,8 @@
       this.onOptionChange = this.onOptionChange.bind(this);
       this.onAreaLoaded = this.onAreaLoaded.bind(this);
       this.onAreaUnloading = this.onAreaUnloading.bind(this);
-      this.onWatchReady = this.updateControls.bind(this);
       this.el.addEventListener('menu-item-select', this.onSelection);
       this.el.addEventListener('menu-option-change', this.onOptionChange);
-      this.el.addEventListener('watch-menu-ready', this.onWatchReady);
       this.el.addEventListener('area-loaded', this.onAreaLoaded);
       this.el.addEventListener('area-unloading', this.onAreaUnloading);
     },
@@ -73,7 +71,6 @@
     remove: function () {
       this.el.removeEventListener('menu-item-select', this.onSelection);
       this.el.removeEventListener('menu-option-change', this.onOptionChange);
-      this.el.removeEventListener('watch-menu-ready', this.onWatchReady);
       this.el.removeEventListener('area-loaded', this.onAreaLoaded);
       this.el.removeEventListener('area-unloading', this.onAreaUnloading);
     },
@@ -82,7 +79,6 @@
       if (evt.detail.id !== 'range') return;
       this.galleryHost = evt.detail.root.querySelector('#target-gallery');
       this.rebuildGallery();
-      this.updateControls();
     },
 
     onAreaUnloading: function (evt) {
@@ -102,20 +98,17 @@
           var viceMeter = vices && vices.components['vice-meter'];
           if (viceMeter) viceMeter.updateHud();
         }
-        this.updateHudLabels();
         return;
       }
       if (evt.detail.value === 'toggle-performance') {
         this.performanceVisible = !this.performanceVisible;
         var performanceEl = document.querySelector('#performance-text');
         if (performanceEl) performanceEl.setAttribute('performance-monitor', 'enabled', this.performanceVisible);
-        this.updatePerformanceLabels();
         return;
       }
       if (evt.detail.value !== 'toggle-target-motion') return;
       this.targetsPaused = !this.targetsPaused;
       this.applyPausedState();
-      this.updateMotionLabels();
     },
 
     onOptionChange: function (evt) {
@@ -153,7 +146,6 @@
       else if (evt.detail.key === 'spinner-distance') this.settings.distance = numberValue;
       else return;
       this.rebuildGallery();
-      this.updateControls();
     },
 
     componentForKind: function (kind) {
@@ -229,50 +221,6 @@
       var componentName = this.componentForKind(this.settings.kind);
       var component = this.activeGalleryEl.components[componentName];
       if (component && component.setPaused) component.setPaused(this.targetsPaused);
-    },
-
-    updateControls: function () {
-      this.updateMotionLabels();
-      this.updateHudLabels();
-      this.updatePerformanceLabels();
-      this.syncOption('.target-kind-option', this.settings.kind);
-      this.syncOption('.target-count-option', this.settings.count);
-      this.syncOption('.target-speed-option', this.settings.speed);
-      this.syncOption('.target-distance-option', this.settings.distance);
-    },
-
-    syncOption: function (selector, value) {
-      Array.prototype.forEach.call(document.querySelectorAll(selector), function (optionEl) {
-        var option = optionEl.components['menu-option'];
-        if (option) option.setValue(value);
-      });
-    },
-
-    updateMotionLabels: function () {
-      var label = this.targetsPaused ? 'Resume targets' : 'Pause targets';
-      Array.prototype.forEach.call(document.querySelectorAll('.target-motion-toggle-label'), function (labelEl) {
-        labelEl.setAttribute('text', 'value', label);
-        var row = labelEl.closest('[menu-item]');
-        if (row) row.setAttribute('menu-item', 'label', label);
-      });
-    },
-
-    updateHudLabels: function () {
-      var label = this.hudVisible ? 'Hide HUD' : 'Show HUD';
-      Array.prototype.forEach.call(document.querySelectorAll('.hud-toggle-label'), function (labelEl) {
-        labelEl.setAttribute('text', 'value', label);
-        var row = labelEl.closest('[menu-item]');
-        if (row) row.setAttribute('menu-item', 'label', label);
-      });
-    },
-
-    updatePerformanceLabels: function () {
-      var label = this.performanceVisible ? 'Hide Performance' : 'Show Performance';
-      Array.prototype.forEach.call(document.querySelectorAll('.performance-toggle-label'), function (labelEl) {
-        labelEl.setAttribute('text', 'value', label);
-        var row = labelEl.closest('[menu-item]');
-        if (row) row.setAttribute('menu-item', 'label', label);
-      });
     },
   });
 })();

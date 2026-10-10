@@ -72,47 +72,31 @@ this is only for work that has been decided on and postponed.
 
 `common/menu-model.js` (the pure model) and `common/menu-crossbar.js`
 (the A-Frame renderer, stick engagement, and `projected-crossbar`, which
-puts a crossbar panel inside any `projected-menu` trigger) exist, and the
-menus showcase (`primitives/menus/`) is entirely on them: static panel,
-wall screen, pedestal, watch and visor. Deliberately not done yet:
+puts a crossbar panel inside any `projected-menu` trigger) are the only
+menu system now. Every menu in every game is on them — the showcase, the
+watches in Pistols and Boundary Lab, Pistols' carriage stall, and a visor
+in every game (Punch Pop's settings live in its visor; the others carry
+the shared `Visor ▸` settings and `Exit VR` from `common/visor-page.js`).
+The old path (`menu-pages`, `menu-item`, `menu-option`, `menu-feedback`,
+`buildMenuChrome`, the classic half of `hand-with-watch`,
+`control-mode-layout`, `room-code-entry.js`, `menu-options.js`, Punch
+Pop's `createTabbedPanel`) is deleted; `common/menus.js` is just
+`projected-menu`, the trigger (poke, raised wrist, mounted mode, walking
+away) that the watch and every crossbar prop open through. Deliberately
+not done yet:
 
-- **Migrate the games, one at a time.** What still uses the old path
-  (`common/menus.js`: `menu-pages`, `menu-item`, `menu-option`,
-  `buildMenuChrome`): the watch in Pistols (5 pages — main, targets,
-  teleport, debug, debug-motion; 23 items, 10 multi-value options), the
-  watch in Boundaries (7 items), Pistols' carriage panel, and Punch Pop's
-  separate `createTabbedPanel`. `projected-menu` itself stays: it is the
-  trigger (poke, raised wrist, mounted mode, walking away) that every
-  crossbar prop and the watch still open through. Order:
-  1. **The watches, with Pistols' teleport page folded in** — teleport is
-     one of the watch's pages, so the agreed "watch, then teleport"
-     collapses into one step, and its destinations come from
-     `TOWN_LOCATIONS` instead of 12 hand-placed entities. Agreed as a
-     **new PR**, after the showcase watch has been tried in a headset.
-     What it takes per game: write the watch pages as a
-     `registerMenuPage` page (Pistols' `menu-option` keys go through
-     `emitOption`, its buttons through action ids or `emitSelect`), add
-     a `#watch-crossbar-template`, and drop the old `#watch-menu-template`
-     (a page with only the crossbar template gets only the crossbar
-     watch; with both, `menuStyle` / `setMenuStyle` picks). Behaviour
-     change to expect: multi-value rows stop cycling with arrows and open
-     as a list, per "everything is a submenu". Once both games are over,
-     the classic half of `hand-with-watch` goes.
-  2. **Pistols' carriage panel**, the same way the showcase's wall screen
-     and pedestal went: keep its `projected-menu` trigger and desktop
-     `mounted` mode (decided in the showcase migration — the camera
-     flying to the panel survives, and the panel's keys are locked to it
-     while it is up), swap the template for one holding a
-     `crossbar-menu`, and add `projected-crossbar`.
-  3. Punch Pop's tabbed panel — tabs become the top level of the drill.
-  4. Delete the old path once nothing uses it: `menu-pages`, `menu-item`,
-     `menu-option`, `menu-feedback`, `buildMenuChrome` and the chrome /
-     `suppressPointing` / popup handling in `projected-menu`;
-     `control-mode-layout` (`common/control-mode.js`); and
-     `common/room-code-entry.js`, which nothing uses since the showcase's
-     watch moved to letter rows. `obb-collider-visibility.js` matters
-     less once the page stacks are gone — the crossbar registers only a
-     handful of poke targets per open panel (rows, breadcrumb, close).
+- **Retire the compatibility events once their handlers move.** Pistols'
+  and the showcase's rows still re-send `menu-item-select` /
+  `menu-option-change` (`emitSelect` / `emitOption`) so the handlers
+  written for the old rows (`pistols-watch-menu`, locomotion's comfort
+  settings, desktop-controls' preferences, `teleport-hub`) work
+  unchanged. Moving each handler to `menu-commit` / `menu-action` on the
+  row's own id would let those two options go; nothing is broken in the
+  meantime, it is just two names for one thing.
+
+- **Games' own visor rows.** Pistols and Boundary Lab's visors hold only
+  the shared rows for now, and Cube Pop's only `Reset cubes`. Whatever a
+  game wants reachable mid-play without lifting the wrist belongs there.
 
 - **A crossbar page editor, if it is missed.** The showcase used to have
   a `?edit=1` menu editor (title, item labels, positions, JSON out) for

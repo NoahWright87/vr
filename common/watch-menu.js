@@ -160,20 +160,13 @@ import { findMenuItem } from './menu-model.js';
     pm.data.offset = { x: outward.x * 0.045, y: outward.y * 0.045, z: outward.z * 0.045 };
   }
 
-  // Shared wrist hardware and interaction. Applications provide only a
-  // menu template and react to its bubbling menu-item-select events.
+  // Shared wrist hardware and interaction. A page provides only a
+  // #watch-crossbar-template (a crossbar-menu naming its page) and the
+  // page data; this builds the watch, the fingertip and its pointing.
   AFRAME.registerComponent('hand-with-watch', {
     schema: {
       hand: { default: 'left', oneOf: ['left', 'right'] },
-      menuTemplate: { type: 'selector', default: '#watch-menu-template' },
-      // The same watch drawn by the shared crossbar menu instead of a
-      // hand-built page stack. Only built when the page provides the
-      // template, so a game that has not moved over yet gets exactly the
-      // watch it always had.
       crossbarTemplate: { type: 'selector', default: '#watch-crossbar-template' },
-      // Which of the two answers the wrist. Switchable at runtime with
-      // setMenuStyle, so the two can be compared on the same hand.
-      menuStyle: { default: 'classic', oneOf: ['classic', 'crossbar'] },
       gazeCursor: { type: 'selector', default: '#gaze-cursor' },
     },
 
@@ -233,100 +226,29 @@ import { findMenuItem } from './menu-model.js';
         side * FINGER_POINT_DIR.x, FINGER_POINT_DIR.y, FINGER_POINT_DIR.z
       ));
 
-      // The classic watch: hand-built pages from a template. A page that
-      // has moved onto the crossbar watch provides no template, and gets
-      // only the crossbar one below.
-      if (this.data.menuTemplate) this.buildClassicWatch(face, side);
       if (this.data.crossbarTemplate) this.buildCrossbarWatch(wrapper, face, side);
     },
 
-    buildClassicWatch: function (face, side) {
-      var self = this;
-      var el = this.el;
-      face.setAttribute('projected-menu', {
-        template: this.data.menuTemplate,
-        mode: 'auto',
-        automatic: true,
-        pokeScale: 0.12,
-        laserScale: 0.26,
-      });
-      function finishMenuSetup() {
-        var pm = face.components['projected-menu'];
-        self.projectedMenu = pm;
-        self.classicMenu = pm;
-        poseLikeWatchFace(pm, side);
-        if (pm.chromes[0]) {
-          self.classicTimeEl = pm.chromes[0].titleEl;
-          self.classicTimeEl.setAttribute('font', 'sourcecodepro');
-          self.panelTimeEl = self.classicTimeEl;
-        }
-        face.addEventListener('projected-menu-opened', function () { face.setAttribute('visible', false); });
-        face.addEventListener('projected-menu-closed', function () {
-          if (!self.crossbarMenu || !self.crossbarMenu.visible) face.setAttribute('visible', true);
-          var pages = pm.panelEl.components['menu-pages'];
-          if (pages) pages.showPage('main');
-        });
-        pm.panelEl.setAttribute('menu-pages', { defaultPage: 'main' });
-        self.helpPageIndex = 0;
-        self.helpPages = [
-          'Point with your other hand (hold grip), then poke the watch face to open its menu.',
-          'Tilt the watch toward you to poke, or turn it palm-up for a larger pointing menu.',
-        ];
-        self.updateHelpPage = function () {
-          var helpText = pm.panelEl.querySelector('.watch-help-page-text');
-          var helpIndicator = pm.panelEl.querySelector('.watch-help-page-indicator');
-          if (helpText) helpText.setAttribute('text', 'value', self.helpPages[self.helpPageIndex]);
-          if (helpIndicator) helpIndicator.setAttribute('text', 'value', (self.helpPageIndex + 1) + ' / ' + self.helpPages.length);
-        };
-        pm.panelEl.addEventListener('menu-item-select', function (evt) {
-          var value = evt.detail.value;
-          var pages = pm.panelEl.components['menu-pages'];
-          if (pages && value.indexOf('page-') === 0) pages.showPage(value.slice(5));
-          else if (pages && (value === 'help-close' || /-close$/.test(value))) pages.showPage('main');
-          else if (pages && value === 'help') {
-            self.helpPageIndex = 0;
-            self.updateHelpPage();
-            pages.showPage('help');
-          } else if (value === 'help-prev') {
-            self.helpPageIndex = Math.max(0, self.helpPageIndex - 1);
-            self.updateHelpPage();
-          } else if (value === 'help-next') {
-            self.helpPageIndex = Math.min(self.helpPages.length - 1, self.helpPageIndex + 1);
-            self.updateHelpPage();
-          }
-          if (value === 'haptics') self.triggerHaptics();
-          if (value === 'about') self.showAbout();
-        });
-        el.emit('watch-menu-ready', { panelEl: pm.panelEl, projectedMenu: pm }, true);
-        self.setMenuStyle(self.data.menuStyle);
-      }
-      if (face.hasLoaded) finishMenuSetup();
-      else face.addEventListener('loaded', finishMenuSetup);
-    },
-
-    // The crossbar copy of the watch. It gets its own trigger rather than
-    // sharing the face, because projected-menu owns its trigger outright
-    // (collider, open/close events, panel placement) — so this is a
-    // second, undrawn face in exactly the same place, carrying a second
-    // projected-menu whose panel holds a crossbar-menu instead of pages.
-    // Everything about *when* the watch opens (raising your wrist, a
-    // poke, palm-up for the larger layout, Tab off a headset) is still
-    // projected-menu's, unchanged; only what you see once it is open
-    // differs.
+    // The watch's menu. It gets its own trigger rather than living on the
+    // drawn face, because projected-menu owns its trigger outright
+    // (collider, open/close events, panel placement) and the face hides
+    // itself while the panel is up — so this is an undrawn twin of the
+    // face in exactly the same place. projected-menu decides *when* the
+    // watch opens (raising your wrist, a poke, palm-up for the larger
+    // layout, Tab off a headset); projected-crossbar puts the crossbar
+    // menu in it.
     buildCrossbarWatch: function (wrapper, face, side) {
       var self = this;
       var trigger = document.createElement('a-entity');
       trigger.classList.add('watch-face-crossbar');
       trigger.setAttribute('geometry', 'primitive: box; width: 0.032; height: 0.007; depth: 0.032');
-      // Not drawn — the classic face above is the one you see, clock and
-      // all — but still a real mesh, so the poke collider sizes itself
-      // from it exactly as it does for the face.
+      // Not drawn — the face above is the one you see, clock and all —
+      // but still a real mesh, so the poke collider sizes itself from it.
       trigger.setAttribute('material', 'visible: false');
       // Exactly where the face is, from the same constants. Not read back
       // off the face: it has not loaded yet at this point, so its position
-      // read back as the origin — the middle of the hand — which put this
-      // watch's panel (and its poke collider) 10 cm up the hand and 3.5 cm
-      // low compared with the classic one.
+      // read back as the origin — the middle of the hand — which put the
+      // panel (and its poke collider) 10 cm up the hand and 3.5 cm low.
       trigger.setAttribute('position', side * WATCH_OFFSET.x + ' ' + FACE_Y_OFFSET + ' ' + WATCH_OFFSET.z);
       trigger.setAttribute('projected-menu', {
         template: this.data.crossbarTemplate,
@@ -360,9 +282,7 @@ import { findMenuItem } from './menu-model.js';
         // half that ends up outside your field of view.
         component.setLayout({ sidecar: side === 1 ? 'right' : 'left' });
 
-        // The drawn face, clock and all, steps aside for the panel, as it
-        // does for the classic one. Its own settings are read back first,
-        // before the menu opens and draws them.
+        // The drawn face, clock and all, steps aside for the panel.
         trigger.addEventListener('projected-menu-opened', function () {
           face.setAttribute('visible', false);
         });
@@ -376,8 +296,8 @@ import { findMenuItem } from './menu-model.js';
         menuEl.addEventListener('menu-commit', function (evt2) {
           if (evt2.detail.id === 'watch-automatic') pm.setAutomatic(evt2.detail.value);
         });
-        self.setMenuStyle(self.data.menuStyle);
-        if (!self.classicMenu) self.el.emit('watch-menu-ready', { panelEl: pm.panelEl, projectedMenu: pm }, true);
+        self.applyEnabled();
+        self.el.emit('watch-menu-ready', { panelEl: pm.panelEl, projectedMenu: pm }, true);
         self.el.emit('watch-crossbar-ready', { panelEl: pm.panelEl, projectedMenu: pm, menu: component }, true);
       });
     },
@@ -393,20 +313,13 @@ import { findMenuItem } from './menu-model.js';
       if (automatic) automatic.value = Boolean(this.crossbarMenu.data.automatic);
     },
 
-    // Classic or crossbar. Whichever is not chosen is switched off rather
-    // than removed, so flipping back and forth costs nothing and loses no
-    // state. Everything outside that reaches for "the watch's menu" —
-    // desktop-controls' Tab, the clock — follows projectedMenu.
-    setMenuStyle: function (style) {
-      this.data.menuStyle = style;
-      // With only one of the two built, that one is the watch whatever
-      // was asked for.
-      var crossbar = Boolean(this.crossbarComponent) && (style === 'crossbar' || !this.data.menuTemplate);
-      var on = !this.suppressed;
-      if (this.classicMenu) this.classicMenu.data.enabled = on && !crossbar;
-      if (this.crossbarMenu) this.crossbarMenu.data.enabled = on && crossbar;
-      this.projectedMenu = crossbar ? this.crossbarMenu : (this.classicMenu || null);
-      this.panelTimeEl = crossbar ? this.crossbarTimeEl : this.classicTimeEl;
+    // Everything outside that reaches for "the watch's menu" —
+    // desktop-controls' Tab, the clock — goes through projectedMenu.
+    applyEnabled: function () {
+      if (!this.crossbarMenu) return;
+      this.crossbarMenu.data.enabled = !this.suppressed;
+      this.projectedMenu = this.crossbarMenu;
+      this.panelTimeEl = this.crossbarTimeEl;
       this.updateDisplay();
     },
 
@@ -419,7 +332,7 @@ import { findMenuItem } from './menu-model.js';
     setSuppressed: function (suppressed) {
       if (this.suppressed === Boolean(suppressed)) return;
       this.suppressed = Boolean(suppressed);
-      this.setMenuStyle(this.data.menuStyle);
+      this.applyEnabled();
     },
 
     // Back-solves the hand root's world transform from a desired world
@@ -454,18 +367,6 @@ import { findMenuItem } from './menu-model.js';
         }, true);
         return result;
       });
-    },
-
-    // The classic watch flashes the project name over its About row. The
-    // crossbar watch needs nothing here: its About row's text is in the
-    // sidecar whenever the row is selected.
-    showAbout: function () {
-      if (this.projectedMenu === this.crossbarMenu) return;
-      var label = this.projectedMenu.panelEl.querySelector('.watch-menu-about-label');
-      if (!label) return;
-      var original = label.getAttribute('text').value;
-      label.setAttribute('text', 'value', 'WebXR Primitives');
-      setTimeout(function () { label.setAttribute('text', 'value', original); }, 1500);
     },
 
     updateDisplay: function () {
