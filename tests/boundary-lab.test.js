@@ -4,6 +4,7 @@ import test from 'node:test';
 
 const page = readFileSync(new URL('../games/boundaries/index.html', import.meta.url), 'utf8');
 const viteConfig = readFileSync(new URL('../vite.config.js', import.meta.url), 'utf8');
+const playSpace = readFileSync(new URL('../common/play-space.js', import.meta.url), 'utf8');
 
 test('Boundary Lab is built as an experience and starts with shared watch hands', () => {
   assert.match(viteConfig, /boundaries: resolve\(root, 'games\/boundaries\/index\.html'\)/);
@@ -18,11 +19,14 @@ test('Boundary Lab is built as an experience and starts with shared watch hands'
 
 test('Boundary Lab uses the headset-reported bounded floor rather than a guessed room box', () => {
   assert.match(page, /applyCheckerTexture\(document\.querySelector\('#boundary-floor'\), '#263550', '#1c2940', 15, 15\)/);
-  assert.match(page, /requestReferenceSpace\('bounded-floor'\)/);
-  assert.match(page, /boundsGeometry/);
-  assert.match(page, /frame\.getPose\(this\.boundedSpace, baseSpace\)/);
-  assert.match(page, /this\.renderRoot = this\.el\.sceneEl\.object3D/);
-  assert.match(page, /Cyan line = exact detected outline/);
+  // The reading is shared with the menus showcase; the lab draws it.
+  assert.match(page, /src="\.\.\/\.\.\/common\/play-space\.js"/);
+  assert.match(page, /play-space-outline/);
+  assert.match(playSpace, /this\.renderRoot = this\.el\.sceneEl\.object3D/);
+  assert.match(playSpace, /requestReferenceSpace\('bounded-floor'\)/);
+  assert.match(playSpace, /boundsGeometry/);
+  assert.match(playSpace, /frame\.getPose\(this\.boundedSpace, baseSpace\)/);
+  assert.match(playSpace, /Cyan line = exact detected outline/);
 });
 
 test('Boundary Lab combines haptics controls with a shared grabbable cube', () => {

@@ -224,8 +224,8 @@ if (typeof AFRAME !== 'undefined') {
   // Leaving takes a little more room than arriving, so a hand hovering
   // right on the boundary doesn't chatter in and out.
   var RELEASE_MARGIN = 0.06;
-  // How long after a menu press the laser it lit is ignored. Covers a
-  // press and release plus watch-menu's 250ms laser linger.
+  // How long after a menu press (or its release) the laser it lit is
+  // ignored. Covers watch-menu's 250ms laser linger with room to spare.
   var PRESS_GRACE_MS = 700;
   // Flat play aims by looking, so engagement is a cone rather than a
   // reach: ~25 degrees off the view centre.
@@ -233,6 +233,7 @@ if (typeof AFRAME !== 'undefined') {
 
   var ACTIVATE_EVENTS = ['triggerdown', 'abuttondown', 'xbuttondown'];
   var BACK_EVENTS = ['bbuttondown', 'ybuttondown', 'gripdown'];
+  var RELEASE_EVENTS = ['triggerup', 'abuttonup', 'xbuttonup', 'bbuttonup', 'ybuttonup', 'gripup'];
 
   function handIsHolding(handEl) {
     var semantic = handEl && handEl.components && handEl.components['semantic-hand'];
@@ -1541,6 +1542,14 @@ if (typeof AFRAME !== 'undefined') {
             state.menu.back();
           });
         });
+        // The laser those presses lit lingers after the button comes back
+        // up, so the grace runs from the release too — a press held for a
+        // moment would otherwise outlast it and drop the menu anyway.
+        RELEASE_EVENTS.forEach(function (name) {
+          handEl.addEventListener(name, function () {
+            if (state.menu) state.pressedAt = performance.now();
+          });
+        });
         self.hands.push(state);
       });
     },
@@ -1946,6 +1955,92 @@ if (typeof AFRAME !== 'undefined') {
         state.repeatAt = time + REPEAT_INTERVAL_MS;
         state.menu.step(direction);
       }
+    },
+  });
+
+  // ============================================================
+  // COMPONENT: projected-crossbar
+  //
+  // A crossbar menu inside a projected-menu's panel. projected-menu still
+  // decides *when* the panel is up — a poke, a raised wrist, walking away,
+  // desktop's mounted mode — and this joins the two halves of "open":
+  //
+  //   - the panel coming up opens the menu, from the top; the panel going
+  //     away closes it, so its stick and keys are let go;
+  //   - confirming the menu's own Close puts the panel away;
+  //   - the rows, breadcrumb and close button become poke targets, since
+  //     they were built after projected-menu scanned its panel;
+  //   - off a headset the keys go to the open menu, the way they go to
+  //     any menu you have entered.
+  //
+  // The watch, the wall screen and the pedestal button are all this.
+  // ============================================================
+  AFRAME.registerComponent('projected-crossbar', {
+    dependencies: ['projected-menu'],
+    schema: {
+      // Hide the trigger while its panel is up. A wall button the panel
+      // grows out of would otherwise peek out around it.
+      hideTrigger: { default: false },
+      lockKeys: { default: true },
+    },
+
+    init: function () {
+      var self = this;
+      var pm = this.el.components['projected-menu'];
+      this.projectedMenu = pm;
+      this.component = null;
+      if (!pm || !pm.panelEl) return;
+      var menuEl = pm.panelEl.querySelector('[crossbar-menu]');
+      if (!menuEl) {
+        console.warn('[projected-crossbar] the panel has no crossbar-menu in it');
+        return;
+      }
+      this.menuEl = menuEl;
+      this.bind = this.bind.bind(this);
+      if (menuEl.hasLoaded && menuEl.components['crossbar-menu']) this.bind();
+      else menuEl.addEventListener('loaded', function onLoaded() {
+        menuEl.removeEventListener('loaded', onLoaded);
+        self.bind();
+      });
+    },
+
+    bind: function () {
+      var self = this;
+      var pm = this.projectedMenu;
+      var trigger = this.el;
+      var menuEl = this.menuEl;
+      var component = menuEl.components['crossbar-menu'];
+      this.component = component;
+
+      Array.prototype.forEach.call(menuEl.querySelectorAll('.menu-target'), function (target) {
+        target.classList.add('pm-target');
+      });
+      pm.panelEl.emit('menu-targets-changed', null, false);
+
+      this.onOpened = function () {
+        if (self.data.hideTrigger) trigger.object3D.visible = false;
+        component.menu.open();
+        var sticks = trigger.sceneEl.systems['menu-stick-control'];
+        var mode = trigger.sceneEl.systems['control-mode'];
+        if (self.data.lockKeys && sticks && mode && !mode.isMode('xr')) sticks.lock(component);
+      };
+      this.onClosed = function () {
+        if (self.data.hideTrigger) trigger.object3D.visible = true;
+        component.menu.close();
+        var sticks = trigger.sceneEl.systems['menu-stick-control'];
+        if (sticks && sticks.lockedMenu === component) sticks.unlock();
+      };
+      this.onMenuClose = function () { if (pm.active) pm.close(); };
+      trigger.addEventListener('projected-menu-opened', this.onOpened);
+      trigger.addEventListener('projected-menu-closed', this.onClosed);
+      menuEl.addEventListener('crossbar-menu-close', this.onMenuClose);
+      trigger.emit('projected-crossbar-ready', { menu: component, menuEl: menuEl, projectedMenu: pm }, false);
+    },
+
+    remove: function () {
+      if (this.onOpened) this.el.removeEventListener('projected-menu-opened', this.onOpened);
+      if (this.onClosed) this.el.removeEventListener('projected-menu-closed', this.onClosed);
+      if (this.onMenuClose && this.menuEl) this.menuEl.removeEventListener('crossbar-menu-close', this.onMenuClose);
     },
   });
 

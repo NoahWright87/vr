@@ -71,47 +71,64 @@ this is only for work that has been decided on and postponed.
 ## The shared menu system
 
 `common/menu-model.js` (the pure model) and `common/menu-crossbar.js`
-(the A-Frame renderer plus stick engagement) exist, with an in-world
-demo panel in `primitives/menus/`. Deliberately not done yet:
+(the A-Frame renderer, stick engagement, and `projected-crossbar`, which
+puts a crossbar panel inside any `projected-menu` trigger) exist, and the
+menus showcase (`primitives/menus/`) is entirely on them: static panel,
+wall screen, pedestal, watch and visor. Deliberately not done yet:
 
-- **Migrate the surfaces, one at a time.** Surveyed: the old path is
-  `common/menus.js` (`projected-menu`, `menu-pages`, `menu-item`,
-  `menu-option`; 683 lines) plus `watch-menu.js`'s raise/aim/poke.
-  Consumers: the watch in Pistols (5 pages — main, targets, teleport,
-  debug, debug-motion; 23 items, 10 multi-value options), the watch in
-  Boundaries (7 items) and the showcase; mounted `projected-menu`
-  panels in the showcase (wall slab, pedestal, MAIN MENU) and Pistols'
-  carriage; and Punch Pop's separate `createTabbedPanel`. Order:
-  1. **The watch, with Pistols' teleport page folded in** — teleport is
+- **Migrate the games, one at a time.** What still uses the old path
+  (`common/menus.js`: `menu-pages`, `menu-item`, `menu-option`,
+  `buildMenuChrome`): the watch in Pistols (5 pages — main, targets,
+  teleport, debug, debug-motion; 23 items, 10 multi-value options), the
+  watch in Boundaries (7 items), Pistols' carriage panel, and Punch Pop's
+  separate `createTabbedPanel`. `projected-menu` itself stays: it is the
+  trigger (poke, raised wrist, mounted mode, walking away) that every
+  crossbar prop and the watch still open through. Order:
+  1. **The watches, with Pistols' teleport page folded in** — teleport is
      one of the watch's pages, so the agreed "watch, then teleport"
      collapses into one step, and its destinations come from
-     `TOWN_LOCATIONS` instead of 12 hand-placed entities. The plumbing
-     now exists and is proven on the showcase's watch, side by side
-     with the classic one (visor `Watch: Classic / New`): the crossbar
-     copy built by `hand-with-watch` from a `#watch-crossbar-template`,
-     the `emitSelect` / `emitOption` compat re-emits, `onOpen`,
-     `menu.refresh()`, poke targets on the rows, and haptics. Agreed:
-     swapping Pistols (and Boundaries) over is a **new PR**, once the
-     showcase copy has been tried in a headset. What it takes: write
-     each game's watch pages as a `registerMenuPage` page (Pistols: 5
-     pages, 23 items, 10 options — its `menu-option` keys go through
+     `TOWN_LOCATIONS` instead of 12 hand-placed entities. Agreed as a
+     **new PR**, after the showcase watch has been tried in a headset.
+     What it takes per game: write the watch pages as a
+     `registerMenuPage` page (Pistols' `menu-option` keys go through
      `emitOption`, its buttons through action ids or `emitSelect`), add
-     the template, and set `menuStyle: crossbar`. Behaviour change to
-     expect: multi-value rows stop cycling with arrows and open as a
-     list, per "everything is a submenu". Once both games are over,
-     the classic half of `hand-with-watch` (and the second face) goes.
-     Not carried over on purpose: the classic multiplayer sidecar card —
-     the room code is a row in the list now.
-  2. The mounted panels — needs a decision on whether desktop
-     `mounted` mode (the camera flying to the panel) survives or the
-     E-lock replaces it.
+     a `#watch-crossbar-template`, and drop the old `#watch-menu-template`
+     (a page with only the crossbar template gets only the crossbar
+     watch; with both, `menuStyle` / `setMenuStyle` picks). Behaviour
+     change to expect: multi-value rows stop cycling with arrows and open
+     as a list, per "everything is a submenu". Once both games are over,
+     the classic half of `hand-with-watch` goes.
+  2. **Pistols' carriage panel**, the same way the showcase's wall screen
+     and pedestal went: keep its `projected-menu` trigger and desktop
+     `mounted` mode (decided in the showcase migration — the camera
+     flying to the panel survives, and the panel's keys are locked to it
+     while it is up), swap the template for one holding a
+     `crossbar-menu`, and add `projected-crossbar`.
   3. Punch Pop's tabbed panel — tabs become the top level of the drill.
-  4. Delete the old path once nothing uses it, including
-     `obb-collider-visibility.js` and the mounted-mode code in
-     `desktop-controls.js`. The crossbar itself uses no OBB colliders —
-     only the watch's own handful of poke targets (rows, breadcrumb,
-     close), registered by `projected-menu` — so this is also where that
-     performance trap goes away for good.
+  4. Delete the old path once nothing uses it: `menu-pages`, `menu-item`,
+     `menu-option`, `menu-feedback`, `buildMenuChrome` and the chrome /
+     `suppressPointing` / popup handling in `projected-menu`;
+     `control-mode-layout` (`common/control-mode.js`); and
+     `common/room-code-entry.js`, which nothing uses since the showcase's
+     watch moved to letter rows. `obb-collider-visibility.js` matters
+     less once the page stacks are gone — the crossbar registers only a
+     handful of poke targets per open panel (rows, breadcrumb, close).
+
+- **A crossbar page editor, if it is missed.** The showcase used to have
+  a `?edit=1` menu editor (title, item labels, positions, JSON out) for
+  its old fixed panel. It went with that panel. A crossbar page is
+  already data, so the replacement would edit page JSON — labels, kinds,
+  options, number ranges — and live-reload the panel, rather than
+  positions, which the crossbar lays out itself.
+
+- **Multiplayer boxes and per-player rooms.** The showcase now fits its
+  stations to each player's own boundary, but box spawns, releases and
+  held-box positions still go over the network as world coordinates. Two
+  players whose rooms differ see the host's box land where the host's
+  platform is, which may not be on theirs (or may be outside their room).
+  The fix is to send box positions relative to the box platform
+  (`#station-boxes`'s local space) and convert on receipt; remote aims
+  and heads have the same issue and would want a shared anchor instead.
 
 - **The one-eye test, now runnable.** The visor ships defaulting to
   BOTH eyes on purpose: per-eye rendering is a `layers.set(1|2)` call

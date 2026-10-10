@@ -5,14 +5,6 @@
     <title>Showcase | Noah's VR projects</title>
     <link rel="icon" href="../../assets/noah-vr.svg" type="image/svg+xml" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <script>
-      (function () {
-        var params = new URLSearchParams(window.location.search);
-        if (params.get('edit') === '1') {
-         document.documentElement.classList.add('editor-mode');
-        }
-      })();
-    </script>
 
     <!-- Same vendored setup as the prototypes: no build step, just a
          checked-in copy. See /vendor/README.md for why. -->
@@ -24,26 +16,6 @@
         margin: 0;
         font-family: system-ui, sans-serif;
         min-height: 100vh;
-      }
-      body.editor-mode {
-        background: #08111f;
-        color: #e8eefc;
-        overflow-y: auto;
-      }
-      html.editor-mode,
-      html.editor-mode body {
-        min-height: 100vh;
-        overflow-y: auto;
-      }
-      html.editor-mode #vr-screen,
-      body.editor-mode #vr-screen {
-        display: none !important;
-      }
-      html.editor-mode #editor-screen,
-      body.editor-mode #editor-screen {
-        display: block !important;
-        min-height: 100vh;
-        overflow-y: auto;
       }
       #overlay {
         position: absolute;
@@ -59,275 +31,56 @@
       #overlay a {
         color: #9ad;
       }
-      #editor-screen {
-        display: none;
-        min-height: 100vh;
-        box-sizing: border-box;
-        padding: 1.5rem;
-        background: linear-gradient(180deg, #0d1526 0%, #101a30 100%);
-        overflow-y: auto;
-      }
-      html.editor-mode #editor-screen {
-        display: block;
-      }
-      html.editor-mode #vr-screen {
-        position: absolute;
-        width: 0;
-        height: 0;
-        overflow: hidden;
-        pointer-events: none;
-      }
-      body.editor-mode #editor-screen {
-        display: block;
-      }
-      body.editor-mode #vr-screen {
-        position: absolute;
-        width: 0;
-        height: 0;
-        overflow: hidden;
-        pointer-events: none;
-      }
-      .editor-shell {
-        max-width: 72rem;
-        margin: 0 auto;
-        padding-bottom: 2rem;
-      }
-      .editor-topbar {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        gap: 1rem;
-        margin-bottom: 1rem;
-      }
-      .editor-topbar h1 {
-        margin: 0;
-        font-size: 1.5rem;
-      }
-      .editor-subtitle {
-        margin: 0.35rem 0 0;
-        color: #aeb8d8;
-        max-width: 48rem;
-      }
-      .editor-back-link,
-      .editor-link-button,
-      .copy-json-button,
-      .menu-edit-link {
-        appearance: none;
-        border: 1px solid #35507c;
-        background: #15233b;
-        color: #dce8ff;
-        border-radius: 0.6rem;
-        padding: 0.55rem 0.85rem;
-        text-decoration: none;
-        cursor: pointer;
-        font: inherit;
-      }
-      .editor-back-link:hover,
-      .editor-link-button:hover,
-      .copy-json-button:hover,
-      .menu-edit-link:hover {
-        border-color: #7eb3ff;
-      }
-      .editor-grid {
-        display: grid;
-        grid-template-columns: minmax(0, 1.1fr) minmax(20rem, 0.9fr);
-        gap: 1rem;
-      }
-      .editor-card {
-        background: rgba(14, 24, 44, 0.92);
-        border: 1px solid #223454;
-        border-radius: 0.9rem;
-        padding: 1rem;
-        box-shadow: 0 16px 40px rgba(0, 0, 0, 0.25);
-      }
-      .editor-card h2,
-      .editor-card h3 {
-        margin-top: 0;
-      }
-      .editor-field-grid,
-      .editor-triplet-grid,
-      .editor-item-grid {
-        display: grid;
-        gap: 0.75rem;
-      }
-      .editor-field-grid {
-        grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
-      }
-      .editor-triplet-grid,
-      .editor-item-grid {
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-      }
-      .editor-card label {
-        display: block;
-        font-size: 0.9rem;
-        color: #b9c7e8;
-      }
-      .editor-card input,
-      .editor-card textarea {
-        width: 100%;
-        box-sizing: border-box;
-        margin-top: 0.35rem;
-        padding: 0.55rem 0.65rem;
-        border-radius: 0.5rem;
-        border: 1px solid #35507c;
-        background: #0a1426;
-        color: #eef4ff;
-        font: inherit;
-      }
-      .editor-card textarea {
-        min-height: 6rem;
-        resize: vertical;
-      }
-      .editor-item-list {
-        display: grid;
-        gap: 0.85rem;
-      }
-      .editor-item-card {
-        border: 1px solid #263a5c;
-        border-radius: 0.8rem;
-        padding: 0.85rem;
-        background: #0d172a;
-      }
-      .editor-item-card h3 {
-        margin-bottom: 0.75rem;
-        font-size: 1rem;
-      }
-      .editor-help {
-        margin: 0 0 1rem;
-        color: #9fb0d4;
-      }
-      .json-toolbar {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        gap: 1rem;
-        margin-bottom: 0.75rem;
-      }
-      .copy-status {
-        color: #93f0bf;
-        font-size: 0.9rem;
-        min-height: 1.2rem;
-      }
-      #menu-editor-json {
-        width: 100%;
-        min-height: 16rem;
-        box-sizing: border-box;
-        border-radius: 0.8rem;
-        border: 1px solid #35507c;
-        background: #08111f;
-        color: #dce8ff;
-        padding: 0.9rem;
-        font: 0.9rem/1.45 ui-monospace, SFMono-Regular, Consolas, monospace;
-      }
-      .menu-edit-link {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        margin-left: 0.5rem;
-        padding: 0.55rem 0.7rem;
-        font-size: 1rem;
-        line-height: 1;
-        vertical-align: middle;
-      }
-      @media (max-width: 900px) {
-        .editor-grid {
-          grid-template-columns: 1fr;
-        }
-      }
     </style>
   </head>
   <body>
-    <div id="editor-screen">
-      <div class="editor-shell">
-        <div class="editor-topbar">
-          <div>
-            <h1>Menu Editor</h1>
-            <p class="editor-subtitle">Changes apply live while you type — there is no Save button. Use the VR scene link below to open the real menu in a separate tab when you want to judge fonts, spacing, and feel. The JSON at the bottom is the handoff for permanent code changes.</p>
-          </div>
-          <a id="editor-back-link" class="editor-back-link" href="./">Back to menu showcase</a>
-        </div>
-
-        <div class="editor-grid">
-          <div class="editor-card">
-            <h2>Panel</h2>
-            <p class="editor-help">This editor controls the always-visible panel ahead of you in the menu primitive scene.</p>
-            <div class="editor-field-grid">
-              <label>Title<input id="editor-title" type="text" /></label>
-              <label>Feedback prefix<input id="editor-feedback-prefix" type="text" /></label>
-              <label>Panel width<input id="editor-panel-width" type="number" step="0.01" /></label>
-              <label>Panel height<input id="editor-panel-height" type="number" step="0.01" /></label>
-            </div>
-            <h3>Panel position</h3>
-            <div class="editor-triplet-grid">
-              <label>X<input id="editor-panel-x" type="number" step="0.01" /></label>
-              <label>Y<input id="editor-panel-y" type="number" step="0.01" /></label>
-              <label>Z<input id="editor-panel-z" type="number" step="0.01" /></label>
-            </div>
-          </div>
-
-          <div class="editor-card">
-            <h2>Using this split</h2>
-            <p class="editor-help">The preview below renders the real menu scene in a flat window and updates as you edit. Use the full VR scene separately when you want in-headset judgment.</p>
-            <a id="vr-scene-link" class="editor-link-button" href="./" target="_blank" rel="noreferrer">Open the VR menu scene in another tab</a>
-          </div>
-        </div>
-
-        <div class="editor-card" style="margin-top: 1rem;">
-          <h2>Menu items</h2>
-          <div id="editor-item-list" class="editor-item-list"></div>
-        </div>
-
-        <div class="editor-card" style="margin-top: 1rem;">
-          <div class="json-toolbar">
-            <h2 style="margin: 0;">JSON</h2>
-            <button id="copy-menu-json" class="copy-json-button" type="button">Copy to clipboard</button>
-          </div>
-          <div id="copy-status" class="copy-status"></div>
-          <textarea id="menu-editor-json" spellcheck="false"></textarea>
-        </div>
-      </div>
-    </div>
-
-    <div id="vr-screen">
     <!-- ==============================================================
-         Every menu STYLE this project has built lives in this one
-         experience, same idea as a Storybook page listing every variant
-         of a "Menu" component — walk up to the panel ahead of you for
-         the fixed in-world style, or look at your own wrists for the
-         watch style.
+         Every menu this project has, in one room, all on the shared
+         crossbar menu system (common/menu-model.js + menu-crossbar.js):
+
+           ahead      a static panel standing in the room
+           right      a wall screen — poke TAP and a panel grows out of it
+           left       a pedestal button — press it and a panel floats up
+           behind     a platform of boxes to grab, spawn and reset
+           your wrist the watch (raise it, or Tab)
+           your head  the visor (hand beside your temple, or backtick)
+
+         The four stations stand against the sides of your real room:
+         the headset's boundary when it reports one (common/play-space.js,
+         the same reading the boundary lab draws), and a 3 x 3 m square
+         around where you start when it does not.
     ============================================================== -->
     <div id="overlay">
-      <span>Showcase — shared semantic-hand interactions. Keyboard: WASD/mouse, C/Tab/E/F. Gamepad: sticks + face/shoulder buttons. Mobile: joystick, drag + action buttons. <a href="../../index.html">All prototypes</a><a class="menu-edit-link" href="?edit=1" aria-label="Open menu editor">⚙️</a></span>
+      <span>Showcase — every menu, one room. Ahead: static panel (walk up, E). Right: wall screen. Left: pedestal. Behind: boxes (F to grab). Tab: watch. `: visor. Keyboard: WASD/mouse, C crouch. <a href="../../index.html">All prototypes</a></span>
     </div>
 
     <!-- keyboard-shortcuts' enterVR binds "F" to toggle desktop VR
          fullscreen by default (A-Frame core, not something defined in
          this repo) — it collides with desktop-controls' own "F" for
-         grab, added above. Disabling just that half leaves Escape
-         still exiting VR normally. -->
+         grab. Disabling just that half leaves Escape still exiting VR
+         normally. -->
     <!-- The visor menu is head-locked rather than placed, so it is
          configured on the scene rather than positioned in markup: the
-         system builds both sides as children of the camera. Backtick
-         opens it off a headset (Tab is the watch); in XR, hold an empty
-         hand beside your head until the edge-of-vision pip fills. -->
+         system builds it as a child of the camera. Backtick opens it off
+         a headset (Tab is the watch); in XR, hold an empty hand beside
+         your head until the arc fills. -->
+    <!-- play-space-outline draws the room the stations are fitted to:
+         your real boundary in a headset that reports one, and a faint
+         3 x 3 m square everywhere else. -->
     <a-scene
       keyboard-shortcuts="enterVR: false"
       visor-menu="page: visor"
+      play-space-outline="showDefault: true"
     >
-      <a-light type="ambient" color="#fff" intensity="0.7"></a-light>
-      <a-light type="directional" position="2 3 2" intensity="0.7"></a-light>
-      <a-sky color="#0d1526"></a-sky>
+      <a-light id="ambient-light" type="ambient" color="#fff" intensity="0.7"></a-light>
+      <a-light id="sun-light" type="directional" position="2 3 2" intensity="0.7"></a-light>
+      <a-sky id="showcase-sky" color="#0d1526"></a-sky>
       <a-plane id="floor" rotation="-90 0 0" width="20" height="20" color="#445" position="0 0 0"></a-plane>
-      <!-- Gaze reticle so the panel menu is testable from desktop/phone
-           with no headset, same pattern as Cube Pop. The watch style
-           needs two real tracked hands (to point with one and poke the
-           other) so it's headset-only — see the overlay text and the
-           write-up in the repo history. Disabled the moment a real
-           controller connects (see disableGazeOnControllers below) — with
-           real hands present it was possible to have the gaze reticle
-           hovering one item while a controller laser hovered another,
-           highlighting two at once and letting a stray glance select the
-           wrong item. -->
+      <!-- Gaze reticle so the panels are usable from desktop/phone with
+           no headset. Disabled the moment a real controller connects —
+           with real hands present it was possible to have the gaze
+           reticle hovering one row while a controller laser hovered
+           another. -->
       <a-entity
         id="rig"
         position="0 0 0"
@@ -347,486 +100,39 @@
           ></a-entity>
         </a-camera>
 
+        <!-- Two entities per hand, deliberately decoupled — same pattern
+             Pistols at Dawn uses: hand-controls' rendered mesh applies its
+             own corrective rotation that does NOT match "-Z is where
+             you're pointing", so pointing lives on hand-with-watch's
+             fingertip (a child of its corrective wrapper), and the
+             visible, animated hand is a separate hand-controls entity. -->
         <a-entity id="left-hand" position="-0.2 1.35 -0.4"
-          hand-with-watch="hand: left; menuStyle: crossbar"
+          hand-with-watch="hand: left"
           semantic-hand="hand: left; maxReach: 1.0"
         ></a-entity>
         <a-entity id="tracked-hand-visual-left" control-mode-visibility="modes: xr" hand-controls="hand: left; handModelStyle: lowPoly"></a-entity>
 
         <a-entity id="right-hand" position="0.2 1.35 -0.4"
-          hand-with-watch="hand: right; menuStyle: crossbar"
+          hand-with-watch="hand: right"
           semantic-hand="hand: right; maxReach: 1.0"
         ></a-entity>
         <a-entity id="tracked-hand-visual-right" control-mode-visibility="modes: xr" hand-controls="hand: right; handModelStyle: lowPoly"></a-entity>
       </a-entity>
 
-      <!-- Multiplayer connection POC: every OTHER connected peer's
-           aim, broadcast a few times a second over its data channel
-           (see the multiplayer script near the bottom of this file)
-           and drawn with A-Frame's own built-in "line" component —
-           the same visible-beam mechanism the watch/wall/pedestal
-           menus already use via raycaster's showLine, just driven by
-           network data instead of a local raycast — plus a small
-           sphere at their head position, since a beam pointed
-           straight at you foreshortens to a near-invisible dot. One
-           pair of entities per remote peer, created/removed on the
-           fly by getOrCreateRemotePeer()/removeRemotePeer() in that
-           script (there can be more than one now that hosting
-           supports several joiners), so nothing is declared here
-           statically. World-space, not a child of #rig, since these
-           represent where OTHER people's cameras are pointing. -->
-           Every clickable row is just an entity with its own
-           geometry/material plus the "menu-item" component below —
-           that component is the reusable part; the background plane
-           and title here are just this demo's dressing.
-      ============================================================ -->
-      <a-entity id="menu-panel" menu-feedback control-mode-layout="startY: 0.58; spacing: 0.36" position="0 1.8 -2.5">
-        <a-plane
-          width="1.9"
-          height="3.2"
-          color="#101827"
-          position="0 -0.25 -0.02"
-        ></a-plane>
-
-        <a-entity class="menu-chrome-slot" data-title="SHOWCASE" data-help="false" data-close="false" data-width="1.9" data-bar-y="0.9"></a-entity>
-
-        <a-entity
-          menu-option="key: move-speed; label: Move speed; values: 0.5|1|1.5|2; labels: 0.5x|1x|1.5x|2x; value: 1; width: 1.6; height: 0.26"
-          position="0 0.58 0"
-        ></a-entity>
-
-        <a-entity
-          class="menu-target"
-          geometry="primitive: plane; width: 1.6; height: 0.26"
-          material="color: #182238"
-          menu-item="value: spawn-box; label: Spawn box"
-          position="0 0.24 0"
-        >
-          <a-text value="Spawn box" align="center" color="#eee" width="3" position="0 0 0.01"></a-text>
-        </a-entity>
-
-        <a-entity
-          class="menu-target"
-          geometry="primitive: plane; width: 1.6; height: 0.26"
-          material="color: #182238"
-          menu-item="value: reset-boxes; label: Reset boxes"
-          position="0 -0.12 0"
-        >
-          <a-text value="Reset boxes" align="center" color="#eee" width="3" position="0 0 0.01"></a-text>
-        </a-entity>
-
-        <a-entity
-          class="menu-target"
-          geometry="primitive: plane; width: 1.6; height: 0.26"
-          material="color: #182238"
-          menu-item="value: station-right; label: Box station"
-          position="0 -0.48 0"
-        >
-          <a-text value="Box station" align="center" color="#eee" width="3" position="0 0 0.01"></a-text>
-        </a-entity>
-
-        <a-entity
-          class="menu-target"
-          geometry="primitive: plane; width: 1.6; height: 0.26"
-          material="color: #182238"
-          menu-item="value: turn-disabled; label: Disabled turning"
-          position="0 -0.84 0"
-        >
-          <a-text value="Disabled turning" align="center" color="#eee" width="3" position="0 0 0.01"></a-text>
-        </a-entity>
-
-        <a-entity
-          class="menu-target"
-          control-mode-visibility="modes: xr"
-          geometry="primitive: plane; width: 1.6; height: 0.26"
-          material="color: #182238"
-          menu-item="value: comfort-toggle; label: Toggle vignette"
-          position="0 -1.2 0"
-        >
-          <a-text value="Toggle vignette" align="center" color="#eee" width="3" position="0 0 0.01"></a-text>
-        </a-entity>
-
-        <a-entity
-          class="menu-target"
-          geometry="primitive: plane; width: 1.6; height: 0.26"
-          material="color: #182238"
-          menu-item="value: station-center; label: Station: Center"
-          position="0 -1.56 0"
-        >
-          <a-text value="Station: Center" align="center" color="#eee" width="3" position="0 0 0.01"></a-text>
-        </a-entity>
-
-        <a-entity
-          class="menu-target"
-          geometry="primitive: plane; width: 1.6; height: 0.26"
-          material="color: #182238"
-          menu-item="value: station-wall; label: Station: Wall"
-          position="0 -1.92 0"
-        >
-          <a-text value="Station: Wall" align="center" color="#eee" width="3" position="0 0 0.01"></a-text>
-        </a-entity>
-
-        <a-entity
-          class="menu-target"
-          geometry="primitive: plane; width: 1.6; height: 0.26"
-          material="color: #182238"
-          menu-item="value: station-pedestal; label: Station: Pedestal"
-          position="0 -2.28 0"
-        >
-          <a-text value="Station: Pedestal" align="center" color="#eee" width="3" position="0 0 0.01"></a-text>
-        </a-entity>
-
-        <a-entity
-          class="menu-target"
-          control-mode-visibility="modes: xr"
-          geometry="primitive: plane; width: 1.6; height: 0.26"
-          material="color: #182238"
-          menu-item="value: drift-medium; label: Drift medium"
-          position="0 -2.64 0"
-        >
-          <a-text value="Drift medium" align="center" color="#eee" width="3" position="0 0 0.01"></a-text>
-        </a-entity>
-
-        <a-text
-          class="menu-feedback-text"
-          value="Selected: (none)"
-          align="center"
-          color="#aaa"
-          width="2.2"
-          position="0 -3.06 0"
-        ></a-text>
-      </a-entity>
+      <!-- Multiplayer: every OTHER connected peer's aim, broadcast a few
+           times a second and drawn with A-Frame's built-in "line"
+           component, plus a small sphere at their head. One pair of
+           entities per remote peer, created and removed on the fly by the
+           multiplayer script at the bottom of this file, so nothing is
+           declared here. World space, not a child of #rig, since these
+           are where OTHER people's cameras are pointing. -->
 
       <!-- ============================================================
-           STYLE 2: wrist-worn watch menu.
-           The logic entities (below, id left-hand/right-hand) carry the
-           watch (band + face + poke hitbox — see hand-with-watch) AND
-           point a laser at the panel above, since cursor/raycaster and
-           obb-collider are independent, non-conflicting components on
-           the same entity. The actual visible/animated hand is a
-           separate, decoupled hand-controls entity — see the big
-           comment above the HTML for both, further down.
+           THE WATCH. The panel each wrist projects when you raise it
+           (or poke its face, or press Tab): one crossbar menu built from
+           the "watch" page registered below. hand-with-watch finds this
+           template by id; projected-menu still decides when it is up.
       ============================================================ -->
-      <template id="watch-template">
-        <a-entity>
-          <a-entity class="watch-band"
-            geometry="primitive: torus; radius: 0.030; radiusTubular: 0.005; segmentsRadial: 24; segmentsTubular: 12"
-            material="color: #ccc; metalness: 0.6; roughness: 0.4"
-          ></a-entity>
-          <a-entity class="watch-face"
-            geometry="primitive: box; width: 0.032; height: 0.007; depth: 0.032"
-            material="color: #111"
-          >
-            <a-text class="watch-text"
-              value="00:00:00"
-              font="sourcecodepro"
-              align="center"
-              color="#0F0"
-              width="0.09"
-              position="0 0.0045 0"
-              rotation="-90 0 0"
-            ></a-text>
-          </a-entity>
-        </a-entity>
-      </template>
-
-      <!-- ============================================================
-           The menu the watch projects outward from its face when
-           poked — one of three "projected-menu" examples in this
-           scene (the wall screen and pedestal button, further down,
-           are the other two). Authored in a "design unit" space
-           (background ~1 wide) and scaled up/down wholesale by the
-           generic projected-menu component — see its big comment
-           below for how a trigger picks poke vs. laser mode, and why
-           a single component covers all three examples here.
-           ".pm-target" marks every row projected-menu wires up for
-           poke (always) and laser click (only in laser mode, via the
-           shared ".menu-target" class toggled dynamically).
-      ============================================================ -->
-      <!-- The watch's ❔ demonstrates a MODAL help style: a second view
-           inside the same panel, swapped in for the main one entirely
-           (covers it by replacing it, not by drawing on top) — good for
-           "what is this whole screen" explanations. watch-menu-main and
-           watch-menu-help-view are mutually exclusive; hand-with-watch
-           toggles between them on "help"/"help-close" and flips pages
-           with "help-prev"/"help-next". -->
-      <template id="watch-menu-template">
-        <a-entity class="watch-menu-panel" visible="false">
-          <a-entity class="watch-menu-main" data-menu-page="main" control-mode-layout="startY: 0.38; spacing: 0.26">
-            <a-plane width="1.2" height="3.51" color="#101827" position="0 -0.77 -0.01"></a-plane>
-
-            <!-- Chrome slot's title starts empty — hand-with-watch
-                 points its live clock at menu-chrome-title instead of a
-                 static string once this is built (see wireUpProjectedMenu). -->
-            <a-entity class="menu-chrome-slot" data-title="" data-help="true" data-close="true" data-width="1.2" data-bar-y="0.65"></a-entity>
-
-            <a-entity class="pm-target"
-              geometry="primitive: plane; width: 0.92; height: 0.18"
-              material="color: #182238"
-              menu-item="value: move-smooth; label: Smooth move"
-              position="0 0.38 0"
-            >
-              <a-text value="Smooth move" align="center" color="#eee" width="2.6" position="0 0 0.01"></a-text>
-            </a-entity>
-
-            <a-entity class="pm-target"
-              control-mode-visibility="modes: xr"
-              geometry="primitive: plane; width: 0.92; height: 0.18"
-              material="color: #182238"
-              menu-item="value: move-teleport; label: Teleport"
-              position="0 0.12 0"
-            >
-              <a-text value="Teleport" align="center" color="#eee" width="2.6" position="0 0 0.01"></a-text>
-            </a-entity>
-
-            <a-entity class="pm-target"
-              geometry="primitive: plane; width: 0.92; height: 0.18"
-              material="color: #182238"
-              menu-item="value: move-disabled; label: Disabled move"
-              position="0 -0.14 0"
-            >
-              <a-text value="Disabled move" align="center" color="#eee" width="2.6" position="0 0 0.01"></a-text>
-            </a-entity>
-
-            <a-entity class="pm-target"
-              control-mode-visibility="modes: xr"
-              geometry="primitive: plane; width: 0.92; height: 0.18"
-              material="color: #182238"
-              menu-item="value: turn-snap; label: Snap turn"
-              position="0 -0.4 0"
-            >
-              <a-text value="Snap turn" align="center" color="#eee" width="2.6" position="0 0 0.01"></a-text>
-            </a-entity>
-
-            <a-entity class="pm-target"
-              control-mode-visibility="modes: xr"
-              geometry="primitive: plane; width: 0.92; height: 0.18"
-              material="color: #182238"
-              menu-item="value: turn-smooth; label: Smooth turn"
-              position="0 -0.66 0"
-            >
-              <a-text value="Smooth turn" align="center" color="#eee" width="2.6" position="0 0 0.01"></a-text>
-            </a-entity>
-
-            <a-entity class="pm-target"
-              control-mode-visibility="modes: xr"
-              geometry="primitive: plane; width: 0.92; height: 0.18"
-              material="color: #182238"
-              menu-item="value: comfort-toggle; label: Vignette"
-              position="0 -0.92 0"
-            >
-              <a-text value="Vignette" align="center" color="#eee" width="2.6" position="0 0 0.01"></a-text>
-            </a-entity>
-
-            <a-entity class="pm-target"
-              control-mode-visibility="modes: xr"
-              geometry="primitive: plane; width: 0.92; height: 0.18"
-              material="color: #182238"
-              menu-item="value: page-controls; label: Drift settings"
-              position="0 -1.18 0"
-            >
-              <a-text value="Drift settings" align="center" color="#eee" width="2.6" position="0 0 0.01"></a-text>
-            </a-entity>
-
-            <a-entity class="pm-target"
-              geometry="primitive: plane; width: 0.92; height: 0.18"
-              material="color: #182238"
-              menu-item="value: station-center; label: Station: Center"
-              position="0 -1.44 0"
-            >
-              <a-text value="Station: Center" align="center" color="#eee" width="2.6" position="0 0 0.01"></a-text>
-            </a-entity>
-
-            <a-entity class="pm-target"
-              geometry="primitive: plane; width: 0.92; height: 0.18"
-              material="color: #182238"
-              menu-item="value: page-input; label: Input and hints"
-              position="0 -1.7 0"
-            >
-              <a-text value="Input and hints" align="center" color="#eee" width="2.6" position="0 0 0.01"></a-text>
-            </a-entity>
-
-            <a-entity class="pm-target"
-              control-mode-visibility="modes: xr"
-              geometry="primitive: plane; width: 0.92; height: 0.18"
-              material="color: #182238"
-              menu-item="value: haptics; label: Haptics Test"
-              position="0 -1.96 0"
-            >
-              <a-text value="Haptics Test" align="center" color="#eee" width="2.6" position="0 0 0.01"></a-text>
-            </a-entity>
-
-            <a-entity class="pm-target"
-              geometry="primitive: plane; width: 0.92; height: 0.18"
-              material="color: #182238"
-              menu-item="value: about; label: About"
-              position="0 -2.22 0"
-            >
-              <a-text class="watch-menu-about-label" value="About" align="center" color="#eee" width="2.6" position="0 0 0.01"></a-text>
-            </a-entity>
-
-            <a-entity class="pm-target"
-              geometry="primitive: plane; width: 0.92; height: 0.18"
-              material="color: #182238"
-              menu-item="value: page-multiplayer; label: Multiplayer"
-              position="0 -2.48 0"
-            >
-              <a-text value="Multiplayer" align="center" color="#eee" width="2.6" position="0 0 0.01"></a-text>
-            </a-entity>
-          </a-entity>
-
-          <a-entity class="watch-menu-multiplayer-view" data-menu-page="multiplayer" visible="false">
-            <a-plane class="watch-menu-multiplayer-bg" width="1.1" height="1.7" color="#101827" position="0 -0.15 -0.01"></a-plane>
-            <a-entity class="menu-chrome-slot" data-title="MULTIPLAYER" data-help="false" data-close="true" data-close-value="multiplayer-close" data-width="1.1" data-bar-y="0.55"></a-entity>
-
-            <!-- Idle state: HOST, the 4-square room-code entry, then
-                 JOIN. Swapped for a single red END button once hosting
-                 or joined — see the multiplayer-panel component below. -->
-            <a-entity class="watch-mp-idle">
-              <a-entity class="pm-target"
-                geometry="primitive: plane; width: 0.92; height: 0.18"
-                material="color: #234d2e"
-                menu-item="value: mp-host; label: Host"
-                position="0 0.36 0"
-              >
-                <a-text value="HOST" align="center" color="#9f9" width="3" position="0 0 0.01"></a-text>
-              </a-entity>
-
-              <a-text value="Room code" align="center" color="#9ad" width="3" position="0 0.13 0.01"></a-text>
-              <a-entity class="watch-mp-room-code-entry" room-code-entry="width: 0.92" position="0 -0.05 0"></a-entity>
-
-              <a-entity class="pm-target"
-                geometry="primitive: plane; width: 0.92; height: 0.18"
-                material="color: #182238"
-                menu-item="value: mp-join; label: Join"
-                position="0 -0.32 0"
-              >
-                <a-text value="JOIN" align="center" color="#eee" width="3" position="0 0 0.01"></a-text>
-              </a-entity>
-            </a-entity>
-
-            <!-- Connected state: hidden until hosting/joined. -->
-            <a-entity class="watch-mp-connected" visible="false">
-              <a-entity class="pm-target"
-                geometry="primitive: plane; width: 0.92; height: 0.18"
-                material="color: #5c2a2a"
-                menu-item="value: mp-end; label: End"
-                position="0 0.36 0"
-              >
-                <a-text value="END" align="center" color="#f66" width="3" position="0 0 0.01"></a-text>
-              </a-entity>
-
-              <a-text value="Players" align="center" color="#9ad" width="3" position="0 0.1 0.01"></a-text>
-              <a-entity class="watch-mp-player-list" position="0 -0.02 0"></a-entity>
-            </a-entity>
-          </a-entity>
-
-          <a-entity class="watch-menu-help-view" data-menu-page="help" visible="false">
-            <a-plane width="1" height="1.3" color="#101827" position="0 -0.05 -0.01"></a-plane>
-
-            <!-- No ? here (you're already in help) — just a close, using
-                 "help-close" instead of the reserved "close" so it backs
-                 out to the main view rather than shutting the whole menu. -->
-            <a-entity class="menu-chrome-slot" data-title="HELP" data-help="false" data-close="true" data-close-value="help-close" data-width="1" data-bar-y="0.5"></a-entity>
-
-            <a-text class="watch-help-page-text" value="" align="center" color="#eee" width="1.7" wrap-count="22" position="0 0.12 0"></a-text>
-
-            <a-entity class="pm-target"
-              geometry="primitive: plane; width: 0.4; height: 0.16"
-              material="color: #182238"
-              menu-item="value: help-prev; label: Prev"
-              position="-0.27 -0.48 0"
-            >
-              <a-text value="&lt; Prev" align="center" color="#eee" width="4" position="0 0 0.01"></a-text>
-            </a-entity>
-
-            <a-text class="watch-help-page-indicator" value="1 / 2" align="center" color="#aaa" width="3" position="0 -0.48 0"></a-text>
-
-            <a-entity class="pm-target"
-              geometry="primitive: plane; width: 0.4; height: 0.16"
-              material="color: #182238"
-              menu-item="value: help-next; label: Next"
-              position="0.27 -0.48 0"
-            >
-              <a-text value="Next &gt;" align="center" color="#eee" width="4" position="0 0 0.01"></a-text>
-            </a-entity>
-          </a-entity>
-
-          <a-entity class="watch-menu-controls-view" data-menu-page="controls" visible="false">
-            <a-plane width="1.2" height="2.1" color="#101827" position="0 -0.05 -0.01"></a-plane>
-            <a-entity class="menu-chrome-slot" data-title="TUNING" data-help="false" data-close="true" data-close-value="controls-close" data-width="1.2" data-bar-y="0.8"></a-entity>
-
-            <a-entity class="pm-target" geometry="primitive: plane; width: 0.92; height: 0.16" material="color: #182238" menu-item="value: drift-off; label: Drift off" position="0 0.52 0">
-              <a-text value="Drift off" align="center" color="#eee" width="2.5" position="0 0 0.01"></a-text>
-            </a-entity>
-            <a-entity class="pm-target" geometry="primitive: plane; width: 0.92; height: 0.16" material="color: #182238" menu-item="value: drift-low; label: Drift low" position="0 0.3 0">
-              <a-text value="Drift low" align="center" color="#eee" width="2.5" position="0 0 0.01"></a-text>
-            </a-entity>
-            <a-entity class="pm-target" geometry="primitive: plane; width: 0.92; height: 0.16" material="color: #182238" menu-item="value: drift-medium; label: Drift medium" position="0 0.08 0">
-              <a-text value="Drift medium" align="center" color="#eee" width="2.5" position="0 0 0.01"></a-text>
-            </a-entity>
-            <a-entity class="pm-target" geometry="primitive: plane; width: 0.92; height: 0.16" material="color: #182238" menu-item="value: drift-high; label: Drift high" position="0 -0.14 0">
-              <a-text value="Drift high" align="center" color="#eee" width="2.5" position="0 0 0.01"></a-text>
-            </a-entity>
-
-            <a-entity class="pm-target" geometry="primitive: plane; width: 0.92; height: 0.16" material="color: #182238" menu-item="value: vignette-toggle; label: Vignette" position="0 -0.42 0">
-              <a-text value="Vignette" align="center" color="#eee" width="2.5" position="0 0 0.01"></a-text>
-            </a-entity>
-            <a-entity class="pm-target" geometry="primitive: plane; width: 0.92; height: 0.16" material="color: #182238" menu-item="value: vignette-stronger; label: More vignette" position="0 -0.64 0">
-              <a-text value="More vignette" align="center" color="#eee" width="2.5" position="0 0 0.01"></a-text>
-            </a-entity>
-            <a-entity class="pm-target" geometry="primitive: plane; width: 0.92; height: 0.16" material="color: #182238" menu-item="value: vignette-softer; label: Less vignette" position="0 -0.86 0">
-              <a-text value="Less vignette" align="center" color="#eee" width="2.5" position="0 0 0.01"></a-text>
-            </a-entity>
-            <a-entity class="pm-target" geometry="primitive: plane; width: 0.92; height: 0.16" material="color: #182238" menu-item="value: vignette-inset-in; label: Vignette in" position="0 -1.08 0">
-              <a-text value="Vignette in" align="center" color="#eee" width="2.5" position="0 0 0.01"></a-text>
-            </a-entity>
-            <a-entity class="pm-target" geometry="primitive: plane; width: 0.92; height: 0.16" material="color: #182238" menu-item="value: vignette-inset-out; label: Vignette out" position="0 -1.3 0">
-              <a-text value="Vignette out" align="center" color="#eee" width="2.5" position="0 0 0.01"></a-text>
-            </a-entity>
-            <a-entity class="pm-target" geometry="primitive: plane; width: 0.92; height: 0.16" material="color: #182238" menu-item="value: vignette-radius-smaller; label: Smaller vignette" position="0 -1.52 0">
-              <a-text value="Smaller vignette" align="center" color="#eee" width="2.5" position="0 0 0.01"></a-text>
-            </a-entity>
-            <a-entity class="pm-target" geometry="primitive: plane; width: 0.92; height: 0.16" material="color: #182238" menu-item="value: vignette-radius-larger; label: Larger vignette" position="0 -1.74 0">
-              <a-text value="Larger vignette" align="center" color="#eee" width="2.5" position="0 0 0.01"></a-text>
-            </a-entity>
-
-            <a-entity class="pm-target" geometry="primitive: plane; width: 0.92; height: 0.16" material="color: #182238" menu-item="value: teleport-left; label: Teleport hand left" position="0 -1.98 0">
-              <a-text value="Teleport hand left" align="center" color="#eee" width="2.5" position="0 0 0.01"></a-text>
-            </a-entity>
-            <a-entity class="pm-target" geometry="primitive: plane; width: 0.92; height: 0.16" material="color: #182238" menu-item="value: teleport-right; label: Teleport hand right" position="0 -2.2 0">
-              <a-text value="Teleport hand right" align="center" color="#eee" width="2.5" position="0 0 0.01"></a-text>
-            </a-entity>
-          </a-entity>
-
-          <a-entity class="watch-menu-input-view" data-menu-page="input" visible="false">
-            <a-plane width="1.2" height="1.55" color="#101827" position="0 -0.08 -0.01"></a-plane>
-            <a-entity class="menu-chrome-slot" data-title="INPUT" data-help="false" data-close="true" data-close-value="input-close" data-width="1.2" data-bar-y="0.62"></a-entity>
-
-            <a-entity
-              menu-option="key: handedness; label: Hand; values: right|left; labels: Right-handed|Left-handed; value: right; width: 0.96; height: 0.18"
-              position="0 0.3 0"
-            ></a-entity>
-            <a-entity
-              menu-option="key: interaction-hints; label: Hints; values: always|delayed|never; labels: Always|Delayed|Never; value: delayed; width: 0.96; height: 0.18"
-              position="0 0.02 0"
-            ></a-entity>
-
-            <a-text input-family-visibility="families: keyboard" value="Keyboard: WASD move   C crouch\nTab watch   Esc exit\nE mounted   F grab/drop" align="center" color="#9fb0d4" width="1.55" wrap-count="28" position="0 -0.38 0"></a-text>
-            <a-text input-family-visibility="families: gamepad" value="Gamepad: sticks move/look\nY/Start watch   B exit\nX mounted   LB grab/drop" align="center" color="#9fb0d4" width="1.55" wrap-count="28" position="0 -0.38 0"></a-text>
-            <a-text input-family-visibility="families: touch" value="Mobile: joystick + drag to look\nUse the labeled action buttons\nTap an action, hands do the motion" align="center" color="#9fb0d4" width="1.55" wrap-count="28" position="0 -0.38 0"></a-text>
-            <a-text input-family-visibility="families: xr" value="VR: move and turn with sticks\nRaise your wrist for the watch\nPoint, grip, poke, or trigger" align="center" color="#9fb0d4" width="1.55" wrap-count="28" position="0 -0.38 0"></a-text>
-          </a-entity>
-        </a-entity>
-      </template>
-
-      <!-- The same watch on the shared crossbar menu: one five-row list
-           instead of the five hand-laid pages above, built from the
-           "watch" page registered further down. hand-with-watch builds it
-           beside the classic one and the visor's Watch row switches
-           between them, so the two can be compared on the same wrist.
-           Everything about opening it (raise, poke, palm-up, Tab) is the
-           same projected-menu as the classic watch. -->
       <template id="watch-crossbar-template">
         <a-entity class="watch-crossbar-panel" visible="false">
           <a-entity class="watch-crossbar"
@@ -836,266 +142,132 @@
         </a-entity>
       </template>
 
-      <!-- Two entities per hand, deliberately decoupled — same pattern
-           Pistols at Dawn uses, for the same reason: hand-controls'
-           rendered mesh applies its own "looks natural" corrective
-           rotation (±90° yaw plus a WebXR-only pitch) that does NOT match
-           "-Z is where you're pointing," so raycasting/aiming needs an
-           entity carrying that SAME correction to actually match where
-           the rendered finger appears to point — see hand-with-watch's
-           "fingertip" entity (a child of its corrective wrapper), which
-           is where cursor+raycaster actually live now, not here on the
-           raw tracked entity. The visible hand is a separate, decoupled
-           hand-controls entity — the only thing that actually animates
-           (fist on grip, point on trigger, etc). This raw entity's own
-           job is just real controller button events (see
-           CONTROL_COMPONENTS) and, via hand-with-watch, building both
-           the watch and the fingertip. -->
       <!-- ============================================================
-           STYLE 3: wall screen. A world-fixed trigger — no wrist, no
-           orientation to read — so it uses projected-menu's "poke"
-           fixed mode: always grows in place, always poke-driven,
-           closes if the player walks far enough away instead of by
-           reading an orientation that doesn't apply here.
-           Rotation was found empirically (screenshot, adjust, repeat)
-           rather than derived — the fastest reliable way to point an
-           arbitrary new prop at wherever the player spawns.
+           AHEAD — THE STATIC PANEL. A menu that simply stands in the
+           room. Walk up for the E prompt (or, in a headset, reach an
+           empty hand toward it — not pointing — and that hand's stick
+           drives it). The reach is short on purpose: in a room-sized
+           layout the panel is a metre from where you stand, and a longer
+           one let a hand resting at your side take the stick you walk
+           with. A fixture: no close button, and back at the top does
+           nothing, so it cannot be lost.
       ============================================================ -->
-      <template id="wall-screen-menu-template">
-        <a-entity class="wall-screen-menu-panel" visible="false">
-          <a-plane width="1" height="1" color="#101827" position="0 0 -0.01"></a-plane>
-
-          <a-entity class="menu-chrome-slot" data-title="WALL PANEL" data-help="true" data-close="true" data-width="1" data-bar-y="0.4"></a-entity>
-
-          <a-entity class="pm-target"
-            geometry="primitive: plane; width: 0.8; height: 0.18"
-            material="color: #182238"
-            menu-item="value: brightness; label: Brightness"
-            position="0 0.15 0"
-          >
-            <a-text value="Brightness" align="center" color="#eee" width="2.4" position="0 0 0.01"></a-text>
-          </a-entity>
-
-          <a-entity class="pm-target"
-            geometry="primitive: plane; width: 0.8; height: 0.18"
-            material="color: #182238"
-            menu-item="value: volume; label: Volume"
-            position="0 -0.08 0"
-          >
-            <a-text value="Volume" align="center" color="#eee" width="2.4" position="0 0 0.01"></a-text>
-          </a-entity>
-
-          <a-entity class="pm-target"
-            geometry="primitive: plane; width: 0.8; height: 0.18"
-            material="color: #182238"
-            menu-item="value: info; label: Info"
-            position="0 -0.31 0"
-          >
-            <a-text value="Info" align="center" color="#eee" width="2.4" position="0 0 0.01"></a-text>
-          </a-entity>
-
-          <a-text class="menu-feedback-text" value="Selected: (none)" align="center" color="#aaa" width="1.8" position="0 -0.48 0"></a-text>
-        </a-entity>
-      </template>
-
-      <!-- DEMO 2 of 3 help styles: a SIDECAR — a small secondary panel
-           attached to one side of the main one, toggled by the same ❔
-           without hiding or covering the shop screen itself. Good for
-           "stats for the thing you're looking at" alongside a screen
-           that needs to stay fully visible and usable. Not built on
-           projected-menu itself (it's not a trigger, just a companion
-           panel) — the wall screen setup code below toggles its
-           visibility directly. -->
-      <template id="wall-sidecar-template">
-        <a-entity class="wall-sidecar-panel" visible="false">
-          <a-plane width="0.75" height="1" color="#152036" position="0 0 -0.01"></a-plane>
-          <a-entity class="menu-chrome-slot" data-title="INFO" data-help="false" data-close="false" data-width="0.75" data-bar-y="0.4"></a-entity>
-          <a-text
-            value="Brightness, Volume, and Info are placeholder rows for this demo screen -- swap in whatever your own menu actually needs."
-            align="center" color="#ccc" width="1.3" wrap-count="24" position="0 0.05 0"
-          ></a-text>
-        </a-entity>
-      </template>
-
-      <a-entity id="wall-slab" position="1.1 1.4 -0.7" rotation="0 -58 0">
-        <a-box width="1.4" height="1.8" depth="0.1" color="#2b2f38"></a-box>
-        <!-- radialAnchor approaches to a set *distance* from the trigger
-             (widened further still if the panel wouldn't fit the
-             viewer's own field of view -- see getFramedInteractionDistance
-             in interaction-hints.js) rather than a fixed authored
-             position, the same way the pedestal already does; a wall
-             panel can only be approached from its own front hemisphere
-             anyway (the slab blocks the rest), so it converges to the
-             same "stand square in front" spot a fixed anchor point would
-             have picked, without needing one. Local +Z is the wall's
-             front, matching mounted-interaction's own normal default. -->
-        <a-entity id="wall-screen-trigger"
-          geometry="primitive: plane; width: 0.4; height: 0.28"
-          material="color: #16324a; side: double"
-          position="0 0 0.051"
-          mounted-interaction="radialAnchor: true; interactionDistance: 0.74; previewStandoff: 0.12"
-          hint-zone="action: mounted; radius: 0.34; maxReach: 1.0; gazeThreshold: 0.88; priority: 20; desktopKey: E; desktopLabel: Open menu; xrKey: POKE; xrLabel: Open menu; hintOffset: 0 0.32 0.13; hintOffsetSpace: target; hintLockX: true; hintLockY: true; hintLockZ: true; hintScale: 0.68; highlightOpacity: 0.24; highlightScale: 1.045"
-        >
-          <a-text value="TAP" align="center" color="#7fd" width="4" position="0 0 0.002"></a-text>
-        </a-entity>
-      </a-entity>
-
-      <!-- ============================================================
-           STYLE 4: pedestal button. Also world-fixed, but this one is
-           locked to projected-menu's "laser" fixed mode instead: poke
-           the button and the menu always grows large and billboards
-           to face the player right away, no orientation dance — a
-           small physical button obviously isn't itself pokeable once
-           the resulting menu is floating a third of a meter above it.
-      ============================================================ -->
-      <template id="pedestal-menu-template">
-        <a-entity class="pedestal-menu-panel" visible="false">
-          <a-plane width="1" height="1" color="#101827" position="0 0 -0.01"></a-plane>
-
-          <a-entity class="menu-chrome-slot" data-title="PEDESTAL MENU" data-help="true" data-close="true" data-width="1" data-bar-y="0.4"></a-entity>
-
-          <a-entity class="pm-target"
-            geometry="primitive: plane; width: 0.8; height: 0.18"
-            material="color: #182238"
-            menu-item="value: option-a; label: Option A"
-            position="0 0.15 0"
-          >
-            <a-text value="Option A" align="center" color="#eee" width="2.4" position="0 0 0.01"></a-text>
-          </a-entity>
-
-          <a-entity class="pm-target"
-            geometry="primitive: plane; width: 0.8; height: 0.18"
-            material="color: #182238"
-            menu-item="value: option-b; label: Option B"
-            position="0 -0.08 0"
-          >
-            <a-text value="Option B" align="center" color="#eee" width="2.4" position="0 0 0.01"></a-text>
-          </a-entity>
-
-          <a-entity class="pm-target"
-            geometry="primitive: plane; width: 0.8; height: 0.18"
-            material="color: #182238"
-            menu-item="value: option-c; label: Option C"
-            position="0 -0.31 0"
-          >
-            <a-text value="Option C" align="center" color="#eee" width="2.4" position="0 0 0.01"></a-text>
-          </a-entity>
-
-          <a-text class="menu-feedback-text" value="Selected: (none)" align="center" color="#aaa" width="1.8" position="0 -0.48 0"></a-text>
-        </a-entity>
-      </template>
-
-      <!-- DEMO 3 of 3 help styles: a TUTORIAL HINT SLIDESHOW, drawn ON
-           TOP of the still-visible menu (a dim scrim plus an arrow and
-           caption, not a swap or a companion panel) — good for
-           step-by-step "here's what this does" walkthroughs of a
-           mechanic. Face buttons step through it directly (no on-screen
-           prev/next row needed): A/X back, B/Y next, matching the real
-           Quest layout (X/Y left controller, A/B right). Appended as a
-           CHILD of the pedestal's own panel (not a sibling like the
-           wall's sidecar) specifically so it inherits that panel's
-           billboarding position/rotation/scale for free, same as any
-           other row on it — a sibling would need its own tracking code
-           to follow a panel that re-orients itself every frame. -->
-      <template id="pedestal-tutorial-template">
-        <a-entity class="pedestal-tutorial" visible="false" position="0 0 0.02">
-          <a-plane width="1.05" height="1.05" material="color: #000; opacity: 0.6; transparent: true; shader: flat" position="0 0 -0.005"></a-plane>
-          <a-text class="tutorial-arrow" value="➤" align="center" color="#ffd166" width="6" position="-0.6 0.15 0"></a-text>
-          <a-text class="tutorial-text" value="" align="left" color="#fff" width="0.85" wrap-count="26" position="-0.52 0.15 0"></a-text>
-          <a-text class="tutorial-page-indicator" value="1 / 3" align="center" color="#aaa" width="2.4" position="0 -0.4 0"></a-text>
-          <a-text value="(A/X) Back      Next (B/Y)" align="center" color="#9ad" width="1.8" position="0 -0.48 0"></a-text>
-        </a-entity>
-      </template>
-
-      <a-entity id="pedestal" position="-1.1 0 -0.7">
-        <a-cylinder radius="0.15" height="0.9" position="0 0.45 0" color="#555"></a-cylinder>
-        <a-entity id="pedestal-button"
-          geometry="primitive: cylinder; radius: 0.08; height: 0.04"
-          material="color: #b33"
-          position="0 0.92 0"
-          mounted-interaction="radialAnchor: true; interactionDistance: 0.72; normal: 0 1 0; previewStandoff: 0.12"
-          hint-zone="action: mounted; radius: 0.34; maxReach: 1.0; gazeThreshold: 0.9; priority: 20; desktopKey: E; desktopLabel: Open menu; xrKey: POKE; xrLabel: Open menu; hintOffset: 0 0.3 0; hintScale: 0.68; highlightOpacity: 0.24; highlightScale: 1.06"
+      <a-entity id="station-static" play-space-station="side: front">
+        <a-entity id="showcase-panel"
+          position="0 1.32 0"
+          crossbar-menu="page: showcase; windowSize: 5; width: 1.1; rowHeight: 0.17; stickRange: 0.5; closable: false; hintLabel: Showcase menu"
+          crossbar-menu-registration
         ></a-entity>
+        <a-text class="station-caption"
+          value="STATIC PANEL&#10;Walk up and press E (W/S move, D in, A back)&#10;VR: empty hand near it, then the stick"
+          align="center" color="#7fe3ff" width="1.1" wrap-count="44" position="0 0.52 0"
+        ></a-text>
       </a-entity>
 
-      <!-- V1 object manipulation story. This intentionally uses the small
-           shared grab/drop state machine rather than importing Pistols at
-           Dawn's holster/stack/throw/catch equipment graph. -->
-      <a-box id="box-test-stand" width="1.2" height="0.62" depth="0.8" color="#353b48" position="2.7 0.31 -1.8"></a-box>
+      <!-- ============================================================
+           RIGHT — THE WALL SCREEN. A world-fixed trigger in
+           projected-menu's "poke" mode: poke TAP (or walk up and press E)
+           and a panel grows out of the wall, flush against it, hiding
+           the button it came from. Walk far enough away and it closes.
+      ============================================================ -->
+      <template id="wall-crossbar-template">
+        <a-entity class="wall-crossbar-panel" visible="false">
+          <a-entity
+            crossbar-menu="page: wall; width: 1; rowHeight: 0.16; maxChars: 20; open: false; closeBehavior: hide; memory: temporary; hint: false; stickRange: 0.6; plateOpacity: 0.9"
+            crossbar-menu-registration
+          ></a-entity>
+        </a-entity>
+      </template>
+
+      <a-entity id="station-wall" play-space-station="side: right">
+        <a-entity id="wall-slab" position="0 1.4 0">
+          <a-box width="1.4" height="1.8" depth="0.1" color="#2b2f38" position="0 0 -0.05"></a-box>
+          <!-- radialAnchor approaches to a set distance from the trigger
+               (widened if the panel would not fit the viewer's field of
+               view — see getFramedInteractionDistance in
+               interaction-hints.js). Local +Z is the wall's front, which
+               play-space-station turns to face the middle of the room. -->
+          <a-entity id="wall-screen-trigger"
+            geometry="primitive: plane; width: 0.4; height: 0.28"
+            material="color: #16324a; side: double"
+            position="0 0 0.004"
+            mounted-interaction="radialAnchor: true; interactionDistance: 0.74; previewStandoff: 0.12"
+            hint-zone="action: mounted; radius: 0.34; maxReach: 1.0; gazeThreshold: 0.88; priority: 20; desktopKey: E; desktopLabel: Open menu; xrKey: POKE; xrLabel: Open menu; hintOffset: 0 0.32 0.13; hintOffsetSpace: target; hintLockX: true; hintLockY: true; hintLockZ: true; hintScale: 0.68; highlightOpacity: 0.24; highlightScale: 1.045"
+            projected-menu="template: #wall-crossbar-template; mode: poke; pokeScale: 1.2; offset: 0 0 0.012; closeDistance: 3.2"
+            projected-crossbar="hideTrigger: true"
+          >
+            <a-text value="TAP" align="center" color="#7fd" width="4" position="0 0 0.002"></a-text>
+          </a-entity>
+        </a-entity>
+        <a-text class="station-caption"
+          value="WALL SCREEN&#10;Poke TAP, or walk up and press E"
+          align="center" color="#7fe3ff" width="1.1" wrap-count="44" position="0 0.3 0.02"
+        ></a-text>
+      </a-entity>
+
+      <!-- ============================================================
+           LEFT — THE PEDESTAL BUTTON. Also world-fixed, but in
+           projected-menu's "laser" mode: press the button and the panel
+           floats up above it and turns to face you, for pointing (or the
+           stick, or the keys) rather than poking.
+      ============================================================ -->
+      <template id="pedestal-crossbar-template">
+        <a-entity class="pedestal-crossbar-panel" visible="false">
+          <a-entity
+            crossbar-menu="page: pedestal; width: 1; rowHeight: 0.16; maxChars: 20; open: false; closeBehavior: hide; memory: temporary; hint: false; stickRange: 0.6; plateOpacity: 0.9"
+            crossbar-menu-registration
+          ></a-entity>
+        </a-entity>
+      </template>
+
+      <a-entity id="station-pedestal" play-space-station="side: left">
+        <a-entity id="pedestal">
+          <a-cylinder radius="0.15" height="0.9" position="0 0.45 0" color="#555"></a-cylinder>
+          <a-entity id="pedestal-button"
+            geometry="primitive: cylinder; radius: 0.08; height: 0.04"
+            material="color: #b33"
+            position="0 0.92 0"
+            mounted-interaction="radialAnchor: true; interactionDistance: 0.72; normal: 0 1 0; previewStandoff: 0.12"
+            hint-zone="action: mounted; radius: 0.34; maxReach: 1.0; gazeThreshold: 0.9; priority: 20; desktopKey: E; desktopLabel: Open menu; xrKey: POKE; xrLabel: Open menu; hintOffset: 0 0.3 0; hintScale: 0.68; highlightOpacity: 0.24; highlightScale: 1.06"
+            projected-menu="template: #pedestal-crossbar-template; mode: laser; laserScale: 1.1; offset: 0 0.85 0; closeDistance: 2.2"
+            projected-crossbar
+          ></a-entity>
+        </a-entity>
+        <a-text class="station-caption"
+          value="PEDESTAL&#10;Poke the button, or walk up and press E"
+          align="center" color="#7fe3ff" width="1.1" wrap-count="44" position="0 0.3 0.3"
+        ></a-text>
+      </a-entity>
+
+      <!-- ============================================================
+           BEHIND — THE BOX PLATFORM. The shared grab/drop state machine
+           (simple-grabbable), not Pistols' holster/throw/catch graph.
+           The boxes are children of the scene so they can be picked up;
+           play-space-anchor keeps their resting places on the platform
+           wherever the platform ends up. Spawn and Reset are on the
+           static panel and the wall screen.
+      ============================================================ -->
+      <a-entity id="station-boxes" play-space-station="side: back">
+        <a-box id="box-test-stand" width="1.2" height="0.62" depth="0.8" color="#353b48" position="0 0.31 0"></a-box>
+        <a-text class="station-caption"
+          value="BOXES&#10;Reach in and grip, or look and press F"
+          align="center" color="#7fe3ff" width="1.1" wrap-count="44" position="0 0.75 0.42"
+        ></a-text>
+      </a-entity>
       <a-box id="showcase-grab-box"
         class="showcase-grab-box"
         width="0.26" height="0.26" depth="0.26"
         color="#d78b42"
-        position="2.55 0.77 -1.8"
+        play-space-anchor="station: #station-boxes; offset: -0.15 0.77 0"
         simple-grabbable="heldPosition: 0 0 -0.08; floorY: 0.13"
         hint-zone="action: grab; radius: 0.34; maxReach: 1.0; gazeThreshold: 0.93; priority: 10; desktopKey: F; desktopLabel: Grab; xrKey: GRIP; xrLabel: Grab; hintOffset: 0 0.32 0"
       ></a-box>
-      <!-- ============================================================
-           CROSSBAR MENU (new shared menu system)
-
-           An in-world panel driven by common/menu-model.js. Unlike
-           every other menu on this page, none of its content is
-           written here: the page is registered as data further down
-           and this entity only says how big the surface is and how
-           many rows it can hold. Adding a thirteenth destination to
-           it changes nothing about this markup, which is the entire
-           point — the watch's old teleport page is 12 hand-positioned
-           entities on a backing plane three times taller than the
-           panel it lives in.
-
-           Walk up to it. With an empty hand near the panel (and not
-           pointing — the finger laser takes precedence), the panel
-           and your hand both light up and that hand's thumbstick
-           drives the list: up/down to move, inward or a face button
-           to go deeper, outward or B/Y to come back. Drop your arm
-           and the stick is yours again immediately, with the menu
-           left exactly where it was.
-      ============================================================ -->
-      <a-entity
-        id="crossbar-panel"
-        position="-1.6 1.22 -2.2"
-        rotation="0 36 0"
-        crossbar-menu="page: showcase-crossbar; title: WORKSHOP; windowSize: 5; width: 1.1; rowHeight: 0.17; stickRange: 0.9; closable: false"
-        crossbar-menu-registration
-      ></a-entity>
-      <a-text
-        value="CROSSBAR A — walk up for the E prompt, press E to take the controls&#10;W/S move, D enter, A back, E or Esc to leave"
-        align="center"
-        color="#7fe3ff"
-        width="1.1"
-        wrap-count="56"
-        position="-1.6 0.42 -2.2"
-        rotation="0 36 0"
-      ></a-text>
-
-      <!-- A second crossbar, deliberately. Two panels in one room is
-           the only way to be sure that entering one takes the controls
-           for that one alone: with both in view, W/S must move exactly
-           one list. -->
-      <a-entity
-        id="crossbar-panel-b"
-        position="1.6 1.22 -2.2"
-        rotation="0 -36 0"
-        crossbar-menu="page: showcase-crossbar-b; title: RANGE; windowSize: 5; width: 1.1; rowHeight: 0.17; stickRange: 0.9; side: right; hintLabel: Range menu; closable: false"
-        crossbar-menu-registration
-      ></a-entity>
-      <a-text
-        value="CROSSBAR B — the same system, a different page.&#10;Only the one you entered should move."
-        align="center"
-        color="#7fe3ff"
-        width="1.1"
-        wrap-count="56"
-        position="1.6 0.42 -2.2"
-        rotation="0 -36 0"
-      ></a-text>
     </a-scene>
 
     <script type="module">
-      // The crossbar demo page. Every item kind the model supports,
-      // plus two lists that are deliberately far longer than the
-      // window, since "the list got taller than the player" is the
-      // failure this system exists to fix.
-      import { registerMenuPage } from '../../common/menu-crossbar.js';
+      // Every menu in the showcase, as data. The markup above only says
+      // where each surface is and how big; what is on it is here.
+      import { registerMenuPage, findMenuItem } from '../../common/menu-crossbar.js';
       import { ROOM_CODE_CHARS } from '../../worker/src/signal-rooms.js';
 
       var TOWNS = [
@@ -1124,14 +296,6 @@
         items: [
           { kind: 'action', id: 'spawn-box', label: 'Spawn box' },
           { kind: 'toggle', id: 'visor-grid', label: 'Floor grid', value: true },
-          // Which watch your wrists wear: the original hand-built pages, or
-          // the same watch on this menu system. Here rather than on the
-          // watch, because switching a menu from inside itself would pull
-          // the floor out from under you.
-          {
-            kind: 'select', id: 'visor-watch', label: 'Watch', value: 'crossbar',
-            options: [{ value: 'classic', label: 'Classic' }, { value: 'crossbar', label: 'New' }],
-          },
           {
             kind: 'submenu', id: 'visor-destinations', label: 'Destinations',
             items: TOWNS.map(function (name, i) {
@@ -1208,13 +372,12 @@
       });
 
       // ------------------------------------------------------------
-      // The watch, on the crossbar menu. Every value here maps onto
-      // something the classic watch template above does, and mostly by
-      // re-emitting the classic watch's own values (emitSelect /
-      // emitOption — see crossbar-menu's emitCompatible), so the
-      // handlers further down drive both watches unchanged. The
-      // exceptions are the vignette knobs, which the classic watch could
-      // only nudge a step at a time and which are numbers here.
+      // The watch. Most rows re-announce their values in the shapes the
+      // old hand-built watch sent (emitSelect / emitOption — see
+      // crossbar-menu's emitCompatible), which is what Pistols' and
+      // Boundaries' watches still send, so the same locomotion and
+      // preference handlers serve all of them. The vignette knobs are
+      // numbers instead of the old watch's one-step nudges.
       // ------------------------------------------------------------
       var watchScene = document.querySelector('a-scene');
       var watchRig = document.querySelector('#rig');
@@ -1224,10 +387,9 @@
         return Boolean(mode && mode.isMode('xr'));
       }
 
-      // The classic watch hides its headset-only rows (teleport, turning,
-      // comfort, haptics) off a headset with control-mode-visibility.
-      // Here the list is simply built without them; the watch reopens at
-      // the top every time, so it is rebuilt each time it opens.
+      // Headset-only rows (teleport, turning, comfort, haptics) are left
+      // out off a headset. The watch reopens at the top every time, so
+      // the list is rebuilt each time it opens.
       function forThisMode (list) {
         return function () {
           return list.filter(function (entry) { return !entry.xrOnly || inXR(); });
@@ -1248,9 +410,8 @@
         kind: 'select', id: 'watch-turn', label: 'Turn', value: 'turn-snap', emitSelect: true, xrOnly: true,
         options: [{ value: 'turn-snap', label: 'Snap' }, { value: 'turn-smooth', label: 'Smooth' }],
       };
-      // The classic watch's Vignette button sends "comfort-toggle", which
-      // flips whatever locomotion currently has; onOpen below keeps this
-      // row's value in step with that.
+      // "comfort-toggle" flips whatever locomotion currently has, so
+      // onOpen below keeps this row's value in step with it.
       var watchVignette = { kind: 'toggle', id: 'watch-vignette', label: 'Vignette', value: true, emitSelect: 'comfort-toggle', xrOnly: true };
       var watchDrift = {
         kind: 'select', id: 'watch-drift', label: 'Drift', value: 'drift-medium', emitSelect: true,
@@ -1326,8 +487,7 @@
             items: [
               watchHandedness,
               watchHints,
-              // What the classic watch's A/M title-bar button did: whether
-              // raising your wrist opens it, or only a poke does.
+              // Whether raising your wrist opens it, or only a poke does.
               { kind: 'toggle', id: 'watch-automatic', label: 'Auto-open', value: true },
             ],
           },
@@ -1357,7 +517,7 @@
           },
         ]),
         // Read the live values in as the watch opens: any of them can have
-        // been changed by the classic watch, the keyboard or the other
+        // been changed by the static panel, the keyboard or the other
         // hand's watch since this one was last up.
         onOpen: function () {
           var locomotion = watchRig && watchRig.components['locomotion-demo'];
@@ -1395,88 +555,125 @@
       watchScene.addEventListener('menu-preview', applyWatchValue);
       watchScene.addEventListener('menu-commit', applyWatchValue);
 
-      // Which watch you see: the visor's Watch row, applied to both hands.
-      watchScene.addEventListener('menu-commit', function (evt) {
-        if (evt.detail.id !== 'visor-watch') return;
-        document.querySelectorAll('[hand-with-watch]').forEach(function (el) {
-          var watch = el.components['hand-with-watch'];
-          if (watch) watch.setMenuStyle(evt.detail.value);
-        });
-      });
-
-      registerMenuPage('showcase-crossbar-b', {
-        title: 'RANGE',
+      // ------------------------------------------------------------
+      // The static panel, ahead of you. The showcase's own controls, and
+      // one of every kind of row: actions, a toggle, a select, a number,
+      // submenus — two of them deliberately far longer than the panel,
+      // since "the list got taller than the player" is the failure this
+      // system exists to fix.
+      // ------------------------------------------------------------
+      registerMenuPage('showcase', {
+        title: 'SHOWCASE',
         items: [
+          { kind: 'action', id: 'spawn-box', label: 'Spawn box' },
           { kind: 'action', id: 'reset-boxes', label: 'Reset boxes' },
-          { kind: 'toggle', id: 'range-lights', label: 'Lights', value: true },
           {
-            kind: 'select', id: 'difficulty', label: 'Difficulty', value: 'normal',
-            options: [
-              { value: 'easy', label: 'Easy' },
-              { value: 'normal', label: 'Normal' },
-              { value: 'hard', label: 'Hard' },
+            kind: 'submenu', id: 'showcase-go', label: 'Go to',
+            items: [
+              { kind: 'action', id: 'station-center', label: 'Middle' },
+              { kind: 'action', id: 'station-static', label: 'Static panel' },
+              { kind: 'action', id: 'station-wall', label: 'Wall screen' },
+              { kind: 'action', id: 'station-pedestal', label: 'Pedestal' },
+              { kind: 'action', id: 'station-boxes', label: 'Boxes' },
             ],
           },
+          // Sent the way a menu-option row with this key would have sent
+          // it, so locomotion hears it with no menu code of its own.
           {
-            kind: 'number', id: 'range-gravity', label: 'Gravity',
-            value: 9.8, min: 0, max: 20, step: 0.2,
+            kind: 'number', id: 'showcase-move-speed', label: 'Move speed', emitOption: 'move-speed',
+            value: 1, min: 0.5, max: 2.5, step: 0.1, suffix: 'x',
           },
           {
-            kind: 'submenu', id: 'letter-b', label: 'Letter',
+            kind: 'select', id: 'showcase-turn', label: 'Turning', value: 'turn-snap', emitSelect: true,
+            options: [
+              { value: 'turn-snap', label: 'Snap' },
+              { value: 'turn-smooth', label: 'Smooth' },
+              { value: 'turn-disabled', label: 'Off' },
+            ],
+          },
+          { kind: 'toggle', id: 'showcase-vignette', label: 'Vignette', value: true, emitSelect: 'comfort-toggle' },
+          {
+            // Twelve rows in a five-row window: the teleport page that
+            // used to be as tall as a person.
+            kind: 'submenu', id: 'destinations', label: 'Long list',
+            items: TOWNS.map(function (name, i) {
+              return { kind: 'action', id: 'town-' + i, label: name };
+            }),
+          },
+          {
+            // 26 rows navigated by holding the stick — the room-code idea.
+            kind: 'submenu', id: 'letter', label: 'Alphabet',
             items: LETTERS.map(function (letter) {
-              return { kind: 'action', id: 'b-letter-' + letter, label: letter };
+              return { kind: 'action', id: 'letter-' + letter, label: letter };
+            }),
+          },
+        ],
+        // The static panel is open from the start, so this runs once; it
+        // reads whatever locomotion starts with rather than assuming it.
+        onOpen: function () {
+          var rig = document.querySelector('#rig');
+          var locomotion = rig && rig.components['locomotion-demo'];
+          if (!locomotion) return;
+          var page = this;
+          findMenuItem(page.items, 'showcase-turn').value = 'turn-' + locomotion.data.turnMode;
+          findMenuItem(page.items, 'showcase-vignette').value = Boolean(locomotion.data.comfortVignette);
+          findMenuItem(page.items, 'showcase-move-speed').value = locomotion.data.speedMultiplier;
+        },
+      });
+
+      // ------------------------------------------------------------
+      // The wall screen, to your right. Rows that change the room you
+      // are standing in, so a press visibly does something.
+      // ------------------------------------------------------------
+      var WALL_INFO = [
+        'Grown out of the TAP', 'button: poke it, or', 'walk up and press E.',
+        'Walk away to close.',
+      ];
+      registerMenuPage('wall', {
+        title: 'WALL SCREEN',
+        items: [
+          {
+            kind: 'number', id: 'wall-brightness', label: 'Brightness',
+            value: 0.7, min: 0, max: 1.5, step: 0.1,
+            format: function (value) { return Math.round((value / 0.7) * 100) + '%'; },
+          },
+          { kind: 'toggle', id: 'wall-sun', label: 'Sunlight', value: true },
+          { kind: 'action', id: 'spawn-box', label: 'Spawn box' },
+          { kind: 'action', id: 'reset-boxes', label: 'Reset boxes' },
+          {
+            kind: 'submenu', id: 'wall-info', label: 'About this',
+            items: WALL_INFO.map(function (line, i) {
+              return { kind: 'action', id: 'wall-info-' + i, label: line, disabled: true };
             }),
           },
         ],
       });
 
-      registerMenuPage('showcase-crossbar', {
-        title: 'WORKSHOP',
+      // ------------------------------------------------------------
+      // The pedestal, to your left.
+      // ------------------------------------------------------------
+      var SKIES = [
+        { value: '#0d1526', label: 'Night' },
+        { value: '#3b2a4a', label: 'Dusk' },
+        { value: '#7aa6d6', label: 'Day' },
+        { value: '#2a1a12', label: 'Ember' },
+      ];
+      var PEDESTAL_INFO = [
+        'Floats up and turns', 'to face you. Point,', 'grip, and pull the', 'trigger on a row,', 'or use the stick.',
+      ];
+      registerMenuPage('pedestal', {
+        title: 'PEDESTAL',
         items: [
-          // Emits menu-item-select with value "spawn-box", the same
-          // shape the existing panel menu emits, so the showcase's own
-          // handler picks it up with no changes.
-          { kind: 'action', id: 'spawn-box', label: 'Spawn box' },
-          { kind: 'toggle', id: 'grid', label: 'Floor grid', value: true },
+          { kind: 'select', id: 'pedestal-sky', label: 'Sky', value: SKIES[0].value, options: SKIES },
           {
-            kind: 'select', id: 'targets', label: 'Targets', value: 6,
-            options: [
-              { value: 4, label: '4' }, { value: 6, label: '6' },
-              { value: 8, label: '8' }, { value: 12, label: '12' },
-              { value: 24, label: '24' },
-            ],
+            kind: 'select', id: 'pedestal-floor', label: 'Floor', value: 'checker',
+            options: [{ value: 'checker', label: 'Checker' }, { value: 'plain', label: 'Plain' }],
           },
+          { kind: 'action', id: 'station-center', label: 'Back to middle' },
           {
-            kind: 'number', id: 'move-speed', label: 'Move speed',
-            value: 1, min: 0.5, max: 2.5, step: 0.1, suffix: 'x',
-          },
-          {
-            // Twelve rows in a five-row window: this is the teleport
-            // page that used to be as tall as a person.
-            kind: 'submenu', id: 'destinations', label: 'Destinations',
-            items: TOWNS.map(function (name, i) {
-              return { kind: 'action', id: 'teleport-' + i, label: name };
-            }),
-          },
-          {
-            kind: 'submenu', id: 'comfort', label: 'Comfort',
-            items: [
-              { kind: 'toggle', id: 'vignette', label: 'Vignette', value: false },
-              {
-                kind: 'number', id: 'vignette-strength', label: 'Strength',
-                value: 1, min: 0, max: 2, step: 0.1,
-                format: function (value) { return Math.round(value * 100) + '%'; },
-              },
-              { kind: 'action', id: 'recenter', label: 'Recenter' },
-            ],
-          },
-          {
-            // The room-code idea, roughed in: 26 rows navigated by
-            // holding the stick. Tedious beats the cramped keyboard,
-            // and it tells us whether hold-to-repeat is fast enough.
-            kind: 'submenu', id: 'letter', label: 'Letter',
-            items: LETTERS.map(function (letter) {
-              return { kind: 'action', id: 'letter-' + letter, label: letter };
+            kind: 'submenu', id: 'pedestal-info', label: 'About this',
+            items: PEDESTAL_INFO.map(function (line, i) {
+              return { kind: 'action', id: 'pedestal-info-' + i, label: line, disabled: true };
             }),
           },
         ],
@@ -1535,93 +732,20 @@
       });
     </script>
 
+    <script type="module" src="../../common/play-space.js"></script>
     <script type="module" src="../../common/visor-menu.js"></script>
     <script type="module" src="../../common/watch-menu.js"></script>
     <script type="module" src="../../common/menu-crossbar.js"></script>
-    <script type="module" src="../../common/room-code-entry.js"></script>
     <script type="module" src="../../common/locomotion.js"></script>
     <script type="module" src="../../common/desktop-controls.js"></script>
     <script type="module">
-      import { buildMenuChrome } from '../../common/menus.js';
-      var MENU_EDITOR_DEFAULTS = {
-        panel: {
-          title: 'MAIN MENU',
-          feedbackPrefix: 'Selected:',
-          position: { x: 0, y: 1.8, z: -2.5 },
-          width: 1.9,
-          height: 2,
-        },
-        items: [
-          { value: 'spawn-box', label: 'Spawn box', position: { x: 0, y: 0.24, z: 0 } },
-          { value: 'reset-boxes', label: 'Reset boxes', position: { x: 0, y: -0.12, z: 0 } },
-          { value: 'station-right', label: 'Box station', position: { x: 0, y: -0.48, z: 0 } },
-        ],
-      };
+      var sceneEl = document.querySelector('a-scene');
+      var rigEl = document.querySelector('#rig');
 
-      function cloneJson (value) {
-        return JSON.parse(JSON.stringify(value));
-      }
-
-      function parseMenuEditorStateFromValue (parsed) {
-        var state = cloneJson(MENU_EDITOR_DEFAULTS);
-        if (parsed.panel) {
-          if (typeof parsed.panel.title === 'string') state.panel.title = parsed.panel.title;
-          if (typeof parsed.panel.feedbackPrefix === 'string') state.panel.feedbackPrefix = parsed.panel.feedbackPrefix;
-          if (typeof parsed.panel.width === 'number') state.panel.width = parsed.panel.width;
-          if (typeof parsed.panel.height === 'number') state.panel.height = parsed.panel.height;
-          if (parsed.panel.position) {
-            ['x', 'y', 'z'].forEach(function (axis) {
-              if (typeof parsed.panel.position[axis] === 'number') state.panel.position[axis] = parsed.panel.position[axis];
-            });
-          }
-        }
-        if (Array.isArray(parsed.items) && parsed.items.length) {
-          state.items = parsed.items.map(function (item, index) {
-            var fallback = MENU_EDITOR_DEFAULTS.items[index] || MENU_EDITOR_DEFAULTS.items[MENU_EDITOR_DEFAULTS.items.length - 1];
-            return {
-              value: typeof item.value === 'string' ? item.value : fallback.value,
-              label: typeof item.label === 'string' ? item.label : fallback.label,
-              position: {
-                x: item.position && typeof item.position.x === 'number' ? item.position.x : fallback.position.x,
-                y: item.position && typeof item.position.y === 'number' ? item.position.y : fallback.position.y,
-                z: item.position && typeof item.position.z === 'number' ? item.position.z : fallback.position.z,
-              },
-            };
-          });
-        }
-        return state;
-      }
-
-      function parseMenuEditorState () {
-        var params = new URLSearchParams(window.location.search);
-        var json = params.get('menu');
-        var state = cloneJson(MENU_EDITOR_DEFAULTS);
-        if (!json) return state;
-        try {
-          state = parseMenuEditorStateFromValue(JSON.parse(json));
-        } catch (err) {
-          console.warn('Ignoring invalid menu editor state in URL.', err);
-        }
-        return state;
-      }
-
-      var menuEditorState = parseMenuEditorState();
-      var isEditorMode = new URLSearchParams(window.location.search).get('edit') === '1';
-      if (isEditorMode) {
-        document.documentElement.classList.add('editor-mode');
-        document.body.classList.add('editor-mode');
-      }
-
-      // A plain color floor gave no sense of scale or footing — a small
-      // checkerboard, tiled across the 20x20 floor plane, is the
-      // quickest fix. Generated at runtime (a couple of fillRects on a
-      // throwaway canvas) rather than checking in an image file, since
-      // it's simpler than shipping+loading an asset for two flat colors.
-      // Doesn't need the scene (or even the floor entity) to be loaded —
-      // setAttribute() on a not-yet-loaded static entity still applies
-      // once it does load, no synchronous readback needed here (unlike
-      // the projected-menu setup further down, which does need one).
-      (function () {
+      // A plain colour floor gave no sense of scale or footing. A small
+      // checkerboard, generated on a throwaway canvas and tiled, is the
+      // quickest fix and ships no image.
+      var CHECKER = (function () {
         var canvas = document.createElement('canvas');
         canvas.width = canvas.height = 64;
         var ctx = canvas.getContext('2d');
@@ -1630,74 +754,98 @@
         ctx.fillStyle = '#2a3040';
         ctx.fillRect(0, 0, 32, 32);
         ctx.fillRect(32, 32, 32, 32);
-        var floorEl = document.querySelector('#floor');
-        floorEl.setAttribute('material', 'src', canvas.toDataURL());
-        floorEl.setAttribute('material', 'repeat', '20 20');
+        return canvas.toDataURL();
       })();
-
-      // Shared menu + locomotion engine code is loaded from
-      // ../../common/menus.js, watch-menu.js, and locomotion.js.
-
-      var rigEl = document.querySelector('#rig');
-      if (rigEl && !rigEl.components['locomotion-demo']) {
-        rigEl.setAttribute('locomotion-demo', '');
+      var floorEl = document.querySelector('#floor');
+      function setFloor (style) {
+        if (style === 'plain') {
+          floorEl.setAttribute('material', { src: '', color: '#3a4358' });
+        } else {
+          floorEl.setAttribute('material', { src: CHECKER, repeat: '20 20', color: '#ffffff' });
+        }
       }
-      if (rigEl && rigEl.components['locomotion-demo']) {
-        rigEl.components['locomotion-demo'].setStationPositions({
-          center: { x: 0, y: 0, z: -2.5 },
-          wall: { x: 1.1, y: 0, z: -0.7 },
-          pedestal: { x: -1.1, y: 0, z: -0.7 },
-          right: { x: 3.2, y: 0, z: -2.0 }
+      setFloor('checker');
+
+      if (rigEl && !rigEl.components['locomotion-demo']) rigEl.setAttribute('locomotion-demo', '');
+      function locomotion () { return rigEl && rigEl.components['locomotion-demo']; }
+
+      // ------------------------------------------------------------
+      // "Go to": a spot to stand at each station, a step back from it
+      // toward the middle of the room, recomputed whenever the room is.
+      // ------------------------------------------------------------
+      var STATION_SIDES = { static: 'front', wall: 'right', pedestal: 'left', boxes: 'back' };
+      var STAND_BACK = 0.75;
+      function updateStations () {
+        var space = sceneEl.systems['play-space'];
+        var loco = locomotion();
+        if (!space || !loco) return;
+        var layout = space.getLayout();
+        var c = layout.center;
+        var stations = { center: { x: c.x, y: 0, z: c.z } };
+        Object.keys(STATION_SIDES).forEach(function (key) {
+          var side = layout.sides[STATION_SIDES[key]];
+          var dx = c.x - side.x;
+          var dz = c.z - side.z;
+          var length = Math.hypot(dx, dz) || 1;
+          var step = Math.min(STAND_BACK, length);
+          stations[key] = { x: side.x + (dx / length) * step, y: 0, z: side.z + (dz / length) * step };
         });
+        loco.setStationPositions(stations);
       }
+      sceneEl.addEventListener('play-space-changed', updateStations);
 
       function handleLocomotionSelection (value) {
-        var locomotion = rigEl && rigEl.components['locomotion-demo'];
-        if (!locomotion) return;
+        var loco = locomotion();
+        if (!loco || typeof value !== 'string') return;
+        if (value.indexOf('station-') === 0) { loco.goToStation(value.slice(8)); return; }
+        if (value === 'move-smooth') loco.setMoveMode('smooth');
+        else if (value === 'move-teleport') loco.setMoveMode('teleport');
+        else if (value === 'move-disabled') loco.setMoveMode('disabled');
+        else if (value === 'turn-snap') loco.setTurnMode('snap');
+        else if (value === 'turn-smooth') loco.setTurnMode('smooth');
+        else if (value === 'turn-disabled') loco.setTurnMode('disabled');
+        else if (value === 'comfort-toggle') loco.setVignette(!loco.data.comfortVignette);
+        else if (value === 'drift-off') loco.setStickDriftCompensation('off');
+        else if (value === 'drift-low') loco.setStickDriftCompensation('low');
+        else if (value === 'drift-medium') loco.setStickDriftCompensation('medium');
+        else if (value === 'drift-high') loco.setStickDriftCompensation('high');
+        else if (value === 'teleport-left') loco.setTeleportHand('left');
+        else if (value === 'teleport-right') loco.setTeleportHand('right');
+      }
 
-        if (value === 'move-smooth') locomotion.setMoveMode('smooth');
-        else if (value === 'move-teleport') locomotion.setMoveMode('teleport');
-        else if (value === 'move-stations') locomotion.setMoveMode('stations');
-        else if (value === 'move-disabled') locomotion.setMoveMode('disabled');
-        else if (value === 'turn-snap') locomotion.setTurnMode('snap');
-        else if (value === 'turn-smooth') locomotion.setTurnMode('smooth');
-        else if (value === 'turn-disabled') locomotion.setTurnMode('disabled');
-        else if (value === 'comfort-toggle') locomotion.setVignette(!locomotion.data.comfortVignette);
-        else if (value === 'drift-off') locomotion.setStickDriftCompensation('off');
-        else if (value === 'drift-low') locomotion.setStickDriftCompensation('low');
-        else if (value === 'drift-medium') locomotion.setStickDriftCompensation('medium');
-        else if (value === 'drift-high') locomotion.setStickDriftCompensation('high');
-        else if (value === 'vignette-toggle') locomotion.setVignette(!locomotion.data.comfortVignette);
-        else if (value === 'vignette-stronger') locomotion.setVignetteStrength(Math.min(1, locomotion.data.vignetteStrength + 0.1));
-        else if (value === 'vignette-softer') locomotion.setVignetteStrength(Math.max(0, locomotion.data.vignetteStrength - 0.1));
-        else if (value === 'vignette-inset-in') locomotion.setVignetteInset(Math.max(0.25, locomotion.data.vignetteInset - 0.05));
-        else if (value === 'vignette-inset-out') locomotion.setVignetteInset(Math.min(1.2, locomotion.data.vignetteInset + 0.05));
-        else if (value === 'vignette-radius-smaller') locomotion.setVignetteRadius(Math.max(0.4, locomotion.data.vignetteRadius - 0.05));
-        else if (value === 'vignette-radius-larger') locomotion.setVignetteRadius(Math.min(1.4, locomotion.data.vignetteRadius + 0.05));
-        else if (value === 'station-center') locomotion.goToStation('center');
-        else if (value === 'station-wall') locomotion.goToStation('wall');
-        else if (value === 'station-pedestal') locomotion.goToStation('pedestal');
-        else if (value === 'station-right') locomotion.goToStation('right');
-        else if (value === 'teleport-left') locomotion.setTeleportHand('left');
-        else if (value === 'teleport-right') locomotion.setTeleportHand('right');
-        else if (value === 'page-controls') return;
+      // ------------------------------------------------------------
+      // The boxes. Each one's resting place is a spot on the platform
+      // (play-space-anchor), not a spot in the world, so they move with
+      // it. Index 0 is the box in the markup; spawned ones fill a grid.
+      // ------------------------------------------------------------
+      var BOX_LIMIT = 8;
+      function boxOffset (index) {
+        return {
+          x: -0.32 + (index % 3) * 0.28,
+          y: 0.77 + Math.floor(index / 6) * 0.28,
+          z: 0.14 - (Math.floor(index / 3) % 2) * 0.28,
+        };
+      }
+      function boxWorldPosition (index) {
+        var station = document.querySelector('#station-boxes').object3D;
+        var offset = boxOffset(index);
+        station.updateMatrixWorld(true);
+        var world = station.localToWorld(new AFRAME.THREE.Vector3(offset.x, offset.y, offset.z));
+        return { x: world.x, y: world.y, z: world.z };
       }
 
       function spawnShowcaseBox () {
         var boxes = document.querySelectorAll('.showcase-grab-box');
-        if (boxes.length >= 8) return;
+        if (boxes.length >= BOX_LIMIT) return;
         var source = document.querySelector('#showcase-grab-box');
         if (!source) return;
         var clone = source.cloneNode(true);
         var index = boxes.length;
+        var offset = boxOffset(index);
         clone.removeAttribute('id');
         clone.setAttribute('data-box-number', String(index + 1));
-        clone.setAttribute('position', {
-          x: 2.38 + (index % 3) * 0.28,
-          y: 0.77 + Math.floor(index / 6) * 0.28,
-          z: -1.68 - (Math.floor(index / 3) % 2) * 0.28,
-        });
-        document.querySelector('a-scene').appendChild(clone);
+        clone.setAttribute('play-space-anchor', 'station: #station-boxes; offset: ' + offset.x + ' ' + offset.y + ' ' + offset.z);
+        sceneEl.appendChild(clone);
       }
 
       function resetShowcaseBoxes () {
@@ -1706,6 +854,37 @@
           if (component) component.resetToSpawn();
         });
       }
+
+      // Bridge for the multiplayer script (a separate module, so it does
+      // not share this scope): the purely local box actions, used offline
+      // and as the primitive the host applies locally too.
+      window.__showcaseOfflineBoxActions = {
+        spawn: spawnShowcaseBox,
+        reset: resetShowcaseBoxes,
+        position: boxWorldPosition,
+      };
+
+      // spawn-box / reset-boxes themselves are handled by the multiplayer
+      // script, which knows whether they have to go through a host.
+      sceneEl.addEventListener('menu-item-select', function (evt) {
+        sceneEl.setAttribute('data-last-menu-selection', evt.detail.value);
+        handleLocomotionSelection(evt.detail.value);
+      });
+
+      // ------------------------------------------------------------
+      // The wall screen and pedestal change the room itself. Numbers and
+      // selects preview while you scroll them, so these listen to both.
+      // ------------------------------------------------------------
+      function applyRoomValue (evt) {
+        var id = evt.detail.id;
+        var value = evt.detail.value;
+        if (id === 'wall-brightness') document.querySelector('#ambient-light').setAttribute('light', 'intensity', value);
+        else if (id === 'wall-sun') document.querySelector('#sun-light').setAttribute('visible', value);
+        else if (id === 'pedestal-sky') document.querySelector('#showcase-sky').setAttribute('color', value);
+        else if (id === 'pedestal-floor') setFloor(value);
+      }
+      sceneEl.addEventListener('menu-preview', applyRoomValue);
+      sceneEl.addEventListener('menu-commit', applyRoomValue);
 
       function setupDesktopPlayer () {
         if (!rigEl || rigEl.components['desktop-controls']) return;
@@ -1716,412 +895,12 @@
         });
       }
 
-      // spawn-box/reset-boxes are handled by the multiplayer script
-      // instead (see window.__showcaseOfflineBoxActions below) — when
-      // a session is active those need to go through host authority
-      // rather than always running locally, and that state only
-      // exists in that other module script's scope.
-      var menuScene = document.querySelector('a-scene');
-      if (menuScene) {
-        menuScene.addEventListener('menu-item-select', function (evt) {
-          menuScene.setAttribute('data-last-menu-selection', evt.detail.value);
-          handleLocomotionSelection(evt.detail.value);
-        });
-      }
-
-      // Bridge for the multiplayer script (a separate <script
-      // type="module"> block, so it doesn't share this one's scope):
-      // the original, purely-local box actions, reused as the
-      // offline/no-session fallback and as the mechanical primitive
-      // the host applies locally too.
-      window.__showcaseOfflineBoxActions = { spawn: spawnShowcaseBox, reset: resetShowcaseBoxes };
-
-      // Demo 3 of 3 help styles (see #pedestal-tutorial-template): the
-      // "bottom" face button on either controller (A on the right, X on
-      // the left) steps back; the "top" one (B / Y) steps forward — a
-      // fixed, hand-independent convention, same idea as ACTIVATE_*
-      // above.
-      var TUTORIAL_BACK_EVENTS = ['abuttondown', 'xbuttondown'];
-      var TUTORIAL_NEXT_EVENTS = ['bbuttondown', 'ybuttondown'];
-
-      var PEDESTAL_TUTORIAL_STEPS = [
-        { y: 0.15, text: 'Option A -- poke it, or point and pull the trigger / any face button.' },
-        { y: -0.08, text: 'Option B works the same way -- every row responds to poke or pointing.' },
-        { y: -0.31, text: 'Option C -- the pattern repeats for as many rows as your menu needs.' },
-      ];
-
-      // ==============================================================
-      // STYLE 3 & 4 setup: wall screen (poke, fixed) and pedestal
-      // button (laser, fixed) — the two "fixed prop" projected-menu
-      // examples. Unlike the watch, neither tracks a moving trigger or
-      // needs its own component: both are just "attach projected-menu
-      // with this prop's own mode/scale/offset, then let menu-feedback
-      // reflect selections back" the same way the STYLE 1 fixed panel
-      // does. Offsets are in the trigger's OWN PARENT's local space
-      // (see updatePanelPosition on projected-menu) — wall-slab and
-      // pedestal each supply their own rotation/position once, and
-      // every number below is relative to that, not world space.
-      // Poking either one reuses the same two hands' fingertips as the
-      // watch — there's no separate "poker" per prop, just whichever
-      // hand happens to be pointing (squeeze grip) and touches it.
-      // ==============================================================
-      // Components only attach once their entity has loaded — true
-      // immediately for freshly-appended elements like the watch's own
-      // faceEl (already inside a loaded tree by the time hand-with-watch
-      // runs), but NOT for these two: they're part of the scene's
-      // initial markup, and this top-level script block runs before
-      // a-scene's own "loaded" event fires. Deref'ing .components right
-      // after setAttribute() here — before that event — finds nothing yet.
-      function setupFixedProjectedMenus () {
-        // Sits just barely proud of the wall's own front face (0.051)
-        // rather than floating out with a visible gap — at roughly the
-        // wall box's own width, the effect reads as the small TAP
-        // button expanding to fill the whole wall, not a separate panel
-        // hovering in front of it.
-        var wallScreenTrigger = document.querySelector('#wall-screen-trigger');
-        wallScreenTrigger.setAttribute('projected-menu', {
-          template: '#wall-screen-menu-template',
-          mode: 'poke',
-          pokeScale: 1.4,
-          offset: { x: 0, y: 0, z: 0.015 },
-          // Wide enough that getFramedInteractionDistance's own narrow-
-          // viewport framing (which can push the approach past 2.2 on a
-          // tall mobile portrait screen to fit this panel's 1.4x scale)
-          // never runs into this panel closing itself right after the
-          // step back completes -- see its own closeMargin clamp.
-          closeDistance: 3.2,
-        });
-        wallScreenTrigger.components['projected-menu'].panelEl.setAttribute('menu-feedback', '');
-
-        // The small TAP trigger and the big projected panel occupy
-        // (nearly) the same spot once open — same reasoning as the
-        // watch hiding its own face, otherwise TAP visibly peeks out
-        // from behind/around the panel.
-        wallScreenTrigger.addEventListener('projected-menu-opened', function () {
-          wallScreenTrigger.setAttribute('visible', false);
-        });
-        wallScreenTrigger.addEventListener('projected-menu-closed', function () {
-          wallScreenTrigger.setAttribute('visible', true);
-        });
-
-        // DEMO 2 of 3 help styles — see the big comment on
-        // #wall-sidecar-template. Sits just to the right of the main
-        // panel (half its width, plus a gap, plus half the sidecar's
-        // own width), same z as the main panel so it's flush with the
-        // wall too. Toggles open/closed on repeat ❔ clicks, same as
-        // the pedestal's tutorial; auto-hides if the main menu closes.
-        var wallSidecar = document.getElementById('wall-sidecar-template').content.cloneNode(true).firstElementChild;
-        wallSidecar.setAttribute('position', '1.22 0 0.035');
-        wallScreenTrigger.parentNode.appendChild(wallSidecar);
-        var wallSidecarChromeSlot = wallSidecar.querySelector('.menu-chrome-slot');
-        buildMenuChrome(wallSidecarChromeSlot.parentNode, {
-          title: wallSidecarChromeSlot.getAttribute('data-title') || '',
-          showHelp: false,
-          showClose: false,
-          width: parseFloat(wallSidecarChromeSlot.getAttribute('data-width')) || 1,
-          barY: parseFloat(wallSidecarChromeSlot.getAttribute('data-bar-y')),
-        });
-        wallSidecarChromeSlot.parentNode.removeChild(wallSidecarChromeSlot);
-        var wallSidecarOpen = false;
-        wallScreenTrigger.addEventListener('projected-menu-help', function () {
-          wallSidecarOpen = !wallSidecarOpen;
-          wallSidecar.setAttribute('visible', wallSidecarOpen);
-        });
-        wallScreenTrigger.addEventListener('projected-menu-closed', function () {
-          wallSidecarOpen = false;
-          wallSidecar.setAttribute('visible', false);
-        });
-
-        var pedestalButton = document.querySelector('#pedestal-button');
-        pedestalButton.setAttribute('projected-menu', {
-          template: '#pedestal-menu-template',
-          mode: 'laser',
-          laserScale: 1.3,
-          offset: { x: 0, y: 0.85, z: 0 },
-          closeDistance: 2.2,
-        });
-        pedestalButton.components['projected-menu'].panelEl.setAttribute('menu-feedback', '');
-
-        // DEMO 3 of 3 help styles — see the big comment on
-        // #pedestal-tutorial-template. A child of the panel itself (not
-        // a sibling), so it tracks the panel's own billboard rotation
-        // for free. While it's up, suppressPointing makes the covered
-        // rows inert (still visible, per the "on top" idea) so a face
-        // button steps the tutorial instead of also activating whatever
-        // happens to be behind it.
-        var pedestalPm = pedestalButton.components['projected-menu'];
-        var pedestalTutorial = document.getElementById('pedestal-tutorial-template').content.cloneNode(true).firstElementChild;
-        pedestalPm.panelEl.appendChild(pedestalTutorial);
-        pedestalTutorial.object3D.position.z = 0.03;
-        var tutorialArrowEl = pedestalTutorial.querySelector('.tutorial-arrow');
-        var tutorialTextEl = pedestalTutorial.querySelector('.tutorial-text');
-        var tutorialIndicatorEl = pedestalTutorial.querySelector('.tutorial-page-indicator');
-        var tutorialOpen = false;
-        var tutorialStep = 0;
-
-        function updateTutorialStep () {
-          var step = PEDESTAL_TUTORIAL_STEPS[tutorialStep];
-          tutorialArrowEl.setAttribute('position', '-0.6 ' + step.y + ' 0');
-          tutorialTextEl.setAttribute('position', '-0.52 ' + step.y + ' 0');
-          tutorialTextEl.setAttribute('text', 'value', step.text);
-          tutorialIndicatorEl.setAttribute('text', 'value', (tutorialStep + 1) + ' / ' + PEDESTAL_TUTORIAL_STEPS.length);
-        }
-
-        pedestalButton.addEventListener('projected-menu-help', function () {
-          tutorialOpen = !tutorialOpen;
-          pedestalTutorial.setAttribute('visible', tutorialOpen);
-          pedestalPm.suppressPointing = tutorialOpen;
-          if (tutorialOpen) {
-            tutorialStep = 0;
-            updateTutorialStep();
-          }
-        });
-        pedestalButton.addEventListener('projected-menu-closed', function () {
-          tutorialOpen = false;
-          pedestalTutorial.setAttribute('visible', false);
-          pedestalPm.suppressPointing = false;
-        });
-
-        function tutorialNav (dir) {
-          if (!tutorialOpen) return;
-          tutorialStep = Math.max(0, Math.min(PEDESTAL_TUTORIAL_STEPS.length - 1, tutorialStep + dir));
-          updateTutorialStep();
-        }
-        [document.querySelector('#left-hand'), document.querySelector('#right-hand')].forEach(function (handEl) {
-          TUTORIAL_BACK_EVENTS.forEach(function (name) { handEl.addEventListener(name, function () { tutorialNav(-1); }); });
-          TUTORIAL_NEXT_EVENTS.forEach(function (name) { handEl.addEventListener(name, function () { tutorialNav(1); }); });
-        });
-      }
-      // The STYLE 1 fixed panel isn't a projected-menu clone (it's
-      // always open, not a trigger's popup), so nothing else calls
-      // buildMenuChrome for it automatically — do it directly.
-      function setupFixedPanelChrome () {
-        var slot = document.querySelector('#menu-panel .menu-chrome-slot');
-        buildMenuChrome(slot.parentNode, {
-          title: menuEditorState.panel.title || slot.getAttribute('data-title') || '',
-          showHelp: slot.getAttribute('data-help') !== 'false',
-          showClose: slot.getAttribute('data-close') !== 'false',
-          width: parseFloat(slot.getAttribute('data-width')) || 1,
-          barY: parseFloat(slot.getAttribute('data-bar-y')),
-        });
-        slot.parentNode.removeChild(slot);
-      }
-
-      function applyMenuEditorStateToScene () {
-        var panelEl = document.getElementById('menu-panel');
-        if (!panelEl) return;
-
-        panelEl.setAttribute(
-          'position',
-          menuEditorState.panel.position.x + ' ' +
-          menuEditorState.panel.position.y + ' ' +
-          menuEditorState.panel.position.z
-        );
-        panelEl.setAttribute('data-feedback-prefix', menuEditorState.panel.feedbackPrefix);
-
-        var panelBg = panelEl.querySelector('a-plane');
-        panelBg.setAttribute('width', menuEditorState.panel.width);
-        panelBg.setAttribute('height', menuEditorState.panel.height);
-
-        var slot = panelEl.querySelector('.menu-chrome-slot');
-        if (slot) slot.setAttribute('data-title', menuEditorState.panel.title);
-        var titleEl = panelEl.querySelector('.menu-chrome-title');
-        if (titleEl) titleEl.setAttribute('text', 'value', menuEditorState.panel.title);
-
-        var items = panelEl.querySelectorAll('.menu-target');
-        menuEditorState.items.forEach(function (item, index) {
-          var itemEl = items[index];
-          if (!itemEl) return;
-          itemEl.setAttribute(
-            'position',
-            item.position.x + ' ' + item.position.y + ' ' + item.position.z
-          );
-          itemEl.setAttribute('menu-item', 'value', item.value);
-          itemEl.setAttribute('menu-item', 'label', item.label);
-          var textEl = itemEl.querySelector('a-text');
-          if (textEl) textEl.setAttribute('value', item.label);
-        });
-
-        var feedbackText = panelEl.querySelector('.menu-feedback-text');
-        if (feedbackText) {
-          feedbackText.setAttribute('text', 'value', menuEditorState.panel.feedbackPrefix + ' (none)');
-        }
-      }
-
-      function wireMenuEditorUi () {
-        if (!isEditorMode) return;
-
-        var inputs = {
-          title: document.getElementById('editor-title'),
-          feedbackPrefix: document.getElementById('editor-feedback-prefix'),
-          panelWidth: document.getElementById('editor-panel-width'),
-          panelHeight: document.getElementById('editor-panel-height'),
-          panelX: document.getElementById('editor-panel-x'),
-          panelY: document.getElementById('editor-panel-y'),
-          panelZ: document.getElementById('editor-panel-z'),
-        };
-        var jsonEl = document.getElementById('menu-editor-json');
-        var copyButton = document.getElementById('copy-menu-json');
-        var copyStatus = document.getElementById('copy-status');
-        var itemList = document.getElementById('editor-item-list');
-
-        function syncJson() {
-          jsonEl.value = JSON.stringify(menuEditorState, null, 2);
-        }
-
-        function applyEditorChanges() {
-          applyMenuEditorStateToScene();
-          copyStatus.textContent = '';
-        }
-
-        function sceneStateUrl() {
-          var url = new URL(window.location.href);
-          url.searchParams.delete('edit');
-          url.searchParams.set('menu', JSON.stringify(menuEditorState));
-          return url.toString();
-        }
-
-        function updateUrl() {
-          var url = new URL(window.location.href);
-          url.searchParams.set('edit', '1');
-          url.searchParams.set('menu', JSON.stringify(menuEditorState));
-          window.history.replaceState({}, '', url.toString());
-          var backLink = document.getElementById('editor-back-link');
-          var sceneLink = document.getElementById('vr-scene-link');
-          if (backLink) backLink.href = sceneStateUrl();
-          if (sceneLink) sceneLink.href = sceneStateUrl();
-        }
-
-        function onNumberInput(target, path) {
-          target.addEventListener('input', function () {
-            var value = Number(target.value);
-            if (Number.isNaN(value)) return;
-            path(value);
-            applyEditorChanges();
-            syncJson();
-            updateUrl();
-          });
-        }
-
-        inputs.title.value = menuEditorState.panel.title;
-        inputs.feedbackPrefix.value = menuEditorState.panel.feedbackPrefix;
-        inputs.panelWidth.value = menuEditorState.panel.width;
-        inputs.panelHeight.value = menuEditorState.panel.height;
-        inputs.panelX.value = menuEditorState.panel.position.x;
-        inputs.panelY.value = menuEditorState.panel.position.y;
-        inputs.panelZ.value = menuEditorState.panel.position.z;
-
-        inputs.title.addEventListener('input', function () {
-          menuEditorState.panel.title = inputs.title.value;
-          applyEditorChanges();
-          syncJson();
-          updateUrl();
-        });
-        inputs.feedbackPrefix.addEventListener('input', function () {
-          menuEditorState.panel.feedbackPrefix = inputs.feedbackPrefix.value;
-          applyEditorChanges();
-          syncJson();
-          updateUrl();
-        });
-        onNumberInput(inputs.panelWidth, function (value) { menuEditorState.panel.width = value; });
-        onNumberInput(inputs.panelHeight, function (value) { menuEditorState.panel.height = value; });
-        onNumberInput(inputs.panelX, function (value) { menuEditorState.panel.position.x = value; });
-        onNumberInput(inputs.panelY, function (value) { menuEditorState.panel.position.y = value; });
-        onNumberInput(inputs.panelZ, function (value) { menuEditorState.panel.position.z = value; });
-
-        menuEditorState.items.forEach(function (item, index) {
-          var card = document.createElement('div');
-          card.className = 'editor-item-card';
-          card.innerHTML =
-            '<h3>Item ' + (index + 1) + '</h3>' +
-            '<div class="editor-field-grid">' +
-              '<label>Value<input data-field="value" type="text" /></label>' +
-              '<label>Label<input data-field="label" type="text" /></label>' +
-            '</div>' +
-            '<div class="editor-item-grid" style="margin-top: 0.75rem;">' +
-              '<label>X<input data-field="x" type="number" step="0.01" /></label>' +
-              '<label>Y<input data-field="y" type="number" step="0.01" /></label>' +
-              '<label>Z<input data-field="z" type="number" step="0.01" /></label>' +
-            '</div>';
-          itemList.appendChild(card);
-
-          var valueInput = card.querySelector('[data-field="value"]');
-          var labelInput = card.querySelector('[data-field="label"]');
-          var xInput = card.querySelector('[data-field="x"]');
-          var yInput = card.querySelector('[data-field="y"]');
-          var zInput = card.querySelector('[data-field="z"]');
-
-          valueInput.value = item.value;
-          labelInput.value = item.label;
-          xInput.value = item.position.x;
-          yInput.value = item.position.y;
-          zInput.value = item.position.z;
-
-          valueInput.addEventListener('input', function () {
-            item.value = valueInput.value;
-            applyEditorChanges();
-            syncJson();
-            updateUrl();
-          });
-          labelInput.addEventListener('input', function () {
-            item.label = labelInput.value;
-            applyEditorChanges();
-            syncJson();
-            updateUrl();
-          });
-          [xInput, yInput, zInput].forEach(function (input, axisIndex) {
-            var axis = ['x', 'y', 'z'][axisIndex];
-            input.addEventListener('input', function () {
-              var value = Number(input.value);
-              if (Number.isNaN(value)) return;
-              item.position[axis] = value;
-              applyEditorChanges();
-              syncJson();
-              updateUrl();
-            });
-          });
-        });
-
-        jsonEl.addEventListener('input', function () {
-          try {
-            menuEditorState = parseMenuEditorStateFromText(jsonEl.value);
-            applyEditorChanges();
-            updateUrl();
-            copyStatus.textContent = 'JSON updated.';
-          } catch (err) {
-            copyStatus.textContent = 'JSON is invalid.';
-          }
-        });
-
-        copyButton.addEventListener('click', function () {
-          navigator.clipboard.writeText(jsonEl.value).then(function () {
-            copyStatus.textContent = 'Copied.';
-          }, function () {
-            copyStatus.textContent = 'Copy failed.';
-          });
-        });
-
-        syncJson();
-        updateUrl();
-      }
-
-      function parseMenuEditorStateFromText (text) {
-        return parseMenuEditorStateFromValue(JSON.parse(text));
-      }
-
-      var sceneEl = document.querySelector('a-scene');
-      applyMenuEditorStateToScene();
-      if (sceneEl.hasLoaded) {
-        setupFixedProjectedMenus();
-        setupFixedPanelChrome();
+      function onSceneLoaded () {
         setupDesktopPlayer();
-      } else {
-        sceneEl.addEventListener('loaded', function () {
-          setupFixedProjectedMenus();
-          setupFixedPanelChrome();
-          setupDesktopPlayer();
-        });
+        updateStations();
       }
+      if (sceneEl.hasLoaded) onSceneLoaded();
+      else sceneEl.addEventListener('loaded', onSceneLoaded);
 
       function updateAllDisplays () {
         document.querySelectorAll('[hand-with-watch]').forEach(function (el) {
@@ -2129,11 +908,9 @@
           if (comp) comp.updateDisplay();
         });
       }
-      wireMenuEditorUi();
       updateAllDisplays();
       setInterval(updateAllDisplays, 1000);
     </script>
-    </div>
 
     <script type="module">
       import { createJoinConnection, createHostSession } from '../../common/multiplayer.js';
@@ -2255,16 +1032,12 @@
       // own real falling physics, which every client already runs
       // identically given the same starting point and constants.
 
+      // Where the host puts a new box: the same platform grid the offline
+      // spawn uses, wherever the platform stands in the host's room. Sent
+      // as world coordinates, so a joiner whose room is laid out
+      // differently sees it where the host's platform is (see TODO.md).
       function boxSpawnPosition (index) {
-        // Mirrors window.__showcaseOfflineBoxActions's own layout
-        // formula so networked and offline spawns land in the same
-        // grid — see the original spawnShowcaseBox in this page's
-        // other <script> block.
-        return {
-          x: 2.38 + (index % 3) * 0.28,
-          y: 0.77 + Math.floor(index / 6) * 0.28,
-          z: -1.68 - (Math.floor(index / 3) % 2) * 0.28,
-        };
+        return window.__showcaseOfflineBoxActions.position(index);
       }
 
       function wireBoxNetworking (boxEl) {
@@ -2279,6 +1052,9 @@
         var clone = source.cloneNode(true);
         clone.removeAttribute('id');
         clone.removeAttribute('data-box-number');
+        // A networked box is placed where the host said, not anchored to
+        // this room's platform.
+        clone.removeAttribute('play-space-anchor');
         clone.id = boxId;
         clone.setAttribute('position', position);
         document.querySelector('a-scene').appendChild(clone);
@@ -2683,26 +1459,10 @@
         updateMultiplayerUi();
       }
 
-      // --- In-VR Multiplayer watch page — HOST/JOIN/END plus a
-      // room-code sidecar and player list, mirrored across both
-      // watches (left and right hand both show the same connection
-      // state, same idea as updateAllDisplays keeping both watches'
-      // clocks in sync).
-      // The classic watch's panels specifically — not whichever style is
-      // showing — so switching to the crossbar watch and back finds them
-      // up to date. The crossbar watch reads the same state from its page
-      // instead (see refreshCrossbarWatches).
-      function forEachWatchPanel (fn) {
-        document.querySelectorAll('[hand-with-watch]').forEach(function (el) {
-          var comp = el.components['hand-with-watch'];
-          var menu = comp && (comp.classicMenu || comp.projectedMenu);
-          var panelEl = menu && menu.panelEl;
-          if (panelEl) fn(panelEl);
-        });
-      }
-
-      // Hand the session to the crossbar watch's page and have every open
-      // copy re-read it, so Host turns into End under your finger rather
+      // --- The watch's Multiplayer submenu: Host / Code / Join while
+      // idle, End and the room's players once connected. Both watches
+      // share one page, so the session is handed to the page and every
+      // watch re-reads it — Host turns into End under your finger rather
       // than the next time you open the menu.
       function refreshCrossbarWatches (players) {
         var page = getMenuPage('watch');
@@ -2716,6 +1476,7 @@
         });
       }
 
+      // The four letter rows under Multiplayer > Code.
       function crossbarRoomCode () {
         var page = getMenuPage('watch');
         if (!page) return '';
@@ -2725,69 +1486,11 @@
         }).join('');
       }
 
-      function ensureSidecar (panelEl) {
-        var existing = panelEl.querySelector('.watch-mp-sidecar');
-        if (existing) return existing;
-        var sidecar = document.createElement('a-entity');
-        sidecar.classList.add('watch-mp-sidecar');
-        sidecar.setAttribute('visible', false);
-        sidecar.setAttribute('position', '0.75 0.3 0');
-        var background = document.createElement('a-plane');
-        background.setAttribute('width', '0.5');
-        background.setAttribute('height', '0.22');
-        background.setAttribute('material', 'color: #0b1220; shader: flat');
-        sidecar.appendChild(background);
-        var label = document.createElement('a-text');
-        label.setAttribute('value', 'ROOM CODE');
-        label.setAttribute('align', 'center');
-        label.setAttribute('color', '#9ad');
-        label.setAttribute('width', 2.4);
-        label.setAttribute('position', '0 0.05 0.01');
-        sidecar.appendChild(label);
-        var codeText = document.createElement('a-text');
-        codeText.classList.add('watch-mp-sidecar-code');
-        codeText.setAttribute('align', 'center');
-        codeText.setAttribute('color', '#9f9');
-        codeText.setAttribute('width', 4);
-        codeText.setAttribute('position', '0 -0.04 0.01');
-        sidecar.appendChild(codeText);
-        panelEl.appendChild(sidecar);
-        return sidecar;
-      }
-
       function updateMultiplayerUi () {
-        var connected = Boolean(currentRoomCode);
-        forEachWatchPanel(function (panelEl) {
-          var idle = panelEl.querySelector('.watch-mp-idle');
-          var connectedEl = panelEl.querySelector('.watch-mp-connected');
-          if (idle) idle.setAttribute('visible', !connected);
-          if (connectedEl) connectedEl.setAttribute('visible', connected);
-
-          var sidecar = ensureSidecar(panelEl);
-          var pages = panelEl.components['menu-pages'];
-          var onMultiplayerPage = Boolean(pages && pages.currentPage === 'multiplayer');
-          sidecar.setAttribute('visible', connected && onMultiplayerPage);
-          var codeText = sidecar.querySelector('.watch-mp-sidecar-code');
-          if (codeText) codeText.setAttribute('text', 'value', currentRoomCode);
-        });
         refreshCrossbarWatches(null);
       }
 
       function renderPlayerList (players) {
-        forEachWatchPanel(function (panelEl) {
-          var container = panelEl.querySelector('.watch-mp-player-list');
-          if (!container) return;
-          while (container.firstChild) container.removeChild(container.firstChild);
-          players.forEach(function (player, index) {
-            var row = document.createElement('a-text');
-            row.setAttribute('value', player.peerId);
-            row.setAttribute('align', 'center');
-            row.setAttribute('color', player.color);
-            row.setAttribute('width', 2.6);
-            row.setAttribute('position', '0 ' + (-index * 0.09) + ' 0.01');
-            container.appendChild(row);
-          });
-        });
         refreshCrossbarWatches(players);
       }
 
@@ -2811,19 +1514,7 @@
         if (value === 'mp-host') {
           beginHostingViaRelay(RELAY_URL, {});
         } else if (value === 'mp-join') {
-          // Read from whichever watch was actually poked/clicked —
-          // each watch's room-code-entry holds its own independent
-          // dial-in state, since only one is ever being used at a
-          // time in practice.
-          if (evt.target.closest && evt.target.closest('.watch-crossbar-panel')) {
-            beginJoiningViaRelay(RELAY_URL, crossbarRoomCode(), {});
-            return;
-          }
-          var panelEl = evt.target.closest && evt.target.closest('.watch-menu-panel');
-          var entryEl = panelEl && panelEl.querySelector('.watch-mp-room-code-entry');
-          var entry = entryEl && entryEl.components['room-code-entry'];
-          if (!entry) return;
-          beginJoiningViaRelay(RELAY_URL, entry.getValue(), {});
+          beginJoiningViaRelay(RELAY_URL, crossbarRoomCode(), {});
         } else if (value === 'mp-end') {
           endMultiplayerSession();
         }

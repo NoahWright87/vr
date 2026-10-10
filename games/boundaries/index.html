@@ -11,6 +11,7 @@
     <script>window.AFRAME_CDN_ROOT = '../../vendor/aframe-1.6.0/';</script>
     <script src="../../vendor/aframe-1.6.0/aframe-v1.6.0.min.js"></script>
     <script type="module" src="../../common/watch-menu.js"></script>
+    <script type="module" src="../../common/play-space.js"></script>
     <script type="module" src="../../common/locomotion.js"></script>
     <script type="module" src="../../common/desktop-controls.js"></script>
 
@@ -108,162 +109,41 @@
       }
 
       // WebXR exposes a real room-scale boundary through a bounded-floor
-      // reference space. The points are measured in metres at y=0, relative
-      // to that space's origin. We transform them into A-Frame's active
-      // reference space each XR frame, then render an exact ground outline.
-      // The API may return an irregular polygon, so a made-up rectangle would
-      // be less useful for checking alignment with the physical guardian.
+      // reference space. Reading it — the request, the per-frame pose from
+      // that space into A-Frame's, the points moved into scene space — is
+      // the shared play-space system (common/play-space.js), and drawing
+      // it is the shared play-space-outline component on this rig; the
+      // menus showcase uses both to stand things against your real walls.
+      // The API may return an irregular polygon, so a made-up rectangle
+      // would be less useful for checking alignment with the physical
+      // guardian. This component only puts the system's words on the
+      // watch and in front of you.
       AFRAME.registerComponent('headset-boundary', {
         init: function () {
-          var THREE = AFRAME.THREE;
-          this.session = null;
-          this.boundedSpace = null;
-          this.pending = false;
-          this.status = 'Enter VR to detect';
-          this.detail = 'The cyan ground outline will match\nthe headset\'s reported play space.';
-          this.matrix = new THREE.Matrix4();
-          this.point = new THREE.Vector3();
-          this.lastMatrix = null;
-          this.geometry = new THREE.BufferGeometry();
-          this.cornerGeometry = new THREE.BufferGeometry();
-          this.outline = new THREE.LineLoop(
-            this.geometry,
-            new THREE.LineBasicMaterial({ color: '#22d3ee', transparent: true, opacity: 0.95, depthTest: false })
-          );
-          this.corners = new THREE.Points(
-            this.cornerGeometry,
-            new THREE.PointsMaterial({ color: '#f8fafc', size: 0.055, sizeAttenuation: true, depthTest: false })
-          );
-          this.outline.renderOrder = this.corners.renderOrder = 1;
-          this.outline.visible = this.corners.visible = false;
-          // Do not parent the detected outline to #boundary-rig: smooth or
-          // teleport locomotion moves that rig, while boundsGeometry is in
-          // the XR reference space. Keeping the visual at the scene root
-          // makes it stay fixed to the real room as the player moves.
-          this.renderRoot = this.el.sceneEl.object3D;
-          this.renderRoot.add(this.outline);
-          this.renderRoot.add(this.corners);
-
-          this.onEnterVR = this.start.bind(this);
-          this.onExitVR = this.stop.bind(this);
+          this.space = this.el.sceneEl.systems['play-space'];
+          this.onStatus = this.renderStatus.bind(this);
           this.onWatchReady = this.renderStatus.bind(this);
-          this.el.sceneEl.addEventListener('enter-vr', this.onEnterVR);
-          this.el.sceneEl.addEventListener('exit-vr', this.onExitVR);
+          this.el.sceneEl.addEventListener('play-space-status', this.onStatus);
           this.el.sceneEl.addEventListener('watch-menu-ready', this.onWatchReady);
           this.el.sceneEl.addEventListener('loaded', function () {
             applyCheckerTexture(document.querySelector('#boundary-floor'), '#263550', '#1c2940', 15, 15);
           });
         },
 
-        setStatus: function (status, detail) {
-          this.status = status;
-          this.detail = detail;
-          this.renderStatus();
-        },
-
         renderStatus: function () {
-          var status = this.status;
-          var detail = this.detail;
+          var space = this.space;
+          if (!space) return;
           document.querySelectorAll('.boundary-status').forEach(function (el) {
-            el.setAttribute('text', 'value', status);
+            el.setAttribute('text', 'value', space.status);
           });
           document.querySelectorAll('.boundary-detail').forEach(function (el) {
-            el.setAttribute('text', 'value', detail);
+            el.setAttribute('text', 'value', space.detail);
           });
-        },
-
-        start: function () {
-          var renderer = this.el.sceneEl.renderer;
-          var session = renderer && renderer.xr && renderer.xr.getSession && renderer.xr.getSession();
-          if (!session || this.pending || this.session === session) return;
-          this.pending = true;
-          this.session = session;
-          this.setStatus('Requesting headset boundary…', 'Reading the room-scale play space\nfrom this XR session.');
-
-          var self = this;
-          session.requestReferenceSpace('bounded-floor').then(function (space) {
-            if (self.session !== session) return;
-            self.pending = false;
-            self.boundedSpace = space;
-            space.addEventListener('reset', function () { self.lastMatrix = null; });
-            if (!space.boundsGeometry || space.boundsGeometry.length < 3) {
-              self.setStatus('No boundary geometry supplied', 'This headset/browser supports XR,\nbut did not expose a play-space outline.');
-              return;
-            }
-            self.setStatus('Boundary detected', 'Align the cyan outline with your\nheadset safety boundary.');
-            session.requestAnimationFrame(function onXRFrame(time, frame) {
-              if (self.session !== session) return;
-              self.updateFromFrame(frame);
-              session.requestAnimationFrame(onXRFrame);
-            });
-          }).catch(function () {
-            if (self.session !== session) return;
-            self.pending = false;
-            self.setStatus('Boundary unavailable', 'This headset or browser does not\nprovide bounded-floor play-space data.');
-          });
-        },
-
-        stop: function () {
-          this.session = null;
-          this.boundedSpace = null;
-          this.pending = false;
-          this.lastMatrix = null;
-          this.outline.visible = this.corners.visible = false;
-          this.setStatus('Enter VR to detect', 'The cyan outline appears only when\na headset supplies boundary data.');
-        },
-
-        updateFromFrame: function (frame) {
-          var renderer = this.el.sceneEl.renderer;
-          var baseSpace = renderer && renderer.xr && renderer.xr.getReferenceSpace && renderer.xr.getReferenceSpace();
-          if (!baseSpace || !this.boundedSpace) return;
-          var pose = frame.getPose(this.boundedSpace, baseSpace);
-          if (!pose) return;
-
-          this.matrix.fromArray(pose.transform.matrix);
-          var elements = this.matrix.elements;
-          if (this.lastMatrix && elements.every(function (value, index) {
-            return Math.abs(value - this.lastMatrix[index]) < 0.0001;
-          }, this)) return;
-          this.lastMatrix = elements.slice();
-
-          var bounds = this.boundedSpace.boundsGeometry;
-          var positions = new Float32Array(bounds.length * 3);
-          var minX = Infinity;
-          var maxX = -Infinity;
-          var minZ = Infinity;
-          var maxZ = -Infinity;
-          for (var i = 0; i < bounds.length; i++) {
-            var bound = bounds[i];
-            minX = Math.min(minX, bound.x);
-            maxX = Math.max(maxX, bound.x);
-            minZ = Math.min(minZ, bound.z);
-            maxZ = Math.max(maxZ, bound.z);
-            this.point.set(bound.x, bound.y + 0.028, bound.z).applyMatrix4(this.matrix);
-            positions[i * 3] = this.point.x;
-            positions[i * 3 + 1] = this.point.y;
-            positions[i * 3 + 2] = this.point.z;
-          }
-          this.geometry.setAttribute('position', new AFRAME.THREE.Float32BufferAttribute(positions, 3));
-          this.cornerGeometry.setAttribute('position', new AFRAME.THREE.Float32BufferAttribute(positions, 3));
-          this.geometry.computeBoundingSphere();
-          this.cornerGeometry.computeBoundingSphere();
-          this.outline.visible = this.corners.visible = true;
-          this.setStatus(
-            'Boundary detected · ' + bounds.length + ' corners',
-            (maxX - minX).toFixed(1) + ' × ' + (maxZ - minZ).toFixed(1) + ' m play-space bounds\nCyan line = exact detected outline.'
-          );
         },
 
         remove: function () {
-          this.el.sceneEl.removeEventListener('enter-vr', this.onEnterVR);
-          this.el.sceneEl.removeEventListener('exit-vr', this.onExitVR);
+          this.el.sceneEl.removeEventListener('play-space-status', this.onStatus);
           this.el.sceneEl.removeEventListener('watch-menu-ready', this.onWatchReady);
-          this.renderRoot.remove(this.outline);
-          this.renderRoot.remove(this.corners);
-          this.geometry.dispose();
-          this.cornerGeometry.dispose();
-          this.outline.material.dispose();
-          this.corners.material.dispose();
         },
       });
     </script>
@@ -308,6 +188,7 @@
       <a-entity
         id="boundary-rig"
         headset-boundary
+        play-space-outline
         locomotion-demo="speed: 1.5"
         semantic-look-controls="camera: #boundary-camera"
         gamepad-input="leftHand: #left-hand; rightHand: #right-hand"
