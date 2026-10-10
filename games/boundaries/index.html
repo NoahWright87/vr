@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Boundary Lab | Noah's VR projects</title>
+    <link rel="icon" href="../../assets/noah-vr.svg" type="image/svg+xml" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <!-- Keep A-Frame and its controller-hand assets local, as in the
+         project’s other WebXR experiences. -->
+    <script>window.AFRAME_CDN_ROOT = '../../vendor/aframe-1.6.0/';</script>
+    <script src="../../vendor/aframe-1.6.0/aframe-v1.6.0.min.js"></script>
+    <script type="module" src="../../common/watch-menu.js"></script>
+    <script type="module" src="../../common/menu-crossbar.js"></script>
+    <script type="module" src="../../common/visor-menu.js"></script>
+    <script type="module" src="../../common/play-space.js"></script>
+    <script type="module" src="../../common/locomotion.js"></script>
+    <script type="module" src="../../common/desktop-controls.js"></script>
+
+    <style>
+      body {
+        margin: 0;
+        font-family: system-ui, sans-serif;
+      }
+      #overlay {
+        position: absolute;
+        inset: 0 auto auto 0;
+        right: 0;
+        z-index: 1;
+        display: flex;
+        justify-content: space-between;
+        gap: 1rem;
+        padding: 0.75rem 1rem;
+        background: rgba(4, 10, 22, 0.72);
+        color: #f4f8ff;
+        font-size: 0.9rem;
+      }
+      #overlay a { color: #9ad; }
+    </style>
+  </head>
+  <body>
+    <div id="overlay">
+      <span>
+        Boundary + Haptics Lab — grab the orange cube with Grip. Enter its
+        reach radius for a brief tactile cue; use the wrist watch (Tab) for
+        boundary and controller-haptics tests, and the visor (`) for its settings.
+      </span>
+      <a href="../../index.html">All prototypes</a>
+    </div>
+
+    <!-- The shared watch component projects this template from either
+         wrist: one crossbar menu built from the "boundary-watch" page
+         registered below. What the boundary reads, and what the last
+         haptics pulse did, show in its sidecar. -->
+    <template id="watch-crossbar-template">
+      <a-entity class="watch-crossbar-panel" visible="false">
+        <a-entity class="watch-crossbar"
+          position="0 0.17 0"
+          crossbar-menu="page: boundary-watch; width: 1.2; rowHeight: 0.2; maxChars: 20; open: false; closeBehavior: hide; memory: none; hint: false; stickRange: 0.35; crumbs: title; breadcrumbDepth: 1; plateOpacity: 0.94; exitKey: Tab; exitButton: WATCH; sidecarWidth: 1; sidecarChars: 24"
+          crossbar-menu-registration
+        ></a-entity>
+      </a-entity>
+    </template>
+
+    <script type="module">
+      import { registerMenuPage } from '../../common/menu-crossbar.js';
+      import { registerVisorPage } from '../../common/visor-page.js';
+
+      var LEVELS = { low: 0.2, medium: 0.6, high: 1.0 };
+      var hapticsStatus = 'Choose a controller and level.';
+
+      function boundaryInfo () {
+        var scene = document.querySelector('a-scene');
+        var space = scene && scene.systems['play-space'];
+        if (!space) return '';
+        return ['HEADSET BOUNDARY', space.status, space.detail];
+      }
+
+      function hapticRows (hand) {
+        return ['low', 'medium', 'high'].map(function (level) {
+          return {
+            kind: 'action',
+            id: 'haptic-' + hand + '-' + level,
+            label: (hand === 'left' ? 'Left ' : 'Right ') + Math.round(LEVELS[level] * 100) + '%',
+          };
+        });
+      }
+
+      registerMenuPage('boundary-watch', {
+        // The clock: hand-with-watch writes the time into the title.
+        title: '',
+        items: [
+          { kind: 'info', id: 'boundary-status', label: 'Boundary', info: boundaryInfo },
+          {
+            // One wrist menu can test either controller, so a grab or
+            // hand-tracking problem can be told apart from a haptics one.
+            kind: 'submenu', id: 'boundary-haptics', label: 'Haptics tests',
+            info: function () { return ['HAPTICS', 'Each pulse lasts 250 ms.', '', hapticsStatus]; },
+            items: hapticRows('left').concat(hapticRows('right')),
+          },
+          {
+            kind: 'info', id: 'boundary-about', label: 'About',
+            info: ['BOUNDARY LAB', 'Grab the orange cube: grip', 'when you feel the quick', 'reach cue. The cyan line', 'is the boundary your', 'headset reports.'],
+          },
+        ],
+      });
+
+      // Only the rows every visor has: its settings, and Exit VR.
+      registerVisorPage('visor', { title: 'BOUNDARY LAB', items: [] });
+
+      function redrawWatches () {
+        document.querySelectorAll('[hand-with-watch]').forEach(function (el) {
+          var watch = el.components['hand-with-watch'];
+          if (watch && watch.crossbarComponent) watch.crossbarComponent.render();
+        });
+      }
+
+      var sceneEl = document.querySelector('a-scene');
+      sceneEl.addEventListener('menu-action', function (evt) {
+        var match = /^haptic-(left|right)-(low|medium|high)$/.exec(evt.detail.id || '');
+        if (!match) return;
+        var hand = match[1];
+        var intensity = LEVELS[match[2]];
+        var handEl = document.querySelector('#' + hand + '-hand');
+        var watch = handEl && handEl.components['hand-with-watch'];
+        if (!watch) return;
+        hapticsStatus = 'Sending ' + hand.toUpperCase() + ' ' + Math.round(intensity * 100) + '%...';
+        redrawWatches();
+        watch.triggerHaptics(intensity, 250);
+      });
+      sceneEl.addEventListener('haptics-pulse-result', function (evt) {
+        var result = evt.detail;
+        var name = result.hand.toUpperCase() + ' ' + Math.round(result.intensity * 100) + '%';
+        if (result.status === 'sent') hapticsStatus = name + ' sent via ' + result.api.replace('-', ' ');
+        else if (result.status === 'unavailable') hapticsStatus = name + ': no haptics API on this controller';
+        else hapticsStatus = name + ': browser ' + result.status;
+        redrawWatches();
+      });
+      // The boundary's status changes as the headset reports it.
+      sceneEl.addEventListener('play-space-status', redrawWatches);
+    </script>
+
+    <script>
+      // The floor texture is the same lightweight, canvas-generated checker
+      // pattern used by the other room-scale experiences. Its fixed squares
+      // make physical walking legible without an external image asset.
+      function applyCheckerTexture(el, colorA, colorB, repeatX, repeatY) {
+        var canvas = document.createElement('canvas');
+        canvas.width = canvas.height = 64;
+        var context = canvas.getContext('2d');
+        context.fillStyle = colorA;
+        context.fillRect(0, 0, 64, 64);
+        context.fillStyle = colorB;
+        context.fillRect(0, 0, 32, 32);
+        context.fillRect(32, 32, 32, 32);
+
+        var texture = new AFRAME.THREE.CanvasTexture(canvas);
+        texture.wrapS = texture.wrapT = AFRAME.THREE.RepeatWrapping;
+        texture.repeat.set(repeatX, repeatY);
+
+        function apply() {
+          var mesh = el.getObject3D('mesh');
+          if (!mesh || !mesh.material) return;
+          mesh.material.map = texture;
+          mesh.material.needsUpdate = true;
+        }
+        if (el.getObject3D('mesh')) apply();
+        else el.addEventListener('loaded', apply, { once: true });
+      }
+
+      // WebXR exposes a real room-scale boundary through a bounded-floor
+      // reference space. Reading it — the request, the per-frame pose from
+      // that space into A-Frame's, the points moved into scene space — is
+      // the shared play-space system (common/play-space.js), and drawing
+      // it is the shared play-space-outline component on this rig; the
+      // menus showcase uses both to stand things against your real walls.
+      // The API may return an irregular polygon, so a made-up rectangle
+      // would be less useful for checking alignment with the physical
+      // guardian. This component only puts the system's words on the
+      // watch and in front of you.
+      AFRAME.registerComponent('headset-boundary', {
+        init: function () {
+          this.space = this.el.sceneEl.systems['play-space'];
+          this.onStatus = this.renderStatus.bind(this);
+          this.el.sceneEl.addEventListener('play-space-status', this.onStatus);
+          var self = this;
+          this.el.sceneEl.addEventListener('loaded', function () {
+            applyCheckerTexture(document.querySelector('#boundary-floor'), '#263550', '#1c2940', 15, 15);
+            self.renderStatus();
+          });
+        },
+
+        renderStatus: function () {
+          var space = this.space;
+          if (!space) return;
+          document.querySelectorAll('.boundary-status').forEach(function (el) {
+            el.setAttribute('text', 'value', space.status);
+          });
+          document.querySelectorAll('.boundary-detail').forEach(function (el) {
+            el.setAttribute('text', 'value', space.detail);
+          });
+        },
+
+        remove: function () {
+          this.el.sceneEl.removeEventListener('play-space-status', this.onStatus);
+        },
+      });
+    </script>
+
+
+
+    <a-scene background="color: #08101f" keyboard-shortcuts="enterVR: false" visor-menu="page: visor">
+      <a-plane id="boundary-floor" rotation="-90 0 0" width="30" height="30" color="#263550"></a-plane>
+      <a-sky color="#08101f"></a-sky>
+
+      <!-- One rig keeps headset, controllers, and desktop fallback transforms
+           together. The two visual hand entities mirror the controller poses
+           in XR; semantic-hand supplies the equivalent desktop hands. -->
+      <a-entity
+        id="boundary-rig"
+        headset-boundary
+        play-space-outline
+        locomotion-demo="speed: 1.5"
+        semantic-look-controls="camera: #boundary-camera"
+        gamepad-input="leftHand: #left-hand; rightHand: #right-hand"
+        touch-controls="leftHand: #left-hand; rightHand: #right-hand; primaryAction: none; interactAction: none; grabAction: grab; grabLabel: GRAB; watchAction: watch; watchLabel: WATCH; crouchAction: crouch"
+        desktop-controls="camera: #boundary-camera; leftHand: #left-hand; rightHand: #right-hand"
+      >
+        <a-camera id="boundary-camera" wasd-controls="enabled: false" look-controls="pointerLockEnabled: true">
+          <a-text
+            class="boundary-status"
+            value="Enter VR to detect boundary"
+            align="center"
+            color="#e0f2fe"
+            width="1.7"
+            position="0 0.25 -2.2"
+          ></a-text>
+          <a-text
+            class="boundary-detail"
+            value="A checkerboard floor makes physical movement readable."
+            align="center"
+            color="#aab8d2"
+            width="1.2"
+            position="0 0.03 -2.2"
+          ></a-text>
+        </a-camera>
+
+        <!-- Attribute order is intentional: hand-with-watch creates the
+             corrected hand space before semantic-hand adds its desktop model. -->
+        <a-entity id="left-hand" class="hand" hand-with-watch="hand: left" semantic-hand="hand: left; maxReach: 1" grabbable-proximity-haptics="intensity: 0.35; duration: 45"></a-entity>
+        <a-entity id="left-hand-visual" hand-controls="hand: left; handModelStyle: lowPoly; color: #3a3a3a"></a-entity>
+
+        <a-entity id="right-hand" class="hand" hand-with-watch="hand: right" semantic-hand="hand: right; maxReach: 1" grabbable-proximity-haptics="intensity: 0.35; duration: 45"></a-entity>
+        <a-entity id="right-hand-visual" hand-controls="hand: right; handModelStyle: lowPoly; color: #3a3a3a"></a-entity>
+      </a-entity>
+
+      <!-- The cube is intentionally a plain shared simple-grabbable: in VR,
+           enter the glowing hint radius and squeeze Grip; on desktop, look at
+           it and press F. Its radius is also the proximity-haptic threshold. -->
+      <a-cylinder radius="0.32" height="0.56" position="0 0.28 -0.65" color="#263b59"></a-cylinder>
+      <a-box id="boundary-grab-cube" width="0.24" height="0.24" depth="0.24" color="#e58b3a" position="0 0.68 -0.65"
+        simple-grabbable="heldPosition: 0 0 -0.08; floorY: 0.13"
+        hint-zone="action: grab; radius: 0.3; maxReach: 1; gazeThreshold: 0.93; priority: 10; desktopKey: F; desktopLabel: Grab; xrKey: GRIP; xrLabel: Grab; hintOffset: 0 0.28 0"
+      ></a-box>
+    </a-scene>
+  </body>
+</html>

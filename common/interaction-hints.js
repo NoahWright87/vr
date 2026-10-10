@@ -765,10 +765,7 @@ AFRAME.registerComponent('semantic-hand', {
     if (watchComponent && watchComponent.fingertipEl) {
       watchComponent.fingertipEl.addEventListener('raycaster-intersection', function (evt) {
         var hit = evt.detail.els && evt.detail.els[0];
-        var menuItem = hit && hit.getAttribute('menu-item');
-        self.el.setAttribute('data-ray-target', hit
-          ? ((menuItem && (menuItem.value || menuItem.label)) || hit.id || 'target')
-          : 'target');
+        self.el.setAttribute('data-ray-target', (hit && hit.id) || 'target');
       });
       watchComponent.fingertipEl.addEventListener('raycaster-intersection-cleared', function () {
         self.el.removeAttribute('data-ray-target');

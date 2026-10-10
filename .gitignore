@@ -1,3 +1,5 @@
 node_modules/
 dist/
 worker/.wrangler/
+.tmp/
+.npm-cache/

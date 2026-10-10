@@ -7,13 +7,14 @@ const core = readFileSync(new URL('../games/pistols-at-dawn/js/core.js', import.
 const hands = readFileSync(new URL('../games/pistols-at-dawn/js/core-hand-rig.js', import.meta.url), 'utf8');
 const menu = readFileSync(new URL('../games/pistols-at-dawn/js/world-menu.js', import.meta.url), 'utf8');
 const dayNight = readFileSync(new URL('../games/pistols-at-dawn/js/world-day-night.js', import.meta.url), 'utf8');
+const pages = readFileSync(new URL('../games/pistols-at-dawn/js/menu-pages.js', import.meta.url), 'utf8');
 
 const definitions = {};
 globalThis.registerComponent = (name, definition) => { definitions[name] = definition; };
 await import('../games/pistols-at-dawn/js/world-menu.js');
 
 test('hot interaction lists use the mutation-invalidated scene index', () => {
-  assert.match(page, /<a-scene pistols-watch-menu area-manager scene-index day-night-cycle weather-clouds hotbar-equip light="defaultLightsEnabled: false" shadow="enabled: true; type: pcfsoft">/);
+  assert.match(page, /<a-scene[^>]*scene-index[^>]*hotbar-equip[ >]/);
   assert.match(core, /registerComponent\('scene-index'/);
   assert.match(core, /function sceneElements\(selector\)/);
   assert.doesNotMatch(hands, /document\.querySelectorAll\('\.grabbable'\)/);
@@ -25,7 +26,9 @@ test('proximity haptics are throttled and avoid square roots outside range', () 
 });
 
 test('performance counters are opt-in from the watch', () => {
-  assert.match(page, /menu-item="value: toggle-performance; label: Show Performance"/);
+  const pages = readFileSync(new URL('../games/pistols-at-dawn/js/menu-pages.js', import.meta.url), 'utf8');
+  assert.match(pages, /id: 'pistols-performance', label: 'Performance', value: false/);
+  assert.match(menu, /id === 'pistols-performance'\) \{ this\.setPerformanceVisible\(value\)/);
   assert.match(page, /id="performance-text"[\s\S]*performance-monitor[\s\S]*visible="false"/);
   assert.match(menu, /if \(!this\.data\.enabled\) return/);
   assert.match(menu, /render\.calls/);
@@ -88,8 +91,8 @@ test('weather clouds default to one alpha-tested sprite card per group', () => {
   assert.match(dayNight, /geometry\.setDrawRange\(0, visibleCount \* 6\)/);
   assert.match(dayNight, /this\.cloudSpriteMesh\.castShadow = false/);
   assert.match(dayNight, /this\.cloudSpriteMesh\.receiveShadow = false/);
-  assert.match(page, /menu-option="key: cloud-quality; label: Clouds; values: off\|sprites\|3d; labels: Off\|Sprites\|3D; value: sprites"/);
-  assert.match(menu, /weather\.setQuality\(evt\.detail\.value\)/);
+  assert.match(pages, /options\(\['off', 'sprites', '3d'\]/);
+  assert.match(menu, /weather\.setQuality\(value\)/);
 });
 
 test('optional 3D clouds remain one opaque, very-low-poly instanced batch', () => {

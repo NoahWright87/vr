@@ -33,6 +33,7 @@ registerComponent('day-night-cycle', {
     this.clock = this.elapsedGameMs % DAY_NIGHT_CYCLE_MS; // Begin at high noon.
     this.sunShadows = true;
     this.moonShadows = false;
+    this.shadowMode = 'environment';
     this.timeScale = 1;
     this.daySky = document.querySelector('#day-sky');
     this.nightSky = document.querySelector('#night-sky');
@@ -169,6 +170,13 @@ registerComponent('day-night-cycle', {
     this.applyLighting();
   },
 
+  setShadowMode: function (mode) {
+    if (['off', 'environment', 'all'].indexOf(mode) === -1) return;
+    this.shadowMode = mode;
+    this.applyLighting();
+    this.applyShadowState(true);
+  },
+
   setShadow: function (body, enabled) {
     if (body === 'sun') this.sunShadows = enabled;
     else this.moonShadows = enabled;
@@ -212,6 +220,11 @@ registerComponent('day-night-cycle', {
     return Boolean(owner && owner.closest && owner.closest('#player-rig'));
   },
 
+  isEquipment: function (owner) {
+    // Also exclude dropped/thrown equipment after it leaves the player rig.
+    return Boolean(owner && owner.closest && owner.closest('[holsterable], [hand-rig]'));
+  },
+
   hasTransparentMaterial: function (object) {
     var materials = Array.isArray(object.material) ? object.material : [object.material];
     for (var i = 0; i < materials.length; i += 1) {
@@ -222,7 +235,8 @@ registerComponent('day-night-cycle', {
 
   shouldCastShadow: function (object, owner) {
     if (!owner) return false;
-    if (this.isPlayerVisual(owner)) return false;
+    if (this.isMenuVisual(object, owner)) return false;
+    if (this.shadowMode !== 'all' && (this.isPlayerVisual(owner) || this.isEquipment(owner))) return false;
     var tag = owner.tagName;
     if (tag === 'A-PLANE' || tag === 'A-TEXT' || tag === 'A-SKY' || tag === 'A-CIRCLE' || tag === 'A-RING') return false;
     if (this.hasTransparentMaterial(object)) return false;
@@ -231,11 +245,18 @@ registerComponent('day-night-cycle', {
     var radius = object.geometry.boundingSphere ? object.geometry.boundingSphere.radius : 0;
     var scale = object.scale;
     radius *= Math.max(Math.abs(scale.x), Math.abs(scale.y), Math.abs(scale.z));
-    return radius >= (this.lowPowerShadows ? 0.55 : 0.18);
+    return this.shadowMode === 'all' || radius >= (this.lowPowerShadows ? 0.55 : 0.18);
+  },
+
+  isMenuVisual: function (object, owner) {
+    if (owner && owner.closest && owner.closest('#player-hud, #performance-text, .watch-crossbar-panel, [crossbar-menu], #reticle-cursor')) return true;
+    var materials = Array.isArray(object.material) ? object.material : [object.material];
+    return materials.some(function (material) { return material && (material.isMeshBasicMaterial || material.isShaderMaterial); });
   },
 
   shouldReceiveShadow: function (object, owner) {
-    if (!owner || this.isPlayerVisual(owner)) return false;
+    if (!owner || this.isMenuVisual(object, owner)) return false;
+    if (this.shadowMode !== 'all' && (this.isPlayerVisual(owner) || this.isEquipment(owner))) return false;
     var tag = owner.tagName;
     if (tag === 'A-TEXT' || tag === 'A-SKY' || tag === 'A-CIRCLE' || tag === 'A-RING') return false;
     return !this.hasTransparentMaterial(object);
@@ -256,8 +277,8 @@ registerComponent('day-night-cycle', {
     this.moon.intensity = moonAboveHorizon ? smoothStep(0, 0.2, moonDir.y) * 0.32 * directions.moonBrightness : 0;
     this.sun.visible = sunAboveHorizon;
     this.moon.visible = moonAboveHorizon;
-    this.sun.castShadow = this.sunShadows && sunAboveHorizon;
-    this.moon.castShadow = this.moonShadows && moonAboveHorizon;
+    this.sun.castShadow = this.shadowMode !== 'off' && this.sunShadows && sunAboveHorizon;
+    this.moon.castShadow = this.shadowMode !== 'off' && this.moonShadows && moonAboveHorizon;
     this.ambient.intensity = 0.07 + daylight * 0.5 + moonlight * 0.12 + twilight * 0.12;
     this.sunOrb.visible = sunDir.y > -0.14;
     this.moonOrb.visible = moonDir.y > -0.14;
