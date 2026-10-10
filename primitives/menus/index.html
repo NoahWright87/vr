@@ -136,7 +136,7 @@
       <template id="watch-crossbar-template">
         <a-entity class="watch-crossbar-panel" visible="false">
           <a-entity class="watch-crossbar"
-            crossbar-menu="page: watch; width: 1.2; rowHeight: 0.2; maxChars: 20; open: false; closeBehavior: hide; memory: none; hint: false; stickRange: 0.35; crumbs: title; breadcrumbDepth: 1; plateOpacity: 0.94; exitKey: Tab; exitButton: WATCH"
+            crossbar-menu="page: watch; width: 1.2; rowHeight: 0.2; maxChars: 20; open: false; closeBehavior: hide; memory: none; hint: false; stickRange: 0.35; crumbs: title; breadcrumbDepth: 1; plateOpacity: 0.94; exitKey: Tab; exitButton: WATCH; sidecarWidth: 1; sidecarChars: 22"
             crossbar-menu-registration
           ></a-entity>
         </a-entity>
@@ -291,6 +291,13 @@
       // on. The layout rows are live: they move and resize the menu you
       // are looking at, so it can be tuned in a headset rather than from
       // a rebuild.
+      // The visor's whole setup as text, for its sidecar. Read on every
+      // draw, so it follows each setting as you change it.
+      function visorSummary () {
+        var visor = document.querySelector('a-scene').systems['visor-menu'];
+        return visor ? visor.describe() : '';
+      }
+
       registerMenuPage('visor', {
         title: 'VISOR',
         items: [
@@ -304,9 +311,9 @@
           },
           {
             kind: 'submenu', id: 'visor-settings', label: 'Settings',
-            // Shows every setting at once beside the menu while you are in
-            // here, so a tuned layout goes out as one screenshot.
-            readout: true,
+            // Every setting at once in the sidecar while you are in here,
+            // so a tuned layout goes out as one screenshot.
+            info: visorSummary,
             items: [
               // Where the selected row sits, in degrees from straight ahead.
               { kind: 'number', id: 'visor-position', label: 'Position', value: 4, min: 0, max: 30, step: 1, format: DEG },
@@ -347,7 +354,7 @@
               // two spheres and your hands are drawn as maps beside the
               // menu, since you can never see the real ones.
               {
-                kind: 'submenu', id: 'visor-activation', label: 'Activation', readout: true, zones: true,
+                kind: 'submenu', id: 'visor-activation', label: 'Activation', info: visorSummary, zones: true,
                 items: [
                   { kind: 'number', id: 'visor-zone-radius', label: 'Radius', value: 15, min: 4, max: 40, step: 1, format: CM },
                   // How far out from the middle of your head.
@@ -456,16 +463,30 @@
         { kind: 'action', id: 'mp-join', label: 'Join' },
       ];
 
-      function watchInfoRow (label, index) {
-        return { kind: 'action', id: 'watch-info-' + index, label: label, disabled: true };
+      // Help for whatever you are holding, in the sidecar while the Help
+      // row is selected.
+      var WATCH_HELP = {
+        xr: ['IN A HEADSET', 'Raise wrist: open', 'Other hand\'s stick: scroll', 'Stick right: in, left: back', 'Trigger: pick', 'Or point (grip) and poke', 'Palm up: bigger menu'],
+        keyboard: ['ON A KEYBOARD', 'Tab: watch', 'W/S: scroll', 'D: in   A: back', 'Enter: pick, or click a row', '', 'WASD move   C crouch', 'E mounted   F grab'],
+        gamepad: ['ON A GAMEPAD', 'Y / Start: watch', 'Stick: scroll', 'A: pick   B: exit', 'X mounted   LB grab'],
+        touch: ['ON A PHONE', 'WATCH: open', 'Tap a row: scroll to it', 'Tap again: pick', 'Joystick + drag to look'],
+      };
+      function watchHelp () {
+        var router = watchScene.systems['input-router'];
+        var family = inXR() ? 'xr'
+          : (router && typeof router.getActiveFamily === 'function' ? router.getActiveFamily() : 'keyboard');
+        return WATCH_HELP[family] || WATCH_HELP.keyboard;
       }
 
-      var WATCH_HELP = {
-        xr: ['Raise wrist: open', 'Other stick: scroll', 'Stick right: enter', 'Stick left: back', 'Trigger: pick', 'Or point and poke', 'Palm up: big menu'],
-        keyboard: ['Tab: watch', 'W/S: scroll', 'D: enter  A: back', 'Enter: pick', 'Or click a row', 'WASD move  C crouch', 'E mounted  F grab'],
-        gamepad: ['Y/Start: watch', 'Stick: scroll', 'A: pick  B: exit', 'X mounted  LB grab'],
-        touch: ['WATCH: open', 'Tap a row: scroll', 'Tap again: pick', 'Joystick + drag look'],
-      };
+      // The session, in the sidecar beside the Multiplayer row and while
+      // you are in it — where the old watch's room-code card was.
+      function watchSession () {
+        var session = watchPage.multiplayer;
+        if (!session.code) return ['NOT CONNECTED', 'Host a room, or set the', 'code and Join one.'];
+        return ['ROOM ' + session.code, '', 'PLAYERS'].concat(session.players.length
+          ? session.players.map(function (player) { return '  ' + player.peerId; })
+          : ['  (waiting)']);
+      }
 
       var watchPage = registerMenuPage('watch', {
         // The clock: hand-with-watch writes the time into the title.
@@ -492,29 +513,18 @@
             ],
           },
           { kind: 'action', id: 'haptics', label: 'Haptics test', xrOnly: true },
-          { kind: 'action', id: 'about', label: 'About' },
           {
-            kind: 'submenu', id: 'watch-multiplayer', label: 'Multiplayer',
-            items: function () {
-              var session = watchPage.multiplayer;
-              if (!session.code) return watchIdle;
-              return [
-                { kind: 'action', id: 'mp-end', label: 'End session' },
-                watchInfoRow('Room: ' + session.code, 0),
-              ].concat(session.players.map(function (player, index) {
-                return watchInfoRow(player.peerId, index + 1);
-              }));
-            },
+            kind: 'info', id: 'about', label: 'About',
+            info: ['WEBXR PRIMITIVES', 'Shared hands, menus and', 'multiplayer for small', 'Quest prototypes.'],
           },
           {
-            kind: 'submenu', id: 'watch-help', label: 'Help',
+            kind: 'submenu', id: 'watch-multiplayer', label: 'Multiplayer', info: watchSession,
             items: function () {
-              var router = watchScene.systems['input-router'];
-              var family = inXR() ? 'xr'
-                : (router && typeof router.getActiveFamily === 'function' ? router.getActiveFamily() : 'keyboard');
-              return (WATCH_HELP[family] || WATCH_HELP.keyboard).map(watchInfoRow);
+              if (!watchPage.multiplayer.code) return watchIdle;
+              return [{ kind: 'action', id: 'mp-end', label: 'End session' }];
             },
           },
+          { kind: 'info', id: 'watch-help', label: 'Help', info: watchHelp },
         ]),
         // Read the live values in as the watch opens: any of them can have
         // been changed by the static panel, the keyboard or the other
@@ -607,6 +617,12 @@
               return { kind: 'action', id: 'letter-' + letter, label: letter };
             }),
           },
+          // Nothing to press: its text is in the sidecar while it is
+          // selected. A row's own info, as opposed to a submenu's.
+          {
+            kind: 'info', id: 'showcase-about', label: 'About this room',
+            info: ['THE SHOWCASE', 'Ahead: this panel.', 'Right: wall screen.', 'Left: pedestal.', 'Behind: boxes.', '', 'Tab: watch   `: visor', 'Laid out against your', 'headset\'s boundary.'],
+          },
         ],
         // The static panel is open from the start, so this runs once; it
         // reads whatever locomotion starts with rather than assuming it.
@@ -625,10 +641,6 @@
       // The wall screen, to your right. Rows that change the room you
       // are standing in, so a press visibly does something.
       // ------------------------------------------------------------
-      var WALL_INFO = [
-        'Grown out of the TAP', 'button: poke it, or', 'walk up and press E.',
-        'Walk away to close.',
-      ];
       registerMenuPage('wall', {
         title: 'WALL SCREEN',
         items: [
@@ -641,10 +653,8 @@
           { kind: 'action', id: 'spawn-box', label: 'Spawn box' },
           { kind: 'action', id: 'reset-boxes', label: 'Reset boxes' },
           {
-            kind: 'submenu', id: 'wall-info', label: 'About this',
-            items: WALL_INFO.map(function (line, i) {
-              return { kind: 'action', id: 'wall-info-' + i, label: line, disabled: true };
-            }),
+            kind: 'info', id: 'wall-about', label: 'About this',
+            info: ['WALL SCREEN', 'Grown out of the TAP button:', 'poke it, or walk up and', 'press E. Walk away (or', 'press Esc) to close.'],
           },
         ],
       });
@@ -658,9 +668,6 @@
         { value: '#7aa6d6', label: 'Day' },
         { value: '#2a1a12', label: 'Ember' },
       ];
-      var PEDESTAL_INFO = [
-        'Floats up and turns', 'to face you. Point,', 'grip, and pull the', 'trigger on a row,', 'or use the stick.',
-      ];
       registerMenuPage('pedestal', {
         title: 'PEDESTAL',
         items: [
@@ -671,10 +678,8 @@
           },
           { kind: 'action', id: 'station-center', label: 'Back to middle' },
           {
-            kind: 'submenu', id: 'pedestal-info', label: 'About this',
-            items: PEDESTAL_INFO.map(function (line, i) {
-              return { kind: 'action', id: 'pedestal-info-' + i, label: line, disabled: true };
-            }),
+            kind: 'info', id: 'pedestal-about', label: 'About this',
+            info: ['PEDESTAL', 'Floats up and turns to', 'face you. Point (grip),', 'then trigger on a row,', 'or reach in and use', 'the stick.'],
           },
         ],
       });

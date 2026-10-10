@@ -137,7 +137,12 @@ wall screen, pedestal, watch and visor. Deliberately not done yet:
   Both / One` and `Scrim: On / Off` are rows in the visor's own
   `Settings`, so the variants are menu selections rather than a
   rebuild. The answer decides how dark the backing can be and whether
-  one eye becomes the default — and arrives in a readout screenshot.
+  one eye becomes the default — and arrives in a sidecar screenshot.
+  One thing to watch for: the settings summary used to float on its own
+  in both eyes; now it is the visor's sidecar, so it follows the visor's
+  own `Eyes` and `Draw` settings. With `Eyes: One` it is in one eye only,
+  and a headset screenshot of the other eye will not show it. If that
+  bites, give the sidecar its own `eye` override (both, always).
 
 - **Text overflow options.** Long labels currently shrink to fit and
   then ellipsize. Agreed but not built: wrapping to a second line

@@ -60,7 +60,7 @@ if (typeof AFRAME !== 'undefined') {
   var ZONE_VIEW_REACH = 0.55;
   var ZONE_LINE = 0.008;
   var HEAD_RADIUS = 0.09;
-  // How far in front of you the readout and the zone view float.
+  // How far in front of you the zone view floats.
   var EXTRAS_DISTANCE = 1.5;
 
   function ringGeometry(radius, thickness) {
@@ -208,6 +208,10 @@ if (typeof AFRAME !== 'undefined') {
         memory: 'temporary',
         // A head-locked panel is never something you walk up to.
         stickRange: 0,
+        // The menu spans most of an eye's height, so a card hung from its
+        // title would sit up at the top of your view; beside the selected
+        // row is where you are already looking.
+        sidecarAlign: 'center',
         hintLabel: '',
         // On your face, not in the room: drawn over the world rather than
         // cut through by the nearest doorway. 'screen' paints it onto the
@@ -308,45 +312,23 @@ if (typeof AFRAME !== 'undefined') {
         if (Object.prototype.hasOwnProperty.call(this.settings, key)) this.settings[key] = values[key];
       }
       this.placeFor(this.panelSide);
-      this.updateReadout();
+      this.refreshInfo();
     },
 
-    // ---------- the settings readout and the zone view ----------
+    // ---------- the zone view ----------
     //
-    // Two things shown only while you are inside the submenus that ask for
-    // them (page data: `readout: true`, `zones: true`), on the side of
-    // your view opposite the menu so neither covers it. Both eyes and
-    // drawn over the world, so a headset screenshot catches them whatever
-    // the Eyes and Draw settings are.
-    //
-    //   readout — every visor setting at once, so a tuned layout can be
-    //             sent as one screenshot rather than read off row by row.
-    //   zones   — the temple spheres and your hands, live. The spheres
-    //             sit beside and behind your eyes, so you could never see
-    //             them directly even if your head were not inside one;
-    //             this draws them as two small maps instead, from above
-    //             and from behind, with each hand's dot lit while it is
-    //             actually inside a sphere.
+    // Shown only while you are inside a submenu that asks for it (page
+    // data: `zones: true`), on the side of your view opposite the menu so
+    // it does not cover it. Both eyes and drawn over the world, so a
+    // headset screenshot catches it whatever the Eyes and Draw settings
+    // are. The temple spheres and your hands, live: the spheres sit beside
+    // and behind your eyes, so you could never see them directly even if
+    // your head were not inside one; this draws them as two small maps
+    // instead, from above and from behind, with each hand's dot lit while
+    // it is actually inside a sphere. (The settings summary that used to
+    // float beside it is now the menu's own sidecar — see describe.)
     buildExtras: function () {
       var accent = '#7fe3ff';
-
-      var readout = document.createElement('a-entity');
-      var readoutBack = document.createElement('a-plane');
-      readoutBack.setAttribute('width', 1.12);
-      readoutBack.setAttribute('height', 0.42);
-      readoutBack.setAttribute('material', 'color: #040a12; shader: flat; transparent: true; opacity: 0.82; depthWrite: false');
-      readout.appendChild(readoutBack);
-      var readoutText = document.createElement('a-text');
-      readoutText.setAttribute('width', 1.04);
-      readoutText.setAttribute('wrap-count', 46);
-      readoutText.setAttribute('align', 'left');
-      readoutText.setAttribute('color', '#dff3ff');
-      readoutText.setAttribute('position', '-0.52 0 0.002');
-      readout.appendChild(readoutText);
-      readout.object3D.visible = false;
-      this.cameraEl.appendChild(readout);
-      this.readoutEl = readout;
-      this.readoutTextEl = readoutText;
 
       var zones = document.createElement('a-entity');
       var zonesBack = document.createElement('a-plane');
@@ -398,15 +380,13 @@ if (typeof AFRAME !== 'undefined') {
         el.addEventListener('object3dset', apply);
         apply();
       };
-      lift(readout);
       lift(zones);
       this.rebuildZones();
-      this.updateReadout();
     },
 
     // Opposite the menu, so the two can be read together.
     placeExtras: function (side) {
-      if (!this.readoutEl) return;
+      if (!this.zonesEl) return;
       var opposite = side === 'left' ? 1 : -1;
       var put = function (el, across, up) {
         var a = across * Math.PI / 180;
@@ -418,21 +398,21 @@ if (typeof AFRAME !== 'undefined') {
         });
         el.setAttribute('rotation', { x: up, y: -opposite * across, z: 0 });
       };
-      put(this.readoutEl, 20, 9);
       put(this.zonesEl, 20, -15);
     },
 
     updateExtras: function () {
-      if (!this.readoutEl || !this.component) return;
+      if (!this.zonesEl || !this.component) return;
       var menu = this.component.menu;
-      var readout = menu.isOpen && menu.inside('readout');
       var zones = menu.isOpen && menu.inside('zones');
-      if (readout && !this.readoutEl.object3D.visible) this.updateReadout();
-      this.readoutEl.object3D.visible = readout;
       if (zones && !this.zonesEl.object3D.visible) this.rebuildZones();
       this.zonesEl.object3D.visible = zones;
     },
 
+    // Every visor setting at once, for the menu's sidecar while you are in
+    // Settings (page data: `info` on that submenu), so a tuned layout goes
+    // out as one screenshot rather than read off row by row. Short lines:
+    // it sits beside the menu, not across the view.
     describe: function () {
       var s = this.settings;
       var a = this.activation;
@@ -441,20 +421,24 @@ if (typeof AFRAME !== 'undefined') {
       var sec = function (ms) { return (ms / 1000).toFixed(2) + ' s'; };
       var titles = { title: 'Top', inside: 'Inner', outside: 'Outer' };
       return [
-        'VISOR SETTINGS',
-        'Position ' + deg(s.position) + '    Lift ' + deg(s.lift),
-        'Width ' + deg(s.width) + '    Height ' + deg(s.height) + '    Curve ' + deg(s.curve),
-        'Titles ' + titles[s.crumbs] + '    Eyes ' + (this.eyesMode === 'inboard' ? 'One' : 'Both') +
-          '    Draw ' + (this.drawMode === 'screen' ? 'Screen' : 'World') + '    Scrim ' + (this.scrim > 0 ? 'On' : 'Off'),
+        'VISOR',
+        'Position ' + deg(s.position) + '  Lift ' + deg(s.lift),
+        'Width ' + deg(s.width) + '  Height ' + deg(s.height),
+        'Curve ' + deg(s.curve) + '  Titles ' + titles[s.crumbs],
+        'Eyes ' + (this.eyesMode === 'inboard' ? 'One' : 'Both') + '  Draw ' + (this.drawMode === 'screen' ? 'Screen' : 'World'),
+        'Scrim ' + (this.scrim > 0 ? 'On' : 'Off'),
         '',
         'ACTIVATION',
-        'Radius ' + cm(a.radius) + '    Side ' + cm(a.side) + '    Forward ' + cm(a.forward),
-        'Open ' + sec(a.openMs) + '    Close ' + sec(a.closeMs),
+        'Radius ' + cm(a.radius) + '  Side ' + cm(a.side),
+        'Forward ' + cm(a.forward),
+        'Open ' + sec(a.openMs) + '  Close ' + sec(a.closeMs),
       ].join('\n');
     },
 
-    updateReadout: function () {
-      if (this.readoutTextEl) this.readoutTextEl.setAttribute('value', this.describe());
+    // A setting changed: redraw, so the sidecar's summary (read fresh on
+    // every render) shows the new value.
+    refreshInfo: function () {
+      if (this.component && this.component.menu) this.component.render();
     },
 
     // Rings for the current sphere settings. Rebuilt only when a setting
@@ -545,20 +529,20 @@ if (typeof AFRAME !== 'undefined') {
     setDraw: function (mode) {
       this.drawMode = mode;
       this.applySurface();
-      this.updateReadout();
+      this.refreshInfo();
     },
 
     // Which eye. One panel now, so this is one decision.
     setEyes: function (mode) {
       this.eyesMode = mode;
       this.applySurface();
-      this.updateReadout();
+      this.refreshInfo();
     },
 
     setScrim: function (opacity) {
       this.scrim = opacity;
       if (this.component) this.component.setScrim(opacity);
-      this.updateReadout();
+      this.refreshInfo();
     },
 
     applySurface: function () {
@@ -746,7 +730,7 @@ if (typeof AFRAME !== 'undefined') {
         if (Object.prototype.hasOwnProperty.call(this.activation, key)) this.activation[key] = values[key];
       }
       this.rebuildZones();
-      this.updateReadout();
+      this.refreshInfo();
     },
 
     remove: function () {

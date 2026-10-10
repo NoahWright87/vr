@@ -155,6 +155,17 @@ function optionIndexOf(item, value) {
   return 0;
 }
 
+// What a row or a level has to say beside the menu, in the sidecar.
+// `info` may be a string, an array of lines, or a function returning
+// either — a function is read every time the menu draws, so it can show
+// something live (a room code, the current settings).
+function infoOf(item) {
+  if (!item || item.info === undefined || item.info === null) return '';
+  var value = typeof item.info === 'function' ? item.info(item) : item.info;
+  if (Array.isArray(value)) value = value.join('\n');
+  return value ? String(value) : '';
+}
+
 // ============================================================
 // LEVELS
 // ============================================================
@@ -283,6 +294,26 @@ MenuModel.prototype.refresh = function () {
     level.index = clampInt(level.index, 0, Math.max(0, level.items.length - 1));
   }
   this.emit('refresh', {});
+};
+
+// The sidecar's text: the focused row's `info` if it has any, otherwise
+// the innermost level that does — the submenu you are in, or one it is
+// inside, up to the page itself. That order is what lets a settings
+// submenu keep its summary up while you scroll a value inside it, and an
+// About row show its text only while it is the one selected. Nothing on
+// the title bar has info, so landing on Close falls back to the level's.
+MenuModel.prototype.getInfo = function () {
+  if (this.chromeIndex === null) {
+    var row = this.focusedRow();
+    var own = row && infoOf(row.item);
+    if (own) return { text: own, from: 'row', item: row.item };
+  }
+  for (var i = this.stack.length - 1; i >= 0; i--) {
+    var source = i === 0 ? this.page : this.stack[i].source;
+    var text = infoOf(source);
+    if (text) return { text: text, from: 'level', item: source };
+  }
+  return null;
 };
 
 MenuModel.prototype.level = function () {
@@ -414,6 +445,10 @@ MenuModel.prototype.activate = function () {
 
   var item = row.item;
   if (!item) return false;
+  // A row that is only there to be read — its `info` in the sidecar is
+  // the whole point of it — does nothing when pressed, and so does not
+  // flash as if it had.
+  if (item.kind === 'info') return false;
 
   // Announced for every kind, before any of them acts. Most kinds leave
   // something visibly different behind — a toggle flips its label, a
@@ -446,7 +481,7 @@ MenuModel.prototype.activate = function () {
 
   if (item.kind === 'select') {
     var options = resolveItems(item.options).map(function (option) {
-      return { kind: 'option', label: option.label, value: option.value };
+      return { kind: 'option', label: option.label, value: option.value, info: option.info };
     });
     this.stack.push(makeListLevel(item.label, options, optionIndexOf(item, item.value), item));
     this.emit('push', { title: item.label, depth: this.depth() });

@@ -416,6 +416,22 @@ if (typeof AFRAME !== 'undefined') {
       // What leaves this menu, for the controls footer: the walk-up E
       // and INTERACT for a panel in the room, but Tab and WATCH for the
       // watch, which is opened and put away with those.
+      // The sidecar: a small card beside the menu that shows whatever the
+      // focused row or the submenu you are in has to say (the model's
+      // getInfo — `info` in page data). Never interactive: nothing on it
+      // is a target, so it cannot take a poke, a click or the stick.
+      // Which side is the surface's call: 'inboard' is toward the middle
+      // of your view (the right of a left-anchored menu), 'outboard' away
+      // from it, or a fixed 'left' / 'right'.
+      sidecar: { default: 'inboard', oneOf: ['none', 'inboard', 'outboard', 'left', 'right'] },
+      // Its width as a fraction of the menu's, and how many characters
+      // fit across it — which together set its text size.
+      sidecarWidth: { default: 0.8 },
+      sidecarChars: { default: 26 },
+      // 'top' hangs it from the title, which suits a panel; 'center' puts
+      // its middle level with the selected row, for a menu so tall its
+      // title is at the edge of your view.
+      sidecarAlign: { default: 'top', oneOf: ['top', 'center'] },
       exitKey: { type: 'string', default: 'E' },
       exitButton: { type: 'string', default: 'INTERACT' },
       // Whether this menu can be dismissed from inside itself. A fixture
@@ -773,6 +789,7 @@ if (typeof AFRAME !== 'undefined') {
       this.footerEl = footer;
 
       if (data.progressArc) this.buildArc();
+      this.buildSidecar();
 
       this.layout();
 
@@ -928,7 +945,119 @@ if (typeof AFRAME !== 'undefined') {
       this.footerEl.setAttribute('position', { x: edgeX(this.textAlign, W, 0.04), y: -(reach + 0.95 * rh), z: 0.002 });
 
       if (this.arcEl) this.layoutArc();
+      this.layoutSidecar();
       if (this.el.components['hint-zone']) this.el.setAttribute('hint-zone', 'hintOffset', this.hintOffset());
+    },
+
+    // ---------- the sidecar ----------
+
+    buildSidecar: function () {
+      var data = this.data;
+      var card = document.createElement('a-entity');
+      var plate = document.createElement('a-plane');
+      plate.setAttribute('material', 'color: #0b1220; shader: flat; transparent: true; opacity: 0.9; depthWrite: false');
+      card.appendChild(plate);
+      // A thin accent edge on the side that faces the menu, so the card
+      // reads as belonging to it rather than as a second panel.
+      var edge = document.createElement('a-plane');
+      edge.setAttribute('material', 'color: ' + data.accent + '; shader: flat; transparent: true; opacity: 0.6; depthWrite: false');
+      card.appendChild(edge);
+      var text = document.createElement('a-text');
+      text.setAttribute('color', data.color);
+      text.setAttribute('align', 'left');
+      text.setAttribute('anchor', 'left');
+      text.setAttribute('baseline', 'top');
+      card.appendChild(text);
+      card.object3D.visible = false;
+      this.contentEl.appendChild(card);
+      this.sidecarEl = card;
+      this.sidecarPlateEl = plate;
+      this.sidecarEdgeEl = edge;
+      this.sidecarTextEl = text;
+      this.sidecarText = null;
+      // The text's mesh is rebuilt asynchronously the first time (the
+      // font loads after build), and its size is what the plate is fitted
+      // to — so fit again whenever it is set.
+      var self = this;
+      text.addEventListener('object3dset', function () { self.fitSidecar(); });
+    },
+
+    // Which way the card sits: -1 left of the menu, +1 right, 0 not at all.
+    sidecarDirection: function () {
+      var choice = this.data.sidecar;
+      if (choice === 'left') return -1;
+      if (choice === 'right') return 1;
+      if (choice === 'inboard') return -this.outward;
+      if (choice === 'outboard') return this.outward;
+      return 0;
+    },
+
+    layoutSidecar: function () {
+      if (!this.sidecarEl) return;
+      var data = this.data;
+      var W = data.width;
+      var rh = data.rowHeight;
+      var dir = this.sidecarDirection();
+      var sw = W * data.sidecarWidth;
+      var pad = Math.min(sw * 0.06, rh * 0.35);
+      this.sidecarMetrics = { width: sw, pad: pad, dir: dir };
+      // Clear of the rows' own reach: a curved menu's focused row bulges
+      // inboard by `curve`, and an inboard breadcrumb rail sits past that.
+      var clearance = W / 2 + rh * 0.3;
+      if (dir === -this.outward) {
+        clearance += data.curve;
+        if (data.crumbs === 'inside' && this.crumbs.length) clearance += rh;
+      } else if (data.crumbs === 'outside' && this.crumbs.length) {
+        clearance += rh;
+      }
+      // Top-aligned with the menu's title, growing downward — or, for
+      // 'center', placed by fitSidecar once its height is known.
+      var top = this.metrics.titleY + rh * 0.45;
+      this.sidecarEl.object3D.position.set(dir * (clearance + sw / 2), top, 0);
+      this.sidecarTextEl.setAttribute('text', {
+        width: sw - 2 * pad,
+        wrapCount: data.sidecarChars,
+      });
+      this.sidecarTextEl.object3D.position.set(-sw / 2 + pad, -pad, 0.003);
+      this.fitSidecar();
+    },
+
+    // Size the plate to the text actually on it.
+    fitSidecar: function () {
+      var m = this.sidecarMetrics;
+      if (!m || !this.sidecarTextEl) return;
+      var mesh = this.sidecarTextEl.getObject3D('text');
+      var height = this.data.rowHeight;
+      // The mesh exists before its first layout does; until the font has
+      // loaded there are no vertices to measure, and the row height stands
+      // in until object3dset fires again.
+      if (mesh && mesh.geometry && mesh.geometry.attributes && mesh.geometry.attributes.position) {
+        mesh.geometry.computeBoundingBox();
+        var box = mesh.geometry.boundingBox;
+        if (box && isFinite(box.max.y - box.min.y)) height = (box.max.y - box.min.y) * Math.abs(mesh.scale.y);
+      }
+      var total = height + 2 * m.pad;
+      if (this.data.sidecarAlign === 'center') this.sidecarEl.object3D.position.y = total / 2;
+      this.sidecarPlateEl.setAttribute('width', m.width);
+      this.sidecarPlateEl.setAttribute('height', total);
+      this.sidecarPlateEl.object3D.position.set(0, -total / 2, -0.004);
+      var edgeWidth = Math.max(0.004, m.width * 0.012);
+      this.sidecarEdgeEl.setAttribute('width', edgeWidth);
+      this.sidecarEdgeEl.setAttribute('height', total);
+      this.sidecarEdgeEl.object3D.position.set(-m.dir * (m.width / 2 - edgeWidth / 2), -total / 2, -0.003);
+    },
+
+    // Shown only while the menu is open and has something to say. Read
+    // every render, so live info (a room code, the settings) stays live.
+    renderSidecar: function (open) {
+      if (!this.sidecarEl) return;
+      var info = open && this.sidecarDirection() !== 0 ? this.menu.getInfo() : null;
+      var text = info ? info.text : '';
+      this.sidecarEl.object3D.visible = Boolean(text);
+      if (!text || text === this.sidecarText) return;
+      this.sidecarText = text;
+      this.sidecarTextEl.setAttribute('text', 'value', text);
+      this.fitSidecar();
     },
 
     // Change side, size or spacing on a live panel. Takes any of the
@@ -1090,6 +1219,7 @@ if (typeof AFRAME !== 'undefined') {
       this.el.object3D.visible = open || collapsed || Boolean(this.arcShown);
       if (this.footerEl && !open) this.footerEl.object3D.visible = false;
       if (this.titleEl) this.titleEl.setAttribute('text', 'opacity', open ? (this.locked ? 1 : 0.6) : 0.4);
+      this.renderSidecar(open);
       if (collapsed) {
         for (var h = 0; h < this.rows.length; h++) this.rows[h].el.object3D.visible = false;
         for (var hc = 0; hc < this.crumbs.length; hc++) this.setCrumb(this.crumbs[hc], '', hc, false);

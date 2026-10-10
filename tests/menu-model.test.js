@@ -597,3 +597,54 @@ test('refresh() leaves static lists alone', () => {
   menu.refresh();
   assert.equal(menu.level().items, before);
 });
+
+// The sidecar: something to read beside the menu, never something to press.
+test('getInfo() prefers the focused row, then the innermost level that has some', () => {
+  let room = '';
+  const page = { title: 'T', items: [
+    { kind: 'action', id: 'a', label: 'A' },
+    { kind: 'info', id: 'about', label: 'About', info: ['Line one', 'Line two'] },
+    { kind: 'submenu', id: 'mp', label: 'Multiplayer', info: () => room ? 'Room ' + room : 'Not connected', items: [
+      { kind: 'action', id: 'host', label: 'Host' },
+      { kind: 'select', id: 'hand', label: 'Hand', value: 'r', options: [
+        { value: 'r', label: 'Right', info: 'Mouse in your right hand' },
+        { value: 'l', label: 'Left' },
+      ] },
+    ] },
+  ] };
+  const menu = createMenu(page, { windowSize: 3 });
+  menu.open();
+  assert.equal(menu.getInfo(), null, 'nothing to say on a plain row at a plain root');
+  menu.moveFocus(1);
+  assert.deepEqual(menu.getInfo().text, 'Line one\nLine two');
+  assert.equal(menu.getInfo().from, 'row');
+  menu.moveFocus(1);
+  assert.equal(menu.getInfo().text, 'Not connected', 'a submenu row says what is inside it');
+  menu.activate();
+  assert.equal(menu.getInfo().text, 'Not connected', 'and keeps saying it while you are in there');
+  assert.equal(menu.getInfo().from, 'level');
+  room = 'ABCD';
+  assert.equal(menu.getInfo().text, 'Room ABCD', 'read live, every time');
+  menu.moveFocus(1); menu.activate();
+  assert.equal(menu.getInfo().text, 'Mouse in your right hand', 'options can carry their own');
+  menu.moveFocus(1);
+  assert.equal(menu.getInfo().text, 'Room ABCD', 'an option without falls back outward, past the select');
+});
+
+test('an info row cannot be pressed and does not flash', () => {
+  const menu = createMenu({ title: 'T', items: [{ kind: 'info', id: 'about', label: 'About', info: 'Hi' }] });
+  const seen = [];
+  menu.on('activate', () => seen.push('activate'));
+  menu.on('action', () => seen.push('action'));
+  menu.open();
+  assert.equal(menu.activate(), false);
+  assert.deepEqual(seen, []);
+});
+
+test('the close button has no info of its own', () => {
+  const menu = createMenu({ title: 'T', info: 'Page', items: [{ kind: 'info', id: 'x', label: 'X', info: 'Row' }] });
+  menu.open();
+  assert.equal(menu.getInfo().text, 'Row');
+  menu.back();
+  assert.equal(menu.getInfo().text, 'Page');
+});

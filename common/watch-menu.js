@@ -350,6 +350,10 @@ import { findMenuItem } from './menu-model.js';
         component.ignoreHand = self.el;
         self.crossbarTimeEl = component.titleEl;
         self.crossbarTimeEl.setAttribute('font', 'sourcecodepro');
+        // The sidecar goes toward the middle of your view: right of a
+        // left-wrist watch, left of a right-wrist one, so it is never the
+        // half that ends up outside your field of view.
+        component.setLayout({ sidecar: side === 1 ? 'right' : 'left' });
 
         // The drawn face, clock and all, steps aside for the panel, as it
         // does for the classic one. Its own settings are read back first,
@@ -362,9 +366,7 @@ import { findMenuItem } from './menu-model.js';
         });
         component.menu.on('open', function () { self.syncCrossbarValues(); });
         menuEl.addEventListener('menu-item-select', function (evt2) {
-          var value = evt2.detail.value;
-          if (value === 'haptics') self.triggerHaptics();
-          if (value === 'about') self.showAbout();
+          if (evt2.detail.value === 'haptics') self.triggerHaptics();
         });
         menuEl.addEventListener('menu-commit', function (evt2) {
           if (evt2.detail.id === 'watch-automatic') pm.setAutomatic(evt2.detail.value);
@@ -436,18 +438,11 @@ import { findMenuItem } from './menu-model.js';
       });
     },
 
+    // The classic watch flashes the project name over its About row. The
+    // crossbar watch needs nothing here: its About row's text is in the
+    // sidecar whenever the row is selected.
     showAbout: function () {
-      if (this.projectedMenu === this.crossbarMenu && this.crossbarComponent) {
-        var component = this.crossbarComponent;
-        var item = findMenuItem(component.menu.page.items, 'about');
-        if (!item) return;
-        var restore = item.aboutLabel || item.label;
-        item.aboutLabel = restore;
-        item.label = 'WebXR Primitives';
-        component.render();
-        setTimeout(function () { item.label = restore; component.render(); }, 1500);
-        return;
-      }
+      if (this.projectedMenu === this.crossbarMenu) return;
       var label = this.projectedMenu.panelEl.querySelector('.watch-menu-about-label');
       if (!label) return;
       var original = label.getAttribute('text').value;
