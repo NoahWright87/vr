@@ -120,11 +120,11 @@ if (typeof AFRAME !== 'undefined') {
       //   height   — top row to bottom row
       //   curve    — how much further inboard the selected row reaches
       //              than the top and bottom ones
-      position: { default: 4 },
-      lift: { default: -3 },
+      position: { default: 8 },
+      lift: { default: -2 },
       width: { default: 30 },
-      height: { default: 64 },
-      curve: { default: 9 },
+      height: { default: 34 },
+      curve: { default: 10 },
       crumbs: { default: 'title', oneOf: ['outside', 'inside', 'title'] },
       key: { type: 'string', default: 'Backquote' },
       hint: { default: true },

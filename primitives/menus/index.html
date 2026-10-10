@@ -271,6 +271,7 @@
       // Every menu in the showcase, as data. The markup above only says
       // where each surface is and how big; what is on it is here.
       import { registerMenuPage, findMenuItem } from '../../common/menu-crossbar.js';
+      import { registerVisorPage } from '../../common/visor-page.js';
       import { ROOM_CODE_CHARS } from '../../worker/src/signal-rooms.js';
 
       var TOWNS = [
@@ -281,103 +282,19 @@
 
       var LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
 
-      // The visor's own two pages. Left is the system side — the
-      // contract proposed in the design notes is that comfort, HUD and
-      // Exit VR live at your left temple in every prototype, so a
-      // player who has bailed out of one knows how to bail out of all
-      // of them. Right belongs to the game.
-      var DEG = function (value) { return value + '\u00b0'; };
-      var CM = function (value) { return value + 'cm'; };
-      var SEC = function (value) { return (Math.round(value * 100) / 100) + 's'; };
-
-      // One visor menu, the same whichever side of your head you open it
-      // on. The layout rows are live: they move and resize the menu you
-      // are looking at, so it can be tuned in a headset rather than from
-      // a rebuild.
-      // The visor's whole setup as text, for its sidecar. Read on every
-      // draw, so it follows each setting as you change it.
-      function visorSummary () {
-        var visor = document.querySelector('a-scene').systems['visor-menu'];
-        return visor ? visor.describe() : '';
-      }
-
-      registerMenuPage('visor', {
+      // The visor: the showcase's own rows. registerVisorPage adds what
+      // every visor has after them — its settings and Exit VR — and
+      // handles those itself (common/visor-page.js).
+      registerVisorPage('visor', {
         title: 'VISOR',
         items: [
           { kind: 'action', id: 'spawn-box', label: 'Spawn box' },
-          { kind: 'toggle', id: 'visor-grid', label: 'Floor grid', value: true },
           {
             kind: 'submenu', id: 'visor-destinations', label: 'Destinations',
             items: TOWNS.map(function (name, i) {
               return { kind: 'action', id: 'visor-teleport-' + i, label: name };
             }),
           },
-          {
-            kind: 'submenu', id: 'visor-settings', label: 'Settings',
-            // Every setting at once in the sidecar while you are in here,
-            // so a tuned layout goes out as one screenshot.
-            info: visorSummary,
-            items: [
-              // Where the selected row sits, in degrees from straight ahead.
-              { kind: 'number', id: 'visor-position', label: 'Position', value: 4, min: 0, max: 30, step: 1, format: DEG },
-              // Up (+) or down (-) from eye level.
-              { kind: 'number', id: 'visor-lift', label: 'Lift', value: -3, min: -20, max: 20, step: 1, format: DEG },
-              // How wide, which is also how big the text is.
-              { kind: 'number', id: 'visor-width', label: 'Width', value: 30, min: 16, max: 50, step: 1, format: DEG },
-              // Top row to bottom row.
-              { kind: 'number', id: 'visor-height', label: 'Height', value: 64, min: 20, max: 90, step: 2, format: DEG },
-              // How much further in the selected row reaches.
-              { kind: 'number', id: 'visor-curve', label: 'Curve', value: 9, min: 0, max: 25, step: 0.5, format: DEG },
-              // Where a submenu's title goes: under the menu title, or up
-              // its inner or outer edge.
-              {
-                kind: 'select', id: 'visor-crumbs', label: 'Titles', value: 'title',
-                options: [
-                  { value: 'title', label: 'Top' },
-                  { value: 'inside', label: 'Inner' },
-                  { value: 'outside', label: 'Outer' },
-                ],
-              },
-              {
-                kind: 'select', id: 'visor-eyes', label: 'Eyes', value: 'both',
-                options: [{ value: 'both', label: 'Both' }, { value: 'inboard', label: 'One' }],
-              },
-              // World: a real object drawn over everything, so both eyes
-              // converge where it actually is. Screen: painted onto the
-              // display, identical in both eyes.
-              {
-                kind: 'select', id: 'visor-draw', label: 'Draw', value: 'world',
-                options: [{ value: 'world', label: 'World' }, { value: 'screen', label: 'Screen' }],
-              },
-              {
-                kind: 'select', id: 'visor-scrim', label: 'Scrim', value: 'off',
-                options: [{ value: 'on', label: 'On' }, { value: 'off', label: 'Off' }],
-              },
-              // How the temple gesture triggers. While you are in here the
-              // two spheres and your hands are drawn as maps beside the
-              // menu, since you can never see the real ones.
-              {
-                kind: 'submenu', id: 'visor-activation', label: 'Activation', info: visorSummary, zones: true,
-                items: [
-                  { kind: 'number', id: 'visor-zone-radius', label: 'Radius', value: 15, min: 4, max: 40, step: 1, format: CM },
-                  // How far out from the middle of your head.
-                  { kind: 'number', id: 'visor-zone-side', label: 'Side', value: 22, min: 4, max: 50, step: 1, format: CM },
-                  // Forward (+) or back (-) from your eyes.
-                  { kind: 'number', id: 'visor-zone-forward', label: 'Forward', value: -6, min: -30, max: 30, step: 1, format: CM },
-                  { kind: 'number', id: 'visor-open-ms', label: 'Open', value: 1.2, min: 0.2, max: 3, step: 0.1, format: SEC },
-                  { kind: 'number', id: 'visor-close-ms', label: 'Close', value: 0.4, min: 0.1, max: 2, step: 0.05, format: SEC },
-                ],
-              },
-            ],
-          },
-          {
-            kind: 'submenu', id: 'visor-comfort', label: 'Comfort',
-            items: [
-              { kind: 'toggle', id: 'visor-vignette', label: 'Vignette', value: false },
-              { kind: 'action', id: 'visor-recenter', label: 'Recenter' },
-            ],
-          },
-          { kind: 'action', id: 'visor-exit', label: 'Exit VR' },
         ],
       });
 
@@ -688,57 +605,7 @@
       });
     </script>
 
-    <script type="module">
-      // The visor adjusting itself: the Eyes/Scrim/Curve rows above are
-      // ordinary menu items, and this turns their commits into schema
-      // changes on the two visor panels. That is the whole in-headset
-      // test for the one-eye question -- no rebuild, no flag file.
-      var sceneEl = document.querySelector('a-scene');
-      // Menu units (cm, seconds) to the system's (metres, ms).
-      var ACTIVATION = {
-        'visor-zone-radius': function (v) { return { radius: v / 100 }; },
-        'visor-zone-side': function (v) { return { side: v / 100 }; },
-        'visor-zone-forward': function (v) { return { forward: v / 100 }; },
-        'visor-open-ms': function (v) { return { openMs: v * 1000 }; },
-        'visor-close-ms': function (v) { return { closeMs: v * 1000 }; },
-      };
-      var LAYOUT = {
-        'visor-position': 'position', 'visor-lift': 'lift', 'visor-width': 'width',
-        'visor-height': 'height', 'visor-curve': 'curve', 'visor-crumbs': 'crumbs',
-      };
-      sceneEl.addEventListener('menu-commit', function (evt) {
-        var visor = sceneEl.systems['visor-menu'];
-        if (!visor) return;
-        var id = evt.detail.id;
-        var value = evt.detail.value;
-        if (LAYOUT[id]) {
-          var change = {};
-          change[LAYOUT[id]] = value;
-          visor.setLayout(change);
-        }
-        if (id === 'visor-draw') visor.setDraw(value);
-        if (id === 'visor-eyes') visor.setEyes(value);
-        if (id === 'visor-scrim') visor.setScrim(value === 'on' ? 0.7 : 0);
-        if (ACTIVATION[id]) visor.setActivation(ACTIVATION[id](value));
-      });
-      // Number rows preview while you scroll them, so the menu moves as
-      // you change its size or position rather than only when you back
-      // out — which is the only way to find the right value by eye.
-      sceneEl.addEventListener('menu-preview', function (evt) {
-        var visor = sceneEl.systems['visor-menu'];
-        if (!visor) return;
-        // The spheres move on the map as you scroll, too.
-        if (ACTIVATION[evt.detail.id]) { visor.setActivation(ACTIVATION[evt.detail.id](evt.detail.value)); return; }
-        var key = LAYOUT[evt.detail.id];
-        if (!key) return;
-        var change = {};
-        change[key] = evt.detail.value;
-        visor.setLayout(change);
-      });
-      sceneEl.addEventListener('menu-action', function (evt) {
-        if (evt.detail.id === 'visor-exit' && sceneEl.is('vr-mode')) sceneEl.exitVR();
-      });
-    </script>
+
 
     <script type="module" src="../../common/play-space.js"></script>
     <script type="module" src="../../common/visor-menu.js"></script>
