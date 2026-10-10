@@ -23,15 +23,21 @@ function visibleInHierarchy(object3D) {
   return true;
 }
 
+var PREFERENCE_VALUES = {
+  handedness: ['right', 'left'],
+  hintMode: ['always', 'delayed', 'never'],
+  aimMode: ['hold', 'toggle'],
+};
+
 function readPreferences() {
   // Toggle is the default: it's the more accessible option (no button
   // needs to be held down for the whole time you're aiming).
   var fallback = { handedness: 'right', hintMode: 'delayed', aimMode: 'toggle' };
   try {
     var saved = JSON.parse(localStorage.getItem(PREFERENCES_KEY));
-    if (saved && (saved.handedness === 'left' || saved.handedness === 'right')) fallback.handedness = saved.handedness;
-    if (saved && ['always', 'delayed', 'never'].indexOf(saved.hintMode) !== -1) fallback.hintMode = saved.hintMode;
-    if (saved && (saved.aimMode === 'hold' || saved.aimMode === 'toggle')) fallback.aimMode = saved.aimMode;
+    Object.keys(PREFERENCE_VALUES).forEach(function (name) {
+      if (saved && PREFERENCE_VALUES[name].indexOf(saved[name]) !== -1) fallback[name] = saved[name];
+    });
   } catch (err) {
     // Storage can be disabled in private or embedded browsers. Defaults are fine.
   }
@@ -137,12 +143,11 @@ AFRAME.registerComponent('desktop-controls', {
     this._aimActionHeld = false; // touch/gamepad's semantic 'aim' action -- see onSemanticAction
     // Both are literally "is the button down" in hold mode, and a
     // press-triggered flip-flop in toggle mode (this.preferences.aimMode,
-    // default 'toggle' -- see readPreferences/the aim-mode menu row).
+    // default 'toggle' -- see readPreferences/setPreference).
     this.isAiming = false; // the two above, combined -- see updateAiming
     this.onSemanticTap = this.onSemanticTap.bind(this);
     this.onMountedRequest = this.onMountedRequest.bind(this);
     this.onActiveMenuClosed = this.onActiveMenuClosed.bind(this);
-    this.onPreferenceChange = this.onPreferenceChange.bind(this);
     this.onControlModeChanged = this.handleControlModeChanged.bind(this);
     this.onSemanticAction = this.onSemanticAction.bind(this);
     this.onVisorRequest = this.onVisorRequest.bind(this);
@@ -153,7 +158,6 @@ AFRAME.registerComponent('desktop-controls', {
     document.addEventListener('pointerup', this.onPointerUp, true);
     document.addEventListener('contextmenu', this.onContextMenu, true);
     this.sceneEl.addEventListener('mounted-interaction-request', this.onMountedRequest);
-    this.sceneEl.addEventListener('menu-option-change', this.onPreferenceChange);
     this.sceneEl.addEventListener('control-mode-changed', this.onControlModeChanged);
     this.sceneEl.addEventListener('semantic-tap', this.onSemanticTap);
     this.sceneEl.addEventListener('visor-menu-request', this.onVisorRequest);
@@ -177,20 +181,18 @@ AFRAME.registerComponent('desktop-controls', {
     return this.hands[this.dominantSide()];
   },
 
-  onPreferenceChange: function (evt) {
-    var detail = evt.detail || {};
-    if (detail.key === 'handedness' && (detail.value === 'left' || detail.value === 'right')) {
-      this.preferences.handedness = detail.value;
-    } else if (detail.key === 'interaction-hints' && ['always', 'delayed', 'never'].indexOf(detail.value) !== -1) {
-      this.preferences.hintMode = detail.value;
-    } else if (detail.key === 'aim-mode' && (detail.value === 'hold' || detail.value === 'toggle')) {
-      this.preferences.aimMode = detail.value;
-    } else {
-      return;
-    }
+  // The player's persisted preferences, set from whichever menu row a
+  // page gives them: 'handedness' (left | right), 'hintMode' (always |
+  // delayed | never), 'aimMode' (hold | toggle). Returns whether the
+  // value was taken.
+  setPreference: function (name, value) {
+    var allowed = PREFERENCE_VALUES[name];
+    if (!allowed || allowed.indexOf(value) === -1) return false;
+    this.preferences[name] = value;
     writePreferences(this.preferences);
     this.hintSystem.setPreferences(this.preferences);
     this.sceneEl.emit('player-preferences-changed', Object.assign({}, this.preferences), false);
+    return true;
   },
 
   shouldHandleKeyboard: function (evt) {
@@ -1509,7 +1511,6 @@ AFRAME.registerComponent('desktop-controls', {
     this.sceneEl.removeEventListener('mounted-interaction-request', this.onMountedRequest);
     this.sceneEl.removeEventListener('visor-menu-request', this.onVisorRequest);
     this.sceneEl.removeEventListener('visor-menu-closed', this.onVisorClosed);
-    this.sceneEl.removeEventListener('menu-option-change', this.onPreferenceChange);
     this.sceneEl.removeEventListener('control-mode-changed', this.onControlModeChanged);
     this.sceneEl.removeEventListener('semantic-tap', this.onSemanticTap);
     this.el.removeEventListener('semantic-action-intent', this.onSemanticAction);

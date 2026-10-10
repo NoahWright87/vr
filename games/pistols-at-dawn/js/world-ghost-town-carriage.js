@@ -25,12 +25,12 @@
           this.el.setAttribute('projected-menu', 'template: #carriage-ticket-menu-template; mode: laser; laserScale: 1; offset: 0 .45 0; closeDistance: 3.5');
           this.el.setAttribute('projected-crossbar', '');
           this.onTicket = function (evt) {
-            var value = (evt.detail && evt.detail.value) || '';
-            if (value.indexOf('carriage-') !== 0) return;
+            var id = (evt.detail && evt.detail.id) || '';
+            if (id.indexOf('carriage-') !== 0) return;
             var rig = document.querySelector('#player-rig'); var hub = rig && rig.components['teleport-hub'];
-            if (hub) hub.teleportTo(value.slice('carriage-'.length));
+            if (hub) hub.teleportTo(id.slice('carriage-'.length));
           };
-          this.el.sceneEl.addEventListener('menu-item-select', this.onTicket);
+          this.el.sceneEl.addEventListener('menu-action', this.onTicket);
         },
-        remove: function () { this.el.sceneEl.removeEventListener('menu-item-select', this.onTicket); },
+        remove: function () { this.el.sceneEl.removeEventListener('menu-action', this.onTicket); },
       });

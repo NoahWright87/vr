@@ -5,12 +5,12 @@
 // every other one, every frame: n(n-1)/2 full separating-axis box tests,
 // and each collider's own tick recomputes its box from a recursive
 // updateMatrixWorld(true) of its whole subtree. That is fine for a
-// handful of colliders and ruinous for this repo, because the menu
-// system (common/menus.js) gives every item on every page its own
-// collider so a fingertip can poke it — including all the pages that
-// are not open. The menus showcase measured 120 colliders, 114 of them
-// hidden: 7,140 box tests a frame, 55ms on a desktop CPU, and a Quest's
-// CPU is several times slower. That was the lag.
+// handful of colliders and costly for this repo, because every menu
+// (common/menus.js's projected-menu) gives each of its targets — rows,
+// breadcrumb, close — its own collider so a fingertip can poke it,
+// including the menus that are put away. The original menus showcase
+// measured 120 colliders, 114 of them hidden: 7,140 box tests a frame,
+// 55ms on a desktop CPU, and a Quest's CPU is several times slower.
 //
 // The rule this applies is the one pointing already follows: you cannot
 // poke what you cannot see. A collider is skipped — no box update, no

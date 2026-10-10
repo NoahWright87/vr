@@ -7,15 +7,15 @@
 // LASER_SIGHT, the MOTION_* tunables) through window, and only ever
 // when a menu opens — by then every script on the page has loaded.
 //
-// The rows re-send the values the old hand-built watch sent
-// (emitSelect / emitOption, see crossbar-menu's emitCompatible), so
-// the handlers that already exist do the work unchanged:
+// What the rows do lives with what they change, keyed on row ids:
 //
-//   pistols-watch-menu (world-menu.js)  HUD, performance, pause, target
-//                                       settings, laser, motion tunables
-//   teleport-hub (world-town.js)        teleport-<id>
-//   desktop-controls                    aim-mode
-//   carriage-ticket-stall               carriage-<id>
+//   pistols-watch-menu (world-menu.js)  menu-commit: HUD, performance,
+//                                       pause, target settings, laser,
+//                                       motion tunables
+//   teleport-hub (world-town.js)        menu-action: teleport-<id>
+//   carriage-ticket-stall               menu-action: carriage-<id>
+//   below                               menu-commit: pistols-aim, the
+//                                       desktop-controls preference
 // ==============================================================
 
 import { registerMenuPage, findMenuItem } from '../../../common/menu-crossbar.js';
@@ -32,20 +32,19 @@ function options(values, labels) {
 var targets = {
   kind: 'submenu', id: 'pistols-targets', label: 'Targets',
   items: [
-    // The old row read "Pause targets" / "Resume targets"; a toggle says
-    // which state you are in instead of which one you would get.
-    { kind: 'toggle', id: 'pistols-targets-paused', label: 'Paused', value: false, emitSelect: 'toggle-target-motion' },
+    // A toggle says which state you are in, not which one you would get.
+    { kind: 'toggle', id: 'pistols-targets-paused', label: 'Paused', value: false },
     {
-      kind: 'select', id: 'pistols-target-kind', label: 'Type', value: 'spinner', emitOption: 'target-kind',
+      kind: 'select', id: 'pistols-target-kind', label: 'Type', value: 'spinner',
       options: options(['stationary', 'spinner', 'conveyor', 'popper'], ['Stationary', 'Spinner', 'Conveyor', 'Pop-up']),
     },
-    { kind: 'select', id: 'pistols-target-count', label: 'Targets', value: 4, emitOption: 'spinner-count', options: options([2, 4, 6, 8, 12, 16, 24]) },
+    { kind: 'select', id: 'pistols-target-count', label: 'Targets', value: 4, options: options([2, 4, 6, 8, 12, 16, 24]) },
     {
-      kind: 'select', id: 'pistols-target-speed', label: 'Speed', value: 45, emitOption: 'spinner-speed',
+      kind: 'select', id: 'pistols-target-speed', label: 'Speed', value: 45,
       options: options([15, 30, 45, 60, 90], ['Very slow', 'Slow', 'Normal', 'Fast', 'Very fast']),
     },
     {
-      kind: 'select', id: 'pistols-target-distance', label: 'Distance', value: 5, emitOption: 'spinner-distance',
+      kind: 'select', id: 'pistols-target-distance', label: 'Distance', value: 5,
       options: options([5, 15, 30, 45], ['5m', '15m', '30m', '45m']),
     },
   ],
@@ -63,7 +62,7 @@ var teleport = {
   },
 };
 
-var hud = { kind: 'toggle', id: 'pistols-hud', label: 'HUD', value: true, emitSelect: 'toggle-hud' };
+var hud = { kind: 'toggle', id: 'pistols-hud', label: 'HUD', value: true };
 
 var motion = {
   // Live tunables for the scripted gun draw/holster/twirl flourish
@@ -71,20 +70,20 @@ var motion = {
   // (watch pointing, mounted interactions) never read these.
   kind: 'submenu', id: 'pistols-motion', label: 'Motion',
   items: [
-    { kind: 'select', id: 'pistols-motion-arc', label: 'Arc', value: 0.35, emitOption: 'motion-arc', options: options([0, 0.15, 0.35, 0.6, 0.9], ['Off', 'Subtle', 'Normal', 'Wide', 'Wild']) },
-    { kind: 'select', id: 'pistols-motion-ease', label: 'Ease', value: 2.4, emitOption: 'motion-ease', options: options([1, 1.5, 2.4, 3.5, 5], ['Linear', 'Soft', 'Normal', 'Snappy', 'Sharp']) },
-    { kind: 'select', id: 'pistols-motion-overshoot', label: 'Overshoot', value: 0.045, emitOption: 'motion-overshoot', options: options([0, 0.02, 0.045, 0.09, 0.16], ['Off', 'Subtle', 'Normal', 'Playful', 'Bouncy']) },
-    { kind: 'select', id: 'pistols-motion-settle', label: 'Settle', value: 9, emitOption: 'motion-settle', options: options([4, 6, 9, 14], ['Slow', 'Normal', 'Fast', 'Snap']) },
+    { kind: 'select', id: 'pistols-motion-arc', label: 'Arc', value: 0.35, options: options([0, 0.15, 0.35, 0.6, 0.9], ['Off', 'Subtle', 'Normal', 'Wide', 'Wild']) },
+    { kind: 'select', id: 'pistols-motion-ease', label: 'Ease', value: 2.4, options: options([1, 1.5, 2.4, 3.5, 5], ['Linear', 'Soft', 'Normal', 'Snappy', 'Sharp']) },
+    { kind: 'select', id: 'pistols-motion-overshoot', label: 'Overshoot', value: 0.045, options: options([0, 0.02, 0.045, 0.09, 0.16], ['Off', 'Subtle', 'Normal', 'Playful', 'Bouncy']) },
+    { kind: 'select', id: 'pistols-motion-settle', label: 'Settle', value: 9, options: options([4, 6, 9, 14], ['Slow', 'Normal', 'Fast', 'Snap']) },
   ],
 };
 
 var debug = {
   kind: 'submenu', id: 'pistols-debug', label: 'Debug',
   items: [
-    { kind: 'toggle', id: 'pistols-performance', label: 'Performance', value: false, emitSelect: 'toggle-performance' },
+    { kind: 'toggle', id: 'pistols-performance', label: 'Performance', value: false },
     // A translucent line and impact dot out of any held firearm's muzzle,
     // for judging hand wobble without firing (core.js).
-    { kind: 'select', id: 'pistols-laser', label: 'Laser', value: 'none', emitOption: 'laser-sight', options: options(['none', 'red', 'green'], ['Off', 'Red', 'Green']) },
+    { kind: 'select', id: 'pistols-laser', label: 'Laser', value: 'none', options: options(['none', 'red', 'green'], ['Off', 'Red', 'Green']) },
     motion,
   ],
 };
@@ -92,7 +91,7 @@ var debug = {
 // Hold vs. toggle to aim down sights (desktop-controls' aimMode
 // preference). Toggle is the default: no button has to be held for the
 // whole time you are aiming.
-var aim = { kind: 'select', id: 'pistols-aim', label: 'Aim', value: 'toggle', emitOption: 'aim-mode', options: options(['toggle', 'hold'], ['Toggle', 'Hold']) };
+var aim = { kind: 'select', id: 'pistols-aim', label: 'Aim', value: 'toggle', options: options(['toggle', 'hold'], ['Toggle', 'Hold']) };
 
 registerMenuPage('pistols-watch', {
   // The clock: hand-with-watch writes the time into the title.
@@ -126,6 +125,14 @@ registerMenuPage('pistols-watch', {
     var desktop = rig && rig.components['desktop-controls'];
     if (desktop && desktop.preferences) set('pistols-aim', desktop.preferences.aimMode);
   },
+});
+
+// Aim is desktop-controls' preference, shared with every game.
+document.addEventListener('menu-commit', function (evt) {
+  if (evt.detail.id !== 'pistols-aim') return;
+  var rig = document.querySelector('#player-rig');
+  var desktop = rig && rig.components['desktop-controls'];
+  if (desktop) desktop.setPreference('aimMode', evt.detail.value);
 });
 
 // ---------- the carriage ticket stall ----------

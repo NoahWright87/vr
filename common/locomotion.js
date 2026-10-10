@@ -35,7 +35,6 @@
       this._teleportAimY = 0;
       this._teleportAimMag = 0;
       this._teleportHand = 'left';
-      this.onMenuOptionChange = this.onMenuOptionChange.bind(this);
       this.onSemanticMove = this.onSemanticMove.bind(this);
       this.onSemanticAction = this.onSemanticAction.bind(this);
       this.gamepadSprinting = false;
@@ -48,7 +47,6 @@
 
       var self = this;
       var sceneEl = this.el.sceneEl;
-      sceneEl.addEventListener('menu-option-change', this.onMenuOptionChange);
       this.el.addEventListener('semantic-move', this.onSemanticMove);
       this.el.addEventListener('semantic-action-intent', this.onSemanticAction);
       sceneEl.addEventListener('loaded', function () {
@@ -97,11 +95,6 @@
       if (!Number.isFinite(next) || next <= 0) return;
       this.data.speedMultiplier = next;
       this.el.setAttribute('data-move-speed-multiplier', String(next));
-    },
-
-    onMenuOptionChange: function (evt) {
-      if (!evt.detail || evt.detail.key !== 'move-speed') return;
-      this.setSpeedMultiplier(evt.detail.value);
     },
 
     setVignette: function (enabled) {
@@ -390,7 +383,6 @@
     },
 
     remove: function () {
-      this.el.sceneEl.removeEventListener('menu-option-change', this.onMenuOptionChange);
       this.el.removeEventListener('semantic-move', this.onSemanticMove);
       this.el.removeEventListener('semantic-action-intent', this.onSemanticAction);
     },

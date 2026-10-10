@@ -77,22 +77,11 @@ menu system now. Every menu in every game is on them — the showcase, the
 watches in Pistols and Boundary Lab, Pistols' carriage stall, and a visor
 in every game (Punch Pop's settings live in its visor; the others carry
 the shared `Visor ▸` settings and `Exit VR` from `common/visor-page.js`).
-The old path (`menu-pages`, `menu-item`, `menu-option`, `menu-feedback`,
-`buildMenuChrome`, the classic half of `hand-with-watch`,
-`control-mode-layout`, `room-code-entry.js`, `menu-options.js`, Punch
-Pop's `createTabbedPanel`) is deleted; `common/menus.js` is just
+Nothing of the old menus is left: `common/menus.js` is just
 `projected-menu`, the trigger (poke, raised wrist, mounted mode, walking
-away) that the watch and every crossbar prop open through. Deliberately
-not done yet:
-
-- **Retire the compatibility events once their handlers move.** Pistols'
-  and the showcase's rows still re-send `menu-item-select` /
-  `menu-option-change` (`emitSelect` / `emitOption`) so the handlers
-  written for the old rows (`pistols-watch-menu`, locomotion's comfort
-  settings, desktop-controls' preferences, `teleport-hub`) work
-  unchanged. Moving each handler to `menu-commit` / `menu-action` on the
-  row's own id would let those two options go; nothing is broken in the
-  meantime, it is just two names for one thing.
+away) that the watch and every crossbar prop open through, and what a
+row does is handled by its id on `menu-action` / `menu-commit`.
+Deliberately not done yet:
 
 - **Games' own visor rows.** Pistols and Boundary Lab's visors hold only
   the shared rows for now, and Cube Pop's only `Reset cubes`. Whatever a

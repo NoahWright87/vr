@@ -58,19 +58,16 @@
       this.performanceVisible = false;
       this.galleryHost = null;
       this.activeGalleryEl = null;
-      this.onSelection = this.onSelection.bind(this);
-      this.onOptionChange = this.onOptionChange.bind(this);
+      this.onCommit = this.onCommit.bind(this);
       this.onAreaLoaded = this.onAreaLoaded.bind(this);
       this.onAreaUnloading = this.onAreaUnloading.bind(this);
-      this.el.addEventListener('menu-item-select', this.onSelection);
-      this.el.addEventListener('menu-option-change', this.onOptionChange);
+      this.el.addEventListener('menu-commit', this.onCommit);
       this.el.addEventListener('area-loaded', this.onAreaLoaded);
       this.el.addEventListener('area-unloading', this.onAreaUnloading);
     },
 
     remove: function () {
-      this.el.removeEventListener('menu-item-select', this.onSelection);
-      this.el.removeEventListener('menu-option-change', this.onOptionChange);
+      this.el.removeEventListener('menu-commit', this.onCommit);
       this.el.removeEventListener('area-loaded', this.onAreaLoaded);
       this.el.removeEventListener('area-unloading', this.onAreaUnloading);
     },
@@ -87,63 +84,51 @@
       this.galleryHost = null;
     },
 
-    onSelection: function (evt) {
-      if (evt.detail.value === 'toggle-hud') {
-        this.hudVisible = !this.hudVisible;
-        PLAYER_HUD_VISIBLE = this.hudVisible;
-        var hud = document.querySelector('#player-hud');
-        if (hud) hud.setAttribute('visible', this.hudVisible);
-        if (this.hudVisible) {
-          var vices = document.querySelector('#vices');
-          var viceMeter = vices && vices.components['vice-meter'];
-          if (viceMeter) viceMeter.updateHud();
-        }
-        return;
+    setHudVisible: function (visible) {
+      this.hudVisible = Boolean(visible);
+      PLAYER_HUD_VISIBLE = this.hudVisible;
+      var hud = document.querySelector('#player-hud');
+      if (hud) hud.setAttribute('visible', this.hudVisible);
+      if (this.hudVisible) {
+        var vices = document.querySelector('#vices');
+        var viceMeter = vices && vices.components['vice-meter'];
+        if (viceMeter) viceMeter.updateHud();
       }
-      if (evt.detail.value === 'toggle-performance') {
-        this.performanceVisible = !this.performanceVisible;
-        var performanceEl = document.querySelector('#performance-text');
-        if (performanceEl) performanceEl.setAttribute('performance-monitor', 'enabled', this.performanceVisible);
-        return;
-      }
-      if (evt.detail.value !== 'toggle-target-motion') return;
-      this.targetsPaused = !this.targetsPaused;
-      this.applyPausedState();
     },
 
-    onOptionChange: function (evt) {
-      // Debug-only and unrelated to the gallery -- handled here anyway
-      // since this component already owns the scene's menu-option-change
-      // listener, same as target-kind etc. below.
-      if (evt.detail.key === 'laser-sight') {
-        LASER_SIGHT = evt.detail.value;
+    setPerformanceVisible: function (visible) {
+      this.performanceVisible = Boolean(visible);
+      var performanceEl = document.querySelector('#performance-text');
+      if (performanceEl) performanceEl.setAttribute('performance-monitor', 'enabled', this.performanceVisible);
+    },
+
+    // The watch's rows (js/menu-pages.js), by id. A toggle commits the
+    // state it now shows, so these set rather than flip.
+    onCommit: function (evt) {
+      var id = evt.detail.id;
+      var value = evt.detail.value;
+      if (id === 'pistols-hud') { this.setHudVisible(value); return; }
+      if (id === 'pistols-performance') { this.setPerformanceVisible(value); return; }
+      if (id === 'pistols-targets-paused') {
+        this.targetsPaused = Boolean(value);
+        this.applyPausedState();
         return;
       }
+      // Debug-only and unrelated to the gallery -- handled here anyway
+      // since the rest of the watch's rows are.
+      if (id === 'pistols-laser') { LASER_SIGHT = value; return; }
       // Debug > Motion: live tunables for the scripted gun draw/holster/
       // twirl flourish (core-hand-rig.js's buildFlourishedKeyframe) --
       // same "debug-only global reassigned from the watch" pattern as
-      // laser-sight above, just numeric instead of a string enum.
-      if (evt.detail.key === 'motion-arc') {
-        MOTION_ARC_FRACTION = Number(evt.detail.value);
-        return;
-      }
-      if (evt.detail.key === 'motion-ease') {
-        MOTION_EASE_POWER = Number(evt.detail.value);
-        return;
-      }
-      if (evt.detail.key === 'motion-overshoot') {
-        MOTION_OVERSHOOT = Number(evt.detail.value);
-        return;
-      }
-      if (evt.detail.key === 'motion-settle') {
-        MOTION_SETTLE_RATE = Number(evt.detail.value);
-        return;
-      }
-      var numberValue = Number(evt.detail.value);
-      if (evt.detail.key === 'target-kind') this.settings.kind = evt.detail.value;
-      else if (evt.detail.key === 'spinner-count') this.settings.count = numberValue;
-      else if (evt.detail.key === 'spinner-speed') this.settings.speed = numberValue;
-      else if (evt.detail.key === 'spinner-distance') this.settings.distance = numberValue;
+      // the laser above, just numeric instead of a string enum.
+      if (id === 'pistols-motion-arc') { MOTION_ARC_FRACTION = Number(value); return; }
+      if (id === 'pistols-motion-ease') { MOTION_EASE_POWER = Number(value); return; }
+      if (id === 'pistols-motion-overshoot') { MOTION_OVERSHOOT = Number(value); return; }
+      if (id === 'pistols-motion-settle') { MOTION_SETTLE_RATE = Number(value); return; }
+      if (id === 'pistols-target-kind') this.settings.kind = value;
+      else if (id === 'pistols-target-count') this.settings.count = Number(value);
+      else if (id === 'pistols-target-speed') this.settings.speed = Number(value);
+      else if (id === 'pistols-target-distance') this.settings.distance = Number(value);
       else return;
       this.rebuildGallery();
     },

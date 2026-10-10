@@ -116,8 +116,8 @@
       }
 
       var sceneEl = document.querySelector('a-scene');
-      sceneEl.addEventListener('menu-item-select', function (evt) {
-        var match = /^haptic-(left|right)-(low|medium|high)$/.exec(evt.detail.value || '');
+      sceneEl.addEventListener('menu-action', function (evt) {
+        var match = /^haptic-(left|right)-(low|medium|high)$/.exec(evt.detail.id || '');
         if (!match) return;
         var hand = match[1];
         var intensity = LEVELS[match[2]];
@@ -182,11 +182,11 @@
         init: function () {
           this.space = this.el.sceneEl.systems['play-space'];
           this.onStatus = this.renderStatus.bind(this);
-          this.onWatchReady = this.renderStatus.bind(this);
           this.el.sceneEl.addEventListener('play-space-status', this.onStatus);
-          this.el.sceneEl.addEventListener('watch-menu-ready', this.onWatchReady);
+          var self = this;
           this.el.sceneEl.addEventListener('loaded', function () {
             applyCheckerTexture(document.querySelector('#boundary-floor'), '#263550', '#1c2940', 15, 15);
+            self.renderStatus();
           });
         },
 
@@ -203,7 +203,6 @@
 
         remove: function () {
           this.el.sceneEl.removeEventListener('play-space-status', this.onStatus);
-          this.el.sceneEl.removeEventListener('watch-menu-ready', this.onWatchReady);
         },
       });
     </script>

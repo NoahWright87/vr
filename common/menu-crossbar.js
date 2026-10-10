@@ -538,15 +538,9 @@ if (typeof AFRAME !== 'undefined') {
         // Bubbles, so a game can listen on the scene rather than on
         // every panel it happens to have built.
         self.el.emit('menu-action', { id: detail.id, item: detail.item }, true);
-        // Also emitted in the shape menu-item already uses, so handlers
-        // written against the existing menus keep working when a page
-        // moves onto this system — which is most of what makes the
-        // surface-by-surface migration cheap.
-        self.el.emit('menu-item-select', { value: detail.id, label: detail.item.label }, true);
       });
       this.menu.on('commit', function (detail) {
         self.el.emit('menu-commit', { id: detail.item.id, value: detail.value, item: detail.item }, true);
-        self.emitCompatible(detail.item, detail.value);
       });
       this.menu.on('preview', function (detail) {
         self.el.emit('menu-preview', { id: detail.item.id, value: detail.value, item: detail.item }, true);
@@ -811,38 +805,6 @@ if (typeof AFRAME !== 'undefined') {
       if (this.backingEl) hint.highlight = '#' + this.backingEl.getAttribute('id');
       else hint.highlightOpacity = 0;
       if (data.hint) this.el.setAttribute('hint-zone', hint);
-    },
-
-    // Committed values, re-announced in the shapes the older menus used,
-    // so a page can move onto this system without its handlers moving
-    // with it. Opt-in per item, because most items have no older shape to
-    // be compatible with.
-    //
-    //   emitSelect: true     - menu-item-select carrying the committed
-    //                          value itself (a select whose options are
-    //                          the old buttons' values: 'move-smooth').
-    //   emitSelect: 'name'   - menu-item-select carrying that fixed value
-    //                          (a toggle standing in for a button that
-    //                          flipped something: 'comfort-toggle').
-    //   emitOption: 'key'    - menu-option-change, as a menu-option row
-    //                          with that key would have sent it.
-    emitCompatible: function (item, value) {
-      if (item.emitSelect) {
-        var selectValue = item.emitSelect === true ? value : item.emitSelect;
-        this.el.emit('menu-item-select', { value: selectValue, label: item.label }, true);
-      }
-      if (item.emitOption) {
-        var option = null;
-        var options = typeof item.options === 'function' ? item.options() : (item.options || []);
-        for (var i = 0; i < options.length; i++) if (options[i].value === value) option = options[i];
-        this.el.emit('menu-option-change', {
-          key: item.emitOption,
-          controlLabel: item.label,
-          value: value,
-          label: option ? option.label : String(value),
-          index: option ? options.indexOf(option) : -1,
-        }, true);
-      }
     },
 
     hintOffset: function () {
@@ -1302,6 +1264,11 @@ if (typeof AFRAME !== 'undefined') {
       if (this.closeEl) {
         this.closeEl.setAttribute('material', 'opacity', inChrome ? PLATE_OPACITY * 1.6 : 0);
         this.closeGlyphEl.setAttribute('text', 'opacity', inChrome ? 1 : 0.45);
+        // Inside a submenu the corner button is a way back, not a way
+        // out — a watch you drive by poking has no stick to back out
+        // with — and it says so.
+        var glyph = this.menu.depth() > 0 ? '<' : 'X';
+        if (this.closeGlyphEl.getAttribute('value') !== glyph) this.closeGlyphEl.setAttribute('value', glyph);
       }
 
       var crumbs = this.menu.getBreadcrumbs();
@@ -1330,6 +1297,18 @@ if (typeof AFRAME !== 'undefined') {
 
       var data = this.data;
       var advance = this.crumbAdvance();
+      // A flat title is pressed where its letters are, which on a
+      // left-aligned panel is nowhere near the panel's middle — and a
+      // target centred there missed a poke or click on the word itself.
+      // Empty, it is not a target at all: at the top level there is
+      // nothing to go back to.
+      crumb.targetEl.object3D.visible = Boolean(text);
+      if (data.crumbs === 'title' && text) {
+        crumb.targetEl.setAttribute('geometry', { primitive: 'plane', width: text.length * advance + data.rowHeight, height: data.rowHeight * 0.7 });
+        crumb.targetEl.object3D.position.set(shift, 0, 0);
+      } else {
+        crumb.targetEl.object3D.position.set(0, 0, 0);
+      }
       var opacity = FADE[Math.min(depth, FADE.length - 1)];
       var fly = animate && data.titleMotion === 'fly';
       var now = (this.el.sceneEl && this.el.sceneEl.time) || performance.now();
@@ -1515,8 +1494,10 @@ if (typeof AFRAME !== 'undefined') {
       this.menu.back();
     },
 
+    // X at the top level, < inside a submenu (see render).
     onCloseClick: function () {
-      this.menu.close();
+      if (this.menu.depth() > 0) this.menu.back();
+      else this.menu.close();
     },
 
     // ---------- stick control ----------

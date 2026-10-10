@@ -25,7 +25,8 @@ test('proximity haptics are throttled and avoid square roots outside range', () 
 
 test('performance counters are opt-in from the watch', () => {
   const pages = readFileSync(new URL('../games/pistols-at-dawn/js/menu-pages.js', import.meta.url), 'utf8');
-  assert.match(pages, /id: 'pistols-performance', label: 'Performance', value: false, emitSelect: 'toggle-performance'/);
+  assert.match(pages, /id: 'pistols-performance', label: 'Performance', value: false/);
+  assert.match(menu, /id === 'pistols-performance'\) \{ this\.setPerformanceVisible\(value\)/);
   assert.match(page, /id="performance-text"[\s\S]*performance-monitor[\s\S]*visible="false"/);
   assert.match(menu, /if \(!this\.data\.enabled\) return/);
   assert.match(menu, /render\.calls/);

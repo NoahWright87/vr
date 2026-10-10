@@ -290,15 +290,14 @@ import { findMenuItem } from './menu-model.js';
           face.setAttribute('visible', true);
         });
         component.menu.on('open', function () { self.syncCrossbarValues(); });
-        menuEl.addEventListener('menu-item-select', function (evt2) {
-          if (evt2.detail.value === 'haptics') self.triggerHaptics();
+        menuEl.addEventListener('menu-action', function (evt2) {
+          if (evt2.detail.id === 'haptics') self.triggerHaptics();
         });
         menuEl.addEventListener('menu-commit', function (evt2) {
           if (evt2.detail.id === 'watch-automatic') pm.setAutomatic(evt2.detail.value);
         });
         self.applyEnabled();
-        self.el.emit('watch-menu-ready', { panelEl: pm.panelEl, projectedMenu: pm }, true);
-        self.el.emit('watch-crossbar-ready', { panelEl: pm.panelEl, projectedMenu: pm, menu: component }, true);
+        self.el.emit('watch-menu-ready', { panelEl: pm.panelEl, projectedMenu: pm, menu: component }, true);
       });
     },
 

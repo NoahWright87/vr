@@ -13,7 +13,8 @@ const pages = readFileSync(new URL('../games/pistols-at-dawn/js/menu-pages.js', 
 test('the watch teleports to every town location', () => {
   assert.match(pages, /\(window\.TOWN_LOCATIONS \|\| \[\]\)\.map/);
   assert.match(pages, /id: 'teleport-' \+ loc\.id, label: loc\.label/);
-  assert.match(loader, /value\.indexOf\('teleport-'\) !== 0/);
+  assert.match(loader, /addEventListener\('menu-action', this\.onMenuSelect\)/);
+  assert.match(loader, /id\.indexOf\('teleport-'\) !== 0/);
 });
 const ghostTown = readFileSync(new URL('../games/pistols-at-dawn/areas/ghost-town.html', import.meta.url), 'utf8');
 const saloonInterior = readFileSync(new URL('../games/pistols-at-dawn/js/world-saloon-interior.js', import.meta.url), 'utf8');
@@ -169,7 +170,8 @@ test('Carriage Tickets use the projected menu to reach out-of-town destinations'
   for (const id of ['range', 'farm', 'stable']) assert.match(pages, new RegExp(`id: 'carriage-${id}'`));
   assert.match(carriage, /laserScale: 1; offset: 0 \.45 0/);
   assert.match(carriage, /radius: 1\.6; maxReach: 1\.65; gazeThreshold: \.72/);
-  assert.match(carriage, /hub\.teleportTo\(value\.slice\('carriage-'\.length\)\)/);
+  assert.match(carriage, /addEventListener\('menu-action', this\.onTicket\)/);
+  assert.match(carriage, /hub\.teleportTo\(id\.slice\('carriage-'\.length\)\)/);
 });
 
 test('destination builders are absent from the eager script list', () => {
@@ -184,8 +186,8 @@ test('destination builders are absent from the eager script list', () => {
 });
 
 test('HUD visibility is exposed through the watch menu', () => {
-  assert.match(pages, /id: 'pistols-hud', label: 'HUD', value: true, emitSelect: 'toggle-hud'/);
+  assert.match(pages, /id: 'pistols-hud', label: 'HUD', value: true/);
   assert.match(page, /id="player-hud"/);
+  assert.match(menu, /id === 'pistols-hud'\) \{ this\.setHudVisible\(value\)/);
   assert.match(menu, /PLAYER_HUD_VISIBLE = this\.hudVisible/);
-  assert.match(pages, /emitSelect: 'toggle-performance'/);
 });

@@ -136,7 +136,7 @@
       <template id="watch-crossbar-template">
         <a-entity class="watch-crossbar-panel" visible="false">
           <!-- Raised a little within the panel so its title (the clock)
-               sits where the old hand-built watch's title bar did. -->
+               sits at the top of the face. -->
           <a-entity class="watch-crossbar"
             position="0 0.17 0"
             crossbar-menu="page: watch; width: 1.2; rowHeight: 0.2; maxChars: 20; open: false; closeBehavior: hide; memory: none; hint: false; stickRange: 0.35; crumbs: title; breadcrumbDepth: 1; plateOpacity: 0.94; exitKey: Tab; exitButton: WATCH; sidecarWidth: 1; sidecarChars: 22"
@@ -299,12 +299,9 @@
       });
 
       // ------------------------------------------------------------
-      // The watch. Most rows re-announce their values in the shapes the
-      // old hand-built watch sent (emitSelect / emitOption — see
-      // crossbar-menu's emitCompatible), which is what Pistols' and
-      // Boundaries' watches still send, so the same locomotion and
-      // preference handlers serve all of them. The vignette knobs are
-      // numbers instead of the old watch's one-step nudges.
+      // The watch. What its rows change — locomotion, the player's
+      // preferences — is applied by id in applySetting below, which the
+      // static panel's matching rows share.
       // ------------------------------------------------------------
       var watchScene = document.querySelector('a-scene');
       var watchRig = document.querySelector('#rig');
@@ -326,45 +323,42 @@
       var PERCENT = function (value) { return Math.round(value * 100) + '%'; };
 
       var watchMove = {
-        kind: 'select', id: 'watch-move', label: 'Move', value: 'move-smooth', emitSelect: true,
+        kind: 'select', id: 'watch-move', label: 'Move', value: 'smooth',
         options: forThisMode([
-          { value: 'move-smooth', label: 'Smooth' },
-          { value: 'move-teleport', label: 'Teleport', xrOnly: true },
-          { value: 'move-disabled', label: 'Off' },
+          { value: 'smooth', label: 'Smooth' },
+          { value: 'teleport', label: 'Teleport', xrOnly: true },
+          { value: 'disabled', label: 'Off' },
         ]),
       };
       var watchTurn = {
-        kind: 'select', id: 'watch-turn', label: 'Turn', value: 'turn-snap', emitSelect: true, xrOnly: true,
-        options: [{ value: 'turn-snap', label: 'Snap' }, { value: 'turn-smooth', label: 'Smooth' }],
+        kind: 'select', id: 'watch-turn', label: 'Turn', value: 'snap', xrOnly: true,
+        options: [{ value: 'snap', label: 'Snap' }, { value: 'smooth', label: 'Smooth' }],
       };
-      // "comfort-toggle" flips whatever locomotion currently has, so
-      // onOpen below keeps this row's value in step with it.
-      var watchVignette = { kind: 'toggle', id: 'watch-vignette', label: 'Vignette', value: true, emitSelect: 'comfort-toggle', xrOnly: true };
+      var watchVignette = { kind: 'toggle', id: 'watch-vignette', label: 'Vignette', value: true, xrOnly: true };
       var watchDrift = {
-        kind: 'select', id: 'watch-drift', label: 'Drift', value: 'drift-medium', emitSelect: true,
+        kind: 'select', id: 'watch-drift', label: 'Drift', value: 'medium',
         options: [
-          { value: 'drift-off', label: 'Off' }, { value: 'drift-low', label: 'Low' },
-          { value: 'drift-medium', label: 'Medium' }, { value: 'drift-high', label: 'High' },
+          { value: 'off', label: 'Off' }, { value: 'low', label: 'Low' },
+          { value: 'medium', label: 'Medium' }, { value: 'high', label: 'High' },
         ],
       };
       var watchStrength = { kind: 'number', id: 'watch-vignette-strength', label: 'Strength', value: 0.2, min: 0, max: 1, step: 0.1, format: PERCENT };
       var watchInset = { kind: 'number', id: 'watch-vignette-inset', label: 'Inset', value: 0.8, min: 0.25, max: 1.2, step: 0.05 };
       var watchRadius = { kind: 'number', id: 'watch-vignette-radius', label: 'Radius', value: 0.95, min: 0.4, max: 1.4, step: 0.05 };
       var watchTeleportHand = {
-        kind: 'select', id: 'watch-teleport-hand', label: 'Teleport', value: 'teleport-left', emitSelect: true,
-        options: [{ value: 'teleport-left', label: 'Left hand' }, { value: 'teleport-right', label: 'Right hand' }],
+        kind: 'select', id: 'watch-teleport-hand', label: 'Teleport', value: 'left',
+        options: [{ value: 'left', label: 'Left hand' }, { value: 'right', label: 'Right hand' }],
       };
       var watchHandedness = {
-        kind: 'select', id: 'watch-handedness', label: 'Hand', value: 'right', emitOption: 'handedness',
+        kind: 'select', id: 'watch-handedness', label: 'Hand', value: 'right',
         options: [{ value: 'right', label: 'Right' }, { value: 'left', label: 'Left' }],
       };
       var watchHints = {
-        kind: 'select', id: 'watch-hints', label: 'Hints', value: 'delayed', emitOption: 'interaction-hints',
+        kind: 'select', id: 'watch-hints', label: 'Hints', value: 'delayed',
         options: [{ value: 'always', label: 'Always' }, { value: 'delayed', label: 'Delayed' }, { value: 'never', label: 'Never' }],
       };
 
-      // Multiplayer. The room code was a four-square dial with a popup
-      // grid of characters; here it is four letter rows you scroll, with
+      // Multiplayer. The room code is four letter rows you scroll, with
       // the code itself in the row's label so you can see what you are
       // about to join without going in.
       var watchCodeLetters = [0, 1, 2, 3].map(function (index) {
@@ -399,7 +393,7 @@
       }
 
       // The session, in the sidecar beside the Multiplayer row and while
-      // you are in it — where the old watch's room-code card was.
+      // you are in it.
       function watchSession () {
         var session = watchPage.multiplayer;
         if (!session.code) return ['NOT CONNECTED', 'Host a room, or set the', 'code and Join one.'];
@@ -453,14 +447,14 @@
           var locomotion = watchRig && watchRig.components['locomotion-demo'];
           if (locomotion) {
             var data = locomotion.data;
-            watchMove.value = 'move-' + data.moveMode;
-            watchTurn.value = 'turn-' + data.turnMode;
+            watchMove.value = data.moveMode;
+            watchTurn.value = data.turnMode;
             watchVignette.value = Boolean(data.comfortVignette);
-            watchDrift.value = 'drift-' + data.driftMode;
+            watchDrift.value = data.driftMode;
             watchStrength.value = data.vignetteStrength;
             watchInset.value = data.vignetteInset;
             watchRadius.value = data.vignetteRadius;
-            watchTeleportHand.value = 'teleport-' + locomotion.getTeleportHand();
+            watchTeleportHand.value = locomotion.getTeleportHand();
           }
           var desktop = watchRig && watchRig.components['desktop-controls'];
           if (desktop && desktop.preferences) {
@@ -507,21 +501,19 @@
               { kind: 'action', id: 'station-boxes', label: 'Boxes' },
             ],
           },
-          // Re-sent as menu-option-change with this key, so locomotion
-          // hears it with no menu code of its own.
           {
-            kind: 'number', id: 'showcase-move-speed', label: 'Move speed', emitOption: 'move-speed',
+            kind: 'number', id: 'showcase-move-speed', label: 'Move speed',
             value: 1, min: 0.5, max: 2.5, step: 0.1, suffix: 'x',
           },
           {
-            kind: 'select', id: 'showcase-turn', label: 'Turning', value: 'turn-snap', emitSelect: true,
+            kind: 'select', id: 'showcase-turn', label: 'Turning', value: 'snap',
             options: [
-              { value: 'turn-snap', label: 'Snap' },
-              { value: 'turn-smooth', label: 'Smooth' },
-              { value: 'turn-disabled', label: 'Off' },
+              { value: 'snap', label: 'Snap' },
+              { value: 'smooth', label: 'Smooth' },
+              { value: 'disabled', label: 'Off' },
             ],
           },
-          { kind: 'toggle', id: 'showcase-vignette', label: 'Vignette', value: true, emitSelect: 'comfort-toggle' },
+          { kind: 'toggle', id: 'showcase-vignette', label: 'Vignette', value: true },
           {
             // Twelve rows in a five-row window: the teleport page that
             // used to be as tall as a person.
@@ -551,7 +543,7 @@
           var locomotion = rig && rig.components['locomotion-demo'];
           if (!locomotion) return;
           var page = this;
-          findMenuItem(page.items, 'showcase-turn').value = 'turn-' + locomotion.data.turnMode;
+          findMenuItem(page.items, 'showcase-turn').value = locomotion.data.turnMode;
           findMenuItem(page.items, 'showcase-vignette').value = Boolean(locomotion.data.comfortVignette);
           findMenuItem(page.items, 'showcase-move-speed').value = locomotion.data.speedMultiplier;
         },
@@ -669,24 +661,33 @@
       }
       sceneEl.addEventListener('play-space-changed', updateStations);
 
-      function handleLocomotionSelection (value) {
-        var loco = locomotion();
-        if (!loco || typeof value !== 'string') return;
-        if (value.indexOf('station-') === 0) { loco.goToStation(value.slice(8)); return; }
-        if (value === 'move-smooth') loco.setMoveMode('smooth');
-        else if (value === 'move-teleport') loco.setMoveMode('teleport');
-        else if (value === 'move-disabled') loco.setMoveMode('disabled');
-        else if (value === 'turn-snap') loco.setTurnMode('snap');
-        else if (value === 'turn-smooth') loco.setTurnMode('smooth');
-        else if (value === 'turn-disabled') loco.setTurnMode('disabled');
-        else if (value === 'comfort-toggle') loco.setVignette(!loco.data.comfortVignette);
-        else if (value === 'drift-off') loco.setStickDriftCompensation('off');
-        else if (value === 'drift-low') loco.setStickDriftCompensation('low');
-        else if (value === 'drift-medium') loco.setStickDriftCompensation('medium');
-        else if (value === 'drift-high') loco.setStickDriftCompensation('high');
-        else if (value === 'teleport-left') loco.setTeleportHand('left');
-        else if (value === 'teleport-right') loco.setTeleportHand('right');
+      // What a settings row changes, by row id. The watch and the static
+      // panel each have some of these; where both have one (turning, the
+      // vignette) they land in the same place.
+      function prefer (name) {
+        return function (value) {
+          var desktop = rigEl && rigEl.components['desktop-controls'];
+          if (desktop) desktop.setPreference(name, value);
+        };
       }
+      function loco (method) {
+        return function (value) {
+          var l = locomotion();
+          if (l) l[method](value);
+        };
+      }
+      var SETTINGS = {
+        'watch-move': loco('setMoveMode'),
+        'watch-turn': loco('setTurnMode'),
+        'showcase-turn': loco('setTurnMode'),
+        'watch-vignette': loco('setVignette'),
+        'showcase-vignette': loco('setVignette'),
+        'watch-drift': loco('setStickDriftCompensation'),
+        'watch-teleport-hand': loco('setTeleportHand'),
+        'showcase-move-speed': loco('setSpeedMultiplier'),
+        'watch-handedness': prefer('handedness'),
+        'watch-hints': prefer('hintMode'),
+      };
 
       // ------------------------------------------------------------
       // The boxes. Each one's resting place is a spot on the platform
@@ -741,9 +742,17 @@
 
       // spawn-box / reset-boxes themselves are handled by the multiplayer
       // script, which knows whether they have to go through a host.
-      sceneEl.addEventListener('menu-item-select', function (evt) {
-        sceneEl.setAttribute('data-last-menu-selection', evt.detail.value);
-        handleLocomotionSelection(evt.detail.value);
+      // data-last-menu-selection: the id of the last row acted on or
+      // committed, for tests.
+      sceneEl.addEventListener('menu-action', function (evt) {
+        var id = evt.detail.id;
+        sceneEl.setAttribute('data-last-menu-selection', id);
+        var l = locomotion();
+        if (l && id.indexOf('station-') === 0) l.goToStation(id.slice('station-'.length));
+      });
+      sceneEl.addEventListener('menu-commit', function (evt) {
+        sceneEl.setAttribute('data-last-menu-selection', evt.detail.id);
+        if (SETTINGS[evt.detail.id]) SETTINGS[evt.detail.id](evt.detail.value);
       });
 
       // ------------------------------------------------------------
@@ -1384,8 +1393,8 @@
         renderPlayerList(players);
       }
 
-      sceneEl.addEventListener('menu-item-select', function (evt) {
-        var value = evt.detail.value;
+      sceneEl.addEventListener('menu-action', function (evt) {
+        var value = evt.detail.id;
         if (value === 'mp-host') {
           beginHostingViaRelay(RELAY_URL, {});
         } else if (value === 'mp-join') {
@@ -1406,12 +1415,12 @@
       // declaration for why.
       var boxMenuSceneEl = document.querySelector('a-scene');
       if (boxMenuSceneEl) {
-        boxMenuSceneEl.addEventListener('menu-item-select', function (evt) {
-          if (evt.detail.value === 'spawn-box') {
+        boxMenuSceneEl.addEventListener('menu-action', function (evt) {
+          if (evt.detail.id === 'spawn-box') {
             if (hostSession) performHostBoxSpawn();
             else if (boxSyncActive) connection.send(JSON.stringify({ type: 'box-spawn-request' }));
             else window.__showcaseOfflineBoxActions.spawn();
-          } else if (evt.detail.value === 'reset-boxes') {
+          } else if (evt.detail.id === 'reset-boxes') {
             if (hostSession) performHostBoxReset();
             else if (boxSyncActive) connection.send(JSON.stringify({ type: 'box-reset-request' }));
             else window.__showcaseOfflineBoxActions.reset();

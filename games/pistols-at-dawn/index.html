@@ -278,10 +278,10 @@
              hand-with-watch (common/watch-menu.js) is what puts a
              pokeable/pointable wrist watch on each hand — see the
              Teleport submenu in js/menu-pages.js and teleport-hub's own
-             menu-item-select listener (world-town.js) for how it feeds
+             menu-action listener (world-town.js) for how it feeds
              into teleport. Nested inside #player-rig (rather than
              top-level, which is how the shared component itself
-             assumes hands sit) so a menu-item-select the watch emits
+             assumes hands sit) so a menu-action the watch emits
              bubbles up through the rig on its way to <a-scene>,
              exactly like it would from a top-level hand — the wrap
              doesn't change that path, just adds a stop along it.
