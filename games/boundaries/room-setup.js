@@ -6,7 +6,9 @@ AFRAME.registerComponent('boundary-room-lab', {
     this.session = null;
     this.planes = new Map();
     this.roomSnapshot = [];
-    this.roomStatus = 'Choose Test Room Setup before entering XR';
+    this.roomStatus = 'Open the watch → Room Setup → Test Room Setup';
+    this.reportStatus = '';
+    this.roomRun = 0;
     this.captureUsed = false;
     this.capturePending = false;
     this.captureMessage = '';
@@ -15,65 +17,60 @@ AFRAME.registerComponent('boundary-room-lab', {
     this.planeAPI = false;
     this.nextStatusTime = 0;
     this.handlers = {
-      'enter-vr': () => this.start(),
+      'enter-vr': () => this.onSessionStart(),
       'exit-vr': () => this.stop(),
       'watch-menu-ready': () => this.renderStatus(),
       'headset-boundary-sample': e => this.sampleBoundary(e.detail),
-      'menu-item-select': e => { if (e.detail.value === 'room-capture') this.captureRoom(); }
+      'menu-item-select': e => {
+        if (e.detail.value === 'room-test') this.enterRoomSetup();
+        else if (e.detail.value === 'room-stop') this.stop();
+        else if (e.detail.value === 'room-capture') this.captureRoom();
+        else if (e.detail.value === 'save-diagnostics') this.downloadReport();
+      }
     };
     for (const [name, fn] of Object.entries(this.handlers)) this.el.addEventListener(name, fn);
-    this.enterButton = document.querySelector('#test-room-setup');
-    this.downloadButton = document.querySelector('#download-boundary-report');
-    this.onEnterClick = () => this.enterRoomSetup();
-    this.onDownloadClick = () => this.downloadReport();
-    this.enterButton.addEventListener('click', this.onEnterClick);
-    this.downloadButton.addEventListener('click', this.onDownloadClick);
+    // XR features are negotiated at session creation. Start Quest's Lab in AR
+    // with an opaque virtual world, so the watch can reveal passthrough without
+    // ending VR and requesting another immersive session from a synthetic click.
+    // Other headsets retain the VR path when immersive-ar is unsupported.
+    this.originalEnterVR = this.el.enterVR;
+    const scene = this.el, original = this.originalEnterVR;
+    this.enterVRWrapper = function (ar, offer) {
+      if (scene.is('vr-mode') || scene.is('ar-mode')) return Promise.resolve('Already in XR');
+      return original.call(scene, !!ar || AFRAME.utils.device.checkARSupport(), offer);
+    };
+    this.el.enterVR = this.enterVRWrapper;
     this.renderStatus();
   },
 
-  enterRoomSetup: async function () {
-    if (this.el.is('vr-mode') || this.el.is('ar-mode') || this.entering) return;
-    this.entering = true;
-    this.enterButton.disabled = true;
-    // Only this explicit passthrough test requests access to room information.
-    const original = this.el.getAttribute('webxr');
-    this.originalWebXR = { ...original, requiredFeatures: [...original.requiredFeatures], optionalFeatures: [...original.optionalFeatures] };
-    this.el.setAttribute('webxr', { ...original, requiredFeatures: [...new Set([...original.requiredFeatures, 'plane-detection'])] });
-    try {
-      await this.el.enterAR();
-    } catch (error) {
-      this.roomStatus = `Room Setup could not start: ${error.cause?.name || error.name}. Check passthrough support and room-data permission.`;
-      this.restoreWebXR();
-      this.renderStatus();
-    } finally {
-      this.entering = false;
-      this.enterButton.disabled = false;
-    }
-  },
-
-  restoreWebXR: function () {
-    if (this.originalWebXR) this.el.setAttribute('webxr', this.originalWebXR);
-    this.originalWebXR = null;
-  },
-
-  start: function () {
-    if (this.session) return;
+  onSessionStart: function () {
     this.observation = new BoundaryObservation();
+    this.reportStatus = '';
     this.nextBoundaryStatus = 0;
     this.roomSnapshot = [];
     this.reportedPlanes = 0;
     this.planeAPI = false;
     this.elapsed = 0;
-    this.roomStatus = 'Choose Test Room Setup before entering XR';
+    this.roomStatus = 'Open the watch → Room Setup → Test Room Setup';
     this.renderStatus();
-    if (!this.el.is('ar-mode')) return;
+  },
+
+  enterRoomSetup: function () {
+    if (this.session) return;
     const session = this.el.renderer.xr.getSession();
-    if (!session || this.session === session) return;
+    if (!session) { this.roomStatus = 'Enter the Lab, then select Test Room Setup on the watch.'; this.renderStatus(); return; }
     this.session = session;
+    const run = ++this.roomRun;
+    this.roomMode = this.el.is('ar-mode') ? 'passthrough' : 'VR (passthrough unavailable)';
     this.startTime = null;
     this.elapsed = 0;
-    this.captureUsed = this.capturePending = false;
-    this.captureMessage = '';
+    // Stopping/restarting the diagnostic does not start a new XRSession. Meta's
+    // one-capture-per-session limit must survive that watch interaction.
+    if (this.captureSession !== session) {
+      this.captureSession = session;
+      this.captureUsed = this.capturePending = false;
+      this.captureMessage = '';
+    }
     this.nextStatusTime = 0;
     this.reportedPlanes = 0;
     this.planeAPI = false;
@@ -98,7 +95,7 @@ AFRAME.registerComponent('boundary-room-lab', {
     this.roomStatus = 'Waiting for Room Setup surfaces…';
     this.renderStatus();
     const onFrame = (time, frame) => {
-      if (this.session !== session) return;
+      if (this.session !== session || this.roomRun !== run) return;
       this.updateRoomFrame(time, frame);
       session.requestAnimationFrame(onFrame);
     };
@@ -164,6 +161,7 @@ AFRAME.registerComponent('boundary-room-lab', {
       this.roomStatus = current.size
         ? `${tracked}/${current.size} surfaces tracked · ${horizontal} horizontal · ${vertical} vertical`
         : this.elapsed < 3 ? 'Waiting for Room Setup surfaces…'
+        : sessionHasNoPlanes(this.session) ? 'Room access is unavailable or denied. Check Quest browser permissions.'
         : this.planeAPI ? 'No surfaces supplied. You can try Open Quest Room Setup.'
         : 'Plane data unavailable. Check room-data permission and browser support.';
       this.renderStatus();
@@ -172,7 +170,8 @@ AFRAME.registerComponent('boundary-room-lab', {
 
   captureRoom: async function () {
     const session = this.session;
-    if (!session) { this.roomStatus = 'Exit VR, then choose Test Room Setup on the page.'; this.renderStatus(); return; }
+    const run = this.roomRun;
+    if (!session) { this.roomStatus = 'Select Test Room Setup on this watch page first.'; this.renderStatus(); return; }
     if (this.elapsed < 3) { this.captureMessage = 'Wait at least 3 seconds for saved surfaces.'; this.renderStatus(); return; }
     if (this.reportedPlanes) { this.captureMessage = 'Saved surfaces are present. Edit Room Setup in Quest settings, then re-enter this test.'; this.renderStatus(); return; }
     if (this.captureUsed) { this.captureMessage = 'Room Setup was already requested. Re-enter the test to try again.'; this.renderStatus(); return; }
@@ -182,20 +181,21 @@ AFRAME.registerComponent('boundary-room-lab', {
     this.renderStatus();
     try {
       await session.initiateRoomCapture();
-      if (this.session !== session) return;
+      if (this.session !== session || this.roomRun !== run) return;
       this.captureMessage = 'Room Setup returned. Continuing to look for surfaces.';
     } catch (error) {
-      if (this.session !== session) return;
+      if (this.session !== session || this.roomRun !== run) return;
       this.captureMessage = `Room Setup did not complete (${error.name}). Re-enter to retry.`;
     }
-    if (this.session === session) { this.capturePending = false; this.renderStatus(); }
+    if (this.session === session && this.roomRun === run) { this.capturePending = false; this.renderStatus(); }
   },
 
   renderStatus: function () {
     document.querySelectorAll('.boundary-observation').forEach(el => el.setAttribute('text','value',this.observation.text()));
     document.querySelectorAll('.room-status').forEach(el => el.setAttribute('text','value',this.roomStatus));
-    const detail = this.session ? `${Math.floor(this.elapsed)} s in passthrough\n${this.captureMessage || 'Green: horizontal · Purple: vertical\nPink: unclassified surfaces'}` : 'Surfaces describe the room, not Guardian.\nThey are not a safe walking footprint.';
+    const detail = this.session ? `${Math.floor(this.elapsed)} s in ${this.roomMode}\n${this.captureMessage || 'Green: horizontal · Purple: vertical\nPink: unclassified surfaces'}` : 'Surfaces describe the room, not Guardian.\nThey are not a safe walking footprint.';
     document.querySelectorAll('.room-detail').forEach(el => el.setAttribute('text','value',detail));
+    document.querySelectorAll('.report-status').forEach(el => el.setAttribute('text','value',this.reportStatus));
     const status = document.querySelector('#lab-diagnostics');
     status.textContent = this.observation.text().replaceAll('\n',' · ') + ' | ' + this.roomStatus;
     document.querySelectorAll('[menu-item]').forEach(el => {
@@ -205,9 +205,18 @@ AFRAME.registerComponent('boundary-room-lab', {
 
   downloadReport: function () {
     const report = {schema:1, userAgent:navigator.userAgent, boundary:this.observation, room:{status:this.roomStatus, seconds:this.elapsed, planeAPI:this.planeAPI, reportedPlanes:this.reportedPlanes, surfaces:this.roomSnapshot}, note:'Boundary points use bounded-floor coordinates. Plane polygons use their own plane spaces; matrices map them to the current XR reference space. Room surfaces are not Guardian boundaries.'};
-    const url = URL.createObjectURL(new Blob([JSON.stringify(report,null,2)],{type:'application/json'}));
-    const link = document.createElement('a'); link.href=url; link.download='boundary-lab-report.json'; link.click();
-    setTimeout(()=>URL.revokeObjectURL(url),1000);
+    const json = JSON.stringify(report,null,2);
+    let stored = false;
+    try { localStorage.setItem('boundary-lab-report',json); stored = true; } catch (_) {}
+    try {
+      const url = URL.createObjectURL(new Blob([json],{type:'application/json'}));
+      const link = document.createElement('a'); link.href=url; link.download='boundary-lab-report.json'; link.click();
+      setTimeout(()=>URL.revokeObjectURL(url),1000);
+      this.reportStatus = stored ? 'Saved in this browser. Download requested.' : 'Download requested; browser storage unavailable.';
+    } catch (_) {
+      this.reportStatus = stored ? 'Saved in this browser; download unavailable in XR.' : 'Could not save diagnostics on this browser.';
+    }
+    this.renderStatus();
   },
 
   disposePlane: function (plane,line) {
@@ -217,6 +226,7 @@ AFRAME.registerComponent('boundary-room-lab', {
   stop: function () {
     if (this.session) this.roomStatus = 'Last Room Setup: ' + this.roomStatus;
     this.session = null;
+    this.roomRun++;
     for (const [plane,line] of this.planes) this.disposePlane(plane,line);
     if (this.hiddenObjects) {
       this.hiddenObjects.forEach(({el,visible})=>{el.object3D.visible=visible;});
@@ -228,7 +238,6 @@ AFRAME.registerComponent('boundary-room-lab', {
       rig.setAttribute('locomotion-demo',this.savedLocomotion);
       this.hiddenObjects = null;
     }
-    this.restoreWebXR();
     this.capturePending = false;
     // Keep the last observations for download after leaving the headset.
     this.renderStatus();
@@ -237,7 +246,10 @@ AFRAME.registerComponent('boundary-room-lab', {
   remove: function () {
     this.stop();
     for (const [name,fn] of Object.entries(this.handlers)) this.el.removeEventListener(name,fn);
-    this.enterButton.removeEventListener('click',this.onEnterClick);
-    this.downloadButton.removeEventListener('click',this.onDownloadClick);
+    if (this.el.enterVR === this.enterVRWrapper) this.el.enterVR = this.originalEnterVR;
   }
 });
+
+function sessionHasNoPlanes(session) {
+  return session.enabledFeatures != null && !Array.from(session.enabledFeatures).includes('plane-detection');
+}

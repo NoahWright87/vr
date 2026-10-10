@@ -26,7 +26,7 @@ Boundary Lab; Room Setup data never replaces the Impossible Spaces footprint.
    XR frame indefinitely, including after an empty array or unchanged pose.
    The watch reports elapsed sampling time, frame count, first valid geometry,
    empty frames, changes, and maximum corner count.
-3. Exit XR and select **Download diagnostics**. The local JSON contains the
+3. Select **Save diagnostics** on the main watch page. The local JSON contains the
    latest boundary points, a bounded change history, and browser identification.
    A rectangle remaining after 30 seconds is an observation, not proof that a
    different runtime could never expose more details. Corner count alone does
@@ -34,10 +34,13 @@ Boundary Lab; Room Setup data never replaces the Impossible Spaces footprint.
 
 ## What does Room Setup expose?
 
-1. Before entering XR, select **Test Room Setup (passthrough)**. This explicit
-   action requests `immersive-ar` with required `plane-detection` and optional
-   `bounded-floor`. Grant room-data permission if prompted. Unsupported or
-   denied entry displays an error and restores the normal VR configuration.
+1. Enter the Lab normally, open the watch, select **Room Setup**, then **Test
+   Room Setup**. No page buttons or exits from the headset view are required.
+   On devices supporting passthrough, the Lab uses an `immersive-ar` session
+   with its ordinary virtual world initially visible. Room access is requested
+   as optional `plane-detection` at entry; grant permission if prompted.
+   The watch reveals passthrough within that same session. Devices without
+   passthrough retain a VR session and show that limitation on the watch.
 2. Wait at least three seconds. Saved surfaces may arrive asynchronously.
    Green outlines mean horizontal surfaces, purple vertical, pink unclassified.
    All supplied polygon corners are rendered in their plane spaces, transformed
@@ -52,14 +55,20 @@ Boundary Lab; Room Setup data never replaces the Impossible Spaces footprint.
    recentering: stale outlines should disappear, and recovering poses should
    align again. Moving or changing a plane's pose must update its outline even
    when its polygon has not changed.
-5. Exit and download the report. It includes the last tracked surface polygons,
+5. Select **Return to virtual Lab** on the Room Setup watch page to restore the
+   virtual world and controls without leaving XR. The boundary timer continues.
+   Stopping/restarting the test cannot bypass the one-capture-per-session limit.
+6. Select **Save diagnostics** on the main watch page. It includes the last tracked surface polygons,
    optional semantic labels, and their reference-space matrices. Data is saved
-   locally, not uploaded. Starting another XR session starts a new observation.
+   locally, not uploaded. A browser download is requested and a local copy is
+   retained under `boundary-lab-report` in this site's browser storage, including
+   when the browser blocks downloads in XR. The watch displays save feedback.
+   Starting another XR session starts a new observation.
 
 The virtual floor, sky, cube, and pedestal are hidden during passthrough.
 Lab locomotion is temporarily removed and the rig is reset so artificial movement
 cannot move hands or menus away from real-room outlines. The previous rig,
-controls, and visuals are restored on exit.
+controls, and visuals are restored by **Return to virtual Lab**, and on exit.
 
 ## Custom floor drawing: next experiment
 

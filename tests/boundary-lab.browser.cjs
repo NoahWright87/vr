@@ -47,25 +47,49 @@ const base = process.env.VR_TEST_URL || 'http://127.0.0.1:8088';
       }
     }
     assert.deepEqual(errors, []);
+    const entryCheck=await page.evaluate(async()=>{
+      const scene=document.querySelector('a-scene'),calls=[];
+      const originalRequest=navigator.xr.requestSession, originalSupport=AFRAME.utils.device.checkARSupport;
+      const originalConnected=scene.checkHeadsetConnected,originalEnabled=scene.renderer.xr.enabled;
+      navigator.xr.requestSession=async(mode,options)=>{calls.push({mode,optional:[...options.optionalFeatures]});throw new Error('Synthetic session request ends here');};
+      scene.checkHeadsetConnected=()=>true;
+      try {
+        AFRAME.utils.device.checkARSupport=()=>true;
+        await scene.enterVR(false).catch(()=>{});
+        AFRAME.utils.device.checkARSupport=()=>false;
+        await scene.enterVR(false).catch(()=>{});
+      } finally {
+        navigator.xr.requestSession=originalRequest;AFRAME.utils.device.checkARSupport=originalSupport;
+        scene.checkHeadsetConnected=originalConnected;scene.renderer.xr.enabled=originalEnabled;
+      }
+      return calls;
+    });
+    assert.deepEqual(entryCheck.map(c=>c.mode),['immersive-ar','immersive-vr']);
+    assert.ok(entryCheck.every(c=>c.optional.includes('plane-detection')&&c.optional.includes('bounded-floor')));
     const roomCheck = await page.evaluate(async () => {
       const scene=document.querySelector('a-scene'), lab=scene.components['boundary-room-lab'];
       const detector=document.querySelector('#boundary-rig').components['headset-boundary'];
       const originalClearAlpha=scene.renderer.getClearAlpha();
-      let ar=false, callbacks=[], launches=0;
-      const originalIs=scene.is.bind(scene), originalEnter=scene.enterAR.bind(scene), originalSession=scene.renderer.xr.getSession.bind(scene.renderer.xr);
+      let ar=true, callbacks=[], launches=0;
+      const originalIs=scene.is.bind(scene), originalSession=scene.renderer.xr.getSession.bind(scene.renderer.xr);
       scene.is=name=>name==='ar-mode'?ar:originalIs(name);
       const bounded={boundsGeometry:[],addEventListener(){},removeEventListener(){}};
       const session={inputSources:[],requestReferenceSpace:async()=>bounded,requestAnimationFrame:cb=>callbacks.push(cb),initiateRoomCapture:async()=>{launches++;}};
       scene.renderer.xr.getSession=()=>session;
-      scene.enterAR=async()=>{ar=true;lab.start();detector.start();};
+      lab.onSessionStart();detector.start();
+      const watch=document.querySelector('#left-hand').components['hand-with-watch'].projectedMenu;
+      const pages=watch.panelEl.components['menu-pages'];pages.showPage('room');
+      for(const el of watch.panelEl.querySelectorAll('[menu-item]'))el.setAttribute('data-test-action',el.getAttribute('menu-item').value);
+      const select=value=>watch.panelEl.querySelector(`[data-test-action="${value}"]`).emit('click');
       const matrix=[1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1];
       const frame={detectedPlanes:new Set(),getPose:()=>({transform:{matrix}}),getViewerPose:()=>({transform:{position:{x:0,z:0}}})};
       const step=time=>{const next=callbacks;callbacks=[];for(const cb of next)cb(time,frame);};
-      await lab.enterRoomSetup();await Promise.resolve();
-      step(0);step(1000);step(2000);step(2900);await lab.captureRoom();
+      select('room-test');await Promise.resolve();
+      const sameSession=lab.session===session;
+      step(0);step(1000);step(2000);step(2900);select('room-capture');await Promise.resolve();
       const earlyLaunches=launches;
       bounded.boundsGeometry=[{x:0,y:0,z:0},{x:4.7,y:0,z:0},{x:4.7,y:0,z:2.1},{x:0,y:0,z:2.1}];
-      step(3000);await lab.captureRoom();await lab.captureRoom();
+      step(3000);select('room-capture');await Promise.resolve();select('room-capture');await Promise.resolve();
       const plane={polygon:[{x:0,y:0,z:0},{x:3,y:0,z:0},{x:3,y:0,z:1},{x:1,y:0,z:1},{x:1,y:0,z:2},{x:0,y:0,z:2}],orientation:'horizontal',lastChangedTime:1,planeSpace:{}};
       frame.detectedPlanes=new Set([plane]);step(4000);
       const line=lab.planes.get(plane), polygonCorners=line.geometry.attributes.position.count;
@@ -78,22 +102,32 @@ const base = process.env.VR_TEST_URL || 'http://127.0.0.1:8088';
       bounded.boundsGeometry=plane.polygon;step(32000);step(33000);
       const observations={frames:lab.observation.frames,empty:lab.observation.emptyFrames,first:lab.observation.firstGeometrySeconds,corners:lab.observation.corners,changes:lab.observation.changes};
       frame.detectedPlanes=new Set();step(34000);const removed=lab.planes.size===0 && !line.parent;
-      lab.stop();detector.stop();ar=false;
+      select('room-stop');
       const restored=scene.renderer.getClearAlpha()===originalClearAlpha && Array.from(scene.querySelectorAll('[data-room-opaque]')).every(el=>el.object3D.visible) && !!document.querySelector('#boundary-rig').components['locomotion-demo'];
-      const planePermissionRestored=!scene.systems.webxr.sessionConfiguration.requiredFeatures.includes('plane-detection');
-      scene.is=originalIs;scene.enterAR=originalEnter;scene.renderer.xr.getSession=originalSession;
-      return {earlyLaunches,launches,polygonCorners,arBackground,clearAlpha,opaqueHidden,locomotionRemoved,translatedX,hiddenOnTrackingLoss,recovered,observations,removed,restored,planePermissionRestored,
+      const remainedInXR=ar && scene.renderer.xr.getSession()===session;
+      select('room-test');step(35000);step(39000);select('room-capture');await Promise.resolve();
+      const captureStillUsed=launches===1 && lab.captureUsed;
+      select('room-stop');detector.stop();ar=false;
+      const roomFeatureRequested=scene.systems.webxr.sessionConfiguration.optionalFeatures.includes('plane-detection');
+      scene.is=originalIs;scene.renderer.xr.getSession=originalSession;
+      return {earlyLaunches,launches,polygonCorners,arBackground,clearAlpha,opaqueHidden,locomotionRemoved,translatedX,hiddenOnTrackingLoss,recovered,observations,removed,restored,sameSession,remainedInXR,captureStillUsed,roomFeatureRequested,
         arButtonDisabled:scene.components['xr-mode-ui'].data.enterAREnabled===false};
     });
     assert.equal(roomCheck.earlyLaunches,0);assert.equal(roomCheck.launches,1);assert.equal(roomCheck.polygonCorners,6);
     assert.equal(roomCheck.arBackground,null);assert.equal(roomCheck.clearAlpha,0);assert.equal(roomCheck.translatedX,2);
-    for (const key of ['opaqueHidden','locomotionRemoved','hiddenOnTrackingLoss','recovered','removed','restored','planePermissionRestored','arButtonDisabled']) assert.equal(roomCheck[key],true,key);
+    for (const key of ['opaqueHidden','locomotionRemoved','hiddenOnTrackingLoss','recovered','removed','restored','sameSession','remainedInXR','captureStillUsed','roomFeatureRequested','arButtonDisabled']) assert.equal(roomCheck[key],true,key);
     assert.equal(roomCheck.observations.first,3);assert.equal(roomCheck.observations.empty,4);
     assert.equal(roomCheck.observations.corners,6);assert.equal(roomCheck.observations.changes,2);
     console.log(JSON.stringify({roomCheck}));
     const download=page.waitForEvent('download');
-    await page.click('#download-boundary-report');
+    await page.evaluate(()=>{
+      const watch=document.querySelector('#left-hand').components['hand-with-watch'].projectedMenu;
+      watch.panelEl.components['menu-pages'].showPage('main');
+      watch.panelEl.querySelector('[data-test-action="save-diagnostics"]').emit('click');
+    });
     assert.equal((await download).suggestedFilename(),'boundary-lab-report.json');
+    const reportCheck=await page.evaluate(()=>({saved:!!localStorage.getItem('boundary-lab-report'),status:document.querySelector('a-scene').components['boundary-room-lab'].reportStatus,pageButtons:document.querySelector('#overlay').querySelectorAll('button').length}));
+    assert.equal(reportCheck.saved,true);assert.match(reportCheck.status,/Saved in this browser/);assert.equal(reportCheck.pageButtons,0);
     assert.deepEqual(errors, []);
     // A simple pair of rectangular rooms checks actual shared-wall surfaces.
     await page.goto(base + '/games/impossible-spaces/');
