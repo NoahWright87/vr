@@ -9,7 +9,9 @@ const playSpace = readFileSync(new URL('../common/play-space.js', import.meta.ur
 test('Boundary Lab is built as an experience and starts with shared watch hands', () => {
   assert.match(viteConfig, /boundaries: resolve\(root, 'games\/boundaries\/index\.html'\)/);
   assert.match(page, /src="\.\.\/\.\.\/common\/watch-menu\.js"/);
-  assert.match(page, /<template id="watch-menu-template">/);
+  assert.match(page, /<template id="watch-crossbar-template">/);
+  assert.doesNotMatch(page, /<template id="watch-menu-template">/);
+  assert.match(page, /visor-menu="page: visor"/);
 
   ['left-hand', 'right-hand'].forEach((id) => {
     const hand = page.match(new RegExp('<a-entity id="' + id + '"[^>]*>'))[0];
@@ -35,10 +37,9 @@ test('Boundary Lab combines haptics controls with a shared grabbable cube', () =
   assert.match(page, /hint-zone="action: grab; radius: 0\.3/);
   assert.match(page, /grabAction: grab; grabLabel: GRAB/);
   assert.match(page, /grabbable-proximity-haptics="intensity: 0\.35; duration: 45"/);
-  assert.match(page, /page-haptics/);
-  ['left', 'right'].forEach((hand) => {
-    ['low', 'medium', 'high'].forEach((level) => {
-      assert.match(page, new RegExp('menu-item="value: haptic-' + hand + '-' + level));
-    });
-  });
+  assert.match(page, /id: 'boundary-haptics'/);
+  // Rows are built per hand and level, as haptic-<hand>-<level> actions.
+  assert.match(page, /id: 'haptic-' \+ hand \+ '-' \+ level/);
+  assert.match(page, /hapticRows\('left'\)\.concat\(hapticRows\('right'\)\)/);
+  assert.match(page, /\^haptic-\(left\|right\)-\(low\|medium\|high\)\$/);
 });

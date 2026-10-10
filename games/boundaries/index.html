@@ -11,6 +11,8 @@
     <script>window.AFRAME_CDN_ROOT = '../../vendor/aframe-1.6.0/';</script>
     <script src="../../vendor/aframe-1.6.0/aframe-v1.6.0.min.js"></script>
     <script type="module" src="../../common/watch-menu.js"></script>
+    <script type="module" src="../../common/menu-crossbar.js"></script>
+    <script type="module" src="../../common/visor-menu.js"></script>
     <script type="module" src="../../common/play-space.js"></script>
     <script type="module" src="../../common/locomotion.js"></script>
     <script type="module" src="../../common/desktop-controls.js"></script>
@@ -40,45 +42,103 @@
     <div id="overlay">
       <span>
         Boundary + Haptics Lab — grab the orange cube with Grip. Enter its
-        reach radius for a brief tactile cue; use the wrist watch for boundary
-        and controller-haptics tests.
+        reach radius for a brief tactile cue; use the wrist watch (Tab) for
+        boundary and controller-haptics tests, and the visor (`) for its settings.
       </span>
       <a href="../../index.html">All prototypes</a>
     </div>
 
-    <!-- The shared watch component projects this template from either wrist. -->
-    <template id="watch-menu-template">
-      <a-entity class="watch-menu-panel" visible="false">
-        <a-entity data-menu-page="main">
-          <a-plane width="1" height="1.58" color="#101827" position="0 -0.12 -0.01"></a-plane>
-          <a-entity class="menu-chrome-slot" data-title="BOUNDARY LAB" data-help="false" data-close="true" data-width="1" data-bar-y="0.64"></a-entity>
-          <a-text value="HEADSET BOUNDARY" align="center" color="#7dd3fc" width="1.7" position="0 0.4 0.01"></a-text>
-          <a-text class="boundary-status" value="Enter VR to detect" align="center" color="#f8fafc" width="1.55" position="0 0.21 0.01"></a-text>
-          <a-text class="boundary-detail" value="The cyan ground outline will match\nthe headset's reported play space." align="center" color="#aab8d2" width="1.25" position="0 -0.06 0.01"></a-text>
-          <a-text value="Grab the orange cube: Grip when\nyou feel the quick reach cue." align="center" color="#f7c98f" width="1.2" position="0 -0.34 0.01"></a-text>
-          <a-entity class="pm-target" geometry="primitive: plane; width: 0.78; height: 0.17" material="color: #182f4a" menu-item="value: page-haptics; label: Haptics tests" position="0 -0.59 0">
-            <a-text value="Haptics tests  >" align="center" color="#e8f3ff" width="2.5" position="0 0 0.01"></a-text>
-          </a-entity>
-        </a-entity>
-
-        <!-- One open wrist menu can test either controller, so the player can
-             distinguish a hand-tracking/grab issue from a haptics issue. -->
-        <a-entity data-menu-page="haptics" visible="false">
-          <a-plane width="1.25" height="1.78" color="#101827" position="0 -0.12 -0.01"></a-plane>
-          <a-entity class="menu-chrome-slot" data-title="HAPTICS" data-help="false" data-close="true" data-close-value="haptics-close" data-width="1.25" data-bar-y="0.66"></a-entity>
-          <a-text value="Each pulse lasts 250 ms" align="center" color="#9fb7d7" width="2.2" position="0 0.48 0.01"></a-text>
-          <a-text value="LEFT" align="center" color="#8dd6ff" width="2.2" position="-0.3 0.31 0.01"></a-text>
-          <a-text value="RIGHT" align="center" color="#ffbc8d" width="2.2" position="0.3 0.31 0.01"></a-text>
-          <a-entity class="pm-target" geometry="primitive: plane; width: 0.5; height: 0.17" material="color: #16425d" menu-item="value: haptic-left-low; label: Left 20%" position="-0.3 0.12 0"><a-text value="20%" align="center" color="#e8f7ff" width="3" position="0 0 0.01"></a-text></a-entity>
-          <a-entity class="pm-target" geometry="primitive: plane; width: 0.5; height: 0.17" material="color: #5b351f" menu-item="value: haptic-right-low; label: Right 20%" position="0.3 0.12 0"><a-text value="20%" align="center" color="#fff3e8" width="3" position="0 0 0.01"></a-text></a-entity>
-          <a-entity class="pm-target" geometry="primitive: plane; width: 0.5; height: 0.17" material="color: #1c6389" menu-item="value: haptic-left-medium; label: Left 60%" position="-0.3 -0.11 0"><a-text value="60%" align="center" color="#e8f7ff" width="3" position="0 0 0.01"></a-text></a-entity>
-          <a-entity class="pm-target" geometry="primitive: plane; width: 0.5; height: 0.17" material="color: #8a522d" menu-item="value: haptic-right-medium; label: Right 60%" position="0.3 -0.11 0"><a-text value="60%" align="center" color="#fff3e8" width="3" position="0 0 0.01"></a-text></a-entity>
-          <a-entity class="pm-target" geometry="primitive: plane; width: 0.5; height: 0.17" material="color: #238bc0" menu-item="value: haptic-left-high; label: Left 100%" position="-0.3 -0.34 0"><a-text value="100%" align="center" color="#fff" width="3" position="0 0 0.01"></a-text></a-entity>
-          <a-entity class="pm-target" geometry="primitive: plane; width: 0.5; height: 0.17" material="color: #c96e37" menu-item="value: haptic-right-high; label: Right 100%" position="0.3 -0.34 0"><a-text value="100%" align="center" color="#fff" width="3" position="0 0 0.01"></a-text></a-entity>
-          <a-text class="haptics-status" value="Choose a controller and level" align="center" color="#c7d4e8" width="2.1" wrap-count="30" position="0 -0.61 0.01"></a-text>
-        </a-entity>
+    <!-- The shared watch component projects this template from either
+         wrist: one crossbar menu built from the "boundary-watch" page
+         registered below. What the boundary reads, and what the last
+         haptics pulse did, show in its sidecar. -->
+    <template id="watch-crossbar-template">
+      <a-entity class="watch-crossbar-panel" visible="false">
+        <a-entity class="watch-crossbar"
+          position="0 0.17 0"
+          crossbar-menu="page: boundary-watch; width: 1.2; rowHeight: 0.2; maxChars: 20; open: false; closeBehavior: hide; memory: none; hint: false; stickRange: 0.35; crumbs: title; breadcrumbDepth: 1; plateOpacity: 0.94; exitKey: Tab; exitButton: WATCH; sidecarWidth: 1; sidecarChars: 24"
+          crossbar-menu-registration
+        ></a-entity>
       </a-entity>
     </template>
+
+    <script type="module">
+      import { registerMenuPage } from '../../common/menu-crossbar.js';
+      import { registerVisorPage } from '../../common/visor-page.js';
+
+      var LEVELS = { low: 0.2, medium: 0.6, high: 1.0 };
+      var hapticsStatus = 'Choose a controller and level.';
+
+      function boundaryInfo () {
+        var scene = document.querySelector('a-scene');
+        var space = scene && scene.systems['play-space'];
+        if (!space) return '';
+        return ['HEADSET BOUNDARY', space.status, space.detail];
+      }
+
+      function hapticRows (hand) {
+        return ['low', 'medium', 'high'].map(function (level) {
+          return {
+            kind: 'action',
+            id: 'haptic-' + hand + '-' + level,
+            label: (hand === 'left' ? 'Left ' : 'Right ') + Math.round(LEVELS[level] * 100) + '%',
+          };
+        });
+      }
+
+      registerMenuPage('boundary-watch', {
+        // The clock: hand-with-watch writes the time into the title.
+        title: '',
+        items: [
+          { kind: 'info', id: 'boundary-status', label: 'Boundary', info: boundaryInfo },
+          {
+            // One wrist menu can test either controller, so a grab or
+            // hand-tracking problem can be told apart from a haptics one.
+            kind: 'submenu', id: 'boundary-haptics', label: 'Haptics tests',
+            info: function () { return ['HAPTICS', 'Each pulse lasts 250 ms.', '', hapticsStatus]; },
+            items: hapticRows('left').concat(hapticRows('right')),
+          },
+          {
+            kind: 'info', id: 'boundary-about', label: 'About',
+            info: ['BOUNDARY LAB', 'Grab the orange cube: grip', 'when you feel the quick', 'reach cue. The cyan line', 'is the boundary your', 'headset reports.'],
+          },
+        ],
+      });
+
+      // Only the rows every visor has: its settings, and Exit VR.
+      registerVisorPage('visor', { title: 'BOUNDARY LAB', items: [] });
+
+      function redrawWatches () {
+        document.querySelectorAll('[hand-with-watch]').forEach(function (el) {
+          var watch = el.components['hand-with-watch'];
+          if (watch && watch.crossbarComponent) watch.crossbarComponent.render();
+        });
+      }
+
+      var sceneEl = document.querySelector('a-scene');
+      sceneEl.addEventListener('menu-item-select', function (evt) {
+        var match = /^haptic-(left|right)-(low|medium|high)$/.exec(evt.detail.value || '');
+        if (!match) return;
+        var hand = match[1];
+        var intensity = LEVELS[match[2]];
+        var handEl = document.querySelector('#' + hand + '-hand');
+        var watch = handEl && handEl.components['hand-with-watch'];
+        if (!watch) return;
+        hapticsStatus = 'Sending ' + hand.toUpperCase() + ' ' + Math.round(intensity * 100) + '%...';
+        redrawWatches();
+        watch.triggerHaptics(intensity, 250);
+      });
+      sceneEl.addEventListener('haptics-pulse-result', function (evt) {
+        var result = evt.detail;
+        var name = result.hand.toUpperCase() + ' ' + Math.round(result.intensity * 100) + '%';
+        if (result.status === 'sent') hapticsStatus = name + ' sent via ' + result.api.replace('-', ' ');
+        else if (result.status === 'unavailable') hapticsStatus = name + ': no haptics API on this controller';
+        else hapticsStatus = name + ': browser ' + result.status;
+        redrawWatches();
+      });
+      // The boundary's status changes as the headset reports it.
+      sceneEl.addEventListener('play-space-status', redrawWatches);
+    </script>
 
     <script>
       // The floor texture is the same lightweight, canvas-generated checker
@@ -148,37 +208,9 @@
       });
     </script>
 
-    <script>
-      document.addEventListener('DOMContentLoaded', function () {
-        var LEVELS = { low: 0.2, medium: 0.6, high: 1.0 };
-        function setHapticsStatus(message, color) {
-          document.querySelectorAll('.haptics-status').forEach(function (label) {
-            label.setAttribute('text', 'value', message);
-            label.setAttribute('text', 'color', color || '#c7d4e8');
-          });
-        }
-        document.querySelector('a-scene').addEventListener('menu-item-select', function (evt) {
-          var match = /^haptic-(left|right)-(low|medium|high)$/.exec(evt.detail.value || '');
-          if (!match) return;
-          var hand = match[1];
-          var intensity = LEVELS[match[2]];
-          var handEl = document.querySelector('#' + hand + '-hand');
-          var watch = handEl && handEl.components['hand-with-watch'];
-          if (!watch) return;
-          setHapticsStatus('Sending ' + hand.toUpperCase() + ' ' + Math.round(intensity * 100) + '%...', '#fff0a3');
-          watch.triggerHaptics(intensity, 250);
-        });
-        document.querySelector('a-scene').addEventListener('haptics-pulse-result', function (evt) {
-          var result = evt.detail;
-          var name = result.hand.toUpperCase() + ' ' + Math.round(result.intensity * 100) + '%';
-          if (result.status === 'sent') setHapticsStatus(name + ' sent via ' + result.api.replace('-', ' '), '#9ff0bb');
-          else if (result.status === 'unavailable') setHapticsStatus(name + ': no haptics API on this controller', '#ffb3a7');
-          else setHapticsStatus(name + ': browser ' + result.status, '#ffb3a7');
-        });
-      });
-    </script>
 
-    <a-scene background="color: #08101f">
+
+    <a-scene background="color: #08101f" keyboard-shortcuts="enterVR: false" visor-menu="page: visor">
       <a-plane id="boundary-floor" rotation="-90 0 0" width="30" height="30" color="#263550"></a-plane>
       <a-sky color="#08101f"></a-sky>
 
