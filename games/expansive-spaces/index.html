@@ -19,28 +19,29 @@
   </head>
   <body>
     <div id="overlay">
-      <span><strong>Expansive Spaces</strong> · A room at real-world scale.
-        <small>Enter VR to fit your boundary. Either watch has the map, movement gain, optional steering and turn gain.
-          Desktop: WASD / drag to look / Tab for watch. Preview room: 4 × 3 m.</small></span>
+      <span><strong>Expansive Spaces</strong> · Experiment with a bigger virtual room.
+        <small>Either watch has world scale, the map, movement gain, steering and turn gain.
+          Desktop: WASD / drag to look / Tab for watch. Preview footprint: 4 × 3 m; default room: 6 × 4.5 m.</small></span>
       <a href="../../index.html">All prototypes</a>
     </div>
 
     <template id="watch-menu-template">
       <a-entity class="watch-menu-panel" visible="false">
         <a-entity data-menu-page="main">
-          <a-plane width="1.12" height="2.1" color="#101827" position="0 -.33 -.01"></a-plane>
+          <a-plane width="1.12" height="2.35" color="#101827" position="0 -.455 -.01"></a-plane>
           <a-entity class="menu-chrome-slot" data-title="EXPANSIVE SPACES" data-help="false" data-close="true" data-width="1.12" data-bar-y=".64"></a-entity>
-          <a-text font="sourcecodepro" class="space-status" value="Preview room - 4.0 x 3.0 m" align="center" color="#e0f2fe" width="1.65" position="0 .43 .01"></a-text>
+          <a-text font="sourcecodepro" class="space-status" value="Preview boundary - 4.0 x 3.0 m\nRoom 6.0 x 4.5 m (1.50x)" align="center" color="#e0f2fe" width="1.65" position="0 .43 .01"></a-text>
           <a-entity boundary-map="width: .96; height: .72" position="0 -.02 .01"></a-entity>
-          <a-text font="sourcecodepro" value="Orange: real   Purple: game\nCyan: boundary | trails: last 20 m" align="center" color="#bfcee2" width="1.6" position="0 -.48 .01"></a-text>
+          <a-text font="sourcecodepro" value="Orange: real   Purple: game\nCyan: boundary   Gray: room" align="center" color="#bfcee2" width="1.6" position="0 -.48 .01"></a-text>
           <a-text font="sourcecodepro" class="space-detail" value="Enter VR to read your boundary." align="center" color="#94a3b8" width="1.3" wrap-count="36" position="0 -.59 .01"></a-text>
-          <a-entity class="pm-target" geometry="primitive: plane; width: .96; height: .16" material="color: #182f4a" menu-item="value: page-gain; label: Movement gain" position="0 -.77 0">
+          <a-entity menu-option="key: space-world-scale; label: World scale; values: 1|1.25|1.5|1.75|2; labels: 1.00x|1.25x|1.50x|1.75x|2.00x; value: 1.5; width: .96; height: .16; font: sourcecodepro" position="0 -.77 0"></a-entity>
+          <a-entity class="pm-target" geometry="primitive: plane; width: .96; height: .16" material="color: #182f4a" menu-item="value: page-gain; label: Movement gain" position="0 -.99 0">
             <a-text font="sourcecodepro" value="Movement gain >" align="center" width="1.65" position="0 0 .01"></a-text>
           </a-entity>
-          <a-entity class="pm-target" geometry="primitive: plane; width: .96; height: .16" material="color: #182f4a" menu-item="value: page-steering; label: Walking steering" position="0 -.98 0">
+          <a-entity class="pm-target" geometry="primitive: plane; width: .96; height: .16" material="color: #182f4a" menu-item="value: page-steering; label: Walking steering" position="0 -1.21 0">
             <a-text font="sourcecodepro" class="space-steering-link" value="Walking steering: OFF >" align="center" width="1.5" position="0 0 .01"></a-text>
           </a-entity>
-          <a-entity class="pm-target" geometry="primitive: plane; width: .96; height: .16" material="color: #182f4a" menu-item="value: page-turn; label: Turn gain" position="0 -1.19 0">
+          <a-entity class="pm-target" geometry="primitive: plane; width: .96; height: .16" material="color: #182f4a" menu-item="value: page-turn; label: Turn gain" position="0 -1.43 0">
             <a-text font="sourcecodepro" class="space-turn-link" value="Turn gain: OFF >" align="center" width="1.5" position="0 0 .01"></a-text>
           </a-entity>
         </a-entity>
@@ -99,9 +100,9 @@ Pauses while the watch is open." align="center" color="#bfcee2" width="1.3" wrap
         <a-entity id="space-wall-panel" position="0 1.6 -1.48">
           <a-plane width="1.48" height="1.55" color="#101827"></a-plane>
           <a-text font="sourcecodepro" value="EXPANSIVE SPACES" align="center" color="#f8fafc" width="2.7" position="0 .6 .01"></a-text>
-          <a-text font="sourcecodepro" class="space-status" value="Preview room - 4.0 x 3.0 m" align="center" color="#7dd3fc" width="1.9" wrap-count="40" position="0 .4 .01"></a-text>
+          <a-text font="sourcecodepro" class="space-status" value="Preview boundary - 4.0 x 3.0 m\nRoom 6.0 x 4.5 m (1.50x)" align="center" color="#7dd3fc" width="1.9" wrap-count="40" position="0 .4 .01"></a-text>
           <a-entity boundary-map="width: 1.28; height: .96" position="0 -.13 .01"></a-entity>
-          <a-text font="sourcecodepro" value="Orange: real   Purple: game\nCyan: boundary | trails: last 20 m" align="center" color="#bfcee2" width="1.85" position="0 -.68 .01"></a-text>
+          <a-text font="sourcecodepro" value="Orange: real   Purple: game\nCyan: boundary   Gray: room" align="center" color="#bfcee2" width="1.85" position="0 -.68 .01"></a-text>
         </a-entity>
       </a-entity>
 

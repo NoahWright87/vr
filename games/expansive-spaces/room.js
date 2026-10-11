@@ -3,16 +3,21 @@ import '../../common/locomotion.js';
 import '../../common/desktop-controls.js';
 import '../../common/checker-floor.js';
 import './movement-gain.js';
-import { measureBounds, isInsideBoundary, mapLayout } from './play-space.js';
+import { measureBounds, isInsideBoundary, mapLayout, sanitizeWorldScale, scaledRoomBounds } from './play-space.js';
 import { boundaryTarget } from './redirection.js';
 import { TravelTrail, TRAIL_METRES } from './travel-trail.js';
 
 const THREE = AFRAME.THREE;
 const PREVIEW = [{ x: -2, z: -1.5 }, { x: 2, z: -1.5 }, { x: 2, z: 1.5 }, { x: -2, z: 1.5 }];
 const PHYSICAL_COLOR = '#ffad54', VIRTUAL_COLOR = '#c084fc';
+const WORLD_SCALE_KEY = 'vr-expansive-world-scale-v1';
 
 AFRAME.registerComponent('expansive-space', {
   init: function () {
+    let savedScale;
+    try { savedScale = JSON.parse(localStorage.getItem(WORLD_SCALE_KEY))?.worldScale; } catch (_) {}
+    this.worldScale = sanitizeWorldScale(savedScale);
+    this.scaleSettingsDirty = true;
     this.session = null;
     this.boundedSpace = null;
     this.frameHandle = null;
@@ -46,15 +51,27 @@ AFRAME.registerComponent('expansive-space', {
         el.setAttribute('shader', 'sdf');
       });
       this.renderStatus();
+      this.scaleSettingsDirty = true;
     }.bind(this);
     this.onReset = this.refreshBoundary.bind(this);
     this.onTravelReset = this.clearTrails.bind(this);
+    this.onWorldScale = function (evt) {
+      if (evt.detail.key !== 'space-world-scale') return;
+      this.worldScale = sanitizeWorldScale(evt.detail.value);
+      try { localStorage.setItem(WORLD_SCALE_KEY, JSON.stringify({ worldScale: this.worldScale })); } catch (_) {}
+      // Resize only the room geometry: preserve the pose transform and trails.
+      this.buildRoom();
+      this.renderWorldScale();
+      this.renderStatus();
+      this.drawMap();
+    }.bind(this);
     this.el.sceneEl.addEventListener('enter-vr', this.onEnter);
     this.el.sceneEl.addEventListener('exit-vr', this.onExit);
     this.el.sceneEl.addEventListener('watch-menu-ready', this.onWatchReady);
     this.el.sceneEl.addEventListener('space-travel-reset', this.onTravelReset);
+    this.el.sceneEl.addEventListener('menu-option-change', this.onWorldScale);
     this.setBoundary(PREVIEW);
-    this.setStatus('Preview room - 4.0 x 3.0 m', 'Enter VR to read your boundary.');
+    this.setStatus('Preview boundary - 4.0 x 3.0 m', 'Enter VR to read your boundary.');
     this.drawMap();
   },
 
@@ -65,8 +82,22 @@ AFRAME.registerComponent('expansive-space', {
   },
 
   renderStatus: function () {
-    this.el.sceneEl.querySelectorAll('.space-status').forEach(el => el.setAttribute('text', 'value', this.status));
+    const b = this.virtualBounds;
+    const roomSize = b ? '\nRoom ' + b.width.toFixed(1) + ' x ' + b.depth.toFixed(1) + ' m (' + this.worldScale.toFixed(2) + 'x)' : '';
+    this.el.sceneEl.querySelectorAll('.space-status').forEach(el => el.setAttribute('text', 'value', this.status + roomSize));
     this.el.sceneEl.querySelectorAll('.space-detail').forEach(el => el.setAttribute('text', 'value', this.detail));
+  },
+
+  renderWorldScale: function () {
+    let synchronized = 0;
+    this.el.sceneEl.querySelectorAll('[menu-option]').forEach(el => {
+      const row = el.components['menu-option'];
+      if (!row || row.data.key !== 'space-world-scale') return;
+      row.setValue(this.worldScale);
+      row.valueTextEl.setAttribute('width', 1.4);
+      synchronized++;
+    });
+    this.scaleSettingsDirty = synchronized < 2;
   },
 
   setBoundary: function (points) {
@@ -78,6 +109,7 @@ AFRAME.registerComponent('expansive-space', {
     this.clearTrails();
     this.layout = mapLayout(bounds);
     this.buildRoom();
+    this.buildBoundaryOutline();
     return true;
   },
 
@@ -89,9 +121,9 @@ AFRAME.registerComponent('expansive-space', {
     this.virtualDirection.copy(this.direction);
   },
 
-  disposeRoom: function () {
+  disposeRoom: function (removeOutline = true) {
     const outline = this.el.getObject3D('boundary-outline');
-    if (outline) {
+    if (outline && removeOutline) {
       outline.geometry.dispose();
       outline.material.dispose();
       this.el.removeObject3D('boundary-outline');
@@ -108,8 +140,8 @@ AFRAME.registerComponent('expansive-space', {
   },
 
   buildRoom: function () {
-    this.disposeRoom();
-    const b = this.bounds;
+    this.disposeRoom(false);
+    const b = this.virtualBounds = scaledRoomBounds(this.bounds, this.worldScale);
     const height = 2.7, thickness = 0.08;
     const group = new THREE.Group();
     const wallMaterial = new THREE.MeshStandardMaterial({ color: '#70849d', roughness: 1 });
@@ -120,8 +152,8 @@ AFRAME.registerComponent('expansive-space', {
       mesh.position.set(x, y, z);
       group.add(mesh);
     }
-    // Inner wall faces sit on the rectangular extents, not a thickness inside
-    // them. For irregular guardians the cyan polygon is still the actual edge.
+    // Grow width/depth around the boundary center without scaling the room
+    // entity itself: raw tracking, hand reach and checker size stay unchanged.
     [b.minZ - thickness / 2, b.maxZ + thickness / 2].forEach(z => {
       box(b.width + thickness * 2, height, thickness, b.centerX, height / 2, z, wallMaterial);
       box(b.width, .09, .02, b.centerX, .045, z < b.centerZ ? b.minZ + .01 : b.maxZ - .01, trimMaterial);
@@ -131,12 +163,6 @@ AFRAME.registerComponent('expansive-space', {
       box(.02, .09, b.depth, x < b.centerX ? b.minX + .01 : b.maxX - .01, .045, b.centerZ, trimMaterial);
     });
     box(b.width, thickness, b.depth, b.centerX, height + thickness / 2, b.centerZ, ceilingMaterial);
-    const outlineGeometry = new THREE.BufferGeometry().setFromPoints(this.points.map(point => new THREE.Vector3(point.x, .025, point.z)));
-    const outline = new THREE.LineLoop(outlineGeometry, new THREE.LineBasicMaterial({ color: '#22d3ee', depthTest: false }));
-    outline.renderOrder = 1;
-    // This outline follows the physical room even when gain moves the virtual
-    // viewpoint. The shell/floor remain in virtual coordinates.
-    this.el.setObject3D('boundary-outline', outline);
     this.el.setObject3D('room-shell', group);
     const floor = this.el.querySelector('#space-floor');
     floor.setAttribute('width', b.width);
@@ -144,8 +170,21 @@ AFRAME.registerComponent('expansive-space', {
     floor.setAttribute('position', { x: b.centerX, y: 0, z: b.centerZ });
     const panel = this.el.querySelector('#space-wall-panel');
     panel.setAttribute('position', { x: b.centerX, y: 1.6, z: b.minZ + .025 });
-    // Keep the map inside a very small reported room as well.
     panel.object3D.scale.setScalar(Math.min(1, b.width / 1.7));
+  },
+
+  buildBoundaryOutline: function () {
+    const previous = this.el.getObject3D('boundary-outline');
+    if (previous) {
+      previous.geometry.dispose(); previous.material.dispose();
+      this.el.removeObject3D('boundary-outline');
+    }
+    const outlineGeometry = new THREE.BufferGeometry().setFromPoints(this.points.map(point => new THREE.Vector3(point.x, .025, point.z)));
+    const outline = new THREE.LineLoop(outlineGeometry, new THREE.LineBasicMaterial({ color: '#22d3ee', depthTest: false }));
+    outline.renderOrder = 1;
+    // This outline follows the physical room even when gain moves the virtual
+    // viewpoint. The shell/floor remain in virtual coordinates.
+    this.el.setObject3D('boundary-outline', outline);
   },
 
   resetRig: function () {
@@ -179,7 +218,7 @@ AFRAME.registerComponent('expansive-space', {
       this.frameHandle = session.requestAnimationFrame(onFrame);
     }).catch(() => {
       if (this.session !== session) return;
-      this.setStatus('Preview room - boundary unavailable', 'This browser did not expose a boundary.\nRoom dimensions are a 4 x 3 m preview.');
+      this.setStatus('Preview boundary - boundary unavailable', 'This browser did not expose a boundary.\nUsing a 4 x 3 m preview footprint.');
     });
   },
 
@@ -187,7 +226,7 @@ AFRAME.registerComponent('expansive-space', {
     const points = this.boundedSpace && this.boundedSpace.boundsGeometry;
     if (!this.setBoundary(points)) {
       this.showPreview();
-      this.setStatus('Preview room - no boundary supplied', 'No usable boundary geometry.\nRoom dimensions are a 4 x 3 m preview.');
+      this.setStatus('Preview boundary - no boundary supplied', 'No usable boundary geometry.\nUsing a 4 x 3 m preview footprint.');
       return false;
     }
     this.boundaryValid = true;
@@ -212,7 +251,7 @@ AFRAME.registerComponent('expansive-space', {
       this.detected = true;
       const b = this.bounds;
       this.setStatus('Headset boundary - ' + b.width.toFixed(1) + ' x ' + b.depth.toFixed(1) + ' m',
-        'Room = rectangular boundary extents.\nCyan = exact headset outline.');
+        'Cyan = physical boundary.\nGray = virtual room footprint.');
     }
   },
 
@@ -230,7 +269,7 @@ AFRAME.registerComponent('expansive-space', {
     this.releaseSession();
     this.showPreview();
     this.resetRig();
-    this.setStatus('Preview room - 4.0 x 3.0 m', 'Enter VR to read your boundary.');
+    this.setStatus('Preview boundary - 4.0 x 3.0 m', 'Enter VR to read your boundary.');
   },
 
   showPreview: function () {
@@ -245,9 +284,10 @@ AFRAME.registerComponent('expansive-space', {
   drawMap: function () {
     // Both trajectories use the same metric frame. Include retained history
     // and current markers so gained travel is never pinned to the map edge.
-    this.layout = mapLayout(measureBounds([...this.points, ...this.physicalTrail.points,
+    const room = this.virtualBounds;
+    this.layout = mapLayout(measureBounds([...this.points, { x: room.minX, z: room.minZ }, { x: room.maxX, z: room.maxZ }, ...this.physicalTrail.points,
       ...this.virtualTrail.points, this.position, this.virtualPosition]), 512, 384, 60);
-    const ctx = this.context, b = this.bounds, project = this.layout.project;
+    const ctx = this.context, b = room, physical = this.bounds, project = this.layout.project;
     ctx.fillStyle = '#101827';
     ctx.fillRect(0, 0, 512, 384);
     const topLeft = project({ x: b.minX, z: b.minZ });
@@ -304,14 +344,15 @@ AFRAME.registerComponent('expansive-space', {
     ctx.textAlign = 'center';
     ctx.font = '20px system-ui, sans-serif';
     ctx.fillStyle = '#e0f2fe';
-    ctx.fillText('Boundary ' + b.width.toFixed(1) + ' × ' + b.depth.toFixed(1) + ' m · Auto zoom', 256, 26);
+    ctx.fillText('Real ' + physical.width.toFixed(1) + ' × ' + physical.depth.toFixed(1) +
+      ' m | Room ' + b.width.toFixed(1) + ' × ' + b.depth.toFixed(1) + ' m', 256, 26);
     ctx.font = '18px system-ui, sans-serif';
     ctx.fillStyle = PHYSICAL_COLOR; ctx.fillText('Real', 64, 350);
     ctx.fillStyle = VIRTUAL_COLOR; ctx.fillText('Game', 155, 350);
     ctx.fillStyle = '#bfcee2'; ctx.fillText('Last ' + TRAIL_METRES + ' m per trail', 345, 350);
     ctx.font = '17px system-ui, sans-serif';
     ctx.fillStyle = inside ? '#aab8d2' : '#fb7185';
-    ctx.fillText(!inside ? 'OUTSIDE ' + (this.detected ? 'BOUNDARY' : 'PREVIEW ROOM') :
+    ctx.fillText(!inside ? 'OUTSIDE ' + (this.detected ? 'BOUNDARY' : 'PREVIEW FOOTPRINT') :
       this.detected ? 'LIVE HEADSET BOUNDARY' : 'PREVIEW · NOT A DETECTED BOUNDARY', 256, 371);
     this.mapTexture.needsUpdate = true;
   },
@@ -353,6 +394,7 @@ AFRAME.registerComponent('expansive-space', {
   },
 
   tick: function (time) {
+    if (this.scaleSettingsDirty) this.renderWorldScale();
     // enter-vr can precede the renderer attaching its session by a frame.
     const xr = this.el.sceneEl.renderer && this.el.sceneEl.renderer.xr;
     if (xr && xr.getSession() && xr.getSession() !== this.session) this.start();
@@ -380,6 +422,7 @@ AFRAME.registerComponent('expansive-space', {
     this.el.sceneEl.removeEventListener('exit-vr', this.onExit);
     this.el.sceneEl.removeEventListener('watch-menu-ready', this.onWatchReady);
     this.el.sceneEl.removeEventListener('space-travel-reset', this.onTravelReset);
+    this.el.sceneEl.removeEventListener('menu-option-change', this.onWorldScale);
     this.disposeRoom();
     this.mapTexture.dispose();
   },

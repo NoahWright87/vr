@@ -1,5 +1,22 @@
 // Geometry stays in bounded-floor coordinates. The room transform maps that
 // space into A-Frame's current reference space, including recentering/rotation.
+export const DEFAULT_WORLD_SCALE = 1.5;
+
+export function sanitizeWorldScale(value) {
+  const parsed = value === null || value === undefined ? NaN : Number(value);
+  return Number.isFinite(parsed) ? Math.max(1, Math.min(2, parsed)) : DEFAULT_WORLD_SCALE;
+}
+
+// Enlarge the virtual footprint around the physical boundary's center. The
+// tracked reference frame, player, checker size and physical polygon stay metric.
+export function scaledRoomBounds(bounds, worldScale) {
+  const scale = sanitizeWorldScale(worldScale);
+  const width = bounds.width * scale, depth = bounds.depth * scale;
+  return { ...bounds, width, depth,
+    minX: bounds.centerX - width / 2, maxX: bounds.centerX + width / 2,
+    minZ: bounds.centerZ - depth / 2, maxZ: bounds.centerZ + depth / 2 };
+}
+
 export function measureBounds(points) {
   if (!points || points.length < 3) return null;
   if (points.some(point => !Number.isFinite(point.x) || !Number.isFinite(point.z))) return null;

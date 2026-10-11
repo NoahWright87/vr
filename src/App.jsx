@@ -57,7 +57,7 @@ export function App() {
             interactive
             footer={<Text tone="muted">Explore →</Text>}
           >
-            Start with a room the size of your play space and a live boundary map.
+            Compare virtual room sizes with your play space and a live boundary map.
             A lab for making small spaces feel bigger.
           </Card>
         </CardGrid>
