@@ -5,9 +5,11 @@ import '../../common/checker-floor.js';
 import './movement-gain.js';
 import { measureBounds, isInsideBoundary, mapLayout } from './play-space.js';
 import { boundaryTarget } from './redirection.js';
+import { TravelTrail, TRAIL_METRES } from './travel-trail.js';
 
 const THREE = AFRAME.THREE;
 const PREVIEW = [{ x: -2, z: -1.5 }, { x: 2, z: -1.5 }, { x: 2, z: 1.5 }, { x: -2, z: 1.5 }];
+const PHYSICAL_COLOR = '#ffad54', VIRTUAL_COLOR = '#c084fc';
 
 AFRAME.registerComponent('expansive-space', {
   init: function () {
@@ -20,6 +22,12 @@ AFRAME.registerComponent('expansive-space', {
     this.viewerMatrix = new THREE.Matrix4();
     this.position = new THREE.Vector3();
     this.direction = new THREE.Vector3(0, 0, -1);
+    this.virtualPosition = new THREE.Vector3();
+    this.virtualDirection = new THREE.Vector3(0, 0, -1);
+    this.physicalTrail = new TravelTrail();
+    this.virtualTrail = new TravelTrail();
+    this.lastTravelEpoch = null;
+    this.inverseWorld = new THREE.Matrix4();
     this.outlineMatrix = new THREE.Matrix4();
     this.effectMatrix = new THREE.Matrix4();
     this.canvas = document.createElement('canvas');
@@ -40,9 +48,11 @@ AFRAME.registerComponent('expansive-space', {
       this.renderStatus();
     }.bind(this);
     this.onReset = this.refreshBoundary.bind(this);
+    this.onTravelReset = this.clearTrails.bind(this);
     this.el.sceneEl.addEventListener('enter-vr', this.onEnter);
     this.el.sceneEl.addEventListener('exit-vr', this.onExit);
     this.el.sceneEl.addEventListener('watch-menu-ready', this.onWatchReady);
+    this.el.sceneEl.addEventListener('space-travel-reset', this.onTravelReset);
     this.setBoundary(PREVIEW);
     this.setStatus('Preview room - 4.0 x 3.0 m', 'Enter VR to read your boundary.');
     this.drawMap();
@@ -65,9 +75,18 @@ AFRAME.registerComponent('expansive-space', {
     this.points = Array.from(points, point => ({ x: point.x, z: point.z }));
     this.bounds = bounds;
     this.steeringCenter = boundaryTarget(this.points);
+    this.clearTrails();
     this.layout = mapLayout(bounds);
     this.buildRoom();
     return true;
+  },
+
+  clearTrails: function () {
+    this.physicalTrail.clear();
+    this.virtualTrail.clear();
+    this.lastTravelEpoch = null;
+    this.virtualPosition.copy(this.position);
+    this.virtualDirection.copy(this.direction);
   },
 
   disposeRoom: function () {
@@ -189,6 +208,7 @@ AFRAME.registerComponent('expansive-space', {
     this.position.setFromMatrixPosition(this.viewerMatrix);
     this.direction.set(0, 0, -1).transformDirection(this.viewerMatrix);
     if (!this.detected) {
+      this.clearTrails(); // Discard samples taken in the unaligned preview frame.
       this.detected = true;
       const b = this.bounds;
       this.setStatus('Headset boundary - ' + b.width.toFixed(1) + ' x ' + b.depth.toFixed(1) + ' m',
@@ -223,6 +243,10 @@ AFRAME.registerComponent('expansive-space', {
   },
 
   drawMap: function () {
+    // Both trajectories use the same metric frame. Include retained history
+    // and current markers so gained travel is never pinned to the map edge.
+    this.layout = mapLayout(measureBounds([...this.points, ...this.physicalTrail.points,
+      ...this.virtualTrail.points, this.position, this.virtualPosition]), 512, 384, 60);
     const ctx = this.context, b = this.bounds, project = this.layout.project;
     ctx.fillStyle = '#101827';
     ctx.fillRect(0, 0, 512, 384);
@@ -241,27 +265,91 @@ AFRAME.registerComponent('expansive-space', {
     });
     ctx.closePath();
     ctx.stroke();
-    const inside = isInsideBoundary(this.position, this.points);
-    const p = project(this.position);
-    const x = Math.max(14, Math.min(498, p.x)), y = Math.max(44, Math.min(340, p.y));
     ctx.save();
-    ctx.translate(x, y);
-    ctx.rotate(Math.atan2(this.direction.x, -this.direction.z));
-    ctx.fillStyle = inside ? '#ffad54' : '#fb7185';
-    ctx.beginPath();
-    ctx.moveTo(0, -19); ctx.lineTo(10, 7); ctx.lineTo(0, 3); ctx.lineTo(-10, 7);
-    ctx.closePath(); ctx.fill();
-    ctx.beginPath(); ctx.arc(0, 0, 5, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.rect(8, 40, 496, 294); ctx.clip();
+    const drawTrail = (trail, color, width, dash) => {
+      ctx.strokeStyle = color;
+      ctx.lineWidth = width;
+      ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+      ctx.setLineDash(dash);
+      ctx.beginPath();
+      trail.points.forEach(point => {
+        const p = project(point);
+        if (point.start) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y);
+      });
+      ctx.stroke();
+    };
+    drawTrail(this.physicalTrail, PHYSICAL_COLOR, 5, []);
+    // Dashes leave the physical line visible where the two paths coincide.
+    drawTrail(this.virtualTrail, VIRTUAL_COLOR, 3, [7, 5]);
+    ctx.setLineDash([]);
+    const drawHeading = (position, direction, color, size, filled) => {
+      const p = project(position);
+      ctx.save(); ctx.translate(p.x, p.y);
+      ctx.rotate(Math.atan2(direction.x, -direction.z));
+      ctx.fillStyle = color; ctx.strokeStyle = color; ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.moveTo(0, -size); ctx.lineTo(size * .53, size * .37);
+      ctx.lineTo(0, size * .16); ctx.lineTo(-size * .53, size * .37);
+      ctx.closePath();
+      if (filled) ctx.fill(); else ctx.stroke();
+      ctx.beginPath(); ctx.arc(0, 0, filled ? 5 : 8, 0, Math.PI * 2);
+      if (filled) ctx.fill(); else ctx.stroke();
+      ctx.restore();
+    };
+    const inside = isInsideBoundary(this.position, this.points);
+    drawHeading(this.position, this.direction, PHYSICAL_COLOR, 19, true);
+    drawHeading(this.virtualPosition, this.virtualDirection, VIRTUAL_COLOR, 13, false);
     ctx.restore();
     ctx.textAlign = 'center';
     ctx.font = '20px system-ui, sans-serif';
     ctx.fillStyle = '#e0f2fe';
-    ctx.fillText(b.width.toFixed(1) + ' × ' + b.depth.toFixed(1) + ' m', 256, 26);
+    ctx.fillText('Boundary ' + b.width.toFixed(1) + ' × ' + b.depth.toFixed(1) + ' m · Auto zoom', 256, 26);
+    ctx.font = '18px system-ui, sans-serif';
+    ctx.fillStyle = PHYSICAL_COLOR; ctx.fillText('Real', 64, 350);
+    ctx.fillStyle = VIRTUAL_COLOR; ctx.fillText('Game', 155, 350);
+    ctx.fillStyle = '#bfcee2'; ctx.fillText('Last ' + TRAIL_METRES + ' m per trail', 345, 350);
     ctx.font = '17px system-ui, sans-serif';
     ctx.fillStyle = inside ? '#aab8d2' : '#fb7185';
     ctx.fillText(!inside ? 'OUTSIDE ' + (this.detected ? 'BOUNDARY' : 'PREVIEW ROOM') :
       this.detected ? 'LIVE HEADSET BOUNDARY' : 'PREVIEW · NOT A DETECTED BOUNDARY', 256, 371);
     this.mapTexture.needsUpdate = true;
+  },
+
+  sampleTravel: function (gain, xrSession) {
+    if (gain && !gain.hasPose) return;
+    this.el.object3D.updateWorldMatrix(true, false);
+    this.inverseWorld.copy(this.el.object3D.matrixWorld).invert();
+    if (xrSession && gain) {
+      // Sample the raw XR pose and its corrected pose together. The scene
+      // camera can still contain the previous render frame's tracked pose.
+      this.position.copy(gain.rawPosition).applyMatrix4(this.inverseWorld);
+      this.direction.copy(gain.direction).transformDirection(this.inverseWorld);
+      this.virtualPosition.copy(gain.rawPosition).applyQuaternion(gain.el.object3D.quaternion)
+        .add(gain.el.object3D.position).applyMatrix4(this.inverseWorld);
+      this.virtualDirection.copy(gain.direction).applyQuaternion(gain.el.object3D.quaternion)
+        .transformDirection(this.inverseWorld);
+    } else {
+      const camera = document.querySelector('#space-camera');
+      if (!camera) return;
+      camera.object3D.getWorldPosition(this.virtualPosition);
+      camera.object3D.getWorldDirection(this.virtualDirection).negate();
+      this.position.copy(this.virtualPosition);
+      this.direction.copy(this.virtualDirection);
+      if (gain) {
+        gain.physicalPosition(this.position, this.position);
+        gain.physicalDirection(this.direction);
+      }
+      this.position.applyMatrix4(this.inverseWorld);
+      this.direction.transformDirection(this.inverseWorld);
+      this.virtualPosition.applyMatrix4(this.inverseWorld);
+      this.virtualDirection.transformDirection(this.inverseWorld);
+    }
+    const epoch = gain ? gain.travelEpoch : 0;
+    const interrupted = this.lastTravelEpoch !== epoch;
+    this.physicalTrail.add(this.position, interrupted);
+    this.virtualTrail.add(this.virtualPosition, interrupted);
+    this.lastTravelEpoch = epoch;
   },
 
   tick: function (time) {
@@ -282,17 +370,7 @@ AFRAME.registerComponent('expansive-space', {
     }
     if (time - this.lastDraw < 100) return;
     this.lastDraw = time;
-    if (!this.detected) {
-      const camera = document.querySelector('#space-camera');
-      if (camera) {
-        camera.object3D.getWorldPosition(this.position);
-        if (gain) gain.physicalPosition(this.position, this.position);
-        this.el.object3D.worldToLocal(this.position);
-        camera.object3D.getWorldDirection(this.direction).negate();
-        if (gain) gain.physicalDirection(this.direction);
-        this.direction.transformDirection(this.el.object3D.matrixWorld.clone().invert());
-      }
-    }
+    this.sampleTravel(gain, xr && xr.getSession());
     this.drawMap();
   },
 
@@ -301,6 +379,7 @@ AFRAME.registerComponent('expansive-space', {
     this.el.sceneEl.removeEventListener('enter-vr', this.onEnter);
     this.el.sceneEl.removeEventListener('exit-vr', this.onExit);
     this.el.sceneEl.removeEventListener('watch-menu-ready', this.onWatchReady);
+    this.el.sceneEl.removeEventListener('space-travel-reset', this.onTravelReset);
     this.disposeRoom();
     this.mapTexture.dispose();
   },

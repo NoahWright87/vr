@@ -30,6 +30,8 @@ AFRAME.registerComponent('speed-dependent-gain', {
     this.up = new THREE.Vector3(0, 1, 0);
     this.target = new THREE.Vector3();
     this.extraYaw = 0;
+    this.travelEpoch = 0;
+    this.hasPose = false;
     this.session = null;
     this.baseSpace = null;
     this.frameHandle = null;
@@ -37,7 +39,10 @@ AFRAME.registerComponent('speed-dependent-gain', {
     this.settingsDirty = true;
     this.onEnter = this.start.bind(this);
     this.onExit = this.stop.bind(this);
-    this.onReferenceReset = this.resetEstimators.bind(this);
+    this.onReferenceReset = function () {
+      this.resetEstimators();
+      this.el.sceneEl.emit('space-travel-reset', {}, false);
+    }.bind(this);
     this.onWatchReady = function (evt) {
       this.settingsDirty = true;
       const panel = evt.detail.panelEl;
@@ -104,7 +109,12 @@ AFRAME.registerComponent('speed-dependent-gain', {
     }
   },
 
-  resetEstimators: function () { this.tracker.reset(); this.redirection.reset(); },
+  resetEstimators: function () {
+    this.tracker.reset();
+    this.redirection.reset();
+    this.travelEpoch++;
+    this.hasPose = false;
+  },
 
   watchOpen: function () {
     return [...this.el.sceneEl.querySelectorAll('.watch-menu-panel')].some(el => el.object3D.visible);
@@ -128,6 +138,7 @@ AFRAME.registerComponent('speed-dependent-gain', {
     this.extraYaw = 0;
     this.transform.reset();
     this.resetEstimators();
+    this.el.sceneEl.emit('space-travel-reset', {}, false);
     this.renderTelemetry();
   },
 
@@ -135,6 +146,12 @@ AFRAME.registerComponent('speed-dependent-gain', {
     if (![position.x, position.z, time].every(Number.isFinite)) {
       this.resetEstimators();
       return { extraX: 0, extraZ: 0, speed: 0, gain: 1 };
+    }
+    const previous = this.tracker.previous;
+    if (previous) {
+      const dt = (time - previous.timeMs) / 1000;
+      const speed = Math.hypot(position.x - previous.x, position.z - previous.z) / dt;
+      if (dt <= 0 || dt > .25 || speed > 8) this.travelEpoch++;
     }
     const result = this.tracker.sample(position, time);
     const redirect = this.redirection.sample(position, yaw, time,
@@ -145,6 +162,7 @@ AFRAME.registerComponent('speed-dependent-gain', {
     this.el.object3D.rotation.y += redirect.yawDelta;
     this.extraTranslation.set(this.transform.x, 0, this.transform.z);
     this.extraYaw = this.transform.yaw;
+    this.hasPose = true;
     return result;
   },
 
