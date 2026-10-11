@@ -1,5 +1,5 @@
 import { BoundaryObservation } from './boundary-observation.js';
-import { WalkingBoundary, segmentInside, validateFloor } from './floor-drawing.js';
+import { WalkingBoundary, validateFloor } from './floor-drawing.js';
 import { polygonArea } from '../../common/boundary-geometry.js';
 
 AFRAME.registerComponent('boundary-floor-lab', {
@@ -8,11 +8,12 @@ AFRAME.registerComponent('boundary-floor-lab', {
     this.observation=new BoundaryObservation();this.walk=null;this.savedPoints=[];
     this.phase='idle';this.status='Watch > Calibrate boundary';this.reportStatus='';
     this.root=new T.Group();this.root.matrixAutoUpdate=false;this.root.visible=false;this.el.object3D.add(this.root);
-    this.trace=new T.Line(new T.BufferGeometry(),new T.LineBasicMaterial({color:'#f0abfc',vertexColors:true,depthTest:false}));
+    this.trace=new T.Line(new T.BufferGeometry(),new T.LineBasicMaterial({color:'#f0abfc',depthTest:false}));
+    this.fill=new T.Mesh(new T.BufferGeometry(),new T.MeshBasicMaterial({color:'#f0abfc',side:T.DoubleSide,transparent:true,opacity:.12,depthTest:false,depthWrite:false}));
     this.preview=new T.LineLoop(new T.BufferGeometry(),new T.LineBasicMaterial({color:'#fde047',depthTest:false}));
     this.savedOutline=new T.Mesh(new T.BufferGeometry(),new T.MeshBasicMaterial({color:'#4ade80',side:T.DoubleSide,depthTest:false}));
-    this.trace.renderOrder=3;this.preview.renderOrder=4;this.savedOutline.renderOrder=5;
-    this.root.add(this.trace,this.preview,this.savedOutline);
+    this.fill.renderOrder=2;this.trace.renderOrder=3;this.preview.renderOrder=4;this.savedOutline.renderOrder=5;
+    this.root.add(this.fill,this.trace,this.preview,this.savedOutline);
     this.handlers={
       'enter-vr':()=>this.attachSession(),'exit-vr':()=>this.endSession(),
       'headset-boundary-sample':e=>{this.observation.sample(e.detail.time,e.detail.points);},
@@ -71,7 +72,7 @@ AFRAME.registerComponent('boundary-floor-lab', {
     if(!this.el.is('ar-mode')||this.session.environmentBlendMode==='opaque') {
       this.status='Walking calibration needs passthrough. It is unavailable in this session.';this.renderStatus();return;
     }
-    this.walk=new WalkingBoundary(this.boundary.points);this.pending=null;this.phase='walking';this.active=true;this.interrupted=false;
+    this.walk=new WalkingBoundary();this.pending=null;this.phase='walking';this.active=true;this.interrupted=false;
     this.showPassthrough();this.closeWatches();
     this.status='Walk a few laps around the usable edge. Revisit corners to refine them. Open watch to Save.';this.redraw();
   },
@@ -116,7 +117,7 @@ AFRAME.registerComponent('boundary-floor-lab', {
     }
     if(id==='calibration-confirm') {
       if(!this.pending||!this.boundary)return;
-      const error=this.pending.revision!==this.boundary.revision?'Boundary changed. Calibrate again.':validateFloor(this.pending.points,this.boundary.points);
+      const error=this.pending.revision!==this.boundary.revision?'Tracking reference changed. Calibrate again.':validateFloor(this.pending.points);
       if(error){this.pending=null;this.status=error;this.redraw();return;}
       this.savedPoints=this.pending.points.map(p=>({...p}));this.pending=null;this.walk=null;this.phase='saved';this.stop();
       this.status=`Boundary saved: ${polygonArea(this.savedPoints).toFixed(2)} m². Green is your walking boundary.`;
@@ -141,16 +142,19 @@ AFRAME.registerComponent('boundary-floor-lab', {
     if(this.walk.add({x:p.x,y:p.z}))this.redraw();
   },
   redraw: function () {
-    const T=AFRAME.THREE,points=this.walk?.points||[],line=points.map(p=>[p.x,.047,p.y]).flat(),colors=[];
+    const T=AFRAME.THREE,points=this.walk?.points||[],line=points.map(p=>[p.x,.047,p.y]).flat();
     if(this.walk?.closed&&points.length)line.push(points[0].x,.047,points[0].y);
-    for(let i=0;i<line.length/3;i++) {
-      const p=points[i%points.length],next=points[(i+1)%points.length];
-      const good=this.boundary&&segmentInside(p,next,this.boundary.points);
-      colors.push(...new T.Color(good?'#ffffff':'#ff4444').toArray());
-    }
-    this.trace.geometry.setAttribute('position',new T.Float32BufferAttribute(line,3));this.trace.geometry.setAttribute('color',new T.Float32BufferAttribute(colors,3));this.trace.geometry.computeBoundingSphere();
+    this.trace.geometry.setAttribute('position',new T.Float32BufferAttribute(line,3));this.trace.geometry.computeBoundingSphere();
     this.trace.visible=!!points.length&&!this.pending;
     this.preview.geometry.setAttribute('position',new T.Float32BufferAttribute((this.pending?.points||[]).map(p=>[p.x,.05,p.y]).flat(),3));this.preview.geometry.computeBoundingSphere();this.preview.visible=!!this.pending;
+    // Completed laps display one concave filled area, without the active
+    // approach/tail stroke. The same area becomes yellow for review, green
+    // after confirmation. Ear clipping preserves furniture indentations.
+    const area=this.pending?.points||(this.walk?.closed?points:(!this.walk?this.savedPoints:[]));
+    const contour=area.map(p=>new T.Vector2(p.x,p.y)),triangles=contour.length>=3?T.ShapeUtils.triangulateShape(contour,[]):[];
+    const filled=triangles.flatMap(face=>face.flatMap(index=>[area[index].x,.043,area[index].y]));
+    this.fill.geometry.setAttribute('position',new T.Float32BufferAttribute(filled,3));this.fill.geometry.computeBoundingSphere();this.fill.visible=!!filled.length;
+    this.fill.material.color.set(this.pending?'#fde047':this.walk?'#f0abfc':'#4ade80');
     // A floor ribbon is visible on Quest even where WebGL lines are one pixel.
     const ribbon=[];
     this.savedPoints.forEach((a,i)=>{
@@ -163,7 +167,7 @@ AFRAME.registerComponent('boundary-floor-lab', {
   },
   describe: function () {
     const points=this.pending?.points||this.walk?.points||this.savedPoints;
-    return [this.status,`${this.walk?.laps||0} completed laps · ${points.length} corners`,this.pending?`${polygonArea(points).toFixed(2)} m² · Yellow: final preview`:'Pink: live · Green: saved',this.walk?.error||'', 'Saved for this XR session.'].filter(Boolean).join('\n');
+    return [this.status,`${this.walk?.laps||0} completed laps · ${points.length} corners`,this.pending?`${polygonArea(points).toFixed(2)} m² · Yellow: final preview`:'Pink: walked area · Green: saved',this.walk?.error||'', 'Headset rectangle is a reference only. Saved for this XR session.'].filter(Boolean).join('\n');
   },
   renderStatus: function () {
     document.querySelectorAll('.calibration-status').forEach(el=>el.setAttribute('text','value',this.status));
@@ -179,7 +183,7 @@ AFRAME.registerComponent('boundary-floor-lab', {
   },
   remove: function () {
     this.endSession();for(const [name,fn] of Object.entries(this.handlers))this.el.removeEventListener(name,fn);
-    this.el.object3D.remove(this.root);for(const object of [this.trace,this.preview,this.savedOutline]){object.geometry.dispose();object.material.dispose();}
+    this.el.object3D.remove(this.root);for(const object of [this.fill,this.trace,this.preview,this.savedOutline]){object.geometry.dispose();object.material.dispose();}
     if(this.el.enterVR===this.enterVRWrapper)this.el.enterVR=this.originalEnterVR;
   }
 });

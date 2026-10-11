@@ -10,7 +10,7 @@ never replace the reported polygon sent to Impossible Spaces.
    **Start new calibration**. Passthrough reveals the room; virtual locomotion
    is disabled. Walking calibration requires an AR-capable session.
 2. Walk a few laps around the usable perimeter, leaving clearance from walls
-   and furniture. Pink shows the boundary estimate on the floor. You can walk
+   and furniture. Pink shows the walked area on the floor. You can walk
    from the middle to the edge first: completed laps discard the approach.
 3. Open the watch to pause sampling. **Continue walking** resumes.
    **Save boundary** runs the final simplification and shows a yellow preview.
@@ -18,6 +18,10 @@ never replace the reported polygon sent to Impossible Spaces.
    then select **Yes, save boundary**. A separate green floor ribbon appears
    immediately. **Keep walking** returns to calibration without committing;
    **Cancel calibration** restores the previously accepted boundary.
+
+After the first completed lap, a translucent fill and one closed outline show
+the usable area, rather than the ongoing stroke. Walking through the interior
+after a lap does not draw a stray line across this area.
 
 Walking is the only input method. There are no controller paint/edit controls,
 room-data permissions, Quest Room Setup dependency, or inferred room surfaces.
@@ -31,27 +35,39 @@ Horizontal headset positions are sampled at approximately 4 cm spacing. A return
 to an earlier section after travelling around the perimeter identifies a lap;
 the closest return is used so a detection radius does not cut off the starting
 corner. Completed laps refine one estimate rather than appending overlapping
-rings. A later lap contributes 65% of each matched measurement, allowing repeated
-visits to correct earlier offsets. Matching is limited to nearby edges, and
-every accepted blend must be a simple polygon within the reported boundary.
-An invalid blend falls back to the newest valid lap; no convex hull fills an
-L-shaped indentation. A partial extra lap can refine the visited arc when the
-splice remains valid.
+rings. Completed lap areas are combined with a polygon union: every outer edge
+already reached is retained. An outward lap extends the area; an inward lap
+cannot shrink it. There is no positional averaging, rectangle clipping, or
+convex hull filling an L-shaped indentation. A partial extra lap can extend
+the visited arc when the splice remains a valid connected polygon. Loop
+closure allows up to 30 cm of lateral variation between laps and uses the
+closest return, discarding the initial approach and completed stroke.
 
 During walking, points within **75 cm** of the wearer retain their detail.
 Distant sections simplify with approximately **3.5 cm** tolerance. The original
 active-lap samples remain behind the display, so revisiting a section can restore detail
 and correct the estimate. Display updates follow approximately 8 cm movement.
 Saving removes the proximity protection and runs a final pass over the polygon.
-Only one active lap and one estimate are retained, so repeated laps do not fill
-up an accumulating vertex list. An unusually long unfinished lap has a sample
+Simplification protects outward extrema, including shallow peaks that a normal
+distance-only simplifier would cut inward. Nearby detail stays protected while
+walking. The area estimate behind the display retains the measured perimeter.
+Only one active lap and one area envelope are retained, rather than a list of
+past strokes. An unusually long unfinished lap has a sample
 limit with explicit feedback.
 
-The resulting polygon must remain inside cyan, including entire edges crossing
-concave notches. Crossings, duplicate corners, reversed edges, and degenerate
-areas are rejected with watch feedback. The path describes a perimeter; it does
-not detect obstacles inside it. Interior holes and disconnected areas are not
-supported. Guardian stays enabled.
+The cyan headset polygon and amber fitted rectangle are diagnostics only for
+manual calibration. Quest's native Guardian can be larger and more detailed
+than the rectangle exposed to WebXR. Walked outlines beyond that rectangle are
+accepted, with no red outside-reference segments or containment veto at save
+or confirmation. Calibration uses tracked positions in the same reference
+space; it does not alter native Guardian.
+
+The resulting area must be a valid connected polygon. Crossed strokes can be
+normalised into their enclosed area; disconnected areas, interior holes,
+duplicate corners and degenerate areas receive watch feedback. The path
+describes the perimeter walked; it does not detect obstacles inside it.
+Saving requires one completed lap; an unfinished first stroke is not filled
+by inventing a closing diagonal across the room.
 
 ## Saving and tracking
 
@@ -79,12 +95,14 @@ including initially empty data and much later updates.
 
 `npm test` covers geometry and XR lifecycle behavior. Tests include several
 noisy laps, an initial approach, corrected wall offsets, reverse walking,
-L-shaped and notched outlines, partial laps, proximity protection, final
-simplification, and bounded memory over 25 laps.
+L-shaped and notched outlines, partial laps, proximity protection, outward
+extrema, inward laps retaining outer reaches, outlines beyond reported bounds,
+interior travel without stray outline segments, and bounded memory over 25 laps.
 
 `npm run test:boundary:browser` exercises the mounted current watch through its
 actual menu rows: start, save preview, separate confirmation, keep walking,
-cancel, storage failure, green floor geometry, tracking recovery and resets.
+cancel, storage failure, filled live/review/saved concave geometry, accepting a
+walk outside an undersized reported rectangle, tracking recovery and resets.
 Use `VR_PLAYWRIGHT_PATH` for an installed Playwright package and `VR_TEST_URL`
 to override the default `http://127.0.0.1:8088`.
 

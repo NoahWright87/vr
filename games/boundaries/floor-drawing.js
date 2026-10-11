@@ -1,4 +1,5 @@
 import { insidePolygon, polygonArea } from '../../common/boundary-geometry.js';
+import polygonClipping from 'polygon-clipping';
 
 const EPS = 1e-8;
 const cross = (a,b) => a.x*b.y-a.y*b.x;
@@ -33,14 +34,13 @@ function intersects(a,b,c,d) {
     Math.max(Math.min(a.y,b.y),Math.min(c.y,d.y))<=Math.min(Math.max(a.y,b.y),Math.max(c.y,d.y))+EPS;
 }
 
-export function validateFloor(points,boundary) {
+export function validateFloor(points,boundary=null) {
   if(points.length<3)return 'Walk around the perimeter before saving.';
   if(points.some(p=>!Number.isFinite(p.x)||!Number.isFinite(p.y)))return 'Invalid floor coordinates.';
-  if(!boundary || boundary.length<3)return 'Wait for the headset boundary.';
   for(let i=0;i<points.length;i++) {
     const a=points[i],b=points[(i+1)%points.length];
-    if(distance(a,b)<.001)return 'Two corners overlap. Continue walking a clean lap.';
-    if(!segmentInside(a,b,boundary))return 'Outside the cyan boundary. Walk a lap inside it.';
+    if(distance(a,b)<1e-7)return 'Two corners overlap. Continue walking a clean lap.';
+    if(boundary&&!segmentInside(a,b,boundary))return 'Outside the reference polygon.';
     for(let j=i+1;j<points.length;j++) {
       if(j===i+1 || (i===0&&j===points.length-1))continue;
       if(intersects(a,b,points[j],points[(j+1)%points.length]))return 'The outline crosses itself. Walk a clean lap around the perimeter.';
@@ -59,7 +59,7 @@ const projection = (p,a,b) => {
 };
 const clean = points => {
   const result=points.filter((p,i)=>i===0||distance(p,points[i-1])>1e-7);
-  if(result.length>3&&distance(result[0],result.at(-1))<.06)result.pop();
+  if(result.length>3&&distance(result[0],result.at(-1))<1e-7)result.pop();
   // A lap may begin with a short adjustment onto the perimeter. Remove a
   // collinear return over that approach, rather than rejecting every later
   // lap for a doubled-back starting tail. Preserve even tiny concave notches.
@@ -73,33 +73,41 @@ const clean = points => {
   return copy(result);
 };
 
-function reduceOpen(points,tolerance,head,boundary) {
+function reduceOpen(points,tolerance,head,boundary,winding=0) {
   if(points.length<3)return copy(points);
   const keep=new Set([0,points.length-1]);
   points.forEach((p,i)=>{if(head&&distance(p,head)<.75)keep.add(i);});
   const anchors=Array.from(keep).sort((a,b)=>a-b),stack=anchors.slice(1).map((end,i)=>[anchors[i],end]);
   while(stack.length) {
     const [start,end]=stack.pop();if(end-start<2)continue;
-    const a=points[start],b=points[end];let split=-1,max=tolerance;
-    for(let i=start+1;i<end;i++){const d=distance(points[i],projection(points[i],a,b));if(d>max){max=d;split=i;}}
+    const a=points[start],b=points[end];let split=-1,max=tolerance,outer=0;
+    for(let i=start+1;i<end;i++) {
+      const d=distance(points[i],projection(points[i],a,b));
+      const outside=-cross(sub(b,a),sub(points[i],a))*winding;
+      // A shortcut may smooth a shallow inward wobble, but must keep an
+      // outward extremum: simplification cannot undo a measured outer edge.
+      if(outside>Math.max(EPS,outer)){outer=outside;split=i;}
+      else if(!outer&&d>max){max=d;split=i;}
+    }
     if(split<0&&boundary&&!segmentInside(a,b,boundary))split=Math.floor((start+end)/2);
     if(split>=0){keep.add(split);stack.push([start,split],[split,end]);}
   }
   return Array.from(keep).sort((a,b)=>a-b).map(i=>({...points[i]}));
 }
 
-export function simplifyWalk(points,{closed=false,head=null,boundary=null,tolerance=.035}={}) {
+export function simplifyWalk(points,{closed=false,head=null,boundary=null,tolerance=.035,preserveOuter=false}={}) {
   if(points.length<3)return copy(points);
   if(!closed)return reduceOpen(points,tolerance,head,boundary);
   const source=clean(points);
+  const winding=preserveOuter?Math.sign(source.reduce((n,a,i)=>n+cross(a,source[(i+1)%source.length]),0)):0;
   // Two separated anchors avoid the coincident endpoints of a closed RDP pass.
   let opposite=1;
   for(let i=2;i<source.length;i++)if(distance(source[0],source[i])>distance(source[0],source[opposite]))opposite=i;
-  const first=reduceOpen(source.slice(0,opposite+1),tolerance,head,boundary);
-  const second=reduceOpen(source.slice(opposite).concat([source[0]]),tolerance,head,boundary);
+  const first=reduceOpen(source.slice(0,opposite+1),tolerance,head,boundary,winding);
+  const second=reduceOpen(source.slice(opposite).concat([source[0]]),tolerance,head,boundary,winding);
   const result=first.slice(0,-1).concat(second.slice(0,-1));
   // Simplification never turns a valid polygon into an invalid one.
-  if(boundary&&validateFloor(result,boundary)&&!validateFloor(source,boundary))return source;
+  if(validateFloor(result,boundary)&&!validateFloor(source,boundary))return source;
   return result;
 }
 
@@ -111,28 +119,22 @@ function nearestOn(p,polygon) {
   });
   return best;
 }
-function dense(points) {
-  const result=[];
-  points.forEach((a,i)=>{
-    const b=points[(i+1)%points.length],steps=Math.max(1,Math.ceil(distance(a,b)/.08));
-    for(let n=0;n<steps;n++)result.push({x:a.x+(b.x-a.x)*n/steps,y:a.y+(b.y-a.y)*n/steps});
-  });
+export function unionWalkedAreas(previous,current) {
+  if(current.length<3)throw new Error('Walk around the perimeter before saving.');
+  const ring=points=>[points.map(p=>[p.x,p.y])];
+  const areas=previous.length?polygonClipping.union(ring(previous),ring(current)):polygonClipping.union(ring(current));
+  if(areas.length!==1||areas[0].length!==1)throw new Error('Walk one connected perimeter without interior loops.');
+  const result=areas[0][0].slice(0,-1).map(([x,y])=>({x,y}));
+  const error=validateFloor(result);if(error)throw new Error(error);
   return result;
-}
-function blend(previous,current) {
-  if(!previous.length)return copy(current);
-  return current.map(p=>{
-    const old=nearestOn(p,previous);
-    return old.distance<.3?{x:p.x*.65+old.x*.35,y:p.y*.65+old.y*.35}:{...p};
-  });
 }
 
 // Raw samples survive display simplification, so revisiting a wall can restore
-// its detail and move the estimate. Only one active lap and one dense estimate
+// its detail and move the estimate. Only one active lap and one area envelope
 // are retained; laps never append as overlapping rings or form a convex hull.
 export class WalkingBoundary {
-  constructor(boundary) {
-    this.boundary=copy(boundary);this.lap=[];this.estimate=[];this.points=[];
+  constructor() {
+    this.lap=[];this.estimate=[];this.points=[];
     this.laps=0;this.length=0;this.closure=null;this.error='';this.closed=false;
   }
   add(point) {
@@ -151,7 +153,7 @@ export class WalkingBoundary {
           if(i)travelled+=distance(this.lap[i-1],this.lap[i]);
           if(this.length-travelled<Math.max(2,perimeter*.6))break;
           const d=distance(point,this.lap[i]);
-          if(d<.1){this.closure={start:i,index:this.lap.length-1,distance:d};break;}
+          if(d<.3){this.closure={start:i,index:this.lap.length-1,distance:d};break;}
         }
       }
       const d=this.closure?distance(point,this.lap[this.closure.start]):Infinity;
@@ -170,22 +172,18 @@ export class WalkingBoundary {
     return false;
   }
   complete(raw) {
-    const outline=simplifyWalk(clean(raw),{closed:true,boundary:this.boundary});
-    const error=validateFloor(outline,this.boundary);
-    if(error){this.error=error;return false;}
-    const samples=dense(outline),merged=blend(this.estimate,samples);
-    const candidate=simplifyWalk(merged,{closed:true,boundary:this.boundary});
-    this.estimate=validateFloor(candidate,this.boundary)?samples:merged;
+    try {this.estimate=unionWalkedAreas(this.estimate,clean(raw));}
+    catch(error){this.error=error.message;return false;}
     this.laps++;this.error='';return true;
   }
   preview(head) {
     if(!this.estimate.length) {
-      this.closed=false;this.points=simplifyWalk(this.lap,{head,boundary:this.boundary});return;
+      this.closed=false;this.points=simplifyWalk(this.lap,{head});return;
     }
     let source=this.estimate;
     // Replace the visited arc with this lap's detail, retaining the unvisited
     // arc. Validate the splice so close parallel walls cannot swap branches.
-    if(this.lap.length>2) {
+    if(this.lap.length>2&&this.lap.some(p=>!insidePolygon(p,source))) {
       const start=nearestOn(this.lap[0],source),end=nearestOn(this.lap.at(-1),source);
       const next=nearestOn(this.lap[1],source),n=source.length;
       let delta=(next.index+next.t-start.index-start.t+n)%n;
@@ -196,28 +194,30 @@ export class WalkingBoundary {
         let index=direction===1?(end.index+1)%n:end.index;
         const stop=direction===1?(start.index+1)%n:start.index;
         for(let count=0;index!==stop&&count<n;count++,index=(index+direction+n)%n)rest.push(source[index]);
-        const fresh=this.lap.map(p=>distance(p,head)<.75?{...p}:blend(source,[p])[0]);
-        const candidate=simplifyWalk(clean(fresh.concat(rest)),{closed:true,head,boundary:this.boundary});
-        if(!validateFloor(candidate,this.boundary))source=candidate;
+        const candidate=clean(this.lap.concat(rest));
+        if(!validateFloor(candidate)) {
+          try {source=unionWalkedAreas(source,candidate);}catch(_){ /* Keep the established area on an invalid splice. */ }
+        }
       }
     }
-    this.closed=true;this.points=simplifyWalk(source,{closed:true,head,boundary:this.boundary});
+    this.previewArea=source;this.closed=true;this.points=simplifyWalk(source,{closed:true,head,preserveOuter:true});
   }
   finalise() {
     // A partial extra lap refines only the visited arc. It cannot close an
     // overlapping second ring over an already completed perimeter.
     if(!this.estimate.length) {
-      const raw=this.closure?this.lap.slice(this.closure.start,this.closure.index+1):this.lap;
+      if(!this.closure)return {error:'Finish one lap around the perimeter, returning near where it began.',points:[]};
+      const raw=this.lap.slice(this.closure.start,this.closure.index+1);
       if(!this.complete(raw))return {error:this.error,points:[]};
     } else if(this.closure) {
       this.complete(this.lap.slice(this.closure.start,this.closure.index+1));
     }
     this.preview(this.lap.at(-1)||this.estimate[0]);
-    const points=simplifyWalk(this.points,{closed:true,boundary:this.boundary});
-    const error=validateFloor(points,this.boundary);
+    const points=simplifyWalk(this.points,{closed:true,preserveOuter:true});
+    const error=validateFloor(points);
     // Returning from the confirmation preview starts a fresh partial lap,
     // rather than counting the already reviewed loop a second time.
-    if(!error){this.lap=this.lap.length?[{...this.lap.at(-1)}]:[];this.length=0;this.closure=null;}
+    if(!error){this.estimate=copy(this.previewArea);this.lap=this.lap.length?[{...this.lap.at(-1)}]:[];this.length=0;this.closure=null;}
     return {error,points:error?[]:copy(points)};
   }
 }
