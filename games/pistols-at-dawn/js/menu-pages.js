@@ -64,6 +64,33 @@ var teleport = {
 
 var hud = { kind: 'toggle', id: 'pistols-hud', label: 'HUD', value: true };
 
+// Shared by the wrist watch and visor. Environment state belongs to the
+// persistent scene, never to a destination or a particular menu instance.
+var environment = {
+  kind: 'submenu', id: 'pistols-environment', label: 'Environment',
+  items: [
+    { kind: 'select', id: 'pistols-shadow-mode', label: 'Shadows', value: 'environment', options: options(['off', 'environment', 'all'], ['None', 'Environment', 'All']) },
+    { kind: 'toggle', id: 'pistols-sun-shadows', label: 'Sun shadows', value: true },
+    { kind: 'toggle', id: 'pistols-moon-shadows', label: 'Moon shadows', value: false },
+    { kind: 'select', id: 'pistols-cloud-quality', label: 'Clouds', value: 'sprites', options: options(['off', 'sprites', '3d'], ['Off', 'Sprites', '3D']) },
+    { kind: 'action', id: 'pistols-wait-hour', label: 'Wait one hour' },
+  ],
+};
+
+function syncEnvironment() {
+  var scene = sceneEl();
+  if (!scene) return;
+  var cycle = scene.components['day-night-cycle'];
+  var weather = scene.components['weather-clouds'];
+  var set = function (id, value) { findMenuItem(environment.items, id).value = value; };
+  if (cycle) {
+    set('pistols-shadow-mode', cycle.shadowMode);
+    set('pistols-sun-shadows', cycle.sunShadows);
+    set('pistols-moon-shadows', cycle.moonShadows);
+  }
+  if (weather) set('pistols-cloud-quality', weather.quality);
+}
+
 var motion = {
   // Live tunables for the scripted gun draw/holster/twirl flourish
   // (core-hand-rig.js's buildFlourishedKeyframe). Precision motions
@@ -96,11 +123,12 @@ var aim = { kind: 'select', id: 'pistols-aim', label: 'Aim', value: 'toggle', op
 registerMenuPage('pistols-watch', {
   // The clock: hand-with-watch writes the time into the title.
   title: '',
-  items: [targets, teleport, hud, debug, aim],
+  items: [targets, teleport, hud, environment, debug, aim],
   // Every value is read fresh as the watch opens: the target settings
   // and toggles belong to pistols-watch-menu, the tunables are globals,
   // and either watch (or the keyboard) may have changed any of them.
   onOpen: function () {
+    syncEnvironment();
     var page = this;
     var set = function (id, value) {
       var item = findMenuItem(page.items, id);
@@ -154,5 +182,5 @@ registerMenuPage('carriage', {
 
 // ---------- the visor ----------
 
-// Only what every visor has, for now: its settings and Exit VR.
-registerVisorPage('visor', { title: 'PISTOLS AT DAWN', items: [] });
+// The same environment controls, followed by shared visor settings and Exit VR.
+registerVisorPage('visor', { title: 'PISTOLS AT DAWN', items: [environment], onOpen: syncEnvironment });
