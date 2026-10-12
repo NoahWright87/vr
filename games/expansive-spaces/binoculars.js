@@ -63,6 +63,7 @@ AFRAME.registerComponent('space-binoculars', {
     let saved; try { saved = JSON.parse(localStorage.getItem(STORAGE_KEY)); } catch (_) {}
     this.settings = sanitizeScopeSettings(saved || DEFAULT_SCOPE_SETTINGS);
     this.filter = new ScopePoseFilter(); this.active = false; this.uiDirty = true; this.lastRender = -Infinity;
+    this.renderedPose = null;
     this.scores = { raw: { hits: 0, shots: 0 }, damped: { hits: 0, shots: 0 } };
     this.position = new THREE.Vector3(); this.quaternion = new THREE.Quaternion();
     this.headPosition = new THREE.Vector3(); this.headQuaternion = new THREE.Quaternion();
@@ -142,7 +143,7 @@ AFRAME.registerComponent('space-binoculars', {
   },
   setActive: function (active) {
     const wasActive = this.active;
-    if (active !== this.active) { this.filter.reset(); this.lastRender = -Infinity; }
+    if (active !== this.active) { this.filter.reset(); this.lastRender = -Infinity; this.renderedPose = null; }
     this.active = active; this.hud.object3D.visible = active;
     this.model.visible = !active;
     if (active && !this.hiddenHand) {
@@ -173,18 +174,20 @@ AFRAME.registerComponent('space-binoculars', {
     document.querySelector('#space-landscape')?.components['scope-landscape']?.resetTargets(); this.renderUI();
   },
   fire: function () {
-    if (!this.active || !this.filter.position || this.lastShot === this.lastTime) return false;
+    if (!this.active || !this.renderedPose || this.lastShot === this.lastTime) return false;
     this.lastShot = this.lastTime;
     const room = document.querySelector('#space-room'), landscapeEl = document.querySelector('#space-landscape');
     const landscape = landscapeEl?.components['scope-landscape']; if (!landscape) return false;
     this.el.sceneEl.object3D.updateMatrixWorld(true);
-    this.direction.set(0, 0, -1).applyQuaternion(this.scopeCamera.quaternion);
-    this.ray.set(this.scopeCamera.position, this.direction);
+    // Scope refresh is capped at 30 Hz. Hit-test the exact displayed pose,
+    // rather than a newer filtered pose which has not reached the texture yet.
+    this.direction.set(0, 0, -1).applyQuaternion(this.renderedPose.quaternion);
+    this.ray.set(this.renderedPose.position, this.direction);
     const objects = [landscapeEl.object3D, room.getObject3D('room-shell'), document.querySelector('#space-floor').object3D].filter(Boolean);
     const hit = this.ray.intersectObjects(objects, true)[0];
     let target = hit?.object;
     while (target && !target.userData.scopeTarget) target = target.parent;
-    const score = this.scores[this.settings.stabilize ? 'damped' : 'raw']; score.shots++;
+    const score = this.scores[this.renderedPose.stabilize ? 'damped' : 'raw']; score.shots++;
     if (target) { score.hits++; landscape.flash(target, this.lastTime); }
     this.renderUI(); return Boolean(target);
   },
@@ -245,6 +248,8 @@ AFRAME.registerComponent('space-binoculars', {
     try {
       renderer.xr.enabled = false; renderer.setRenderTarget(this.renderTarget);
       renderer.render(this.el.sceneEl.object3D, this.scopeCamera);
+      this.renderedPose = { position: this.scopeCamera.position.clone(), quaternion: this.scopeCamera.quaternion.clone(),
+        stabilize: this.settings.stabilize };
     } finally {
       renderer.setRenderTarget(target); renderer.xr.enabled = xrEnabled;
       hidden.forEach(([object, visible]) => { object.visible = visible; });
