@@ -9,12 +9,6 @@ See `feedback.spec.md`.
   parry, a meter? That's a game-design question. The clock has a
   manual `Slow-mo` row to feel it out.
 
-- **The player being hit**: a red edge flash drawn in clip space, using
-  the technique Pistols' vices vignette uses because WebXR has two
-  per-eye projections (`games/pistols-at-dawn/js/items-vices.js`), plus
-  `haptic(hand, 'hurt')` on both hands. Never shake or push the camera.
-  It comes with `defense`.
-
 - **Hit-stop on gun hits** is deliberately off (silhouettes skip it for
   `source: 'gun'`). At 4+ shots a second it read as stutter in
   principle. Try it in the headset before deciding.

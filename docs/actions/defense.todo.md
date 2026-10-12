@@ -1,58 +1,39 @@
-# Defense: block, parry, counter
+# Defense: what's next
 
-Put your hands roughly near an attack and it's handled.
+The attack contract, block/parry/hit/dodge resolution, the magnetic
+guard, counters, slow bullets (shot down, deflected or returned),
+player-hurt feedback, the attacker dummy and shooters all exist. See
+`defense.spec.md`.
 
-## The attack contract
+## To try in the headset first
 
-Nothing attacks the player yet. Attackers (`dummies.todo.md`'s
-attacker dummy and shooter silhouette) create **attacks**: records
-registered with targeting under the `guard` profile.
+- **Telegraph length and strike speed** (Tuning ▸ Sparring ▸ Warning,
+  Strike). The design bet is that a readable warning plus a forgiving
+  block makes defense feel automatic. Find the shortest warning that
+  still feels fair.
+- **Guard reach and block radius.** How "roughly near" is near enough?
+  Too generous and blocking happens without meaning to. Too tight and
+  it isn't magic.
+- **Parry speed and window.** Parries should feel like a choice, not an
+  accident of blocking fast.
 
-```
-{ id, by, phase: 'telegraph'|'windup'|'active'|'recovery',
-  path: { from, to } or projectile { position, velocity },
-  radius, aimAt: 'head'|'torso', t0, durations }
-```
+## Not built yet
 
-- **Telegraph** (~400–800 ms, tunable): readable warning. The limb
-  glows and a faint line traces the strike path. It's also an audio
-  cue, positioned in space. Attacks from outside your view get a
-  peripheral marker and a haptic pulse on that side, never an
-  automatic turn.
-- **Active**: the only phase that can hurt you or be defended against.
-- Outcome when it resolves: `hit | blocked | parried | dodged | deflected`.
-
-## Resolution, during the active phase
-
-- **Block**: any virtual hand (or a held gun) within `blockRadius` of
-  the strike path. The virtual hand is pulled onto the contact point
-  within the budget (a magnetic guard). The attack stops and the
-  attacker gets a small push. `blockRadius` grows if the hand is moving
-  toward the attack, which rewards reaching for it.
-- **Parry**: a block made with the hand moving fast *into* the attack,
-  early in the active window. The attacker is staggered and **opened**
-  for a counter window (~1 s). Parry is a stronger block decided only
-  by motion, so it still needs no button.
-- **Counter**: during the opened window, strikes against that attacker
-  get maximum targeting priority and bonus force. Later: a disarm drops
-  the attacker's gun as something you can take.
-- **Dodge**: the head leaves the attack's path. That's free, since
-  physical movement is the game.
-- **Deflect** (projectiles): a virtual hand or gun touches a slow
-  bullet and it's knocked away, or with an upgrade, sent back at its
-  shooter. Shooting a bullet down goes through autofire, with incoming
-  projectiles as high-threat targets.
-
-## Getting hit
-
-Hits land on head or torso volumes estimated from `motion-sense`. The
-feedback: a red edge flash in clip space (as Pistols' vices vignette
-does, `items-vices.js`), a haptic on both hands, a sound. **No camera
-shake, no knockback of the view.** Health is a simple counter for now.
-
-## Station
-
-Sparring: one attacker dummy, then two. The visor tunes telegraph
-length, active window, block radius, parry speed, and pull-in budget.
-The readout shows the last outcome and why ("blocked: right hand 14 cm
-from path, moving toward it at 1.8 m/s").
+- **Threats outside your view.** Attacks from behind need a peripheral
+  marker (an arrow at the edge of view, in clip space like the hurt
+  flash) and a `threat` haptic on that side. Never an automatic turn.
+  Audio is already positional.
+- **Disarm.** A parry against an armed attacker drops its gun as
+  something you can take. That's the John Wick move, and it depends on
+  how guns get into hands (`autofire.todo.md`).
+- **Swings, not just thrusts.** The attacker only thrusts in a line. A
+  swing is an arc. The strike volume can stay a capsule (shoulder→tip)
+  whose tip follows the arc; `resolveContact` already handles any tip
+  path. The guard line would then be the arc's chord near the player.
+- **Blocking with a held gun.** Guns sit on virtual hands, so a gun
+  hand already blocks with the hand's radius. A gun-shaped capsule
+  would be more generous and look right.
+- **Dodge feedback.** Dodges are counted but not sold: a whoosh as the
+  fist passes your head, and slow-mo on a close dodge, maybe.
+- **Death.** `player-hurt` restores health at zero. A real game needs a
+  fail state, and the lab doesn't.

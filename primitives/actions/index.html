@@ -26,9 +26,11 @@
            ahead   the range — steel silhouettes past the front of your
                    room; hold a hand out at them and its gun fires
            right   the dummies — wooden peg dummies to punch
+           behind  sparring — a dummy that attacks you; block, parry,
+                   counter, or step aside
            left    the motion lab — live readout of common/motion-sense.js
 
-         The plan for the rest (sparring, throwing lane, swarm) is in
+         The plan for the rest (throwing lane, swarm) is in
          docs/actions/README.md.
 
          Off a headset: Q raises both hands (guns up), left click throws
@@ -112,9 +114,20 @@
            middle. The guns never shoot them (they're team 'dummy').
       ============================================================ -->
       <a-entity id="station-dummies" play-space-station="side: right">
-        <a-entity id="dummy-1" peg-dummy position="-0.8 0 0.25" rotation="0 20 0"></a-entity>
+        <a-entity id="dummy-1" peg-dummy position="-0.65 0 0.25" rotation="0 20 0"></a-entity>
         <a-entity id="dummy-2" peg-dummy="pegs: false" position="0 0 0.35"></a-entity>
-        <a-entity id="dummy-3" peg-dummy position="0.8 0 0.25" rotation="0 -20 0"></a-entity>
+        <a-entity id="dummy-3" peg-dummy position="0.65 0 0.25" rotation="0 -20 0"></a-entity>
+      </a-entity>
+
+      <!-- ============================================================
+           BEHIND — SPARRING. An attacker dummy that thrusts at you on a
+           schedule: block it, parry it, counter it, or step aside
+           (primitives/actions/sparring.js).
+      ============================================================ -->
+      <a-entity id="station-sparring" play-space-station="side: back">
+        <!-- Near the edge, so it leaves you alone in the middle of the
+             room; step back toward it (within 1.3 m) to spar. -->
+        <a-entity id="sparrer" attacker-dummy position="0 0 0.15"></a-entity>
       </a-entity>
 
       <!-- ============================================================
@@ -138,6 +151,7 @@
     <script type="module" src="./motion-lab.js"></script>
     <script type="module" src="./range.js"></script>
     <script type="module" src="../../common/melee.js"></script>
+    <script type="module" src="./sparring.js"></script>
     <script type="module" src="./lab-page.js"></script>
   </body>
 </html>

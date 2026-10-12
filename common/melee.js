@@ -246,6 +246,9 @@ AFRAME.registerComponent('melee-hands', {
     // A graze is speed only (Punch Pop's rule: it shouldn't hit as hard
     // as a committed strike).
     var force = committed ? strikeForce(e) : Math.min(1, (e.speed || 0) / 5);
+    // A counter: the target is open (just parried), so it hits harder.
+    var counter = committed && (target.openUntil || 0) > this.el.sceneEl.time;
+    if (counter) force *= 1.5;
     var result = target.applyHit({
       zone: zone, point: point, direction: { x: vel.x, y: vel.y, z: vel.z },
       force: force, damage: force * tune.values.damage, source: 'strike', by: side,
@@ -261,7 +264,7 @@ AFRAME.registerComponent('melee-hands', {
       var clock = this.el.sceneEl.systems['action-clock'];
       if (clock && committed) clock.hitStop(target.el);
       hand.last = target.el;
-      hand.lastText = (forced ? 'CHEAT ' : '') + (committed ? e.axis : 'graze') + ' ' + result.zone + ' ' + force.toFixed(2) +
+      hand.lastText = (forced ? 'CHEAT ' : '') + (counter ? 'COUNTER ' : '') + (committed ? e.axis : 'graze') + ' ' + result.zone + ' ' + force.toFixed(2) +
         (vh ? ' (assist ' + (vh.offsetLength() * 100).toFixed(1) + 'cm)' : '');
     }
     logAction(side.charAt(0).toUpperCase() + ' ' + hand.lastText + ' on ' + (target.el.id || 'target'));

@@ -52,3 +52,8 @@ In the Action Lab the spawner is driven by Tuning ▸ Range: `Targets`,
 Each silhouette is 5 meshes, so 24 of them is about 120 draw calls.
 That's fine for the range, but the swarm needs instancing
 (`dummies.todo.md`).
+
+## `peg-dummy` and `attacker-dummy`
+
+See `melee.spec.md` (peg dummy) and `defense.spec.md` (attacker dummy
+and the silhouette's `shootMs`).

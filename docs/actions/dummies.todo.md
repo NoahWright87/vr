@@ -39,15 +39,15 @@ compatible so Pistols' targets could later listen to both.
    Variants: on a rail (slides back and forth), pop-up (rises on a
    timer), walker (advances toward you at a fixed speed and stops at
    1.5 m).
-2. **Peg dummy (mook jong).** A trunk with three pegs (two high, one
+2. **Peg dummy (mook jong)** (built). A trunk with three pegs (two high, one
    mid) and a leg. Zones on the trunk at head and torso height. The
    pegs are obstacles, not targets. It's for melee: does a punch slip
    between the pegs and land on the trunk? It reacts by rocking on a
    spring proportional to `force`.
-3. **Attacker dummy.** The peg dummy with a motorised arm that swings
+3. **Attacker dummy** (built, thrusts only). The peg dummy with a motorised arm that swings
    at you on a telegraphed schedule. It's the source of attacks for
    `defense.todo.md`. See the attack contract there.
-4. **Shooter silhouette.** A silhouette that fires slow, visible
+4. **Shooter silhouette** (built: `shootMs`). A silhouette that fires slow, visible
    projectiles (Superhot bullets, ~6–10 m/s) at your head or torso.
    They can be dodged, deflected, or shot out of the air.
 5. **Swarm walker.** The cheapest possible body (one instanced mesh per

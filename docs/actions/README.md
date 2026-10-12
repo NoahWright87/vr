@@ -106,7 +106,7 @@ to tune it, and tests.
 | 6 | Virtual hands | `virtual-hands.todo.md` | The tool for selling melee and blocks. **Built** (`virtual-hands.spec.md`). |
 | 7 | Intent | `intent.todo.md` | Strike and guard classifiers, plus recording real motion. **Strikes built** (`melee.spec.md`). |
 | 8 | Melee | `melee.todo.md` | On the peg dummy. **Built** (`melee.spec.md`). |
-| 9 | Defense | `defense.todo.md` | Needs attacker dummies with telegraphed attacks. |
+| 9 | Defense | `defense.todo.md` | Needs attacker dummies with telegraphed attacks. **Built** (`defense.spec.md`). |
 | 10 | Throwing | `throwing.todo.md` | Extraction from Pistols, generalized. |
 | 11 | Feedback | `feedback.todo.md` | Parts of it (effect pools, the clock) are needed from step 4 onward; hit-stop and bullet time come here. **Clock, pools, haptics, sound built** (`feedback.spec.md`). |
 | — | Physics | `physics.todo.md` | Long-term needs and options. No library yet. |
@@ -118,7 +118,7 @@ against the real room with `play-space-station`. Planned stations:
 - **Motion lab**: live motion-sense readout. Built (left).
 - **Range**: silhouettes for autofire. Built (ahead).
 - **Dummy**: peg-arm dummies for melee. Built (right).
-- **Sparring**: an attacker dummy for defense.
+- **Sparring**: an attacker dummy for defense. Built (behind).
 - **Lane**: throwing.
 - **Swarm**: the bullet-heaven stress test, N cheap walkers
   approaching, with the performance readout on.

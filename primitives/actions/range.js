@@ -23,7 +23,7 @@ function applyRange(values) {
   if (!el) return;
   el.setAttribute('target-spawner', {
     count: values.count, distance: values.distance, arc: values.arc, depth: values.depth,
-    mover: values.mover, death: values.death, health: values.health, speed: values.speed,
+    mover: values.mover, death: values.death, health: values.health, speed: values.speed, shootMs: values.shoot,
   });
 }
 
@@ -40,6 +40,9 @@ var range = defineTunables('range', 'Range', [
     { value: 'tip', label: 'Tip over' }, { value: 'shatter', label: 'Shatter' },
   ] },
   { key: 'health', label: 'Health', value: 3, min: 0.5, max: 20, step: 0.5 },
+  { key: 'shoot', label: 'Shoot', kind: 'select', value: 0, options: [
+    { value: 0, label: 'Never' }, { value: 4500, label: 'Slow' }, { value: 2000, label: 'Fast' },
+  ], info: 'Targets fire slow bullets at your head (their head glows first). Your guns shoot bullets down; a hand deflects one; a fast hand sends it back.' },
 ], applyRange);
 
 var scene = document.querySelector('a-scene');

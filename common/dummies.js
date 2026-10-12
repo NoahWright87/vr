@@ -20,6 +20,7 @@ import './combat-targeting.js';
 import './action-clock.js';
 import './action-effects.js';
 import { sound } from './action-feedback.js';
+import './attacks.js';
 
 var THREE = AFRAME.THREE;
 
@@ -57,6 +58,7 @@ AFRAME.registerComponent('steel-silhouette', {
     upMs: { default: 2200 }, // popup: time up
     downMs: { default: 1400 }, // popup: time down
     stopDistance: { default: 1.4 }, // walker: how close it gets
+    shootMs: { default: 0 }, // fire a slow bullet at you this often (0 = never); its head glows first
   },
 
   init: function () {
@@ -72,6 +74,7 @@ AFRAME.registerComponent('steel-silhouette', {
     this.flashMs = 0;
     this.tmp = new THREE.Vector3();
     this.camPos = new THREE.Vector3();
+    this.shootTimer = Math.random() * (this.data.shootMs || 0);
 
     // A short post the silhouette stands on; the body pivots at its foot.
     box(el, 0.06, 0.06, 0.3, 0, 0.03, 0, '#3c414b');
@@ -186,6 +189,7 @@ AFRAME.registerComponent('steel-silhouette', {
     this.stateMs += dtMs;
     if (this.state === 'down' && this.stateMs > this.data.resetMs) this.standUp();
     this.updateMover(dt);
+    this.updateShooting(dtMs);
 
     // A damped spring toward the rest angle: a hit rings and settles, a
     // death falls and stays down.
@@ -198,6 +202,33 @@ AFRAME.registerComponent('steel-silhouette', {
     var s = this.body.object3D.scale.x;
     if (s < 1) this.body.object3D.scale.setScalar(Math.min(1, s + dt * 5));
     this.applyZones();
+  },
+
+  // A shooter: the head glows for half a second, then a slow bullet
+  // leaves its chest toward your head (combat-attacks owns it from there).
+  updateShooting: function (dtMs) {
+    var every = this.data.shootMs;
+    if (!every || this.state !== 'up' || !this.target.alive || this.target.available === false || this.angle < -0.4) {
+      if (this.glowing) { this.glowing = false; this.parts[3].setAttribute('material', 'color', this.data.color); }
+      return;
+    }
+    this.shootTimer += dtMs;
+    var glow = this.shootTimer > every - 500;
+    if (glow !== this.glowing && this.flashMs <= 0) {
+      this.glowing = glow;
+      this.parts[3].setAttribute('material', 'color', glow ? '#ff3b2f' : this.data.color);
+    }
+    if (this.shootTimer < every) return;
+    this.shootTimer = Math.random() * every * 0.3;
+    var cam = this.el.sceneEl.camera;
+    var attacks = this.el.sceneEl.systems['combat-attacks'];
+    if (!cam || !attacks) return;
+    var from = this.el.object3D.localToWorld(new THREE.Vector3(0, 1.2, 0.12));
+    var to = cam.getWorldPosition(new THREE.Vector3());
+    to.x += (Math.random() - 0.5) * 0.1;
+    to.y += (Math.random() - 0.5) * 0.1;
+    attacks.fireBullet(from, to, this.el);
+    sound('shot', from);
   },
 
   updateMover: function (dt) {
@@ -250,6 +281,7 @@ AFRAME.registerComponent('target-spawner', {
     health: { default: 3 },
     resetMs: { default: 2500 },
     speed: { default: 0.8 },
+    shootMs: { default: 0 },
   },
 
   update: function () {
@@ -267,7 +299,7 @@ AFRAME.registerComponent('target-spawner', {
       el.setAttribute('position', { x: x, y: 0, z: z });
       el.setAttribute('rotation', { x: 0, y: Math.atan2(-x, -z) * 180 / Math.PI, z: 0 });
       el.setAttribute('steel-silhouette', {
-        mover: d.mover, death: d.death, health: d.health, resetMs: d.resetMs, speed: d.speed,
+        mover: d.mover, death: d.death, health: d.health, resetMs: d.resetMs, speed: d.speed, shootMs: d.shootMs,
       });
       this.el.appendChild(el);
     }
@@ -441,5 +473,252 @@ AFRAME.registerComponent('peg-dummy', {
     o.position.copy(this.leanNow);
     o.rotation.set(t.x, 0, t.z);
     this.applyZones();
+  },
+});
+
+// ============================================================
+// attacker-dummy: a dummy that hits back, for defense practice.
+//
+// A trunk and head like the peg dummy, and one arm that thrusts at you
+// on a schedule, in the phases docs/actions/defense.spec.md describes:
+//
+//   telegraph  the arm draws back and glows; a faint red line shows the
+//              path. It tracks you until the strike starts.
+//   active     the fist drives along that line (now locked — so you can
+//              dodge) out to `reach`.
+//   recovery   the arm comes back.
+//
+// The attack itself is resolved by the combat-attacks system (block,
+// parry, hit, dodge). A parry staggers it and opens it for a counter:
+// for `openMs` its priority is raised and melee hits it harder.
+// It never dies (team 'dummy' by default, so guns leave it alone).
+// ============================================================
+
+var ARM = '#a8743f';
+var GLOW = '#ff3b2f';
+var OPEN = '#4fd1ff';
+
+AFRAME.registerComponent('attacker-dummy', {
+  schema: {
+    side: { default: 'right', oneOf: ['left', 'right'] },
+    intervalMs: { default: 2600 }, // between attacks (± 25%)
+    telegraphMs: { default: 700 },
+    activeMs: { default: 280 },
+    recoveryMs: { default: 450 },
+    reach: { default: 1.0 }, // m from the shoulder the fist can drive
+    aimAt: { default: 'mixed', oneOf: ['head', 'torso', 'mixed'] },
+    openMs: { default: 1200 },
+    engage: { default: 1.3 }, // m: it only attacks while your head is this close (horizontally)
+    team: { default: 'dummy' },
+    enabled: { default: true },
+  },
+
+  init: function () {
+    var el = this.el;
+    var side = this.data.side === 'left' ? -1 : 1;
+    this.shoulderLocal = new THREE.Vector3(side * 0.2, 1.38, 0.05);
+    this.restTipLocal = new THREE.Vector3(side * 0.24, 1.0, 0.25);
+    this.phase = 'idle';
+    this.phaseMs = 0;
+    this.nextMs = this.data.intervalMs * (0.5 + Math.random() * 0.5);
+    this.tilt = { x: 0, vx: 0 };
+    this.tmp = new THREE.Vector3();
+    this.camPos = new THREE.Vector3();
+    this.shoulder = new THREE.Vector3();
+    this.tip = new THREE.Vector3();
+    this.from = new THREE.Vector3();
+    this.aim = new THREE.Vector3();
+    this.attack = null;
+
+    box(el, 0.5, 0.06, 0.5, 0, 0.03, 0, '#3c414b');
+    this.body = document.createElement('a-entity');
+    el.appendChild(this.body);
+    this.trunk = capsuleBox(this.body, { x: 0, y: 0.05, z: 0 }, { x: 0, y: 1.42, z: 0 }, 0.12, WOOD);
+    var head = disc(this.body, 0.12, 0.24, 0, 1.53, 0, WOOD);
+    head.setAttribute('rotation', '0 0 0');
+
+    // The arm and fist live in the scene (world space), since the fist
+    // drives out toward you along a line in the world.
+    this.arm = document.createElement('a-entity');
+    this.arm.setAttribute('geometry', { primitive: 'cylinder', radius: 0.035, height: 1, segmentsRadial: 8 });
+    this.arm.setAttribute('material', { color: ARM, flatShading: true });
+    this.fist = document.createElement('a-entity');
+    this.fist.setAttribute('geometry', { primitive: 'box', width: 0.09, height: 0.09, depth: 0.09 });
+    this.fist.setAttribute('material', { color: ARM, flatShading: true });
+    this.path = document.createElement('a-entity');
+    this.path.setAttribute('geometry', { primitive: 'cylinder', radius: 0.008, height: 1, segmentsRadial: 6 });
+    this.path.setAttribute('material', { color: GLOW, shader: 'flat', transparent: true, opacity: 0 });
+    el.sceneEl.appendChild(this.arm);
+    el.sceneEl.appendChild(this.fist);
+    el.sceneEl.appendChild(this.path);
+
+    el.setAttribute('combat-target', { health: 1e9, aimZone: 'torso', team: this.data.team });
+    this.target = el.components['combat-target'];
+    this.target.setZones([
+      { name: 'head', type: 'sphere', a: { x: 0, y: 1.53, z: 0 }, r: 0.14, damage: 1.5 },
+      { name: 'torso', type: 'capsule', a: { x: 0, y: 0.95, z: 0 }, b: { x: 0, y: 1.35, z: 0 }, r: 0.13, damage: 1 },
+    ]);
+
+    this.onHit = this.onHit.bind(this);
+    el.addEventListener('action-hit', this.onHit);
+  },
+
+  remove: function () {
+    this.el.removeEventListener('action-hit', this.onHit);
+    [this.arm, this.fist, this.path].forEach(function (e) { if (e.parentNode) e.parentNode.removeChild(e); });
+    this.endAttack();
+  },
+
+  attacks: function () { return this.el.sceneEl.systems['combat-attacks']; },
+
+  isOpen: function () { return this.el.sceneEl.time < (this.target.openUntil || 0); },
+
+  onHit: function (evt) {
+    var hit = evt.detail;
+    if (hit.point) sound('thump', hit.point);
+    var fx = this.el.sceneEl.systems['action-effects'];
+    if (fx && hit.point) fx.sparks(hit.point, { x: 0, y: 1, z: 0 }, { count: 10, color: '#e6d3b3', speed: 2 });
+    this.tilt.vx -= (hit.force || 1) * 2;
+    this.target.health = 1e9;
+    // A hit while winding up interrupts the attack.
+    if (this.phase === 'telegraph') this.toRecovery();
+  },
+
+  endAttack: function () {
+    if (this.attack) { this.attacks().end(this.attack); this.attack = null; }
+  },
+
+  toRecovery: function () {
+    if (this.attack && !this.attack.resolved) this.attacks().dodged(this.attack);
+    this.endAttack();
+    this.phase = 'recovery';
+    this.phaseMs = 0;
+  },
+
+  // The player's head or torso, in world space.
+  aimPoint: function (out) {
+    var cam = this.el.sceneEl.camera;
+    if (!cam) return out.set(0, 1.5, 0);
+    cam.getWorldPosition(out);
+    var at = this.data.aimAt === 'mixed' ? this.currentAim : this.data.aimAt;
+    if (at === 'torso') out.y -= 0.45;
+    return out;
+  },
+
+  setLimb: function (el, a, b) {
+    var len = a.distanceTo(b);
+    el.object3D.position.copy(a).add(b).multiplyScalar(0.5);
+    el.object3D.scale.set(1, Math.max(len, 0.001), 1);
+    el.object3D.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), this.tmp.copy(b).sub(a).normalize());
+  },
+
+  setGlow: function (color) {
+    if (this.glow === color) return;
+    this.glow = color;
+    this.arm.setAttribute('material', 'color', color);
+    this.fist.setAttribute('material', 'color', color);
+  },
+
+  tick: function (time, rawDt) {
+    var clock = this.el.sceneEl.systems['action-clock'];
+    var dtMs = clock ? clock.dt(this.el) : Math.min(rawDt || 16, 50);
+    var o = this.el.object3D;
+
+    // Face the player (slowly — it turns its body, not snaps).
+    var cam = this.el.sceneEl.camera;
+    if (cam && dtMs) {
+      cam.getWorldPosition(this.camPos);
+      if (o.parent) o.parent.worldToLocal(this.camPos);
+      var want = Math.atan2(this.camPos.x - o.position.x, this.camPos.z - o.position.z);
+      var diff = want - o.rotation.y;
+      while (diff > Math.PI) diff -= 2 * Math.PI;
+      while (diff < -Math.PI) diff += 2 * Math.PI;
+      o.rotation.y += diff * Math.min(1, dtMs / 250);
+    }
+    o.updateMatrixWorld();
+    this.shoulder.copy(this.shoulderLocal).applyMatrix4(o.matrixWorld);
+
+    this.tilt.vx += (-this.tilt.x * 110 - this.tilt.vx * 9) * dtMs / 1000;
+    this.tilt.x += this.tilt.vx * dtMs / 1000;
+    this.body.object3D.rotation.x = this.tilt.x;
+
+    this.phaseMs += dtMs;
+    var d = this.data;
+    var rest = this.tmp.copy(this.restTipLocal).applyMatrix4(o.matrixWorld).clone();
+
+    if (this.phase === 'idle') {
+      this.tip.copy(rest);
+      this.setGlow(this.isOpen() ? OPEN : ARM);
+      this.target.threat = 0.1;
+      this.target.data.priority = this.isOpen() ? 1 : 0;
+      var near = this.camPos.x !== undefined && Math.hypot(this.camPos.x - o.position.x, this.camPos.z - o.position.z) <= d.engage;
+      if (d.enabled && near && this.phaseMs > this.nextMs && !this.isOpen()) {
+        this.phase = 'telegraph';
+        this.phaseMs = 0;
+        this.currentAim = Math.random() < 0.5 ? 'head' : 'torso';
+        this.attack = this.attacks().begin({ el: this.el, kind: 'thrust', phase: 'telegraph', base: this.shoulder, tip: this.tip, radius: 0.05, damage: 1 });
+        var self = this;
+        this.attack.onResolve = function (outcome) { self.onResolve(outcome); };
+      }
+    } else if (this.phase === 'telegraph') {
+      var k = Math.min(1, this.phaseMs / d.telegraphMs);
+      this.aimPoint(this.aim);
+      // Draw back behind the shoulder, away from you.
+      var back = this.from.copy(this.shoulder).sub(this.aim).normalize().multiplyScalar(0.18).add(this.shoulder);
+      this.tip.copy(rest).lerp(back, Math.min(1, k * 2));
+      this.setGlow(Math.floor(this.phaseMs / 90) % 2 ? GLOW : ARM);
+      this.target.threat = 0.7;
+      this.attack.aim = this.aim;
+      this.attack.late = k > 0.5;
+      if (k >= 1) {
+        this.phase = 'active';
+        this.phaseMs = 0;
+        this.from.copy(this.tip);
+        // Lock the line now: from here on you can step out of it.
+        var dir = this.tmp.copy(this.aim).sub(this.shoulder);
+        var len = Math.min(dir.length() + 0.15, d.reach);
+        this.aim.copy(this.shoulder).add(dir.normalize().multiplyScalar(len));
+        this.attack.phase = 'active';
+      }
+    } else if (this.phase === 'active') {
+      var t = Math.min(1, this.phaseMs / d.activeMs);
+      var eased = 1 - Math.pow(1 - t, 2);
+      this.tip.copy(this.from).lerp(this.aim, eased);
+      this.attack.progress = t;
+      this.setGlow(GLOW);
+      this.target.threat = 1;
+      if (t >= 1) this.toRecovery();
+    } else if (this.phase === 'recovery') {
+      var r = Math.min(1, this.phaseMs / d.recoveryMs);
+      this.tip.lerp(rest, Math.min(1, r * 1.5));
+      this.setGlow(this.isOpen() ? OPEN : ARM);
+      this.target.threat = 0.2;
+      if (r >= 1) {
+        this.phase = 'idle';
+        this.phaseMs = 0;
+        this.nextMs = d.intervalMs * (0.75 + Math.random() * 0.5);
+      }
+    }
+
+    this.setLimb(this.arm, this.shoulder, this.tip);
+    this.fist.object3D.position.copy(this.tip);
+    var showPath = this.phase === 'telegraph' || this.phase === 'active';
+    this.path.object3D.visible = showPath;
+    if (showPath) {
+      this.setLimb(this.path, this.shoulder, this.aim);
+      this.path.setAttribute('material', 'opacity', this.phase === 'active' ? 0.5 : 0.15 + 0.25 * Math.min(1, this.phaseMs / d.telegraphMs));
+    }
+  },
+
+  onResolve: function (outcome) {
+    if (outcome === 'parry') {
+      // Opened: melee reads combat-target's openUntil for a counter.
+      this.target.openUntil = this.el.sceneEl.time + this.data.openMs;
+      this.tilt.vx -= 4; // staggered back
+      var clock = this.el.sceneEl.systems['action-clock'];
+      if (clock) clock.hitStop(this.el, 120);
+    }
+    // Blocked, parried or landed: the strike stops where it is.
+    this.toRecovery();
   },
 });
