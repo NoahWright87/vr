@@ -39,6 +39,7 @@ export var DEFAULT_STRIKE_SETTINGS = {
   fullUp: 0.8, // vertical extension that lands an uppercut
   stopSpeed: 0.6, // m/s: a committed hand that slows below this has landed
   maxReachMs: 700, // an uncommitted extension older than this is a reach
+  punchBelowEye: 0.08, // m: a forward strike must be at least this far below the eyes (above is a throw)
 };
 
 var AXES = ['forward', 'up'];
@@ -69,6 +70,11 @@ function alongAxis(hand, motion, axis) {
   var forward = v.x * motion.facing.x + v.z * motion.facing.z;
   var up = v.y;
   return axis === 'forward' ? forward >= up : up > forward;
+}
+
+// A fist above your eyes moving forward is a throw, not a punch.
+function overhand(hand, motion, axis, s) {
+  return axis === 'forward' && hand.position.y > motion.head.position.y - s.punchBelowEye;
 }
 
 function fraction(hand, axis) {
@@ -137,7 +143,7 @@ export function updateStrikes(detector, motion) {
         // moving mostly along this axis, so an uppercut from a low guard
         // (already well out in front) isn't read as a jab.
         if (other.state !== 'committed' && f >= s.commitAt && hand.relativeSpeed >= s.commitSpeed &&
-            motion.energy >= s.commitEnergy && alongAxis(hand, motion, axis)) {
+            motion.energy >= s.commitEnergy && alongAxis(hand, motion, axis) && !overhand(hand, motion, axis, s)) {
           a.state = 'committed';
           a.direction = unit(hand.relativeVelocity);
           events.push(event(side, axis, 'commit', a, hand, motion.head, motion.t));
@@ -170,4 +176,62 @@ export function committedAxis(detector, side) {
 export function strikeForce(e) {
   var f = (e.speed || 0) / 4 + (e.travel || 0) * 0.8 + (e.headTravel || 0) * 2;
   return Math.max(0.3, Math.min(2.5, f));
+}
+
+// ============================================================
+// Throws (empty-handed, position only).
+//
+// An overhand throw: the hand comes up to head height (cocked), then
+// whips forward fast. The release is the first frame it's moving at
+// least `releaseSpeed` with most of that speed going forward, while
+// still up by your head. That keeps it apart from:
+//   a jab        at shoulder height, never cocked
+//   an uppercut  moving up, not forward
+//   the visor    a hand raised to your temple, but slowly
+// After a release the hand must drop to shoulder height before it can
+// throw again.
+//
+// Events: { type: 'throw', hand, phase: 'release', t, position, velocity
+//           (rig-local, head-relative), speed, rise (vertical/total) }
+// ============================================================
+
+export var DEFAULT_THROW_SETTINGS = {
+  cockBelowEye: 0.08, // m: the hand counts as up by your head above eye level minus this
+  releaseSpeed: 2.2, // m/s, head-relative
+  forwardShare: 0.55, // of the speed, along the body's facing
+  resetBelowEye: 0.2, // m: drop below this (a guard by the chin is enough) to throw again
+};
+
+export function createThrowDetector(settings) {
+  return { settings: Object.assign({}, DEFAULT_THROW_SETTINGS, settings || {}), hands: { left: 'idle', right: 'idle' } };
+}
+
+export function updateThrows(detector, motion) {
+  var s = detector.settings;
+  var events = [];
+  var eye = motion.head.position.y;
+  SIDES.forEach(function (side) {
+    var hand = motion[side];
+    var state = detector.hands[side];
+    if (!hand.tracked) { detector.hands[side] = 'idle'; return; }
+    var y = hand.position.y;
+    if (state === 'spent' || state === 'idle') {
+      if (y < eye - s.resetBelowEye) detector.hands[side] = 'idle';
+      if (detector.hands[side] === 'idle' && y >= eye - s.cockBelowEye) detector.hands[side] = 'cocked';
+      return;
+    }
+    // cocked
+    if (y < eye - s.resetBelowEye) { detector.hands[side] = 'idle'; return; }
+    var v = hand.relativeVelocity;
+    var speed = hand.relativeSpeed;
+    var forward = v.x * motion.facing.x + v.z * motion.facing.z;
+    if (speed >= s.releaseSpeed && forward >= s.forwardShare * speed && y >= eye - s.resetBelowEye) {
+      events.push({
+        type: 'throw', hand: side, phase: 'release', t: motion.t,
+        position: copy(hand.position), velocity: copy(v), speed: speed, rise: speed > 0 ? v.y / speed : 0,
+      });
+      detector.hands[side] = 'spent';
+    }
+  });
+  return events;
 }

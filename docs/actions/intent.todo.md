@@ -1,8 +1,9 @@
 # Intent: classifying what the hands mean
 
-**Built:** the strike classifier (forward and up axes) in
-`common/intent.js`. See `melee.spec.md`. Still to do: hooks, guard,
-empty-handed throws, and recording real motion for tests.
+**Built:** the strike classifier (forward and up axes; see
+`melee.spec.md`) and the overhand throw detector (see
+`throwing.spec.md`) in `common/intent.js`. Still to do: hooks, guard,
+and recording real motion for tests. Recording is the most important.
 
 Pure functions over the `motion-sense` buffer that turn motion into
 action events. They're position-only: no buttons, no poses.

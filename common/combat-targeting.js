@@ -161,11 +161,20 @@ if (typeof AFRAME !== 'undefined' && !AFRAME.systems['combat-targeting']) {
     tick: function (time) {
       var gaze = this.gaze();
       var cos = Math.cos(12 * DEG);
+      var dtS = Math.max(1e-3, (time - (this.lastTime || time - 16)) / 1000);
+      this.lastTime = time;
       for (var i = 0; i < this.targets.length; i++) {
         var t = this.targets[i];
         if (!t.alive) continue;
+        var p = t.aimPoint();
+        // Velocity of the aim point, for leading throws at movers.
+        if (t.lastAim) {
+          t.velocity.set((p.x - t.lastAim.x) / dtS, (p.y - t.lastAim.y) / dtS, (p.z - t.lastAim.z) / dtS);
+          if (t.velocity.lengthSq() > 400) t.velocity.set(0, 0, 0); // a teleport (respawn), not a speed
+        }
+        t.lastAim = t.lastAim || new THREE.Vector3();
+        t.lastAim.set(p.x, p.y, p.z);
         if (gaze) {
-          var p = t.aimPoint();
           var dx = p.x - gaze.origin.x, dy = p.y - gaze.origin.y, dz = p.z - gaze.origin.z;
           var d = Math.sqrt(dx * dx + dy * dy + dz * dz);
           if (d > 1e-6 && (dx * gaze.direction.x + dy * gaze.direction.y + dz * gaze.direction.z) / d > cos) t.lookedAt = time;
@@ -297,6 +306,7 @@ if (typeof AFRAME !== 'undefined' && !AFRAME.systems['combat-targeting']) {
       this.threat = 0;
       this.health = this.data.health;
       this.lookedAt = undefined;
+      this.velocity = new THREE.Vector3(); // of the aim point, m/s (updated by the system)
       this.v = new THREE.Vector3();
       // A different name from the system, so no automatic this.system.
       this.targeting = this.el.sceneEl.systems['combat-targeting'];

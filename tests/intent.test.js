@@ -138,3 +138,51 @@ test('strike force grows with speed, travel and stepping in, within bounds', () 
   assert.ok(lazy < solid && solid < lunge);
   assert.ok(lazy >= 0.3 && lunge <= 2.5);
 });
+
+import { createThrowDetector, updateThrows } from '../common/intent.js';
+
+function runThrows(rightPositions) {
+  const motion = createMotionSense({ facingMs: 0 });
+  const detector = createThrowDetector();
+  const events = [];
+  let t = 0;
+  for (const p of Array(30).fill(GUARD_R).concat(rightPositions)) {
+    updateMotionSense(motion, { t, head: { position: HEAD, quaternion: Q() }, left: { position: REST_L, quaternion: Q() }, right: { position: p, quaternion: Q() } });
+    events.push(...updateThrows(detector, motion), ...updateStrikes(createStrikeDetector(), motion).filter(() => false));
+    t += FRAME;
+  }
+  return events;
+}
+
+const COCKED = { x: 0.22, y: 1.68, z: 0.12 }; // hand up by the ear, behind
+const RELEASE = { x: 0.15, y: 1.6, z: -0.45 };
+
+test('an overhand whip releases a throw once, with its rise', () => {
+  const frames = path(GUARD_R, COCKED, 400, 150).concat(path(COCKED, RELEASE, 130, 200));
+  const events = runThrows(frames);
+  assert.equal(events.length, 1, JSON.stringify(events));
+  assert.equal(events[0].hand, 'right');
+  assert.ok(events[0].speed > 2.2 && events[0].rise < 0.3, JSON.stringify(events[0]));
+});
+
+test('a jab, an uppercut and a slow reach to the visor throw nothing', () => {
+  assert.deepEqual(runThrows(path(GUARD_R, PUNCHED, 140)), []);
+  const low = { x: 0.18, y: 1.05, z: -0.2 };
+  assert.deepEqual(runThrows(path(GUARD_R, low, 300, 200).concat(path(low, { x: 0.15, y: 1.8, z: -0.3 }, 150))), []);
+  const temple = { x: 0.2, y: 1.62, z: 0.02 };
+  assert.deepEqual(runThrows(path(GUARD_R, temple, 900, 400).concat(path(temple, { x: 0.18, y: 1.6, z: -0.15 }, 600))), []);
+});
+
+test('a second throw needs the hand to drop first', () => {
+  const one = path(GUARD_R, COCKED, 400, 150).concat(path(COCKED, RELEASE, 130, 100));
+  const again = path(RELEASE, COCKED, 300, 100).concat(path(COCKED, RELEASE, 130, 100));
+  assert.equal(runThrows(one.concat(again)).length, 1);
+  const reset = path(RELEASE, GUARD_R, 300, 100);
+  assert.equal(runThrows(one.concat(reset, one)).length, 2);
+});
+
+test('a forward whip above the eyes is not a punch', () => {
+  const frames = path(GUARD_R, COCKED, 400, 150).concat(path(COCKED, RELEASE, 130, 200));
+  const { events } = run(frames);
+  assert.equal(events.filter((e) => e.phase === 'commit').length, 0, JSON.stringify(events));
+});
