@@ -6,6 +6,10 @@ import './movement-gain.js';
 import { measureBounds, isInsideBoundary, mapLayout, sanitizeWorldScale, scaledRoomBounds } from './play-space.js';
 import { boundaryTarget } from './redirection.js';
 import { TravelTrail, TRAIL_METRES } from './travel-trail.js';
+import { installExperimentMenus } from './experiment-menus.js';
+import './binoculars.js';
+
+installExperimentMenus();
 
 const THREE = AFRAME.THREE;
 const PREVIEW = [{ x: -2, z: -1.5 }, { x: 2, z: -1.5 }, { x: 2, z: 1.5 }, { x: -2, z: 1.5 }];
@@ -158,10 +162,17 @@ AFRAME.registerComponent('expansive-space', {
       box(b.width + thickness * 2, height, thickness, b.centerX, height / 2, z, wallMaterial);
       box(b.width, .09, .02, b.centerX, .045, z < b.centerZ ? b.minZ + .01 : b.maxZ - .01, trimMaterial);
     });
-    [b.minX - thickness / 2, b.maxX + thickness / 2].forEach(x => {
-      box(thickness, height, b.depth, x, height / 2, b.centerZ, wallMaterial);
-      box(.02, .09, b.depth, x < b.centerX ? b.minX + .01 : b.maxX - .01, .045, b.centerZ, trimMaterial);
-    });
+    box(thickness, height, b.depth, b.minX - thickness / 2, height / 2, b.centerZ, wallMaterial);
+    box(.02, .09, b.depth, b.minX + .01, .045, b.centerZ, trimMaterial);
+    const opening = Math.min(3.6, b.depth * .8), side = (b.depth - opening) / 2, x = b.maxX + thickness / 2;
+    box(thickness, .8, opening, x, .4, b.centerZ, wallMaterial);
+    box(thickness, .6, opening, x, 2.4, b.centerZ, wallMaterial);
+    for (const sign of [-1, 1]) box(thickness, height, side, x, height / 2,
+      b.centerZ + sign * (opening / 2 + side / 2), wallMaterial);
+    for (const z of [-opening / 2, -opening / 6, opening / 6, opening / 2])
+      box(.12, 1.3, .055, x, 1.45, b.centerZ + z, trimMaterial);
+    box(.12, .06, opening, x, .8, b.centerZ, trimMaterial);
+    box(.12, .06, opening, x, 2.1, b.centerZ, trimMaterial);
     box(b.width, thickness, b.depth, b.centerX, height + thickness / 2, b.centerZ, ceilingMaterial);
     this.el.setObject3D('room-shell', group);
     const floor = this.el.querySelector('#space-floor');
@@ -171,6 +182,7 @@ AFRAME.registerComponent('expansive-space', {
     const panel = this.el.querySelector('#space-wall-panel');
     panel.setAttribute('position', { x: b.centerX, y: 1.6, z: b.minZ + .025 });
     panel.object3D.scale.setScalar(Math.min(1, b.width / 1.7));
+    this.el.sceneEl.emit('space-room-resized', { bounds: b }, false);
   },
 
   buildBoundaryOutline: function () {

@@ -1,15 +1,25 @@
 import { SpeedGainTracker, DEFAULT_GAIN_SETTINGS } from './speed-gain.js';
 import { RedirectionTracker, LocomotionTransform } from './redirection.js';
+import { MotionEffectsTracker } from './motion-effects.js';
 
 const THREE = AFRAME.THREE;
 const STORAGE_KEY = 'vr-expansive-speed-gain-v1';
 const REDIRECTION_KEY = 'vr-expansive-redirection-v1';
+const MOTION_KEY = 'vr-expansive-motion-effects-v1';
 const GAIN_OPTIONS = { 'space-max-gain': 'maxGain', 'space-gain-speed': 'speedForMax' };
 const REDIRECTION_OPTIONS = {
   'space-steering-enabled': 'steeringEnabled', 'space-steering-mode': 'steeringMode',
   'space-curvature': 'maxCurvature', 'space-steering-speed': 'steeringSpeed',
   'space-steering-rate': 'maxSteeringRate', 'space-turn-enabled': 'turnEnabled',
   'space-turn-gain': 'maxTurnGain', 'space-turn-speed': 'turnSpeed',
+};
+const MOTION_OPTIONS = {
+  'space-arm-enabled': 'armEnabled', 'space-arm-gain': 'maxArmGain', 'space-arm-speed': 'armSpeed',
+  'space-arm-stroke': 'armStroke', 'space-speed-lines': 'speedLines',
+  'space-slide-enabled': 'slideEnabled', 'space-slide-boost': 'slideBoost', 'space-slide-loss-mode': 'slideLossMode',
+  'space-slide-flat-loss': 'slideFlatLoss', 'space-slide-percent-loss': 'slidePercentLoss',
+  'space-jump-enabled': 'jumpEnabled', 'space-jump-boost': 'jumpBoost', 'space-jump-rise': 'jumpRise',
+  'space-jump-loss': 'jumpPercentLoss',
 };
 
 AFRAME.registerComponent('speed-dependent-gain', {
@@ -20,6 +30,12 @@ AFRAME.registerComponent('speed-dependent-gain', {
     let redirectionSettings;
     try { redirectionSettings = JSON.parse(localStorage.getItem(REDIRECTION_KEY)); } catch (_) {}
     this.redirection = new RedirectionTracker(redirectionSettings || undefined);
+    let motionSettings;
+    try { motionSettings = JSON.parse(localStorage.getItem(MOTION_KEY)); } catch (_) {}
+    this.motion = new MotionEffectsTracker(motionSettings || undefined);
+    this.lastMotion = { effectiveGain: 1, momentumSpeed: 0 };
+    this.armHands = null;
+    this.handMatrix = new THREE.Matrix4();
     this.transform = new LocomotionTransform();
     this.extraTranslation = new THREE.Vector3();
     this.rawPosition = new THREE.Vector3();
@@ -41,6 +57,7 @@ AFRAME.registerComponent('speed-dependent-gain', {
     this.onExit = this.stop.bind(this);
     this.onReferenceReset = function () {
       this.resetEstimators();
+      this.motion.standingHeight = null;
       this.el.sceneEl.emit('space-travel-reset', {}, false);
     }.bind(this);
     this.onWatchReady = function (evt) {
@@ -52,18 +69,23 @@ AFRAME.registerComponent('speed-dependent-gain', {
     this.onOption = function (evt) {
       const property = GAIN_OPTIONS[evt.detail.key];
       const redirectProperty = REDIRECTION_OPTIONS[evt.detail.key];
-      if (!property && !redirectProperty) return;
+      const motionProperty = MOTION_OPTIONS[evt.detail.key];
+      if (!property && !redirectProperty && !motionProperty) return;
       if (property) {
         this.tracker.setSettings({ [property]: evt.detail.value });
         try { localStorage.setItem(STORAGE_KEY, JSON.stringify(this.tracker.settings)); } catch (_) {}
-      } else {
+      } else if (redirectProperty) {
         this.redirection.setSettings({ [redirectProperty]: evt.detail.value });
         try { localStorage.setItem(REDIRECTION_KEY, JSON.stringify(this.redirection.settings)); } catch (_) {}
+      } else {
+        this.motion.setSettings({ [motionProperty]: evt.detail.value });
+        try { localStorage.setItem(MOTION_KEY, JSON.stringify(this.motion.settings)); } catch (_) {}
       }
       this.renderSettings();
     }.bind(this);
     this.onSelection = function (evt) {
       if (['space-reset-travel', 'space-reset-effects'].includes(evt.detail.value)) this.resetTravel();
+      if (evt.detail.value === 'space-calibrate-height' && this.hasPose) this.motion.calibrate(this.rawPosition.y);
     }.bind(this);
     const scene = this.el.sceneEl;
     scene.addEventListener('enter-vr', this.onEnter);
@@ -71,6 +93,8 @@ AFRAME.registerComponent('speed-dependent-gain', {
     scene.addEventListener('watch-menu-ready', this.onWatchReady);
     scene.addEventListener('menu-option-change', this.onOption);
     scene.addEventListener('menu-item-select', this.onSelection);
+    const camera = this.el.querySelector('a-camera');
+    if (camera) camera.setAttribute('gain-speed-lines', '');
   },
 
   renderSettings: function () {
@@ -78,17 +102,18 @@ AFRAME.registerComponent('speed-dependent-gain', {
     this.el.sceneEl.querySelectorAll('[menu-option]').forEach(el => {
       const row = el.components['menu-option'];
       if (!row) return;
-      const property = GAIN_OPTIONS[row.data.key] || REDIRECTION_OPTIONS[row.data.key];
+      const property = GAIN_OPTIONS[row.data.key] || REDIRECTION_OPTIONS[row.data.key] || MOTION_OPTIONS[row.data.key];
       if (property) {
-        row.setValue(GAIN_OPTIONS[row.data.key] ? this.tracker.settings[property] : this.redirection.settings[property]);
-        row.valueTextEl.setAttribute('width', 1.4);
+        row.setValue(GAIN_OPTIONS[row.data.key] ? this.tracker.settings[property] :
+          REDIRECTION_OPTIONS[row.data.key] ? this.redirection.settings[property] : this.motion.settings[property]);
+        row.valueTextEl.setAttribute('width', MOTION_OPTIONS[row.data.key] ? 1.2 : 1.4);
         synchronized++;
       }
     });
     // A-Frame can initialize the two watches before this rig component, or
     // finish a projected panel after watch-menu-ready. Retry until both rows
     // on both wrists exist, so saved settings cannot leave stale UI defaults.
-    this.settingsDirty = synchronized < 2 * (Object.keys(GAIN_OPTIONS).length + Object.keys(REDIRECTION_OPTIONS).length);
+    this.settingsDirty = synchronized < 2 * (Object.keys(GAIN_OPTIONS).length + Object.keys(REDIRECTION_OPTIONS).length + Object.keys(MOTION_OPTIONS).length);
     this.renderTelemetry();
   },
 
@@ -107,11 +132,24 @@ AFRAME.registerComponent('speed-dependent-gain', {
     for (const [selector, label, enabled] of [['.space-steering-link', 'Walking steering', s.steeringEnabled], ['.space-turn-link', 'Turn gain', s.turnEnabled]]) {
       this.el.sceneEl.querySelectorAll(selector).forEach(el => el.setAttribute('text', 'value', label + (enabled ? ': ON >' : ': OFF >')));
     }
+    const m = this.motion, settings = m.settings;
+    const armText = !settings.armEnabled ? 'OFF' : paused ? 'PAUSED - watch open' : !m.armTracked ? 'Requires two tracked XR controllers' :
+      m.armActivity.toFixed(2) + ' m/s | arms ' + m.armGain.toFixed(2) + 'x\nCombined ' + this.lastMotion.effectiveGain.toFixed(2) + 'x';
+    const slideText = !settings.slideEnabled ? 'OFF' : paused ? 'PAUSED - watch open' :
+      'Duck ' + (m.crouchDepth * 100).toFixed(0) + '% | ' + (m.slide?.speed || 0).toFixed(2) + ' m/s';
+    const jumpText = !settings.jumpEnabled ? 'OFF' : paused ? 'PAUSED - watch open' :
+      (m.jump?.speed || 0).toFixed(2) + ' m/s | stand ' + (m.standingHeight || 0).toFixed(2) + ' m';
+    for (const [selector, text] of [['.space-arm-live', armText], ['.space-slide-live', slideText], ['.space-jump-live', jumpText]])
+      this.el.sceneEl.querySelectorAll(selector).forEach(el => el.setAttribute('text', 'value', text));
+    for (const [selector, label, enabled] of [['.space-arm-link', 'Arm swing', settings.armEnabled], ['.space-slide-link', 'Sliding', settings.slideEnabled], ['.space-jump-link', 'Jumping', settings.jumpEnabled]])
+      this.el.sceneEl.querySelectorAll(selector).forEach(el => el.setAttribute('text', 'value', label + (enabled ? ': ON >' : ': OFF >')));
   },
 
   resetEstimators: function () {
     this.tracker.reset();
     this.redirection.reset();
+    this.motion.reset();
+    this.lastMotion = { effectiveGain: 1, momentumSpeed: 0 };
     this.travelEpoch++;
     this.hasPose = false;
   },
@@ -154,9 +192,14 @@ AFRAME.registerComponent('speed-dependent-gain', {
       if (dt <= 0 || dt > .25 || speed > 8) this.travelEpoch++;
     }
     const result = this.tracker.sample(position, time);
+    const paused = this.watchOpen() || Boolean(document.querySelector('#space-binoculars')?.components['space-binoculars']?.active);
+    const motion = this.motion.sample(position, time, { hands: this.armHands, baseGain: result.gain,
+      yaw: this.extraYaw, paused });
+    this.lastMotion = motion;
     const redirect = this.redirection.sample(position, yaw, time,
-      { target: this.steeringTarget(), paused: this.watchOpen() });
-    this.transform.apply(position, result.extraX, result.extraZ, redirect.yawDelta);
+      { target: this.steeringTarget(), paused });
+    this.transform.apply(position, motion.extraX, motion.extraZ, redirect.yawDelta);
+    this.transform.x += motion.worldX; this.transform.z += motion.worldZ;
     this.step.set(this.transform.x, 0, this.transform.z).sub(this.extraTranslation);
     this.el.object3D.position.add(this.step);
     this.el.object3D.rotation.y += redirect.yawDelta;
@@ -187,6 +230,7 @@ AFRAME.registerComponent('speed-dependent-gain', {
     this.releaseSession();
     this.resetTravel();
     this.session = session;
+    this.motion.standingHeight = null;
     const onFrame = (time, frame) => {
       if (this.session !== session) return;
       this.updateFromFrame(frame, time);
@@ -202,6 +246,7 @@ AFRAME.registerComponent('speed-dependent-gain', {
       this.baseSpace = baseSpace;
       if (baseSpace) baseSpace.addEventListener('reset', this.onReferenceReset);
       this.resetEstimators();
+      this.motion.standingHeight = null;
     }
     const viewer = baseSpace && frame.getViewerPose(baseSpace);
     if (!viewer) {
@@ -212,6 +257,19 @@ AFRAME.registerComponent('speed-dependent-gain', {
     this.rawPosition.setFromMatrixPosition(this.viewerMatrix);
     // Raw XR reference-space pose excludes the accumulated rig correction.
     this.direction.set(0, 0, -1).transformDirection(this.viewerMatrix);
+    this.armHands = null;
+    if (this.motion.settings.armEnabled) {
+      const hands = {};
+      for (const source of this.session?.inputSources || []) {
+        if (!source.gripSpace || !['left', 'right'].includes(source.handedness)) continue;
+        const pose = frame.getPose(source.gripSpace, baseSpace);
+        if (!pose) continue;
+        this.handMatrix.fromArray(pose.transform.matrix);
+        const hand = new THREE.Vector3().setFromMatrixPosition(this.handMatrix);
+        hands[source.handedness] = { x: hand.x, z: hand.z };
+      }
+      this.armHands = hands;
+    }
     this.applySample(this.rawPosition, time, this.sampledYaw());
   },
 
@@ -236,6 +294,7 @@ AFRAME.registerComponent('speed-dependent-gain', {
     if (session && session !== this.session) this.start();
     if (!session && this.session) this.stop();
     if (!session) {
+      this.armHands = null;
       const camera = this.el.querySelector('a-camera');
       if (camera) {
         // Desktop WASD/touch/gamepad simulates physical travel for inspection.
@@ -262,4 +321,31 @@ AFRAME.registerComponent('speed-dependent-gain', {
     scene.removeEventListener('menu-option-change', this.onOption);
     scene.removeEventListener('menu-item-select', this.onSelection);
   },
+});
+
+AFRAME.registerComponent('gain-speed-lines', {
+  init: function () {
+    this.positions = new Float32Array(32 * 6);
+    this.geometry = new THREE.BufferGeometry();
+    this.geometry.setAttribute('position', new THREE.BufferAttribute(this.positions, 3));
+    this.material = new THREE.LineBasicMaterial({ color: '#c6f6ff', transparent: true, opacity: 0, depthTest: false });
+    this.lines = new THREE.LineSegments(this.geometry, this.material);
+    this.lines.frustumCulled = false; this.lines.renderOrder = 10;
+    this.el.setObject3D('gain-speed-lines', this.lines);
+  },
+  tick: function (time) {
+    const gain = this.el.parentEl.components['speed-dependent-gain'];
+    const boost = gain?.lastMotion.armGain > 1.02 ? gain.lastMotion.effectiveGain - 1 : 0;
+    const intensity = gain ? Math.min(1, boost / 3 + gain.lastMotion.momentumSpeed / 12) : 0;
+    this.lines.visible = Boolean(gain?.hasPose && gain.motion.settings.speedLines && intensity > .03 && !gain.watchOpen());
+    if (!this.lines.visible) return;
+    this.material.opacity = intensity * .5;
+    for (let i = 0; i < 32; i++) {
+      const angle = i * Math.PI * 2 / 32, z = -.45 - ((i * .137 + time * .001 * (1 + intensity * 2)) % 1) * 1.5;
+      const x = Math.cos(angle) * .7, y = Math.sin(angle) * .5, j = i * 6;
+      this.positions.set([x, y, z, x * .9, y * .9, z + .15 + intensity * .2], j);
+    }
+    this.geometry.attributes.position.needsUpdate = true;
+  },
+  remove: function () { this.geometry.dispose(); this.material.dispose(); this.el.removeObject3D('gain-speed-lines'); },
 });

@@ -20,8 +20,8 @@
   <body>
     <div id="overlay">
       <span><strong>Expansive Spaces</strong> · Experiment with a bigger virtual room.
-        <small>Either watch has world scale, the map, movement gain, steering and turn gain.
-          Desktop: WASD / drag to look / Tab for watch. Preview footprint: 4 × 3 m; default room: 6 × 4.5 m.</small></span>
+        <small>Watch: movement settings and More experiments. Windows on the right wall.
+          Desktop: WASD / Shift sprint / C crouch / Tab watch / B binoculars / right-click aim / left-click shot.</small></span>
       <a href="../../index.html">All prototypes</a>
     </div>
 
@@ -92,10 +92,11 @@ Pauses while the watch is open." align="center" color="#bfcee2" width="1.3" wrap
       </a-entity>
     </template>
 
-    <a-scene background="color: #08101f" webxr="referenceSpaceType: local-floor; optionalFeatures: bounded-floor">
+    <a-scene background="color: #b1d5ef" webxr="referenceSpaceType: local-floor; optionalFeatures: bounded-floor">
       <a-light type="ambient" color="#e4edff" intensity=".85"></a-light>
       <a-light type="directional" color="#fff4df" intensity=".5" position="1 3 1"></a-light>
       <a-entity id="space-room" expansive-space>
+        <a-entity id="space-landscape" scope-landscape></a-entity>
         <a-plane id="space-floor" rotation="-90 0 0" width="4" height="3" checker-floor></a-plane>
         <a-entity id="space-wall-panel" position="0 1.6 -1.48">
           <a-plane width="1.48" height="1.55" color="#101827"></a-plane>
@@ -110,14 +111,19 @@ Pauses while the watch is open." align="center" color="#bfcee2" width="1.3" wrap
            The map and ground outline still represent the physical boundary. -->
       <a-entity id="space-rig" speed-dependent-gain locomotion-demo="speed: 1.2; moveMode: none; turnMode: none; comfortVignette: false"
         semantic-look-controls="camera: #space-camera"
-        gamepad-input="leftHand: #left-hand; rightHand: #right-hand"
-        touch-controls="leftHand: #left-hand; rightHand: #right-hand; primaryAction: none; interactAction: none; watchAction: watch; watchLabel: WATCH"
+        gamepad-input="leftHand: #left-hand; rightHand: #right-hand; aimAction: aim; sprintAction: sprint; secondaryAction: crouch"
+        touch-controls="leftHand: #left-hand; rightHand: #right-hand; primaryAction: activate; primaryLabel: SHOT; interactAction: none; watchAction: watch; watchLabel: WATCH; grabAction: grab; grabLabel: GRAB; aimAction: aim; aimLabel: AIM; crouchAction: crouch; crouchLabel: CROUCH"
         desktop-controls="camera: #space-camera; leftHand: #left-hand; rightHand: #right-hand">
         <a-camera id="space-camera" wasd-controls="enabled: false" look-controls="pointerLockEnabled: true"></a-camera>
         <a-entity id="left-hand" class="hand" hand-with-watch="hand: left" semantic-hand="hand: left; maxReach: 1"></a-entity>
         <a-entity control-mode-visibility="modes: xr" hand-controls="hand: left; handModelStyle: lowPoly; color: #3a3a3a"></a-entity>
         <a-entity id="right-hand" class="hand" hand-with-watch="hand: right" semantic-hand="hand: right; maxReach: 1"></a-entity>
         <a-entity control-mode-visibility="modes: xr" hand-controls="hand: right; handModelStyle: lowPoly; color: #3a3a3a"></a-entity>
+        <a-entity id="space-neck-anchor">
+          <a-entity id="space-binoculars" simple-grabbable="heldPosition: 0 0 -.08; gravity: 0"
+            hint-zone="action: grab; radius: .32; maxReach: 1; gazeThreshold: .85; priority: 15; desktopKey: F; desktopLabel: Grab binoculars; xrKey: GRIP; xrLabel: Grab binoculars; hintOffset: 0 .13 0"
+            space-binoculars></a-entity>
+        </a-entity>
       </a-entity>
     </a-scene>
   </body>
