@@ -1,5 +1,6 @@
 import { chooseAutomaticMenuIntent, chooseProjectedMenuMode } from './projected-menu-mode.js';
 import { cycleMenuOptionIndex, parseMenuOptions } from './menu-options.js';
+import './obb-collider-visibility.js';
 
   AFRAME.registerComponent('menu-item', {
     schema: {
