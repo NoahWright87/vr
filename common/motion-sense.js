@@ -25,11 +25,20 @@
 //   so standing still and looking around stays near zero.
 // ============================================================
 
+import { defineTunables } from './tunables.js';
+import { registerReadout } from './debug-hud.js';
+import './debug-draw.js';
+
 export var DEFAULT_MOTION_SETTINGS = {
   // Body frame.
   torsoDrop: 0.32, // m below the eyes to the torso reference point
   torsoBack: 0.08, // m behind the eyes along the facing (eyes sit forward of the spine)
   facingMs: 120, // smoothing time constant for the facing direction
+
+  // Shoulders, for aiming along the arm: half the shoulder width out
+  // from the body's centre line, this far below the eyes.
+  shoulderHalfWidth: 0.18,
+  shoulderDrop: 0.2,
 
   // Reach, until calibration exists: how far a typical adult's hand gets
   // from the torso point forward, up and to the side.
@@ -279,6 +288,33 @@ export function updateMotionSense(state, sample) {
   return state;
 }
 
+// Estimated shoulder for a side, from the head and the body facing.
+export function shoulderOf(state, side) {
+  var s = state.settings;
+  var out = side === 'left' ? -1 : 1;
+  var head = state.head.position;
+  return v(
+    head.x - state.facing.x * s.torsoBack + state.rightward.x * s.shoulderHalfWidth * out,
+    head.y - s.shoulderDrop,
+    head.z - state.facing.z * s.torsoBack + state.rightward.z * s.shoulderHalfWidth * out
+  );
+}
+
+// Where an arm is pointing: from the shoulder through the hand. This is
+// the aim for anything held out (README principle 1) — position only,
+// so it works the same for controllers, hand tracking and desktop.
+// Null when the hand is untracked or too close to the shoulder to mean
+// a direction.
+export function aimRay(state, side) {
+  var hand = state[side];
+  if (!hand || !hand.tracked) return null;
+  var origin = shoulderOf(state, side);
+  var d = sub(hand.position, origin);
+  var l = len(d);
+  if (l < 0.12) return null;
+  return { origin: origin, hand: copyInto(v(), hand.position), direction: v(d.x / l, d.y / l, d.z / l), length: l };
+}
+
 // A compact multi-line summary for HUDs, sidecars and screenshots.
 export function describeMotion(state) {
   function n(x, d) { return (Math.round(x * Math.pow(10, d)) / Math.pow(10, d)).toFixed(d); }
@@ -306,6 +342,29 @@ export function describeMotion(state) {
 
 if (typeof AFRAME !== 'undefined' && !AFRAME.components['motion-sense']) {
   var THREE = AFRAME.THREE;
+  var live = []; // every motion-sense component on the page
+
+  // Every setting as a visor row (Tuning > Motion), applied to every
+  // motion-sense on the page, with the live readout above the values.
+  // Rows fit 14 characters, so labels are short and units ride the value.
+  var tune = defineTunables('motion', 'Motion', [
+    { key: 'handDeadzone', label: 'Hand min', value: DEFAULT_MOTION_SETTINGS.handDeadzone, min: 0, max: 2, step: 0.05 },
+    { key: 'handFull', label: 'Hand max', value: DEFAULT_MOTION_SETTINGS.handFull, min: 0.5, max: 8, step: 0.25 },
+    { key: 'headDeadzone', label: 'Head min', value: DEFAULT_MOTION_SETTINGS.headDeadzone, min: 0, max: 1, step: 0.05 },
+    { key: 'headFull', label: 'Head max', value: DEFAULT_MOTION_SETTINGS.headFull, min: 0.3, max: 4, step: 0.1 },
+    { key: 'energyRiseMs', label: 'Rise', value: DEFAULT_MOTION_SETTINGS.energyRiseMs, min: 10, max: 400, step: 10, unit: 'ms' },
+    { key: 'energyFallMs', label: 'Fall', value: DEFAULT_MOTION_SETTINGS.energyFallMs, min: 100, max: 3000, step: 50, unit: 'ms' },
+    { key: 'presentOn', label: 'Present', value: DEFAULT_MOTION_SETTINGS.presentOn, min: 20, max: 100, step: 5, unit: '%', scale: 100 },
+    { key: 'presentOff', label: 'Lower', value: DEFAULT_MOTION_SETTINGS.presentOff, min: 10, max: 100, step: 5, unit: '%', scale: 100 },
+    { key: 'reachForward', label: 'Reach', value: DEFAULT_MOTION_SETTINGS.reachForward, min: 30, max: 100, step: 1, unit: 'cm', scale: 100 },
+    { key: 'torsoDrop', label: 'Torso', value: DEFAULT_MOTION_SETTINGS.torsoDrop, min: 10, max: 60, step: 1, unit: 'cm', scale: 100 },
+  ], function (values) {
+    live.forEach(function (component) { setMotionSettings(component.state, values); });
+  }, {
+    info: function () { return live.length ? describeMotion(live[0].state) : ''; },
+  });
+
+  registerReadout('motion', 'Motion', function () { return live.length ? describeMotion(live[0].state) : ''; });
 
   // On the rig. Reads the camera and both hands each frame in the rig's
   // own space (the physical room), and keeps the state on
@@ -318,23 +377,55 @@ if (typeof AFRAME !== 'undefined' && !AFRAME.components['motion-sense']) {
     },
 
     init: function () {
-      this.state = createMotionSense();
+      this.state = createMotionSense(tune.values);
       this.rigInverse = new THREE.Matrix4();
       this.rigQuaternionInverse = new THREE.Quaternion();
       this.worldPosition = new THREE.Vector3();
       this.worldQuaternion = new THREE.Quaternion();
       this.scratchScale = new THREE.Vector3();
       this.scratchPosition = new THREE.Vector3();
+      this.scratchA = new THREE.Vector3();
+      this.scratchB = new THREE.Vector3();
       this.sample = {
         t: 0,
         head: { position: v(), quaternion: { x: 0, y: 0, z: 0, w: 1 }, tracked: true },
         left: { position: v(), quaternion: { x: 0, y: 0, z: 0, w: 1 }, tracked: false },
         right: { position: v(), quaternion: { x: 0, y: 0, z: 0, w: 1 }, tracked: false },
       };
+      live.push(this);
+    },
+
+    remove: function () {
+      var i = live.indexOf(this);
+      if (i >= 0) live.splice(i, 1);
     },
 
     setSettings: function (partial) { return setMotionSettings(this.state, partial); },
     describe: function () { return describeMotion(this.state); },
+
+    // Rig-local (physical) point -> world, into a THREE.Vector3.
+    toWorld: function (p, out) {
+      return (out || new THREE.Vector3()).set(p.x, p.y, p.z).applyMatrix4(this.el.object3D.matrixWorld);
+    },
+
+    // Rig-local direction -> world.
+    directionToWorld: function (d, out) {
+      var q = this.el.object3D.getWorldQuaternion(this.worldQuaternion);
+      return (out || new THREE.Vector3()).set(d.x, d.y, d.z).applyQuaternion(q).normalize();
+    },
+
+    // The shoulder-to-hand aim for a side, in world space:
+    // { origin, hand, direction } as THREE.Vector3s, or null.
+    aimRayWorld: function (side) {
+      var ray = aimRay(this.state, side);
+      if (!ray) return null;
+      return {
+        origin: this.toWorld(ray.origin),
+        hand: this.toWorld(ray.hand),
+        direction: this.directionToWorld(ray.direction),
+        length: ray.length,
+      };
+    },
 
     readPose: function (el, out) {
       if (!el || !el.object3D) { out.tracked = false; return; }
@@ -367,6 +458,28 @@ if (typeof AFRAME !== 'undefined' && !AFRAME.components['motion-sense']) {
       this.readPose(this.data.leftHand, this.sample.left);
       this.readPose(this.data.rightHand, this.sample.right);
       updateMotionSense(this.state, this.sample);
+      this.drawDebug();
+    },
+
+    // Draw > Motion: the torso point and facing, each shoulder-to-hand
+    // aim line (green while presented), and each hand's head-relative
+    // velocity as a short orange line.
+    drawDebug: function () {
+      var dd = this.el.sceneEl.systems['debug-draw'];
+      if (!dd || !dd.on('motion')) return;
+      var state = this.state;
+      var torso = this.toWorld(state.torso, this.scratchA);
+      dd.cross(torso, 0.08, '#ffffff');
+      var facing = this.directionToWorld(state.facing, this.scratchB);
+      dd.line(torso, { x: torso.x + facing.x * 0.4, y: torso.y, z: torso.z + facing.z * 0.4 }, '#ffffff');
+      ['left', 'right'].forEach(function (side) {
+        var ray = this.aimRayWorld(side);
+        if (!ray) return;
+        dd.line(ray.origin, ray.hand, state[side].presented ? '#5fe08a' : '#7f8aa8');
+        var vel = this.directionToWorld(state[side].relativeVelocity, new THREE.Vector3());
+        var speed = state[side].relativeSpeed * 0.1; // 10 cm per m/s
+        dd.line(ray.hand, { x: ray.hand.x + vel.x * speed, y: ray.hand.y + vel.y * speed, z: ray.hand.z + vel.z * speed }, '#ffb547');
+      }, this);
     },
   });
 }

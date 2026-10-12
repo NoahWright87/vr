@@ -69,12 +69,31 @@ These are synthetic. Real recordings are the next step
 `describeMotion(state)` returns a 4-line text summary (energy bar,
 head, each hand) for HUDs, sidecars and screenshots.
 
+`shoulderOf(state, side)` estimates a shoulder: `shoulderHalfWidth`
+(18 cm) out along body right from the head's centre line,
+`shoulderDrop` (20 cm) below the eyes, and `torsoBack` behind them.
+`aimRay(state, side)` returns `{ origin: shoulder, hand, direction,
+length }`, the shoulder→hand line. It's null when the hand is
+untracked or within 12 cm of the shoulder. This is the aim for anything
+held out.
+
 ## A-Frame component
 
 `motion-sense="camera: #cam; leftHand: #l; rightHand: #r"` on the rig.
 Each tick it reads the three entities' world poses, converts them into
 the rig's frame (inverse of the rig's world matrix), and updates
 `this.state`. `setSettings(partial)` and `describe()` are conveniences.
+
+World-space helpers: `toWorld(p)`, `directionToWorld(d)`, and
+`aimRayWorld(side)`, which returns the aim ray as `THREE.Vector3`s.
+
+The module also defines:
+
+- the **`motion` tunables group** (Visor ▸ Tuning ▸ Motion), applied to
+  every `motion-sense` on the page, with the live readout in its
+  sidecar;
+- the **`motion` HUD readout**;
+- the **`motion` debug-draw channel** (see `debug-tuning.spec.md`).
 Hands always report `tracked: true` for now. Detecting real dropouts is
 a todo.
 
@@ -92,11 +111,8 @@ load while the desktop hands glide into place.
   each hand's forward extension (green tick = "Present"), plus the
   `describeMotion` text at 10 Hz.
 - The XR hand spheres turn green while presented.
-- Visor rows:
-  - `HUD`: the same text, head-locked, low in view.
-  - `Motion ▸`: every setting as a live number row, previewing while you
-    scroll, with the readout and every value (with units) in the
-    sidecar. Settings persist to `localStorage`
-    (`action-lab:motion-settings`). `Defaults` resets them.
+- The visor page is `primitives/actions/lab-page.js`. Stations add rows
+  with `addLabRows()`, followed by `Tuning ▸` (every tunables group) and
+  `Debug ▸`.
 - Off a headset: left click is a jab and right click an uppercut (hold
   to charge), alternating hands. Backtick opens the visor.

@@ -58,11 +58,9 @@
         touch-controls="leftHand: #left-hand; rightHand: #right-hand; primaryAction: jab; primaryLabel: JAB; secondaryAction: uppercut; secondaryLabel: UPPER; interactAction: none"
         motion-sense="camera: #lab-camera; leftHand: #left-hand; rightHand: #right-hand"
       >
-        <a-camera id="lab-camera" wasd-controls="enabled: false" look-controls="pointerLockEnabled: true">
-          <!-- The head-locked readout: low in view, off by default, Visor ▸ HUD. -->
-          <a-text id="motion-hud" value="" visible="false" align="left" color="#ffd27a"
-            width="0.9" wrap-count="52" position="-0.42 -0.28 -1"></a-text>
-        </a-camera>
+        <!-- Readouts (Visor > Debug > HUD) hang off this camera; the
+             debug-hud system adds them. -->
+        <a-camera id="lab-camera" wasd-controls="enabled: false" look-controls="pointerLockEnabled: true"></a-camera>
 
         <!-- Small spheres as hands: green while a hand is "presented"
              (held out), which is what an autofire gun will read as on. -->
@@ -86,7 +84,7 @@
       ============================================================ -->
       <a-entity id="station-motion" play-space-station="side: front">
         <a-entity motion-lab="rig: #rig" position="0 1.45 0"></a-entity>
-        <a-text value="MOTION LAB&#10;Stand still: energy stays near zero. Punch: it jumps.&#10;Visor (hand at temple) > Motion to tune."
+        <a-text value="MOTION LAB&#10;Stand still: energy stays near zero. Punch: it jumps.&#10;Visor (hand at temple) > Tuning > Motion."
           align="center" color="#7fe3ff" width="1.3" wrap-count="48" position="0 0.62 0"></a-text>
       </a-entity>
     </a-scene>
@@ -97,5 +95,6 @@
     <script type="module" src="../../common/menu-crossbar.js"></script>
     <script type="module" src="../../common/visor-menu.js"></script>
     <script type="module" src="./motion-lab.js"></script>
+    <script type="module" src="./lab-page.js"></script>
   </body>
 </html>

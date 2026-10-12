@@ -37,10 +37,7 @@ Punch Pop's lessons are kept:
   visor action, persist it per device, and show it in the readout.
   Calibrate is the first thing a new player should be prompted to do.
 
-- **Shoulder estimate.** Aim is meant to be the shoulder→hand ray (see
-  README principle 1). Today there's a torso point but no shoulders.
-  Add per-side shoulder points (torso point ± half shoulder width along
-  body right, a little below the head) and an `aimRay(side)`.
+- **Check the shoulder estimate against real aiming.** `aimRay` exists.
   Verify against recordings that the shoulder→hand ray matches where
   people think they're pointing better than the head→hand ray.
   Hypothesis, unverified: it does for an arm held out, and the head→hand

@@ -6,6 +6,8 @@ import {
   updateMotionSense,
   describeMotion,
   flatForward,
+  shoulderOf,
+  aimRay,
 } from '../common/motion-sense.js';
 
 const FRAME = 1000 / 72;
@@ -198,4 +200,22 @@ test('describeMotion summarises energy and both hands on a few lines', () => {
   assert.match(text, /^ENERGY \[/);
   assert.match(text, /R: .*PRESENTED/);
   assert.ok(text.split('\n').length === 4);
+});
+
+test('the aim ray runs from the estimated shoulder through the hand, and turns with the body', () => {
+  const state = createMotionSense({ facingMs: 0 });
+  // Right arm straight out in front at shoulder height.
+  updateMotionSense(state, frame(0, { left: REST_L, right: { x: 0.18, y: 1.4, z: -0.7 } }));
+  const shoulder = shoulderOf(state, 'right');
+  assert.ok(Math.abs(shoulder.x - 0.18) < 1e-9 && Math.abs(shoulder.y - 1.4) < 1e-9);
+  const ray = aimRay(state, 'right');
+  assert.ok(ray.direction.z < -0.999, JSON.stringify(ray.direction));
+  // Turned 90° left (facing -X), the same pose in body space aims down -X.
+  const yaw = Math.PI / 2;
+  const turned = createMotionSense({ facingMs: 0 });
+  updateMotionSense(turned, frame(0, { yaw, head: bodyPoint({ x: 0, y: 1.6, z: 0 }, yaw), left: bodyPoint(REST_L, yaw), right: bodyPoint({ x: 0.18, y: 1.4, z: -0.7 }, yaw) }));
+  assert.ok(aimRay(turned, 'right').direction.x < -0.999);
+  // A hand tucked against the shoulder has no meaningful aim.
+  updateMotionSense(state, frame(FRAME, { left: REST_L, right: { x: 0.18, y: 1.38, z: 0.02 } }));
+  assert.equal(aimRay(state, 'right'), null);
 });

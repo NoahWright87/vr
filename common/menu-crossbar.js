@@ -258,6 +258,8 @@ if (typeof AFRAME !== 'undefined') {
   var CRUMB_MAX_CHARS = 18;
   var CRUMB_WRAP = 18;
   var CRUMB_FLY_MS = 260;
+  // How often a liveInfo sidecar is re-read (see tick).
+  var LIVE_INFO_MS = 200;
   var CRUMB_STAGGER_MS = 22;
   var CRUMB_PITCH = 0.64;
   // Segments in the progress arc. Enough that the fill moves smoothly.
@@ -1457,6 +1459,14 @@ if (typeof AFRAME !== 'undefined') {
 
     tick: function (time) {
       this.tickFlash(time);
+      // Info marked liveInfo (a readout of something that changes every
+      // frame, not just when you scroll) is re-read a few times a
+      // second while it is showing. renderSidecar skips unchanged text.
+      if (this.menu.isOpen && !(time - this.liveInfoAt < LIVE_INFO_MS)) {
+        this.liveInfoAt = time;
+        var info = this.menu.getInfo();
+        if (info && info.item && info.item.liveInfo) this.renderSidecar(true);
+      }
       if (!this.crumbs.length) return;
       for (var c = 0; c < this.crumbs.length; c++) {
         var chars = this.crumbs[c].chars;
