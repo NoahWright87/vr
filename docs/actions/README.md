@@ -97,26 +97,26 @@ to tune it, and tests.
 
 | # | Topic | File | Why this order |
 |---|---|---|---|
-| 0 | Motion sensing | `motion-sense.todo.md` | Everything reads it. Its *motion energy* signal is the comfort budget's currency. **First slice: built.** See `motion-sense.spec.md`. |
-| 1 | Tuning & debug | `debug-tuning.todo.md` | Before there's much to tune, so every later piece gets rows, readouts and overlays for free. |
-| 2 | Targets & dummies | `dummies.todo.md` | Silhouettes first. Something to shoot at. |
-| 3 | Targeting | `targeting.todo.md` | One resolver for guns, punches, throws and parries. |
-| 4 | Autofire | `autofire.todo.md` | Simplest full sense→resolve→sell loop, and the most immediately fun. |
+| 0 | Motion sensing | `motion-sense.todo.md` | Everything reads it. Its *motion energy* signal is the comfort budget's currency. **Built** (`motion-sense.spec.md`). |
+| 1 | Tuning & debug | `debug-tuning.todo.md` | Before there's much to tune, so every later piece gets rows, readouts and overlays for free. **Built** (`debug-tuning.spec.md`). |
+| 2 | Targets & dummies | `dummies.todo.md` | Silhouettes first. Something to shoot at. **Silhouettes built** (`dummies.spec.md`). |
+| 3 | Targeting | `targeting.todo.md` | One resolver for guns, punches, throws and parries. **Built** (`targeting.spec.md`). |
+| 4 | Autofire | `autofire.todo.md` | Simplest full sense→resolve→sell loop, and the most immediately fun. **Built** (`autofire.spec.md`). |
 | 5 | Comfort budget | `comfort-budget.todo.md` | Needed before anything moves the hand or view. |
 | 6 | Virtual hands | `virtual-hands.todo.md` | The tool for selling melee and blocks. |
 | 7 | Intent | `intent.todo.md` | Strike and guard classifiers, plus recording real motion. |
 | 8 | Melee | `melee.todo.md` | On the peg dummy. |
 | 9 | Defense | `defense.todo.md` | Needs attacker dummies with telegraphed attacks. |
 | 10 | Throwing | `throwing.todo.md` | Extraction from Pistols, generalized. |
-| 11 | Feedback | `feedback.todo.md` | Parts of it (effect pools, the clock) are needed from step 4 onward; hit-stop and bullet time come here. |
+| 11 | Feedback | `feedback.todo.md` | Parts of it (effect pools, the clock) are needed from step 4 onward; hit-stop and bullet time come here. **Clock, pools, haptics, sound built** (`feedback.spec.md`). |
 | — | Physics | `physics.todo.md` | Long-term needs and options. No library yet. |
 
 All of it is demonstrated in one showcase, `primitives/actions/`, the
 way `primitives/menus/` is the Storybook for menus: stations laid out
 against the real room with `play-space-station`. Planned stations:
 
-- **Motion lab**: live motion-sense readout. Built.
-- **Range**: silhouettes for autofire.
+- **Motion lab**: live motion-sense readout. Built (left).
+- **Range**: silhouettes for autofire. Built (ahead).
 - **Dummy**: peg-arm dummy for melee.
 - **Sparring**: an attacker dummy for defense.
 - **Lane**: throwing.

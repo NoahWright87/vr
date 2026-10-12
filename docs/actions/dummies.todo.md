@@ -5,7 +5,12 @@ is Superhot-like: a limited number of low-poly figures and simple
 environments. So these should already be low-poly bodies with zones,
 not abstract cubes.
 
-## Contract: `combat-target`
+Built so far: `combat-target` (see `targeting.spec.md`) and the
+steel silhouette, with rail/pop-up/walker movers, tip and shatter
+deaths, and a spawner (see `dummies.spec.md`). Everything below that is
+not marked built is still to do.
+
+## Contract: `combat-target` (built)
 
 Anything that can be targeted, shot, struck or thrown at. It registers
 with the targeting system (`targeting.todo.md`) and declares:
@@ -28,7 +33,7 @@ compatible so Pistols' targets could later listen to both.
 
 ## The dummies, in build order
 
-1. **Steel silhouette.** A flat cut-out with head and torso zones. Hit:
+1. **Steel silhouette** (built). A flat cut-out with head and torso zones. Hit:
    rings and rocks back on a spring. Head shot or enough damage: tips
    over and resets after a delay. This is the autofire range's target.
    Variants: on a rail (slides back and forth), pop-up (rises on a
@@ -64,7 +69,8 @@ Per `README.md` principle 4, the target does a lot of the selling:
   Punch Pop's `cube-behavior.applyKnockback`. That's a decent
   reference, including its oversized-dt guard and the "impact on a hard
   stop deals damage" idea.
-- **Death**: shatter into pooled low-poly shards, Superhot style.
+- **Death**: shatter into pooled low-poly shards, Superhot style
+  (built for silhouettes).
   It fits the eventual look, it's cheap with a pool, and it avoids
   ragdolls entirely (see `physics.todo.md`).
 
@@ -73,3 +79,10 @@ Per `README.md` principle 4, the target does a lot of the selling:
 A small spawner that a station configures: which dummy, how many, the
 pattern (arc, line, random ring), and respawn on death. The visor has
 Station ▸ Reset and counts.
+
+## Performance
+
+The swarm walker must not be built from per-part `a-entity` boxes the
+way the silhouette is (5 meshes each). Use one `InstancedMesh` per body
+type, with each walker a slot, as `action-effects` does for particles.
+`combat-target` zones stay per walker; they're just data.

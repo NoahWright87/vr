@@ -21,20 +21,22 @@
          ACTION LAB — the showcase for the action primitives
          (docs/actions/), the way primitives/menus is for menus. One
          station per primitive, stood against your real room by
-         play-space-station. For now there is one:
+         play-space-station:
 
-           ahead   the motion lab — live readout of common/motion-sense.js
+           ahead   the range — steel silhouettes past the front of your
+                   room; hold a hand out at them and its gun fires
+           left    the motion lab — live readout of common/motion-sense.js
 
-         The plan for the rest (range, peg dummy, sparring, throwing
-         lane, swarm) is in docs/actions/README.md.
+         The plan for the rest (peg dummy, sparring, throwing lane,
+         swarm) is in docs/actions/README.md.
 
-         Off a headset: left click throws a jab, right click an uppercut
-         (hold to charge), with the same scripted hand motion Punch Pop
-         uses — so the readout is fed by the real motion-sense path, not
-         a shortcut. Backtick opens the visor.
+         Off a headset: Q raises both hands (guns up), left click throws
+         a jab, right click an uppercut (hold to charge) — all by moving
+         the simulated hands, so motion-sense and everything after it
+         run the real path, not a shortcut. Backtick opens the visor.
     ============================================================== -->
     <div id="overlay">
-      <span>Action Lab — motion sensing. VR: just move. Desktop: WASD/mouse, left click jab, right click uppercut, ` visor. <a href="../../index.html">All prototypes</a></span>
+      <span>Action Lab — VR: hold a hand out at the targets ahead. Desktop: WASD/mouse, Q guns up, left click jab, right click uppercut, ` visor. <a href="../../index.html">All prototypes</a></span>
     </div>
 
     <a-scene visor-menu="page: visor" play-space-outline="showDefault: true">
@@ -76,13 +78,28 @@
         </a-entity>
       </a-entity>
 
+      <!-- One gun per hand. They are not children of the hands: each sits
+           at its hand and points along the shoulder-to-hand line, so the
+           wrist never matters (common/autofire.js). -->
+      <a-entity autofire-gun="side: left; rig: #rig; hand: #left-hand"></a-entity>
+      <a-entity autofire-gun="side: right; rig: #rig; hand: #right-hand"></a-entity>
+
       <!-- ============================================================
-           AHEAD — THE MOTION LAB. Bars for motion energy and each
+           AHEAD — THE RANGE. The spawner lays silhouettes out in an arc
+           beyond the front of the room (its local -Z, away from the
+           middle). Tuning > Range rebuilds them.
+      ============================================================ -->
+      <a-entity id="station-range" play-space-station="side: front">
+        <a-entity id="range-targets" target-spawner></a-entity>
+      </a-entity>
+
+      <!-- ============================================================
+           LEFT — THE MOTION LAB. Bars for motion energy and each
            hand's head-relative speed and forward extension, and the full
            readout as text. Everything else in docs/actions/ reads these
            numbers, so this is where they get tuned.
       ============================================================ -->
-      <a-entity id="station-motion" play-space-station="side: front">
+      <a-entity id="station-motion" play-space-station="side: left">
         <a-entity motion-lab="rig: #rig" position="0 1.45 0"></a-entity>
         <a-text value="MOTION LAB&#10;Stand still: energy stays near zero. Punch: it jumps.&#10;Visor (hand at temple) > Tuning > Motion."
           align="center" color="#7fe3ff" width="1.3" wrap-count="48" position="0 0.62 0"></a-text>
@@ -95,6 +112,7 @@
     <script type="module" src="../../common/menu-crossbar.js"></script>
     <script type="module" src="../../common/visor-menu.js"></script>
     <script type="module" src="./motion-lab.js"></script>
+    <script type="module" src="./range.js"></script>
     <script type="module" src="./lab-page.js"></script>
   </body>
 </html>
