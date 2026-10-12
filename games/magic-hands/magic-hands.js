@@ -1,0 +1,75 @@
+import { SpellGestures } from '../../common/hand-gestures.js';
+import { HandInput } from './hand-input.js';
+import { SpellEffects } from './spells.js';
+const THREE = AFRAME.THREE;
+
+AFRAME.registerComponent('magic-hands', {
+  init() {
+    this.camera = document.querySelector('#magic-camera');
+    this.input = new HandInput(this.el.sceneEl, this.camera);
+    this.effects = new SpellEffects(this.el.sceneEl, this.input.root);
+    this.gestures = new SpellGestures(); this.score = 0; this.shots = 0; this.hits = 0; this.lastHud = -Infinity;
+    this.head = { position: new THREE.Vector3(), quaternion: new THREE.Quaternion(), forward: new THREE.Vector3(), up: new THREE.Vector3() };
+    this.status = document.querySelector('#status'); this.hud = document.querySelector('#magic-hud');
+    this.reset = () => {
+      this.score = this.shots = this.hits = 0; this.gestures.reset(); this.effects.clear(); this.lastHud = -Infinity;
+      this.el.sceneEl.querySelectorAll('[magic-receiver]').forEach(el => el.components['magic-receiver']?.reset());
+    };
+    this.onScore = e => { this.score += e.detail.points; this.hits++; };
+    this.onCast = () => { this.shots++; };
+    this.onMode = e => this.setMode(e.target.closest('[data-spell]')?.dataset.spell);
+    this.onKey = e => {
+      if (this.el.sceneEl.renderer.xr.isPresenting || /INPUT|BUTTON|SELECT/.test(e.target.tagName)) return;
+      if (e.code === 'Digit1') this.setMode('lightning');
+      if (e.code === 'Digit2') this.setMode('farsight');
+      if (e.code === 'Digit3') this.setMode('shield');
+      if (e.code === 'Space') { e.preventDefault(); this.input.hammerDown = true; }
+      if (e.code === 'KeyR' && !e.repeat) this.reset();
+      if (e.code === 'KeyH' && !e.repeat) this.input.shieldHands = this.input.shieldHands === 1 ? 2 : 1;
+    };
+    this.onRelease = e => { if (!e || e.code === 'Space') this.input.hammerDown = false; };
+    this.onDown = e => { if (!this.el.sceneEl.renderer.xr.isPresenting && e.button === 0 && e.target === this.el.sceneEl.canvas) this.input.hammerDown = true; };
+    this.onUp = () => { this.input.hammerDown = false; };
+    this.onWheel = e => {
+      if (this.el.sceneEl.renderer.xr.isPresenting || this.input.mode !== 'farsight') return;
+      e.preventDefault(); this.input.aperture = Math.max(.025, Math.min(.20, this.input.aperture + Math.sign(e.deltaY) * .008));
+      document.querySelector('#aperture').value = this.input.aperture;
+    };
+    this.onAperture = e => { this.input.aperture = Number(e.target.value); };
+    this.onLifecycle = () => { this.onUp(); this.gestures.reset(); this.effects.clear(); };
+    this.onVisibility = () => { if (document.hidden) this.onLifecycle(); };
+    this.listeners = [
+      [this.el.sceneEl, 'magic-scored', this.onScore], [this.el.sceneEl, 'magic-cast', this.onCast],
+      [this.el.sceneEl, 'enter-vr', this.onLifecycle], [this.el.sceneEl, 'exit-vr', this.onLifecycle],
+      [document.querySelector('#spell-controls'), 'click', this.onMode], [document.querySelector('#reset'), 'click', this.reset],
+      [document.querySelector('#aperture'), 'input', this.onAperture],
+      [window, 'keydown', this.onKey], [window, 'keyup', this.onRelease], [window, 'pointerdown', this.onDown],
+      [window, 'pointerup', this.onUp], [window, 'pointercancel', this.onUp], [window, 'blur', this.onLifecycle],
+      [window, 'wheel', this.onWheel], [document, 'visibilitychange', this.onVisibility],
+    ];
+    this.listeners.forEach(([el, event, fn]) => el.addEventListener(event, fn, event === 'wheel' ? { passive: false } : undefined));
+  },
+  setMode(mode) {
+    if (!['lightning', 'farsight', 'shield'].includes(mode) || this.el.sceneEl.renderer.xr.isPresenting) return;
+    this.input.mode = mode; this.onLifecycle();
+    document.querySelectorAll('[data-spell]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.spell === mode)));
+  },
+  tick(time, dt) {
+    if (!this.el.sceneEl.renderer || !this.camera?.object3D) return;
+    const head = this.head;
+    this.camera.object3D.getWorldPosition(head.position); this.camera.object3D.getWorldQuaternion(head.quaternion);
+    head.forward.set(0, 0, -1).applyQuaternion(head.quaternion); head.up.set(0, 1, 0).applyQuaternion(head.quaternion);
+    const hands = this.input.sample(head);
+    const result = this.gestures.update(hands, head, time);
+    this.effects.update(result, hands, head, time, dt);
+    if (time - this.lastHud < 120) return; this.lastHud = time;
+    const xr = !!this.el.sceneEl.renderer.xr.getSession();
+    const label = side => hands[side] ? (result[side] || 'idle') : 'untracked';
+    const spell = result.lens ? `Farsight ${this.effects.lastZoom.toFixed(1)}x` : `L: ${label('left')}  |  R: ${label('right')}`;
+    const text = `${spell}  |  ${this.score} points  |  ${this.hits}/${this.shots} hits`;
+    this.status.textContent = `${xr ? 'Hand tracking' : 'Desktop rehearsal'} · ${text}`;
+    this.hud.setAttribute('value', text);
+    document.querySelector('#desktop-rehearsal').hidden = xr;
+  },
+  remove() { this.listeners.forEach(([el, event, fn]) => el.removeEventListener(event, fn)); this.input.dispose(); this.effects.dispose(); },
+});

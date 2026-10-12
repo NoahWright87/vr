@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Magic Hands | Noah's VR projects</title>
+  <link rel="icon" href="../../assets/noah-vr.svg" type="image/svg+xml" />
+  <script>window.AFRAME_CDN_ROOT = '../../vendor/aframe-1.6.0/';</script>
+  <script src="../../vendor/aframe-1.6.0/aframe-v1.6.0.min.js"></script>
+  <style>
+    body { margin: 0; font: 14px/1.5 system-ui, sans-serif; color: #eef1ff; background: #090d1b; }
+    #overlay { position: absolute; z-index: 2; top: 16px; left: 16px; width: min(370px, calc(100vw - 56px)); padding: 16px; border: 1px solid #525281; border-radius: 14px; background: #10152aeb; box-shadow: 0 8px 40px #0006; }
+    h1 { margin: 0 0 4px; font-size: 25px; letter-spacing: -.5px; }
+    .eyebrow { color: #b6a9eb; font-size: 11px; letter-spacing: 2px; text-transform: uppercase; }
+    a { color: #b9d9ff; } p { margin: 8px 0; }
+    summary { cursor: pointer; color: #cfd7ef; margin: 8px 0; }
+    ul { padding-left: 18px; } li { margin: 8px 0; }
+    button { border: 1px solid #5e658d; border-radius: 7px; background: #252a45; color: white; padding: 8px 10px; cursor: pointer; font: inherit; }
+    button[aria-pressed="true"] { background: #4b407c; border-color: #b39aff; }
+    button:focus-visible, input:focus-visible { outline: 2px solid #94ddff; outline-offset: 3px; }
+    #spell-controls { display: flex; gap: 6px; margin: 10px 0; }
+    #status { color: #9cdcff; font-size: 12px; margin-top: 12px; }
+    label { display: flex; align-items: center; gap: 12px; } input { width: 160px; accent-color: #ad99ff; }
+    .quiet { color: #a2accb; font-size: 12px; }
+    [hidden] { display: none !important; }
+    @media (max-width: 600px) { #overlay { top: 8px; left: 8px; padding: 12px; } }
+  </style>
+</head>
+<body>
+  <aside id="overlay">
+    <div class="eyebrow">A hand tracking spell playground</div>
+    <h1>Magic Hands</h1>
+    <p>Put the controllers down. Your hands are the magic.</p>
+    <details>
+      <summary>Learn the three spells</summary>
+      <ul>
+        <li><strong>Lightning bolt</strong> — point your index finger, curl the other three fingers, lift your thumb. Wait for the blue glow, then lower your thumb toward the index knuckle. Lift it again to reload.</li>
+        <li><strong>Farsight</strong> — curl your spare fingers, touch index fingertips at the top and thumb tips at the bottom to make a round window. Hold it in front of your eyes and look through it. A smaller opening gives more zoom, up to 16×.</li>
+        <li><strong>Shield</strong> — extend all four fingers and turn your palm upward or forward, in front of you. Each hand makes a 0.5 m shield; bring both open hands within 40 cm for a 1 m shield.</li>
+      </ul>
+      <p class="quiet">Enable hand tracking on your Quest, then enter VR. A brief hold settles each spell. Tracking loss releases it; lightning needs a fresh thumb lift.</p>
+    </details>
+    <div id="desktop-rehearsal">
+      <div id="spell-controls" aria-label="Desktop spell pose">
+        <button data-spell="lightning" aria-pressed="true">1 · Lightning</button>
+        <button data-spell="farsight" aria-pressed="false">2 · Farsight</button>
+        <button data-spell="shield" aria-pressed="false">3 · Shield</button>
+      </div>
+      <label>Circle size <input id="aperture" aria-label="Farsight circle diameter" type="range" min="0.025" max="0.20" step="0.005" value="0.16" /></label>
+      <p class="quiet">Desktop rehearsal: drag to look, WASD to move. Click the scene or press Space to drop the thumb. Release to reload. Scroll changes the circle size. H switches one/two shield hands.</p>
+    </div>
+    <button id="reset">Reset score · R</button> <a href="../../index.html">All experiences</a>
+    <div id="status" role="status">Preparing the spell courtyard…</div>
+  </aside>
+
+  <a-scene background="color: #0b1023" fog="type: exponential; color: #101b36; density: .013"
+    renderer="colorManagement: true" webxr="optionalFeatures: hand-tracking, local-floor; referenceSpaceType: local-floor">
+    <a-entity magic-hands></a-entity>
+    <a-light type="ambient" color="#9aa6e9" intensity=".8"></a-light>
+    <a-light type="directional" color="#e5d6ff" intensity=".9" position="-3 8 2"></a-light>
+    <a-plane rotation="-90 0 0" width="120" height="120" color="#192039" material="roughness: 1"></a-plane>
+    <a-ring rotation="-90 0 0" position="0 .01 0" radius-inner="1.3" radius-outer="1.34" color="#6565a0" material="shader: flat"></a-ring>
+    <a-ring rotation="-90 0 0" position="0 .012 0" radius-inner="2.3" radius-outer="2.32" color="#414864" material="shader: flat"></a-ring>
+
+    <a-entity id="magic-camera" camera look-controls="pointerLockEnabled: false" wasd-controls="acceleration: 12" position="0 1.6 0">
+      <a-text id="magic-hud" position="0 -.32 -.9" align="center" width="1.15" color="#c6deff" value="Hold a spell pose"></a-text>
+    </a-entity>
+
+    <a-entity position="-2.1 1.7 -2.4" rotation="0 32 0">
+      <a-text value="MAGIC HANDS" align="center" width="3.4" position="0 .55 0" color="#ccbcff"></a-text>
+      <a-text value="POINT + THUMB DOWN\nLightning bolt\n\nINDEX + THUMB CIRCLE\nFarsight: smaller = closer\n\nOPEN PALMS UP / FORWARD\nShield: together = bigger" align="center" width="2.3" color="#c4cee9"></a-text>
+    </a-entity>
+
+    <a-sphere class="magic-target" magic-receiver position=".18 1.40 -4" radius=".32" color="#5a69b8" material="emissive: #17244a; roughness: .35"></a-sphere>
+    <a-sphere class="magic-target" magic-receiver position="-1.5 1.8 -6" radius=".36" color="#5a69b8" material="emissive: #17244a"></a-sphere>
+    <a-sphere class="magic-target" magic-receiver position="1.8 1.3 -8" radius=".4" color="#5a69b8" material="emissive: #17244a"></a-sphere>
+    <a-sphere class="magic-target" magic-receiver position="-2.3 2.1 -15" radius=".5" color="#5a69b8" material="emissive: #17244a"></a-sphere>
+    <a-sphere class="magic-target" magic-receiver position="2.8 2.5 -28" radius=".65" color="#5a69b8" material="emissive: #17244a"></a-sphere>
+    <a-sphere class="magic-target" magic-receiver position="0 3.6 -48" radius=".8" color="#5a69b8" material="emissive: #17244a"></a-sphere>
+
+    <a-cylinder position=".18 .30 -4" radius=".45" height=".6" color="#3b3c58"></a-cylinder>
+    <a-cylinder position="-1.5 .30 -6" radius=".48" height=".6" color="#3b3c58"></a-cylinder>
+    <a-cylinder position="1.8 .30 -8" radius=".52" height=".6" color="#3b3c58"></a-cylinder>
+    <a-cylinder position="-2.3 .55 -15" radius=".6" height="1.1" color="#3b3c58"></a-cylinder>
+    <a-cylinder position="2.8 1 -28" radius=".8" height="2" color="#3b3c58"></a-cylinder>
+    <a-cylinder position="0 1.2 -48" radius="1" height="2.4" color="#3b3c58"></a-cylinder>
+    <a-text value="4 m" position=".18 .75 -3.6" align="center" width="1.5" color="#919dc8"></a-text>
+    <a-text value="15 m" position="-2.3 1 -14.4" align="center" width="2" color="#919dc8"></a-text>
+    <a-text value="48 m\nTHE DISTANT ORACLE" position="0 5.4 -48" align="center" width="6" color="#e1c6ff"></a-text>
+    <a-torus position="0 3.6 -48" radius="1.15" radius-tubular=".05" color="#9180c9"></a-torus>
+
+    <a-cylinder position="-5 2 -12" radius=".55" height="4" color="#363c58"></a-cylinder>
+    <a-cylinder position="5 2 -12" radius=".55" height="4" color="#363c58"></a-cylinder>
+    <a-octahedron position="-5 4.3 -12" radius=".6" color="#8e81e4" material="emissive: #3b266b"></a-octahedron>
+    <a-octahedron position="5 4.3 -12" radius=".6" color="#8e81e4" material="emissive: #3b266b"></a-octahedron>
+    <a-box position="-8 3 -30" width="2" height="6" depth="2" color="#28334f"></a-box>
+    <a-box position="8 3 -30" width="2" height="6" depth="2" color="#28334f"></a-box>
+    <a-cone position="-8 7 -30" radius-bottom="1.8" radius-top="0" height="2" color="#53496e"></a-cone>
+    <a-cone position="8 7 -30" radius-bottom="1.8" radius-top="0" height="2" color="#53496e"></a-cone>
+  </a-scene>
+  <script type="module" src="./magic-hands.js"></script>
+</body>
+</html>

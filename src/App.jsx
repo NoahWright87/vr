@@ -17,6 +17,16 @@ export function App() {
       <Container padding="lg">
         <CardGrid gap="lg" minCardWidth="340px">
           <Card
+            title="Magic Hands"
+            subtitle="Hand tracking"
+            href="/games/magic-hands/"
+            interactive
+            footer={<Text tone="muted">Cast a spell →</Text>}
+          >
+            Your hands are the magic. Fire lightning from a finger gun, peer through
+            a farsight circle, and summon shields with open palms.
+          </Card>
+          <Card
             title="Pistols at Dawn"
             subtitle="The flagship"
             href="/games/pistols-at-dawn/"
