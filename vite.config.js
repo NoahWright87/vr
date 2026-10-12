@@ -53,6 +53,7 @@ export default defineConfig({
         boundaries: resolve(root, 'games/boundaries/index.html'),
         pistolsAtDawn: resolve(root, 'games/pistols-at-dawn/index.html'),
         menuShowcase: resolve(root, 'primitives/menus/index.html'),
+        actionLab: resolve(root, 'primitives/actions/index.html'),
       },
     },
   },

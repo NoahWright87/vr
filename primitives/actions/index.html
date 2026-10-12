@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Action Lab | Noah's VR projects</title>
+    <link rel="icon" href="../../assets/noah-vr.svg" type="image/svg+xml" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <script>window.AFRAME_CDN_ROOT = '../../vendor/aframe-1.6.0/';</script>
+    <script src="../../vendor/aframe-1.6.0/aframe-v1.6.0.min.js"></script>
+    <style>
+      body { margin: 0; font-family: system-ui, sans-serif; }
+      #overlay {
+        position: absolute; top: 0; left: 0; right: 0; z-index: 1;
+        padding: 0.75rem 1rem; background: rgba(0, 0, 0, 0.55); color: white; font-size: 0.9rem;
+      }
+      #overlay a { color: #9ad; }
+    </style>
+  </head>
+  <body>
+    <!-- ==============================================================
+         ACTION LAB — the showcase for the action primitives
+         (docs/actions/), the way primitives/menus is for menus. One
+         station per primitive, stood against your real room by
+         play-space-station. For now there is one:
+
+           ahead   the motion lab — live readout of common/motion-sense.js
+
+         The plan for the rest (range, peg dummy, sparring, throwing
+         lane, swarm) is in docs/actions/README.md.
+
+         Off a headset: left click throws a jab, right click an uppercut
+         (hold to charge), with the same scripted hand motion Punch Pop
+         uses — so the readout is fed by the real motion-sense path, not
+         a shortcut. Backtick opens the visor.
+    ============================================================== -->
+    <div id="overlay">
+      <span>Action Lab — motion sensing. VR: just move. Desktop: WASD/mouse, left click jab, right click uppercut, ` visor. <a href="../../index.html">All prototypes</a></span>
+    </div>
+
+    <a-scene visor-menu="page: visor" play-space-outline="showDefault: true">
+      <a-light type="ambient" color="#fff" intensity="0.7"></a-light>
+      <a-light type="directional" position="2 3 2" intensity="0.7"></a-light>
+      <a-sky color="#0d1526"></a-sky>
+      <a-plane id="floor" rotation="-90 0 0" width="20" height="20" color="#3a4358"></a-plane>
+
+      <!-- motion-sense reads the camera and both hands in this rig's own
+           space (your real room), so moving the rig never counts as you
+           moving. -->
+      <a-entity
+        id="rig"
+        locomotion-demo="speed: 1.5"
+        desktop-movement-input
+        desktop-action-input="primaryAction: jab; secondaryAction: uppercut; leftHand: #left-hand; rightHand: #right-hand; dominantHand: right; alternateHands: true; chargeMs: 900; minimumStrength: 0.35"
+        desktop-hand-presence="camera: #lab-camera; leftHand: #left-hand; rightHand: #right-hand; forward: 0.2; down: 0.13; spread: 0.2"
+        semantic-punch-controls="camera: #lab-camera; leftHand: #left-hand; rightHand: #right-hand"
+        semantic-look-controls="camera: #lab-camera"
+        gamepad-input="leftHand: #left-hand; rightHand: #right-hand; primaryAction: jab; secondaryAction: uppercut; interactAction: none; grabAction: none; watchAction: none; backAction: none; crouchAction: none"
+        touch-controls="leftHand: #left-hand; rightHand: #right-hand; primaryAction: jab; primaryLabel: JAB; secondaryAction: uppercut; secondaryLabel: UPPER; interactAction: none"
+        motion-sense="camera: #lab-camera; leftHand: #left-hand; rightHand: #right-hand"
+      >
+        <a-camera id="lab-camera" wasd-controls="enabled: false" look-controls="pointerLockEnabled: true">
+          <!-- The head-locked readout: low in view, off by default, Visor ▸ HUD. -->
+          <a-text id="motion-hud" value="" visible="false" align="left" color="#ffd27a"
+            width="0.9" wrap-count="52" position="-0.42 -0.28 -1"></a-text>
+        </a-camera>
+
+        <!-- Small spheres as hands: green while a hand is "presented"
+             (held out), which is what an autofire gun will read as on. -->
+        <a-entity id="left-hand"
+          oculus-touch-controls="hand: left; model: false"
+          semantic-hand="hand: left; moveSpeed: 1.8; turnSpeed: 540; desktopScale: 0.32">
+          <a-sphere class="hand-marker" radius="0.05" color="#8aa0c8" shader="flat" control-mode-visibility="modes: xr"></a-sphere>
+        </a-entity>
+        <a-entity id="right-hand"
+          oculus-touch-controls="hand: right; model: false"
+          semantic-hand="hand: right; moveSpeed: 1.8; turnSpeed: 540; desktopScale: 0.32">
+          <a-sphere class="hand-marker" radius="0.05" color="#8aa0c8" shader="flat" control-mode-visibility="modes: xr"></a-sphere>
+        </a-entity>
+      </a-entity>
+
+      <!-- ============================================================
+           AHEAD — THE MOTION LAB. Bars for motion energy and each
+           hand's head-relative speed and forward extension, and the full
+           readout as text. Everything else in docs/actions/ reads these
+           numbers, so this is where they get tuned.
+      ============================================================ -->
+      <a-entity id="station-motion" play-space-station="side: front">
+        <a-entity motion-lab="rig: #rig" position="0 1.45 0"></a-entity>
+        <a-text value="MOTION LAB&#10;Stand still: energy stays near zero. Punch: it jumps.&#10;Visor (hand at temple) > Motion to tune."
+          align="center" color="#7fe3ff" width="1.3" wrap-count="48" position="0 0.62 0"></a-text>
+      </a-entity>
+    </a-scene>
+
+    <script type="module" src="../../common/play-space.js"></script>
+    <script type="module" src="../../common/locomotion.js"></script>
+    <script type="module" src="../../common/semantic-punch.js"></script>
+    <script type="module" src="../../common/menu-crossbar.js"></script>
+    <script type="module" src="../../common/visor-menu.js"></script>
+    <script type="module" src="./motion-lab.js"></script>
+  </body>
+</html>

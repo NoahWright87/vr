@@ -58,7 +58,8 @@ export function App() {
         <Text align="center" tone="muted">
           Also here: a{' '}
           <Link href="/primitives/menus/">showcase of the interaction building blocks</Link>{' '}
-          these games are made from.
+          these games are made from, and an{' '}
+          <Link href="/primitives/actions/">action lab</Link> for the combat ones being built next.
         </Text>
       </Container>
     </Layout>

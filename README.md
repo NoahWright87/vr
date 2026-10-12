@@ -163,6 +163,8 @@ gameplay-facing hand entities. The V1 box has only a small shared held/falling/
 resting state machine; Pistols at Dawn's larger holster/stack/throw/catch graph
 remains isolated until it can be migrated incrementally.
 
+- **[Action Lab](primitives/actions/index.html)** — the showcase for the action primitives planned in [`docs/actions/`](docs/actions/README.md) (autofire, melee, defense, throwing). Its first station is the **motion lab**: a live readout of `common/motion-sense.js`, the shared layer every action reads — head and hand velocities in physical (rig-local) space, a torso estimate, turn-immune forward extension, whether each hand is "presented", and *motion energy*, the 0–1 signal of how vigorously you are actually moving that will pay for every assist. Every number is a live row under Visor ▸ Motion. See [`docs/actions/motion-sense.spec.md`](docs/actions/motion-sense.spec.md).
+
 Coming soon: broader object manipulation and spatial audio.
 
 ## Running locally
