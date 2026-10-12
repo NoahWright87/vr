@@ -176,13 +176,16 @@ if (typeof AFRAME !== 'undefined' && !AFRAME.systems['combat-targeting']) {
       this.drawHitboxes();
     },
 
-    candidates: function () {
+    // team: only targets on this team (a gun shoots 'enemy', not a
+    // training dummy). Omit for any.
+    candidates: function (team) {
       var time = this.el.time;
       var memory = tune.values.recentMs;
       var out = [];
       for (var i = 0; i < this.targets.length; i++) {
         var t = this.targets[i];
         if (!t.alive || !t.targetable()) continue;
+        if (team && t.data.team !== team) continue;
         var claim = this.claims.get(t.el);
         out.push({
           id: t.el,
@@ -197,8 +200,9 @@ if (typeof AFRAME !== 'undefined' && !AFRAME.systems['combat-targeting']) {
       return out;
     },
 
-    // query: { origin, direction, by?, current?, coneDeg?, range? }
-    // (THREE vectors fine). coneDeg/range override the profile's.
+    // query: { origin, direction, by?, current?, coneDeg?, range?, team? }
+    // (THREE vectors fine). coneDeg/range override the profile's; team
+    // limits candidates to one team.
     resolve: function (profileName, query) {
       var profile = this.profile(profileName);
       if (!profile) return null;
@@ -209,7 +213,7 @@ if (typeof AFRAME !== 'undefined' && !AFRAME.systems['combat-targeting']) {
         origin: query.origin, direction: query.direction, by: query.by, current: query.current,
         gazeOrigin: gaze && gaze.origin, gazeDirection: gaze && gaze.direction,
       };
-      var scored = scoreCandidates(this.candidates(), q, profile);
+      var scored = scoreCandidates(this.candidates(query.team), q, profile);
       var best = scored[0] || null;
       var pick = null;
       if (best) {
@@ -251,9 +255,9 @@ if (typeof AFRAME !== 'undefined' && !AFRAME.systems['combat-targeting']) {
       for (var i = 0; i < this.targets.length; i++) {
         var t = this.targets[i];
         var zones = t.worldZones();
-        var color = t.alive ? '#ff6b6b' : '#555b66';
         for (var z = 0; z < zones.length; z++) {
           var zone = zones[z];
+          var color = !t.alive ? '#555b66' : zone.obstacle ? '#ffb547' : '#ff6b6b';
           if (zone.type === 'capsule') dd.capsule(zone.a, zone.b, zone.r, color, 10);
           else dd.sphere(zone.a, zone.r, color, 10);
         }
@@ -307,10 +311,10 @@ if (typeof AFRAME !== 'undefined' && !AFRAME.systems['combat-targeting']) {
 
     setZones: function (zones) {
       this.zones = zones.map(function (z) {
-        return { name: z.name, type: z.type || 'sphere', a: z.a, b: z.b || z.a, r: z.r, damage: z.damage === undefined ? 1 : z.damage };
+        return { name: z.name, type: z.type || 'sphere', a: z.a, b: z.b || z.a, r: z.r, damage: z.damage === undefined ? 1 : z.damage, obstacle: Boolean(z.obstacle) };
       });
       this.world = this.zones.map(function (z) {
-        return { name: z.name, type: z.type, a: { x: 0, y: 0, z: 0 }, b: { x: 0, y: 0, z: 0 }, r: z.r, damage: z.damage };
+        return { name: z.name, type: z.type, a: { x: 0, y: 0, z: 0 }, b: { x: 0, y: 0, z: 0 }, r: z.r, damage: z.damage, obstacle: z.obstacle };
       });
       this.worldTime = -1;
     },
@@ -336,6 +340,7 @@ if (typeof AFRAME !== 'undefined' && !AFRAME.systems['combat-targeting']) {
     zone: function (name) {
       var zones = this.worldZones();
       for (var i = 0; i < zones.length; i++) if (zones[i].name === name) return zones[i];
+      for (var j = 0; j < zones.length; j++) if (!zones[j].obstacle) return zones[j];
       return zones[0] || null;
     },
 
@@ -348,13 +353,17 @@ if (typeof AFRAME !== 'undefined' && !AFRAME.systems['combat-targeting']) {
 
     // detail: { zone (name or zone), point, direction, force, damage,
     //           source, by }. Returns the detail it emitted, with
-    //           .damage scaled by the zone and .killed set.
+    //           .damage scaled by the zone and .killed set. A hit on an
+    //           obstacle zone (a dummy's peg) does no damage and is
+    //           marked .blocked.
     applyHit: function (detail) {
       if (!this.alive) return null;
       var zone = typeof detail.zone === 'string' ? this.zone(detail.zone) : (detail.zone || this.aimZone());
+      var blocked = Boolean(zone && zone.obstacle);
       var out = Object.assign({}, detail, {
         zone: zone ? zone.name : null,
-        damage: (detail.damage === undefined ? 1 : detail.damage) * (zone ? zone.damage : 1),
+        blocked: blocked,
+        damage: blocked ? 0 : (detail.damage === undefined ? 1 : detail.damage) * (zone ? zone.damage : 1),
       });
       this.health -= out.damage;
       out.killed = this.health <= 0;

@@ -280,3 +280,166 @@ AFRAME.registerComponent('target-spawner', {
 
   remove: function () { this.clear(); },
 });
+
+// ============================================================
+// peg-dummy: a wooden training dummy (a mook jong) for melee.
+//
+// A trunk you can hit (head and body zones) with three pegs sticking
+// out toward you, and the pegs are obstacles: a punch that meets one
+// first is blocked — a clack, no damage — so slipping a punch between
+// them is a thing. It never dies; it counts hits and shows the last
+// one's force.
+//
+// Leaning in: an `action-incoming` event ({ point, lean? }) — sent by
+// melee when a strike commits toward it — makes the dummy lean toward
+// the fist by up to `lean` metres (the event's, else the schema's), so contact happens without the player's
+// hand having to be moved as far. The cheapest assist there is: it
+// costs no comfort, because nothing about you moves.
+// ============================================================
+
+var WOOD = '#8b5a2b';
+var PEG = '#a8743f';
+
+function capsuleBox(parent, a, b, r, color) {
+  var dx = b.x - a.x, dy = b.y - a.y, dz = b.z - a.z;
+  var len = Math.sqrt(dx * dx + dy * dy + dz * dz);
+  var el = document.createElement('a-entity');
+  el.setAttribute('geometry', { primitive: 'cylinder', radius: r, height: len, segmentsRadial: 8 });
+  el.setAttribute('material', { color: color, flatShading: true });
+  el.object3D.position.set((a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2);
+  el.object3D.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(dx / len, dy / len, dz / len));
+  parent.appendChild(el);
+  return el;
+}
+
+AFRAME.registerComponent('peg-dummy', {
+  schema: {
+    lean: { default: 0.1 }, // m it may lean toward an incoming fist
+    pegs: { default: true },
+  },
+
+  init: function () {
+    var el = this.el;
+    this.tilt = { x: 0, z: 0, vx: 0, vz: 0 }; // rock, radians
+    this.leanTarget = new THREE.Vector3();
+    this.leanNow = new THREE.Vector3();
+    this.leanUntil = 0;
+    this.hits = 0;
+    this.lastForce = 0;
+    this.tmp = new THREE.Vector3();
+
+    box(el, 0.5, 0.06, 0.5, 0, 0.03, 0, '#3c414b'); // base plate
+    this.body = document.createElement('a-entity');
+    el.appendChild(this.body);
+    capsuleBox(this.body, { x: 0, y: 0.05, z: 0 }, { x: 0, y: 1.42, z: 0 }, 0.12, WOOD);
+    disc(this.body, 0.12, 0.24, 0, 1.53, 0, WOOD).setAttribute('rotation', '0 0 0'); // head block
+    this.parts = [];
+
+    // Zones in the dummy's frame: it faces +Z.
+    var zones = [
+      { name: 'head', type: 'sphere', a: { x: 0, y: 1.53, z: 0 }, r: 0.14, damage: 1.5 },
+      { name: 'torso', type: 'capsule', a: { x: 0, y: 0.95, z: 0 }, b: { x: 0, y: 1.35, z: 0 }, r: 0.13, damage: 1 },
+    ];
+    if (this.data.pegs) {
+      var pegs = [
+        { name: 'peg-left', a: { x: -0.05, y: 1.28, z: 0.1 }, b: { x: -0.22, y: 1.36, z: 0.46 } },
+        { name: 'peg-right', a: { x: 0.05, y: 1.28, z: 0.1 }, b: { x: 0.22, y: 1.36, z: 0.46 } },
+        { name: 'peg-middle', a: { x: 0, y: 1.02, z: 0.1 }, b: { x: 0, y: 0.98, z: 0.52 } },
+      ];
+      pegs.forEach(function (p) {
+        capsuleBox(this.body, p.a, p.b, 0.035, PEG);
+        zones.push({ name: p.name, type: 'capsule', a: p.a, b: p.b, r: 0.04, obstacle: true });
+      }, this);
+    }
+    this.zones = zones;
+
+    this.label = document.createElement('a-text');
+    this.label.setAttribute('align', 'center');
+    this.label.setAttribute('color', '#ffd27a');
+    this.label.setAttribute('width', 0.9);
+    this.label.setAttribute('position', '0 1.9 0');
+    this.label.setAttribute('value', 'hits 0');
+    el.appendChild(this.label);
+
+    // Team 'dummy': fists find it, guns leave it alone.
+    el.setAttribute('combat-target', { health: 1e9, aimZone: 'torso', team: 'dummy' });
+    this.target = el.components['combat-target'];
+    this.applyZones();
+
+    this.onHit = this.onHit.bind(this);
+    this.onIncoming = this.onIncoming.bind(this);
+    el.addEventListener('action-hit', this.onHit);
+    el.addEventListener('action-incoming', this.onIncoming);
+  },
+
+  remove: function () {
+    this.el.removeEventListener('action-hit', this.onHit);
+    this.el.removeEventListener('action-incoming', this.onIncoming);
+  },
+
+  // Zones follow the body's lean and rock.
+  applyZones: function () {
+    var body = this.body.object3D;
+    body.updateMatrix();
+    var m = body.matrix;
+    var v = this.tmp;
+    this.target.setZones(this.zones.map(function (z) {
+      var a = v.set(z.a.x, z.a.y, z.a.z).applyMatrix4(m);
+      var A = { x: a.x, y: a.y, z: a.z };
+      var b = v.set(z.b ? z.b.x : z.a.x, z.b ? z.b.y : z.a.y, z.b ? z.b.z : z.a.z).applyMatrix4(m);
+      return { name: z.name, type: z.type, a: A, b: { x: b.x, y: b.y, z: b.z }, r: z.r, damage: z.damage, obstacle: z.obstacle };
+    }));
+  },
+
+  // A fist is on its way to `point` (world): lean toward it.
+  onIncoming: function (evt) {
+    var p = evt.detail && evt.detail.point;
+    var lean = evt.detail && evt.detail.lean !== undefined ? evt.detail.lean : this.data.lean;
+    if (!p || !lean) return;
+    var local = this.el.object3D.worldToLocal(this.tmp.set(p.x, p.y, p.z));
+    local.y = 0;
+    var l = local.length();
+    if (l < 1e-3) return;
+    this.leanTarget.copy(local).multiplyScalar(Math.min(lean, l * 0.5) / l);
+    this.leanUntil = this.el.sceneEl.time + (evt.detail.ms || 350);
+  },
+
+  onHit: function (evt) {
+    var hit = evt.detail;
+    var fx = this.el.sceneEl.systems['action-effects'];
+    var d = hit.direction || { x: 0, y: 0, z: -1 };
+    if (hit.blocked) {
+      if (hit.point) sound('block', hit.point);
+      if (fx && hit.point) fx.sparks(hit.point, { x: -d.x, y: -d.y + 0.2, z: -d.z }, { count: 4, color: '#c9a57a', speed: 1.5 });
+      return;
+    }
+    this.hits++;
+    this.lastForce = hit.force || 0;
+    this.label.setAttribute('value', 'hits ' + this.hits + '\nlast ' + this.lastForce.toFixed(2) + ' ' + (hit.zone || ''));
+    if (hit.point) sound('thump', hit.point);
+    if (fx && hit.point) fx.sparks(hit.point, { x: -d.x, y: -d.y + 0.3, z: -d.z }, { count: 10, color: '#e6d3b3', speed: 2 });
+    // Rock away from the punch, in the dummy's frame.
+    var local = this.el.object3D.worldToLocal(this.tmp.set(d.x, d.y, d.z).add(this.el.object3D.getWorldPosition(new THREE.Vector3()))).normalize();
+    var push = (hit.force || 1) * 1.6;
+    this.tilt.vx += local.z * push; // pushed toward -Z tips the top back (negative X rotation)
+    this.tilt.vz -= local.x * push;
+    this.target.health = 1e9; // a training dummy: never dies
+  },
+
+  tick: function (time, rawDt) {
+    var clock = this.el.sceneEl.systems['action-clock'];
+    var dt = (clock ? clock.dt(this.el) : Math.min(rawDt || 16, 50)) / 1000;
+    if (!dt) return;
+    var t = this.tilt;
+    t.vx += (-t.x * 120 - t.vx * 9) * dt;
+    t.vz += (-t.z * 120 - t.vz * 9) * dt;
+    t.x += t.vx * dt;
+    t.z += t.vz * dt;
+    var want = time < this.leanUntil ? this.leanTarget : this.tmp.set(0, 0, 0);
+    this.leanNow.lerp(want, 1 - Math.exp(-dt * 18));
+    var o = this.body.object3D;
+    o.position.copy(this.leanNow);
+    o.rotation.set(t.x, 0, t.z);
+    this.applyZones();
+  },
+});

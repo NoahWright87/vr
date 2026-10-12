@@ -1,58 +1,33 @@
-# Virtual hands
+# Virtual hands: what's next
 
-Split **the hand you control** (tracked) from **the hand you see and that
-hits things** (virtual), so assists can make a punch connect or a guard
-meet an attack without moving the camera. Optionally show a translucent
-**ghost** of the tracked hand when they differ.
+The split between tracked and virtual hands, budgeted drift, the
+ghost, poses and hiding input visuals all exist. See
+`virtual-hands.spec.md`.
 
-## Where hands are today
+## To try in the headset first
 
-Each page has two entities per hand (see `primitives/menus/index.html`
-around line 103):
+- **Does the ghost help or hurt?** Toggle Tuning ▸ Hands ▸ Ghost
+  between When apart, Always and Never mid-fight. If seeing the real
+  hand makes a pulled punch feel fake, Never might be right, and the
+  budget then keeps the mismatch small enough not to notice.
+- **Is the glove's orientation (along the arm) acceptable?** It ignores
+  the wrist, so a hand held palm-up still shows palm-down. A real
+  wrist-roll term from the controller's orientation, applied only when
+  it's trustworthy (controllers, not hand tracking), may be wanted for
+  blocking.
 
-- `#left-hand`/`#right-hand` carry `hand-with-watch` and `semantic-hand`.
-  This is the gameplay hand: the fingertip, the grip child, desktop
-  posing.
-- `#tracked-hand-visual-*` carry A-Frame's `hand-controls`, the rendered
-  low-poly hand model, visible in XR only.
+## Not built yet
 
-Both are driven straight from the controller pose. Hand tracking (on
-the unmerged `claude/hand-tracking-demo-ivpmd4` branch) renders through
-a different component entirely.
-
-## Plan
-
-- A `virtual-hand` component per side, a sibling of the tracked
-  entities under the rig. Each frame it copies the tracked pose and
-  adds an **offset** (position plus a small rotation) that the comfort
-  budget grants. Offsets come from requests ("pull toward point P,
-  weight w"), resolved once per frame, so melee, guard and gun requests
-  don't fight.
-- **Its own model.** A simple low-poly glove or fist. It doesn't reuse
-  `hand-controls` or the hand-tracking mesh. That sidesteps two input
-  renderers, and it lets the virtual hand take any pose.
-- **Pose is output, not input.** Actions don't read hand poses, so the
-  game is free to *show* one: a fist while a strike is extending, an
-  open palm while guarding, a gun grip while holding a gun, relaxed
-  otherwise. Blend between them over ~80 ms.
-- **The ghost**: the tracked hand drawn at about 25% opacity, without
-  depth write, shown only while offset > ~1 cm. A visor setting picks
-  always / when offset / never. Whether it helps or hurts the feeling of
-  owning the hand is an open question. The setting exists to answer it.
-- **Collisions use the virtual hand.** Strike sweeps, guard volumes and
-  gun muzzles all hang off it. The tracked hand is only intent input.
-- **Hiding the input models.** In XR, hide `hand-controls`' mesh (keep
-  its pose updates) when virtual hands are on. Desktop already draws its
-  own semantic hand. Make the virtual hand replace that too, so desktop
-  shows exactly what XR shows.
-- **Held things** (guns) parent to the virtual hand's grip point, so a
-  gun can turn toward its target as part of the hand's rotation offset.
-  Within limits: a gun pointing 40° off from the wrist reads as broken,
-  so the gun's own extra yaw needs its own cap and should be tested.
-
-## Tests
-
-The offset resolver (requests + budget → offset) is pure and can be
-tested. In the browser: with no requests, the virtual and tracked hands
-coincide exactly every frame (no lag). That's the regression that would
-make everything feel floaty.
+- **Smooth pose blending.** Poses switch instantly. An ~80 ms blend of
+  the finger block would read better.
+- **A proper glove model.** Boxes are a placeholder until there are
+  assets. Any model works, as long as it keeps the convention: −Z along
+  the arm, +Y up, palm down.
+- **Hand-tracking input.** The tracked hand is whatever entity is
+  passed. On the hand-tracking branch, point `tracked` at the wrist
+  joint entity, and hide that branch's skinned mesh the same way
+  `.hand-marker` is hidden.
+- **Guns turning through the hand's rotation offset.** The gun turns
+  itself (autofire's `turnSpeed`) rather than through a virtual-hand
+  rotation offset. That's fine until a held gun also needs to be pulled
+  somewhere, for example blocking with it.

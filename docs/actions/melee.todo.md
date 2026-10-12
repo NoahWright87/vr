@@ -1,50 +1,47 @@
-# Melee: punches always connect
+# Melee: what's next
+
+Strike intent, targeting, budgeted pull, lean-in, swept contact,
+obstacles, follow-through, whiff and cheat all exist. See
+`melee.spec.md`.
 
 ## What went wrong before, and the rule each failure produced
 
-From Punch Pop (`games/punch-pop/TODO.md` and its README section have
-the long history):
+From Punch Pop. Keep these true:
 
-| Failure | Rule |
+| Failure | Rule (and where it lives now) |
 |---|---|
-| Non-punches read as punches while still, and slid the player | Assists are paid from motion energy (`comfort-budget`). Negative recordings in tests (`intent`). |
-| Turning with a hand out read as a punch | Torso-relative extension geometry (`motion-sense`). |
-| `cheat` auto-hit felt arbitrary | Sell it: the virtual fist actually arrives (`virtual-hands`) and the target reacts (`dummies`). |
-| `turn` helped, but rotating the view is risky | View yaw only within the budget, default 0. Prefer moving the hand and the enemy. |
-| A component cached at `init()` was sometimes undefined (init order race) | Look components up at the point of use. |
+| Non-punches read as punches while still, and slid the player | Assists are paid from motion energy (`comfort-budget`). Strikes need speed, energy and a direction to commit (`intent`). |
+| Turning with a hand out read as a punch | Torso-relative extension (`motion-sense`), with a test for it. |
+| `cheat` auto-hit felt arbitrary | Sell it: the virtual fist really arrives, the target leans in and reacts. Cheat is kept only as a comparison setting. |
+| `turn` helped, but rotating the view is risky | No view yaw by default. The hand and the target do the work. |
+| A component cached at `init()` was sometimes undefined | Look components up at the point of use (melee does). |
 
-## The loop
+## To try in the headset first
 
-1. **Sense**: a strike `commit` from `intent`.
-2. **Resolve**: `combat-targeting.resolve('strike', ...)` from the
-   torso, in the strike's direction, gaze-weighted. Prefer the current
-   target (combos).
-3. **Bring them together**, cheapest first:
-   - the target leans in up to ~10 cm (free);
-   - the virtual fist is pulled toward the zone's surface, within the
-     budget;
-   - (optional, default off) a lunge, with rig translation paid from
-     real head travel.
-4. **Contact**: a *swept* test of the virtual fist (a segment from last
-   frame's position to this frame's, as a capsule with the fist's
-   radius) against the target's zone capsules. At 72 Hz a 6 m/s fist
-   moves 8 cm per frame and would tunnel through a point test.
-5. **Damage and force**: Punch Pop's `computeMagnitude` (max hand
-   speed, hand travel and head travel, so stepping in rewards you). A
-   graze (contact with no committed strike) is speed-only, as in Punch
-   Pop.
-6. **Sell**: hit-stop on the *target* (not the player), haptic, thump,
-   flinch, knockback.
+- **Commit thresholds** (Tuning ▸ Melee ▸ Commit, Commit at, Energy).
+  Too strict and real punches don't commit (no assist, honest whiffs).
+  Too loose and gestures commit. The `melee` readout shows each hand's
+  state live.
+- **How much pull is right?** Comfort ▸ Hand gain and Hand max cap it.
+  Watch the `comfort` readout's wanted/got numbers for punches that felt
+  like misses.
+- **Lean** at 10 cm: does a dummy stepping into the punch look like
+  it's reacting, or like it's cheating?
 
-If the budget can't close the gap, the punch **whiffs honestly**. A
-`cheat` setting can still force the hit, for comparison.
+## Not built yet
 
-## Station
-
-The peg dummy (`dummies.todo.md`), then three in an arc to test
-switching targets between punches.
-
-## Not possible
-
-Kicks and knees: there's no foot tracking. Elbows: maybe, as a strike
-whose hand is close to the shoulder with the elbow estimated. Later.
+- **Hooks and hammers.** Only forward and up axes exist. A hook is a
+  lateral arc. Its extension doesn't grow much along any one body axis,
+  so it may need a different signal (angular speed around the torso).
+  Get real recordings first (`intent.todo.md`).
+- **Lunge.** Optional rig travel toward the target, paid from real head
+  travel (`comfort-budget.grantMove`, which has no caller yet). Only if
+  headset testing says melee feels static.
+- **Combos.** Stickiness already prefers the last target. Chaining
+  bonuses (damage ramp, a juggle when launching with an uppercut) are
+  game design for later.
+- **Knockback on a kill**, Punch Pop style: a slide, and impact damage
+  on a hard stop. Needs a mobile enemy. Silhouettes and peg dummies are
+  fixed.
+- **Elbows and knees:** no tracking for them. Elbow strikes might be
+  inferable later (a hand close to the shoulder moving fast).

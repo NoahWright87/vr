@@ -3,6 +3,11 @@
 The rule: **the faster you're physically moving, the more the game may
 do without you noticing.** Stillness earns nothing.
 
+**Built:** the hand-drift and return channels, view yaw (off by
+default, no caller), the travel grant (no caller), the visor settings
+and the ledger readout. See `comfort-budget.spec.md`. The design notes
+below still explain why. What's left is at the bottom.
+
 ## The lesson it's built on
 
 Punch Pop's lunge (`punch-locomotion.onPunch`) moved the rig whenever a
@@ -76,3 +81,19 @@ That's plain functions and plain numbers, tested with:
 - Is view yaw needed at all once the virtual hand can reach? Noah's
   instinct is "rotate the view very little". Start with `k_yaw = 0`
   and let the hand do the work.
+
+## Still to do
+
+- **Wire view yaw and lunge to callers**, if headset testing says
+  they're wanted at all. Melee's assist is hand drift plus the target
+  leaning in, and the yaw channel exists with gain 0 so it can be tried
+  from the visor without new code once something requests it.
+- **Use head-relative hand travel for drift?** Drift is currently
+  earned by the hand's rig-local travel, so walking with your hands
+  still earns drift (the hands do move through the room). If that
+  turns out to be noticeable, earn it from head-relative travel
+  instead.
+- **Out-of-view recentring is binary** (offset snaps to zero when the
+  real hand is more than 65° from gaze and nothing is requesting). A
+  hand at the edge of view could visibly pop. Fade it in over ~100 ms
+  if that's ever seen.

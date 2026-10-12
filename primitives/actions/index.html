@@ -25,10 +25,11 @@
 
            ahead   the range — steel silhouettes past the front of your
                    room; hold a hand out at them and its gun fires
+           right   the dummies — wooden peg dummies to punch
            left    the motion lab — live readout of common/motion-sense.js
 
-         The plan for the rest (peg dummy, sparring, throwing lane,
-         swarm) is in docs/actions/README.md.
+         The plan for the rest (sparring, throwing lane, swarm) is in
+         docs/actions/README.md.
 
          Off a headset: Q raises both hands (guns up), left click throws
          a jab, right click an uppercut (hold to charge) — all by moving
@@ -78,11 +79,22 @@
         </a-entity>
       </a-entity>
 
-      <!-- One gun per hand. They are not children of the hands: each sits
-           at its hand and points along the shoulder-to-hand line, so the
-           wrist never matters (common/autofire.js). -->
-      <a-entity autofire-gun="side: left; rig: #rig; hand: #left-hand"></a-entity>
-      <a-entity autofire-gun="side: right; rig: #rig; hand: #right-hand"></a-entity>
+      <!-- The hands you see and hit with: virtual hands that sit on the
+           tracked ones unless an assist pulls them away, by what the
+           comfort budget allows, with a ghost of the real hand while
+           they differ (common/virtual-hands.js). -->
+      <a-entity id="left-virtual" virtual-hand="side: left; rig: #rig; tracked: #left-hand"></a-entity>
+      <a-entity id="right-virtual" virtual-hand="side: right; rig: #rig; tracked: #right-hand"></a-entity>
+
+      <!-- One gun per hand, on the virtual hands. Not children of them:
+           each sits at its hand and points along the shoulder-to-hand
+           line, so the wrist never matters (common/autofire.js). -->
+      <a-entity autofire-gun="side: left; rig: #rig; hand: #left-virtual"></a-entity>
+      <a-entity autofire-gun="side: right; rig: #rig; hand: #right-virtual"></a-entity>
+
+      <!-- Punches: strikes from intent, contact by the virtual fists
+           (common/melee.js). -->
+      <a-entity melee-hands="rig: #rig; left: #left-virtual; right: #right-virtual"></a-entity>
 
       <!-- ============================================================
            AHEAD — THE RANGE. The spawner lays silhouettes out in an arc
@@ -91,6 +103,18 @@
       ============================================================ -->
       <a-entity id="station-range" play-space-station="side: front">
         <a-entity id="range-targets" target-spawner></a-entity>
+      </a-entity>
+
+      <!-- ============================================================
+           RIGHT — THE DUMMIES. Wooden dummies to punch, facing the
+           middle of the room: two with pegs either side (the pegs block,
+           so punch down the middle between them) and a plain one in the
+           middle. The guns never shoot them (they're team 'dummy').
+      ============================================================ -->
+      <a-entity id="station-dummies" play-space-station="side: right">
+        <a-entity id="dummy-1" peg-dummy position="-0.8 0 0.25" rotation="0 20 0"></a-entity>
+        <a-entity id="dummy-2" peg-dummy="pegs: false" position="0 0 0.35"></a-entity>
+        <a-entity id="dummy-3" peg-dummy position="0.8 0 0.25" rotation="0 -20 0"></a-entity>
       </a-entity>
 
       <!-- ============================================================
@@ -113,6 +137,7 @@
     <script type="module" src="../../common/visor-menu.js"></script>
     <script type="module" src="./motion-lab.js"></script>
     <script type="module" src="./range.js"></script>
+    <script type="module" src="../../common/melee.js"></script>
     <script type="module" src="./lab-page.js"></script>
   </body>
 </html>

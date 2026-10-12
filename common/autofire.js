@@ -65,7 +65,7 @@ AFRAME.registerComponent('autofire-gun', {
   schema: {
     side: { default: 'right', oneOf: ['left', 'right'] },
     rig: { type: 'selector' }, // the entity with motion-sense
-    hand: { type: 'selector' }, // where the gun sits
+    hand: { type: 'selector' }, // where the gun sits: a virtual-hand, or the tracked hand
     color: { default: '#2b2f36' },
   },
 
@@ -108,6 +108,13 @@ AFRAME.registerComponent('autofire-gun', {
     this.muzzleOffset = new THREE.Vector3(0, 0.012, -0.18);
   },
 
+  // Haptics go to the real controller even when the gun sits on a
+  // virtual hand.
+  hapticHand: function () {
+    var vh = this.data.hand && this.data.hand.components['virtual-hand'];
+    return vh ? vh.data.tracked : this.data.hand;
+  },
+
   enabled: function () {
     var hands = tune.values.hands;
     return hands === 'both' || hands === this.data.side;
@@ -135,6 +142,10 @@ AFRAME.registerComponent('autofire-gun', {
     var visible = this.enabled() && Boolean(sense);
     o.visible = visible;
     if (!visible) { this.current = null; this.lastPick = null; return; }
+    // Holding a gun: the virtual hand (if that's what we sit on) shows a
+    // grip. A punch in progress outranks it.
+    var vh = this.data.hand && this.data.hand.components['virtual-hand'];
+    if (vh) vh.setPose('gun', 1);
 
     // The player's gun runs on real time: in bullet time the world
     // slows, you don't.
@@ -153,6 +164,7 @@ AFRAME.registerComponent('autofire-gun', {
       pick = targeting.resolve('gun', {
         origin: aim.origin, direction: aim.direction, by: side, current: this.current,
         coneDeg: AIM_CONES[tune.values.aim] || AIM_CONES.soft,
+        team: 'enemy', // never training dummies
       });
     }
     this.lastPick = pick;
@@ -206,7 +218,7 @@ AFRAME.registerComponent('autofire-gun', {
     }
     if (fx) fx.flash(this.muzzle, this.gunDir, { size: 0.09 });
     sound('shot', this.muzzle);
-    haptic(this.data.hand, 'shot');
+    haptic(this.hapticHand(), 'shot');
     this.kickVel += 9 * tune.values.recoil;
     this.shots++;
 
@@ -229,7 +241,7 @@ AFRAME.registerComponent('autofire-gun', {
       });
       if (result && result.killed) {
         this.kills++;
-        haptic(this.data.hand, 'kill', 0.6);
+        haptic(this.hapticHand(), 'kill', 0.6);
         logAction(this.data.side.charAt(0).toUpperCase() + ' gun killed ' + (target.el.id || 'target') + ' (' + result.zone + ')');
       }
     }

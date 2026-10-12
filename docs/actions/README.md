@@ -102,10 +102,10 @@ to tune it, and tests.
 | 2 | Targets & dummies | `dummies.todo.md` | Silhouettes first. Something to shoot at. **Silhouettes built** (`dummies.spec.md`). |
 | 3 | Targeting | `targeting.todo.md` | One resolver for guns, punches, throws and parries. **Built** (`targeting.spec.md`). |
 | 4 | Autofire | `autofire.todo.md` | Simplest full sense→resolve→sell loop, and the most immediately fun. **Built** (`autofire.spec.md`). |
-| 5 | Comfort budget | `comfort-budget.todo.md` | Needed before anything moves the hand or view. |
-| 6 | Virtual hands | `virtual-hands.todo.md` | The tool for selling melee and blocks. |
-| 7 | Intent | `intent.todo.md` | Strike and guard classifiers, plus recording real motion. |
-| 8 | Melee | `melee.todo.md` | On the peg dummy. |
+| 5 | Comfort budget | `comfort-budget.todo.md` | Needed before anything moves the hand or view. **Built** (`comfort-budget.spec.md`). |
+| 6 | Virtual hands | `virtual-hands.todo.md` | The tool for selling melee and blocks. **Built** (`virtual-hands.spec.md`). |
+| 7 | Intent | `intent.todo.md` | Strike and guard classifiers, plus recording real motion. **Strikes built** (`melee.spec.md`). |
+| 8 | Melee | `melee.todo.md` | On the peg dummy. **Built** (`melee.spec.md`). |
 | 9 | Defense | `defense.todo.md` | Needs attacker dummies with telegraphed attacks. |
 | 10 | Throwing | `throwing.todo.md` | Extraction from Pistols, generalized. |
 | 11 | Feedback | `feedback.todo.md` | Parts of it (effect pools, the clock) are needed from step 4 onward; hit-stop and bullet time come here. **Clock, pools, haptics, sound built** (`feedback.spec.md`). |
@@ -117,7 +117,7 @@ against the real room with `play-space-station`. Planned stations:
 
 - **Motion lab**: live motion-sense readout. Built (left).
 - **Range**: silhouettes for autofire. Built (ahead).
-- **Dummy**: peg-arm dummy for melee.
+- **Dummy**: peg-arm dummies for melee. Built (right).
 - **Sparring**: an attacker dummy for defense.
 - **Lane**: throwing.
 - **Swarm**: the bullet-heaven stress test, N cheap walkers
