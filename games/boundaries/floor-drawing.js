@@ -119,9 +119,94 @@ function nearestOn(p,polygon) {
   });
   return best;
 }
+const ring=points=>[points.map(p=>[p.x,p.y])];
+export function containsWalkedArea(outer,inner) {
+  if(!inner.length)return true;
+  if(outer.length<3)return false;
+  return polygonClipping.difference(ring(inner),ring(outer)).every(poly=>
+    polygonArea(poly[0].map(([x,y])=>({x,y})))<1e-10);
+}
+
+// RDP finds nearly straight stretches. Move each replacement line OUT to
+// support its furthest sample, then intersect adjacent lines to recover
+// corners. Accept only a simple polygon containing the entire source area.
+export function straightenWalk(points,{head=null,tolerance=.035}={}) {
+  if(points.length<4)return copy(points);
+  const source=clean(points),anchors=simplifyWalk(source,{closed:true,head,tolerance});
+  if(anchors.length>=source.length||anchors.length<3)return copy(source);
+  const winding=Math.sign(source.reduce((n,a,i)=>n+cross(a,source[(i+1)%source.length]),0));
+  const indices=anchors.map(p=>source.findIndex(q=>distance(p,q)<1e-7));
+  if(indices.some(i=>i<0))return copy(source);
+  const lines=anchors.map((a,i)=>{
+    const b=anchors[(i+1)%anchors.length],edge=sub(b,a),length=distance(a,b);
+    let offset=0,index=indices[i];
+    for(let count=0;index!==indices[(i+1)%anchors.length]&&count<source.length;count++) {
+      offset=Math.max(offset,-cross(edge,sub(source[index],a))*winding/length);
+      index=(index+1)%source.length;
+    }
+    const normal={x:edge.y*winding/length,y:-edge.x*winding/length};
+    return {a:{x:a.x+normal.x*offset,y:a.y+normal.y*offset},edge};
+  });
+  const result=[];
+  for(let i=0;i<lines.length;i++) {
+    const previous=lines[(i+lines.length-1)%lines.length],current=lines[i],den=cross(previous.edge,current.edge);
+    let p;
+    if(Math.abs(den)<EPS) {
+      // Parallel protected segments can meet unchanged. Different offsets
+      // would require a step; retain the original instead of inventing one.
+      if(Math.abs(cross(sub(current.a,previous.a),current.edge))>EPS)return copy(source);
+      p={...current.a};
+    } else {
+      const t=cross(sub(current.a,previous.a),current.edge)/den;
+      p={x:previous.a.x+previous.edge.x*t,y:previous.a.y+previous.edge.y*t};
+    }
+    if(distance(p,anchors[i])>tolerance*3)return copy(source);
+    result.push(p);
+  }
+  if(validateFloor(result)||!containsWalkedArea(result,source))return copy(source);
+  return result;
+}
+
+// Each outward sample extends its nearest existing edge. This
+// adds the reached point immediately, including at corners or far beyond
+// the reported rectangle. It never requires completing another arc or lap.
+function reachedPatch(point,area) {
+  const hit=nearestOn(point,area),a=area[hit.index],b=area[(hit.index+1)%area.length];
+  const samples=[a,b,
+    {x:point.x-.002,y:point.y-.002},{x:point.x+.002,y:point.y-.002},
+    {x:point.x+.002,y:point.y+.002},{x:point.x-.002,y:point.y+.002}];
+  const n=area.length,winding=Math.sign(area.reduce((sum,p,i)=>sum+cross(p,area[(i+1)%n]),0));
+  // If an earlier reach made a convex tip, extend both of its exposed
+  // sides together. This fills a corner instead of extruding a thin finger.
+  // Stop at concave turns so furniture indentations are not bridged.
+  for(const direction of [-1,1]) {
+    let index=direction<0?hit.index:(hit.index+1)%n;
+    for(let count=0;count<n-1;count++) {
+      const previous=area[(index+n-1)%n],current=area[index],next=area[(index+1)%n];
+      if(cross(sub(current,previous),sub(next,current))*winding<-EPS)break;
+      const other=direction<0?previous:next;
+      const from=direction<0?other:current,to=direction<0?current:other;
+      if(cross(sub(to,from),sub(point,from))*winding>EPS)break;
+      samples.push(other);index=(index+direction+n)%n;
+    }
+  }
+  // A 2 mm pad gives a collinear corner reach actual area rather than a
+  // zero-width line, and keeps the tracked point inside after triangulation.
+  // This hull is only the local patch, never a hull of the whole room.
+  samples.sort((a,b)=>a.x-b.x||a.y-b.y);
+  const half=points=>{
+    const result=[];
+    for(const p of points) {
+      while(result.length>1&&cross(sub(result.at(-1),result.at(-2)),sub(p,result.at(-1)))<=0)result.pop();
+      result.push(p);
+    }
+    return result;
+  };
+  return half(samples).slice(0,-1).concat(half(samples.slice().reverse()).slice(0,-1));
+}
+
 export function unionWalkedAreas(previous,current) {
   if(current.length<3)throw new Error('Walk around the perimeter before saving.');
-  const ring=points=>[points.map(p=>[p.x,p.y])];
   const areas=previous.length?polygonClipping.union(ring(previous),ring(current)):polygonClipping.union(ring(current));
   if(areas.length!==1||areas[0].length!==1)throw new Error('Walk one connected perimeter without interior loops.');
   const result=areas[0][0].slice(0,-1).map(([x,y])=>({x,y}));
@@ -129,9 +214,9 @@ export function unionWalkedAreas(previous,current) {
   return result;
 }
 
-// Raw samples survive display simplification, so revisiting a wall can restore
-// its detail and move the estimate. Only one active lap and one area envelope
-// are retained; laps never append as overlapping rings or form a convex hull.
+// The visible envelope IS the stored area. Every live expansion, completed
+// lap and straightening contains it, so moving away cannot undo an earlier
+// preview. One initial lap establishes concavity; later points grow locally.
 export class WalkingBoundary {
   constructor() {
     this.lap=[];this.estimate=[];this.points=[];
@@ -139,6 +224,26 @@ export class WalkingBoundary {
   }
   add(point) {
     if(!Number.isFinite(point.x)||!Number.isFinite(point.y))return false;
+    let expanded=false;
+    if(this.estimate.length&&!insidePolygon(point,this.estimate)) {
+      try {
+        const base=straightenWalk(this.estimate);
+        this.estimate=insidePolygon(point,base)?base:unionWalkedAreas(base,reachedPatch(point,base));
+        expanded=true;this.error='';
+      }
+      catch(error){this.error=error.message;}
+    }
+    if(this.estimate.length) {
+      // Once the first outline exists, no more lap matching is needed.
+      // Keep one position rather than accumulating another stroke.
+      this.lap=[{...point}];this.length=0;this.closure=null;
+      if(expanded||!this.lastHead||distance(point,this.lastHead)>=.08) {
+        this.lastHead={...point};this.preview(point);return true;
+      }
+      return false;
+    }
+    // The first stroke uses regular spacing. Live expansion above has no
+    // such threshold: even a tiny outward position updates the area.
     if(this.lap.length&&distance(point,this.lap.at(-1))<.04)return false;
     if(this.lap.length>=8192){this.error='Too many samples in one lap. Restart calibration.';return false;}
     if(this.lap.length)this.length+=distance(point,this.lap.at(-1));
@@ -148,10 +253,9 @@ export class WalkingBoundary {
       // the room's middle and walked out to the perimeter before doing laps.
       if(!this.closure) {
         let travelled=0;
-        const perimeter=this.estimate.reduce((n,p,i)=>n+distance(p,this.estimate[(i+1)%this.estimate.length]),0);
         for(let i=0;i<this.lap.length-8;i++) {
           if(i)travelled+=distance(this.lap[i-1],this.lap[i]);
-          if(this.length-travelled<Math.max(2,perimeter*.6))break;
+          if(this.length-travelled<2)break;
           const d=distance(point,this.lap[i]);
           if(d<.3){this.closure={start:i,index:this.lap.length-1,distance:d};break;}
         }
@@ -168,7 +272,11 @@ export class WalkingBoundary {
         } else this.closure=null;
       }
     }
-    if(!this.lastHead||distance(point,this.lastHead)>=.08){this.lastHead={...point};this.preview(point);return true;}
+    if(this.estimate.length) {
+      if(!insidePolygon(point,this.estimate))this.estimate=unionWalkedAreas(this.estimate,reachedPatch(point,this.estimate));
+      this.lap=[{...point}];this.length=0;this.closure=null;
+    }
+    if(this.estimate.length||!this.lastHead||distance(point,this.lastHead)>=.08){this.lastHead={...point};this.preview(point);return true;}
     return false;
   }
   complete(raw) {
@@ -180,44 +288,22 @@ export class WalkingBoundary {
     if(!this.estimate.length) {
       this.closed=false;this.points=simplifyWalk(this.lap,{head});return;
     }
-    let source=this.estimate;
-    // Replace the visited arc with this lap's detail, retaining the unvisited
-    // arc. Validate the splice so close parallel walls cannot swap branches.
-    if(this.lap.length>2&&this.lap.some(p=>!insidePolygon(p,source))) {
-      const start=nearestOn(this.lap[0],source),end=nearestOn(this.lap.at(-1),source);
-      const next=nearestOn(this.lap[1],source),n=source.length;
-      let delta=(next.index+next.t-start.index-start.t+n)%n;
-      const direction=delta<=n/2?1:-1;
-      const visited=((end.index+end.t-start.index-start.t)*direction+n)%n;
-      if(start.distance<.3&&end.distance<.3&&visited>1&&visited<n-1) {
-        const rest=[];
-        let index=direction===1?(end.index+1)%n:end.index;
-        const stop=direction===1?(start.index+1)%n:start.index;
-        for(let count=0;index!==stop&&count<n;count++,index=(index+direction+n)%n)rest.push(source[index]);
-        const candidate=clean(this.lap.concat(rest));
-        if(!validateFloor(candidate)) {
-          try {source=unionWalkedAreas(source,candidate);}catch(_){ /* Keep the established area on an invalid splice. */ }
-        }
-      }
-    }
-    this.previewArea=source;this.closed=true;this.points=simplifyWalk(source,{closed:true,head,preserveOuter:true});
+    this.estimate=straightenWalk(this.estimate,{head});
+    this.closed=true;this.points=copy(this.estimate);
   }
   finalise() {
-    // A partial extra lap refines only the visited arc. It cannot close an
-    // overlapping second ring over an already completed perimeter.
+    // Close the initial stroke if needed. Later positions already belong
+    // to the persistent envelope; saving only straightens outward.
     if(!this.estimate.length) {
       if(!this.closure)return {error:'Finish one lap around the perimeter, returning near where it began.',points:[]};
       const raw=this.lap.slice(this.closure.start,this.closure.index+1);
       if(!this.complete(raw))return {error:this.error,points:[]};
-    } else if(this.closure) {
-      this.complete(this.lap.slice(this.closure.start,this.closure.index+1));
     }
-    this.preview(this.lap.at(-1)||this.estimate[0]);
-    const points=simplifyWalk(this.points,{closed:true,preserveOuter:true});
+    this.preview(null);
+    const points=copy(this.estimate);
     const error=validateFloor(points);
-    // Returning from the confirmation preview starts a fresh partial lap,
-    // rather than counting the already reviewed loop a second time.
-    if(!error){this.estimate=copy(this.previewArea);this.lap=this.lap.length?[{...this.lap.at(-1)}]:[];this.length=0;this.closure=null;}
+    // Returning from the confirmation preview resumes direct expansion.
+    if(!error){this.lap=this.lap.length?[{...this.lap.at(-1)}]:[];this.length=0;this.closure=null;}
     return {error,points:error?[]:copy(points)};
   }
 }

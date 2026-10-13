@@ -85,9 +85,29 @@ const base = process.env.VR_TEST_URL || 'http://127.0.0.1:8088';
       }position={x:.15,y:1.65,z:.15};lab.tick();};
       walkLaps(3);const laps=lab.walk.laps;
       const liveFilled=lab.walk.closed&&lab.fill.visible&&lab.fill.geometry.attributes.position.count>0;
+      const inside=(p,points)=>{
+        let hit=false;
+        for(let i=0,j=points.length-1;i<points.length;j=i++) {
+          const a=points[i],b=points[j],cross=(b.x-a.x)*(p.y-a.y)-(b.y-a.y)*(p.x-a.x);
+          if(Math.abs(cross)<1e-7&&p.x>=Math.min(a.x,b.x)-1e-7&&p.x<=Math.max(a.x,b.x)+1e-7&&p.y>=Math.min(a.y,b.y)-1e-7&&p.y<=Math.max(a.y,b.y)+1e-7)return true;
+          if((a.y>p.y)!==(b.y>p.y)&&p.x<(b.x-a.x)*(p.y-a.y)/(b.y-a.y)+a.x)hit=!hit;
+        }
+        return hit;
+      };
+      let immediateGrowth=true,retainsVisibleArea=true;
+      for(const p of [{x:.1,y:1},{x:-.1,y:1},{x:-.35,y:1},{x:-.6,y:1}]) {
+        const old=lab.walk.points.map(p=>({...p}));position={x:p.x,y:1.65,z:p.y};lab.tick();
+        immediateGrowth&&=inside(p,lab.walk.points)&&lab.fill.visible;
+        if(!inside(p,lab.walk.points))throw new Error('Live growth missed '+JSON.stringify(p)+': '+lab.walk.error);
+        retainsVisibleArea&&=old.every(p=>inside(p,lab.walk.points));
+      }
+      const expanded=lab.walk.points.map(p=>({...p}));position={x:4.4,y:1.65,z:.2};lab.tick();
+      const retainedAfterLeaving=expanded.every(p=>inside(p,lab.walk.points));
+      const currentPositionMarker=lab.walkerMarker.visible&&Math.abs(lab.walkerMarker.position.x-position.x)<1e-6&&Math.abs(lab.walkerMarker.position.z-position.z)<1e-6;
       watch.active=true;const before=JSON.stringify(lab.walk.lap);position={x:2,y:1.65,z:1.5};lab.tick();const paused=JSON.stringify(lab.walk.lap)===before;
       choose('calibration-save');const extraConfirmation=lab.phase==='review'&&lab.pending&&lab.savedPoints.length===0&&lab.preview.visible&&menu.focusedRow().item.id==='calibration-question';
       const finalCorners=lab.pending.points.length,reviewPoints=JSON.stringify(lab.pending.points);
+      const retainedOnSave=expanded.every(p=>inside(p,lab.pending.points));
       const acceptsOutsideReported=lab.pending.points.some(p=>p.x<1||p.x>3||p.y<.5||p.y>1.5);
       const filledArea=()=>{
         const positions=lab.fill.geometry.attributes.position.array;let area=0;
@@ -118,11 +138,11 @@ const base = process.env.VR_TEST_URL || 'http://127.0.0.1:8088';
       const resetStops=!lab.active&&!lab.pending&&lab.savedPoints.length===0&&!!lab.passthrough;
       lab.endSession();const exitRestores=!lab.passthrough&&scene.renderer.getClearAlpha()===alpha;
       scene.renderer.xr.getSession=originalSession;scene.renderer.xr.getFrame=originalFrame;scene.is=originalIs;
-      return {blockedWithoutAR,blockedOpaque,passthrough,physicalOnly,automaticPage,laps,liveFilled,acceptsOutsideReported,reviewFilled,savedFilled,paused,extraConfirmation:!!extraConfirmation,questionDoesNotSave,finalCorners,canReturnAndSave,saved,green,ground,restored,persisted,cancelled,savesWithoutStorage,hiddenOnLoss,recovered,resetStops,exitRestores,
+      return {blockedWithoutAR,blockedOpaque,passthrough,physicalOnly,automaticPage,laps,liveFilled,immediateGrowth,retainsVisibleArea,retainedAfterLeaving,currentPositionMarker,retainedOnSave,acceptsOutsideReported,reviewFilled,savedFilled,paused,extraConfirmation:!!extraConfirmation,questionDoesNotSave,finalCorners,canReturnAndSave,saved,green,ground,restored,persisted,cancelled,savesWithoutStorage,hiddenOnLoss,recovered,resetStops,exitRestores,
         removedControllerDrawing:!menu.page.items.some(item=>item.id==='page-floor')&&typeof lab.floorHit==='undefined'};
     });
     for(const [key,value] of Object.entries(calibrationCheck))if(!['laps','finalCorners'].includes(key))assert.equal(value,true,key);
-    assert.ok(calibrationCheck.laps>=2);assert.ok(calibrationCheck.finalCorners<=64);console.log(JSON.stringify({calibrationCheck}));
+    assert.equal(calibrationCheck.laps,1);assert.ok(calibrationCheck.finalCorners<=24);console.log(JSON.stringify({calibrationCheck}));
     const entryCheck=await page.evaluate(async()=>{
       const scene=document.querySelector('a-scene'),calls=[];
       const request=navigator.xr.requestSession,support=AFRAME.utils.device.checkARSupport,connected=scene.checkHeadsetConnected,enabled=scene.renderer.xr.enabled;

@@ -9,12 +9,16 @@ never replace the reported polygon sent to Impossible Spaces.
 1. Enter the Lab, open either wrist watch, and choose **Calibrate boundary** →
    **Start new calibration**. Passthrough reveals the room; virtual locomotion
    is disabled. Walking calibration requires an AR-capable session.
-2. Walk a few laps around the usable perimeter, leaving clearance from walls
+2. Walk once around the usable perimeter, leaving clearance from walls
    and furniture. Pink shows the walked area on the floor. You can walk
-   from the middle to the edge first: completed laps discard the approach.
-3. Open the watch to pause sampling. **Continue walking** resumes.
+   from the middle to the edge first: the first completed lap discards the approach.
+   A small ground ring shows your tracked position.
+3. Once the area appears, walk directly into any missed corners or edges.
+   Each outward position grows the purple area immediately. Another full lap
+   is unnecessary. Returning inside or moving away never shrinks it.
+4. Open the watch to pause sampling. **Continue walking** resumes.
    **Save boundary** runs the final simplification and shows a yellow preview.
-4. The watch now asks **Save this boundary?** Review the area and corner count,
+5. The watch now asks **Save this boundary?** Review the area and corner count,
    then select **Yes, save boundary**. A separate green floor ribbon appears
    immediately. **Keep walking** returns to calibration without committing;
    **Cancel calibration** restores the previously accepted boundary.
@@ -34,25 +38,40 @@ walking calibration is blocked rather than starting in an opaque world.
 Horizontal headset positions are sampled at approximately 4 cm spacing. A return
 to an earlier section after travelling around the perimeter identifies a lap;
 the closest return is used so a detection radius does not cut off the starting
-corner. Completed laps refine one estimate rather than appending overlapping
-rings. Completed lap areas are combined with a polygon union: every outer edge
-already reached is retained. An outward lap extends the area; an inward lap
-cannot shrink it. There is no positional averaging, rectangle clipping, or
-convex hull filling an L-shaped indentation. A partial extra lap can extend
-the visited arc when the splice remains a valid connected polygon. Loop
-closure allows up to 30 cm of lateral variation between laps and uses the
-closest return, discarding the initial approach and completed stroke.
+corner. The first completed lap establishes the connected concave polygon.
+After that, every outward tracked position extends its nearest existing edge
+with a local filled patch, combined by polygon union. Extending the full edge
+recovers a cut-off corner rather than leaving a thin finger reaching it.
+Adjacent exposed sides of a convex corner expand together; concave turns stop
+this extension so an L-shaped furniture indentation remains intact.
+A 2 mm pad keeps collinear reaches from becoming zero-width lines. There is
+no requirement to finish another lap, be within 30 cm of the old outline, or
+match a particular arc. Even outward movements below the usual 4 cm sample
+spacing grow the area. Interior travel retains the area without extra strokes.
+There is no positional averaging, rectangle clipping, or global convex hull
+filling an L-shaped indentation. Initial loop closure allows 30 cm of route
+variation and uses the closest return, discarding the approach.
 
-During walking, points within **75 cm** of the wearer retain their detail.
-Distant sections simplify with approximately **3.5 cm** tolerance. The original
-active-lap samples remain behind the display, so revisiting a section can restore detail
-and correct the estimate. Display updates follow approximately 8 cm movement.
+Regular display refreshes protect detail within **75 cm** of the wearer.
+An outward update first straightens the supporting area without this proximity
+restriction, while still requiring full containment, so noisy nearby vertices
+do not turn a corner reach into a thin finger.
+Distant sections straighten with approximately **3.5 cm** tolerance. Each
+replacement edge is shifted outward to its furthest supporting sample, and
+adjacent supporting lines intersect to recover corners. The result must be
+simple and contain the entire previous polygon, checked with polygon
+difference; otherwise the previous shape is retained. Acute corner extensions
+above three tolerances also retain the original. Concave indentations remain.
+Display updates follow approximately 8 cm interior movement; outward expansion
+redraws immediately.
 Saving removes the proximity protection and runs a final pass over the polygon.
-Simplification protects outward extrema, including shallow peaks that a normal
-distance-only simplifier would cut inward. Nearby detail stays protected while
-walking. The area estimate behind the display retains the measured perimeter.
-Only one active lap and one area envelope are retained, rather than a list of
-past strokes. An unusually long unfinished lap has a sample
+The visible polygon is the stored polygon, including accepted straightening.
+Moving back to a section never restores a less simplified, smaller outline.
+Both final saving and live straightening must contain the previous filled
+area. Straightening can add a small outward allowance to produce long straight
+edges; the yellow preview shows this final approximation before acceptance.
+Only the initial stroke is recorded. After it closes, only the area envelope
+and one current position remain. An unusually long unfinished lap has a sample
 limit with explicit feedback.
 
 The cyan headset polygon and amber fitted rectangle are diagnostics only for
@@ -97,12 +116,16 @@ including initially empty data and much later updates.
 noisy laps, an initial approach, corrected wall offsets, reverse walking,
 L-shaped and notched outlines, partial laps, proximity protection, outward
 extrema, inward laps retaining outer reaches, outlines beyond reported bounds,
-interior travel without stray outline segments, and bounded memory over 25 laps.
+interior travel without stray outline segments, immediate outward updates,
+missed-corner recovery, whole-polygon containment between previews, straight
+wall recovery and bounded memory over 25 repeated visits.
 
 `npm run test:boundary:browser` exercises the mounted current watch through its
 actual menu rows: start, save preview, separate confirmation, keep walking,
 cancel, storage failure, filled live/review/saved concave geometry, accepting a
-walk outside an undersized reported rectangle, tracking recovery and resets.
+walk outside an undersized reported rectangle, immediate growth more than
+30 cm beyond the old outline, retained geometry after walking away and saving,
+the tracked-position ring, tracking recovery and resets.
 Use `VR_PLAYWRIGHT_PATH` for an installed Playwright package and `VR_TEST_URL`
 to override the default `http://127.0.0.1:8088`.
 

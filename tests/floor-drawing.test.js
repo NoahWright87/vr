@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { WalkingBoundary, simplifyWalk, segmentInside, validateFloor, unionWalkedAreas } from '../games/boundaries/floor-drawing.js';
+import { WalkingBoundary, simplifyWalk, segmentInside, validateFloor, unionWalkedAreas, straightenWalk, containsWalkedArea } from '../games/boundaries/floor-drawing.js';
 import { polygonArea, insidePolygon } from '../common/boundary-geometry.js';
 const rect=[{x:0,y:0},{x:4.7,y:0},{x:4.7,y:2.1},{x:0,y:2.1}];
 const outline=[{x:.15,y:.15},{x:4.55,y:.15},{x:4.55,y:1.95},{x:.15,y:1.95}];
@@ -12,16 +12,16 @@ test('several noisy laps become one saveable rectangle rather than overlapping r
   const walk=new WalkingBoundary(rect);
   for(let i=0;i<4;i++)for(const p of lap(outline,.012))walk.add(p);
   walk.add(outline[0]);const result=walk.finalise();
-  assert.equal(result.error,'');assert.ok(walk.laps>=3);assert.ok(result.points.length<=64,result.points.length);
-  assert.ok(Math.abs(polygonArea(result.points)-7.92)<.15);
+  assert.equal(result.error,'');assert.equal(walk.laps,1);assert.ok(result.points.length<=12,result.points.length);
+  assert.ok(Math.abs(polygonArea(result.points)-7.92)<.35);
   assert.ok(walk.lap.length<=1);assert.ok(walk.estimate.length<512);
 });
 test('walking out from the middle before doing laps discards the approach',()=>{
   const walk=new WalkingBoundary(rect);walk.add({x:2,y:1});walk.add({x:1,y:.7});
   for(let i=0;i<3;i++)for(const p of lap(outline,.008))walk.add(p);
   walk.add(outline[0]);const result=walk.finalise();
-  assert.equal(result.error,'');assert.ok(Math.abs(polygonArea(result.points)-7.92)<.15);
-  assert.ok(walk.laps>=2);
+  assert.equal(result.error,'');assert.ok(Math.abs(polygonArea(result.points)-7.92)<.35);
+  assert.equal(walk.laps,1);
 });
 
 test('saving immediately on returning from the first lap excludes the initial approach',()=>{
@@ -82,7 +82,7 @@ test('many laps keep memory bounded and final output stays a simple polygon',()=
   const walk=new WalkingBoundary(rect);
   for(let i=0;i<25;i++)for(const p of lap(outline,.008))walk.add(p);
   walk.add(outline[0]);const result=walk.finalise();assert.equal(result.error,'');
-  assert.ok(walk.laps>=24);assert.ok(walk.estimate.length<512);assert.ok(walk.lap.length<=1);
+  assert.equal(walk.laps,1);assert.ok(walk.estimate.length<32);assert.ok(walk.lap.length<=1);
 });
 
 test('a walked concave area beyond the reported rectangle can be saved',()=>{
@@ -133,11 +133,79 @@ test('varying the route between laps still closes and retains the widest walked 
   const walk=new WalkingBoundary();
   for(const points of [outline,inner,inner,outline])for(const p of lap(points))walk.add(p);
   walk.add(outline[0]);const result=walk.finalise();
-  assert.equal(result.error,'');assert.ok(walk.laps>=3);
+  assert.equal(result.error,'');assert.equal(walk.laps,1);
   for(const p of outline)assert.ok(insidePolygon(p,result.points));
 });
 
 test('an unfinished first lap cannot become a filled area through an invented closing diagonal',()=>{
   const walk=new WalkingBoundary();for(const p of lap(outline).slice(0,80))walk.add(p);
   assert.match(walk.finalise().error,/Finish one lap/);assert.equal(walk.closed,false);
+});
+
+test('each outward position immediately grows the visible area, even before another lap',()=>{
+  const walk=new WalkingBoundary();assert.ok(walk.complete(outline));walk.preview({x:.15,y:.15});
+  for(const p of [{x:.13,y:1},{x:.05,y:1},{x:-.1,y:1},{x:-.35,y:1},{x:-.5,y:1}]) {
+    const previous=walk.points.map(p=>({...p}));
+    assert.equal(walk.add(p),true);
+    assert.ok(insidePolygon(p,walk.points),'current wearer must be in the fill');
+    assert.ok(containsWalkedArea(walk.points,previous),'the entire previous fill must remain');
+  }
+  assert.equal(walk.laps,1);assert.equal(walk.finalise().error,'');
+  assert.ok(insidePolygon({x:-.5,y:1},walk.points));
+});
+
+test('walking into a missed corner and returning inside permanently adds that corner',()=>{
+  const clipped=[{x:.15,y:.45},{x:.45,y:.15},...outline.slice(1)];
+  const walk=new WalkingBoundary();assert.ok(walk.complete(clipped));walk.preview({x:2,y:1});
+  const corner={x:.15,y:.15};assert.equal(insidePolygon(corner,walk.points),false);
+  walk.add({x:.3,y:.3});walk.add(corner);
+  assert.ok(containsWalkedArea(walk.points,outline),'recover the whole clipped corner, not only a narrow reach');
+  const grown=walk.points.map(p=>({...p}));
+  for(const head of [{x:2,y:1},{x:4.5,y:1},{x:.2,y:1}]) {
+    walk.add(head);walk.preview(head);
+    assert.ok(insidePolygon(corner,walk.points));assert.ok(containsWalkedArea(walk.points,grown));
+  }
+});
+
+test('straight walls become a small polygon while containing all measured area',()=>{
+  for(const shape of [outline,l]) {
+    const raw=unionWalkedAreas([],lap(shape,.012)),straight=straightenWalk(raw);
+    assert.equal(validateFloor(straight),'');assert.ok(containsWalkedArea(straight,raw));
+    assert.ok(straight.length<=shape.length+4,{corners:straight.length});
+    if(shape===l)assert.equal(insidePolygon({x:3,y:1.5},straight),false);
+  }
+});
+
+test('nearby detail, distant straightening and final saving never shrink any earlier preview',()=>{
+  const walk=new WalkingBoundary();assert.ok(walk.complete(lap(l,.015)));
+  let previous=walk.estimate;
+  for(const head of [{x:.15,y:1},{x:4.55,y:.2},{x:1,y:1.9},{x:.15,y:1},null]) {
+    walk.preview(head);assert.ok(containsWalkedArea(walk.points,previous));previous=walk.points;
+  }
+  const result=walk.finalise();assert.equal(result.error,'');assert.ok(containsWalkedArea(result.points,previous));
+});
+
+test('collinear reaches past either end of a wall extend corners rather than drawing zero-width lines',()=>{
+  const walk=new WalkingBoundary();walk.complete(outline);walk.preview(null);
+  for(const p of [{x:.15,y:.05},{x:.15,y:-.1},{x:4.65,y:.15},{x:4.75,y:.15},{x:4.55,y:2.1},{x:.05,y:1.95}]) {
+    const old=walk.points;walk.add(p);
+    assert.ok(insidePolygon(p,walk.points),JSON.stringify(p));assert.ok(containsWalkedArea(walk.points,old));
+  }
+});
+
+test('one visit to each cut-off rectangular corner recovers the whole usable rectangle',()=>{
+  const cut=[{x:.15,y:.45},{x:.45,y:.15},{x:4.25,y:.15},{x:4.55,y:.45},{x:4.55,y:1.65},{x:4.25,y:1.95},{x:.45,y:1.95},{x:.15,y:1.65}];
+  const walk=new WalkingBoundary();walk.complete(cut);walk.preview(null);
+  for(const p of outline){const old=walk.points;walk.add(p);assert.ok(containsWalkedArea(walk.points,old));}
+  assert.ok(containsWalkedArea(walk.points,outline));
+  const final=walk.finalise();assert.equal(final.error,'');assert.ok(final.points.length<=8,final.points.length);
+});
+
+test('live expansion of a concave room retains its furniture indentation',()=>{
+  const walk=new WalkingBoundary();walk.complete(l);walk.preview(null);
+  for(const p of [{x:0,y:1},{x:0,y:2.1},{x:.7,y:2.1},{x:4.7,y:.15},{x:4.7,y:.7}]) {
+    walk.add(p);assert.ok(insidePolygon(p,walk.points));
+    assert.equal(insidePolygon({x:3,y:1.5},walk.points),false);
+  }
+  assert.equal(walk.finalise().error,'');assert.equal(insidePolygon({x:3,y:1.5},walk.points),false);
 });

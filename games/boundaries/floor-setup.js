@@ -12,8 +12,10 @@ AFRAME.registerComponent('boundary-floor-lab', {
     this.fill=new T.Mesh(new T.BufferGeometry(),new T.MeshBasicMaterial({color:'#f0abfc',side:T.DoubleSide,transparent:true,opacity:.12,depthTest:false,depthWrite:false}));
     this.preview=new T.LineLoop(new T.BufferGeometry(),new T.LineBasicMaterial({color:'#fde047',depthTest:false}));
     this.savedOutline=new T.Mesh(new T.BufferGeometry(),new T.MeshBasicMaterial({color:'#4ade80',side:T.DoubleSide,depthTest:false}));
+    this.walkerMarker=new T.Mesh(new T.RingGeometry(.028,.05,24),new T.MeshBasicMaterial({color:'#f0abfc',side:T.DoubleSide,depthTest:false}));
+    this.walkerMarker.rotation.x=-Math.PI/2;this.walkerMarker.visible=false;this.walkerMarker.renderOrder=6;
     this.fill.renderOrder=2;this.trace.renderOrder=3;this.preview.renderOrder=4;this.savedOutline.renderOrder=5;
-    this.root.add(this.fill,this.trace,this.preview,this.savedOutline);
+    this.root.add(this.fill,this.trace,this.preview,this.savedOutline,this.walkerMarker);
     this.handlers={
       'enter-vr':()=>this.attachSession(),'exit-vr':()=>this.endSession(),
       'headset-boundary-sample':e=>{this.observation.sample(e.detail.time,e.detail.points);},
@@ -74,7 +76,7 @@ AFRAME.registerComponent('boundary-floor-lab', {
     }
     this.walk=new WalkingBoundary();this.pending=null;this.phase='walking';this.active=true;this.interrupted=false;
     this.showPassthrough();this.closeWatches();
-    this.status='Walk a few laps around the usable edge. Revisit corners to refine them. Open watch to Save.';this.redraw();
+    this.status='Walk the usable edge once and return to it. Then walk into any missed corners to grow the area.';this.redraw();
   },
   showPassthrough: function () {
     if(this.passthrough)return;
@@ -104,7 +106,7 @@ AFRAME.registerComponent('boundary-floor-lab', {
     if(id==='calibration-resume') {
       if(!this.walk||!this.boundary){this.status='Choose Start new calibration first.';this.renderStatus();return;}
       this.pending=null;this.phase='walking';this.active=true;this.closeWatches();
-      this.status='Keep walking laps. Nearby points stay detailed; distant sections simplify.';this.redraw();return;
+      this.status=this.walk.closed?'Walk into any missing corners. Purple expands immediately. Open watch to Save.':'Continue around the usable edge to close the first outline.';this.redraw();return;
     }
     if(id==='calibration-save') {
       if(!this.walk||!this.boundary){this.status='Start calibration and walk the perimeter first.';this.renderStatus();return;}
@@ -132,14 +134,20 @@ AFRAME.registerComponent('boundary-floor-lab', {
   tick: function (time) {
     if(time-(this.statusTime||0)>500){this.statusTime=time;this.renderStatus();}
     if(!this.active||!this.walk||!this.session||!this.boundary)return;
-    if(this.watches().some(w=>w.projectedMenu?.active||w.projectedMenu?.visible))return;
     const frame=this.el.renderer.xr.getFrame(),space=document.querySelector('#boundary-rig').components['headset-boundary'].boundedSpace;
     if(!frame||!space)return;
     const viewer=frame.getViewerPose(space);
     if(!viewer){this.invalidate('Tracking lost. Calibration stopped.',true);return;}
     const p=viewer.transform.position;
     if(!Number.isFinite(p.x)||!Number.isFinite(p.z)){this.invalidate('Tracking lost. Calibration stopped.',true);return;}
-    if(this.walk.add({x:p.x,y:p.z}))this.redraw();
+    const paused=this.watches().some(w=>w.projectedMenu?.active||w.projectedMenu?.visible);
+    this.walkerMarker.position.set(p.x,.057,p.z);this.walkerMarker.visible=true;
+    this.walkerMarker.material.color.set(paused?'#fde047':'#f0abfc');
+    if(paused)return;
+    if(this.walk.add({x:p.x,y:p.z})) {
+      if(this.walk.closed)this.status=this.walk.error||'Area ready. Walk into any missing corners; purple grows immediately. Open watch to Save.';
+      this.redraw();
+    }
   },
   redraw: function () {
     const T=AFRAME.THREE,points=this.walk?.points||[],line=points.map(p=>[p.x,.047,p.y]).flat();
@@ -163,11 +171,12 @@ AFRAME.registerComponent('boundary-floor-lab', {
         b.x+dx,.052,b.y+dz,a.x-dx,.052,a.y-dz,b.x-dx,.052,b.y-dz);
     });
     this.savedOutline.geometry.setAttribute('position',new T.Float32BufferAttribute(ribbon,3));this.savedOutline.geometry.computeBoundingSphere();this.savedOutline.visible=!!this.savedPoints.length&&!this.walk&&!this.pending;
+    if(!this.active||!this.walk)this.walkerMarker.visible=false;
     this.renderStatus();
   },
   describe: function () {
     const points=this.pending?.points||this.walk?.points||this.savedPoints;
-    return [this.status,`${this.walk?.laps||0} completed laps · ${points.length} corners`,this.pending?`${polygonArea(points).toFixed(2)} m² · Yellow: final preview`:'Pink: walked area · Green: saved',this.walk?.error||'', 'Headset rectangle is a reference only. Saved for this XR session.'].filter(Boolean).join('\n');
+    return [this.status,`${points.length} corners · ${points.length>2?polygonArea(points).toFixed(2):'0.00'} m²`,this.pending?'Yellow: final preview':this.walk?.closed?'Purple: expanding area · Ring: your tracked position':'Purple: live · Green: saved',this.walk?.error||'', 'Headset rectangle is a reference only. Saved for this XR session.'].filter(Boolean).join('\n');
   },
   renderStatus: function () {
     document.querySelectorAll('.calibration-status').forEach(el=>el.setAttribute('text','value',this.status));
@@ -183,7 +192,7 @@ AFRAME.registerComponent('boundary-floor-lab', {
   },
   remove: function () {
     this.endSession();for(const [name,fn] of Object.entries(this.handlers))this.el.removeEventListener(name,fn);
-    this.el.object3D.remove(this.root);for(const object of [this.fill,this.trace,this.preview,this.savedOutline]){object.geometry.dispose();object.material.dispose();}
+    this.el.object3D.remove(this.root);for(const object of [this.fill,this.trace,this.preview,this.savedOutline,this.walkerMarker]){object.geometry.dispose();object.material.dispose();}
     if(this.el.enterVR===this.enterVRWrapper)this.el.enterVR=this.originalEnterVR;
   }
 });
