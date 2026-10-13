@@ -3,6 +3,10 @@ import { WalkingBoundary, validateFloor } from './floor-drawing.js';
 import { polygonArea } from '../../common/boundary-geometry.js';
 
 AFRAME.registerComponent('boundary-floor-lab', {
+  schema: {
+    rig: {type:'selector',default:'#boundary-rig'},
+    reader: {type:'selector',default:'#boundary-rig'}
+  },
   init: function () {
     const T=AFRAME.THREE;
     this.observation=new BoundaryObservation();this.walk=null;this.savedPoints=[];
@@ -68,6 +72,7 @@ AFRAME.registerComponent('boundary-floor-lab', {
     this.walk=null;this.pending=null;this.boundary=null;this.root.visible=false;
     if(!trackingOnly)this.savedPoints=[];
     this.phase=this.savedPoints.length?'saved':'idle';this.status=message;this.redraw();
+    this.el.emit('walking-calibration-invalidated',{trackingOnly},false);
   },
   start: function () {
     if(!this.session||!this.boundary){this.status='Enter XR and wait for the cyan boundary.';this.renderStatus();return;}
@@ -77,10 +82,11 @@ AFRAME.registerComponent('boundary-floor-lab', {
     this.walk=new WalkingBoundary();this.pending=null;this.phase='walking';this.active=true;this.interrupted=false;
     this.showPassthrough();this.closeWatches();
     this.status='Walk the usable edge once and return to it. Then walk into any missed corners to grow the area.';this.redraw();
+    this.el.emit('walking-calibration-started',{},false);
   },
   showPassthrough: function () {
     if(this.passthrough)return;
-    const rig=document.querySelector('#boundary-rig');
+    const rig=this.data.rig;
     this.passthrough={background:this.el.object3D.background,alpha:this.el.renderer.getClearAlpha(),position:rig.object3D.position.clone(),quaternion:rig.object3D.quaternion.clone(),locomotion:rig.getAttribute('locomotion-demo'),objects:Array.from(this.el.querySelectorAll('[data-calibration-opaque]')).map(el=>({el,visible:el.object3D.visible}))};
     rig.removeAttribute('locomotion-demo');rig.object3D.position.set(0,0,0);rig.object3D.quaternion.identity();
     this.passthrough.objects.forEach(({el})=>{el.object3D.visible=false;});
@@ -89,7 +95,7 @@ AFRAME.registerComponent('boundary-floor-lab', {
   stop: function () {
     this.active=false;this.interrupted=false;
     if(!this.passthrough)return;
-    const rig=document.querySelector('#boundary-rig'),old=this.passthrough;
+    const rig=this.data.rig,old=this.passthrough;
     this.el.object3D.background=old.background;this.el.renderer.setClearAlpha(old.alpha);
     old.objects.forEach(({el,visible})=>{el.object3D.visible=visible;});
     rig.object3D.position.copy(old.position);rig.object3D.quaternion.copy(old.quaternion);
@@ -127,14 +133,14 @@ AFRAME.registerComponent('boundary-floor-lab', {
       // accepted polygon. New sessions require a new tracking alignment.
       try{localStorage.setItem('boundary-lab-calibration',JSON.stringify({schema:1,points:this.savedPoints,reportedBoundary:this.boundary.points,revision:this.boundary.revision}));}
       catch(_){this.status+=' Browser storage unavailable; saved for this session.';}
-      this.redraw();return;
+      this.redraw();this.el.emit('walking-calibration-confirmed',{points:this.savedPoints.map(p=>({...p})),revision:this.boundary.revision},false);return;
     }
     if(id==='save-diagnostics')this.downloadReport();
   },
   tick: function (time) {
     if(time-(this.statusTime||0)>500){this.statusTime=time;this.renderStatus();}
     if(!this.active||!this.walk||!this.session||!this.boundary)return;
-    const frame=this.el.renderer.xr.getFrame(),space=document.querySelector('#boundary-rig').components['headset-boundary'].boundedSpace;
+    const frame=this.el.renderer.xr.getFrame(),space=this.data.reader.components['headset-boundary'].boundedSpace;
     if(!frame||!space)return;
     const viewer=frame.getViewerPose(space);
     if(!viewer){this.invalidate('Tracking lost. Calibration stopped.',true);return;}

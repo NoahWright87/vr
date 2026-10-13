@@ -1,20 +1,10 @@
-import { registerMenuPage } from '../../common/menu-crossbar.js';
+import { generationSettings, generationValues } from './generation-menu.js';
 import { DEFAULT_MIX } from './core/templates.ts';
 import { createRuntime, movePlayer, renderWalls } from './core/runtime.ts';
 import { centroid } from './core/geometry.ts';
 import { normalizeFootprint } from './core/footprint.ts';
 import { createRide, beginRide, advanceRide, doorClosure, followPhysicalPose, nearWall } from './core/vr-runtime.ts';
 import { LevelView } from './render.ts';
-
-registerMenuPage('impossible-watch', {
-  title: '', info: () => { const g=document.querySelector('[impossible-game]')?.components['impossible-game'];return [g?.message||'Reading boundary',g?.detail||'Walk with your feet.'].join('\n'); },
-  items: [
-    {kind:'action',id:'regenerate',label:'Generate new level'},
-    {kind:'action',id:'outline',label:'Show / hide boundary'},
-    {kind:'action',id:'margin',label:'Cycle margin'},
-    {kind:'action',id:'width',label:'Cycle door width'}
-  ]
-});
 
 const THREE = AFRAME.THREE;
 const $ = (id: string) => document.getElementById(id)!;
@@ -34,6 +24,7 @@ export function previewBoundary(shape: string, w: number, h: number) {
 AFRAME.registerComponent('impossible-game', {
   init() {
     this.xr = false; this.level = null; this.state = null; this.view = null; this.worker = null;
+    this.style='growth';this.source='traced';this.manualBoundary=null;
     this.boundary = null; this.revision = null; this.ride = createRide(); this.keys = new Set(); this.outline = true;
     this.tracking = false; this.outside = false; this.message = ''; this.detail = ''; this.generating = false;
     this.scene = this.el.sceneEl; this.camera = $('camera'); this.world = $('world'); this.panel = $('elevator-panel');
@@ -46,11 +37,12 @@ AFRAME.registerComponent('impossible-game', {
     this.listen = (target: any, event: string, callback: any) => { target.addEventListener(event, callback); this.handlers.push([target,event,callback]); };
     this.listen(this.scene, 'enter-vr', () => {
       this.xr = true; this.keys.clear(); this.boundary = null; this.revision = null; this.tracking = false;
+      this.manualBoundary=null;
       this.cancelGeneration(); this.clearLevel(); this.previewOutline.visible = false;
       $('player').object3D.position.set(0,0,0);
       const look = this.camera.components['look-controls'];
       if (look) { look.yawObject.rotation.y = 0; look.pitchObject.rotation.x = 0; }
-      document.body.classList.add('xr-active'); this.status('Reading headset boundary…', 'Walk with your feet. No joystick movement.');
+      document.body.classList.add('xr-active'); this.status('Calibrate your usable area', 'Watch → Calibrate area. Then choose a generation style.');
     });
     this.listen(this.scene, 'exit-vr', () => {
       this.xr = false; document.body.classList.remove('xr-active'); this.cancelGeneration(); this.generate(false);
@@ -58,7 +50,8 @@ AFRAME.registerComponent('impossible-game', {
     this.listen(this.scene, 'headset-boundary-frame', (event: any) => this.onBoundaryFrame(event.detail));
     this.listen(this.scene, 'headset-boundary-reset', () => {
       this.cancelGeneration(); this.clearLevel(); this.revision = null; this.tracking = false;
-      this.status('Boundary changed — rebuilding', 'The new level will start where you are standing.');
+      this.manualBoundary=null;
+      this.status('Tracking origin changed', 'Calibrate again before generating in your traced area.');
     });
     this.listen(this.scene, 'headset-boundary-tracking-lost', () => { if (this.xr) { this.tracking = false; this.world.object3D.visible = false; this.panel.object3D.visible = false; this.status('Tracking paused', 'Wait for headset tracking to return.'); } });
     this.listen(this.scene, 'headset-boundary-unavailable', () => { if (this.xr) this.status('Boundary unavailable', 'This browser must provide bounded-floor data. No guessed VR footprint.'); });
@@ -68,12 +61,27 @@ AFRAME.registerComponent('impossible-game', {
       if (event.detail.id === 'outline') this.toggleOutline();
       if (event.detail.id === 'margin') this.cycleSetting('margin', [.1,.25,.4]);
       if (event.detail.id === 'width') this.cycleSetting('door-width', [.8,1,1.2]);
+      if (event.detail.id === 'generate-growth') this.generate(false,'growth');
+      if (event.detail.id === 'generate-rooms-first') this.generate(false,'rooms-first');
+      if (event.detail.id === 'ride-next') this.requestRide(1);
+      if (event.detail.id === 'ride-previous') this.requestRide(-1);
+      if (event.detail.id === 'use-traced') {if(!this.manualBoundary)this.status('Calibrate your area first','The traced polygon is valid only in this XR session.');else{this.cancelGeneration();this.source='traced';this.clearLevel();this.updateFootprintDisplay();this.status('Using your traced area','Choose a style and Generate!');}}
+      if (event.detail.id === 'use-headset') {this.cancelGeneration();this.source='headset';this.clearLevel();this.updateFootprintDisplay();this.status('Using headset boundary','Choose a style and Generate!');}
+    });
+    this.listen(this.scene,'menu-commit',()=>this.renderStatus());
+    this.listen(this.scene,'walking-calibration-started',()=>{this.cancelGeneration();this.world.object3D.visible=false;this.panel.object3D.visible=false;this.ride=createRide();});
+    this.listen(this.scene,'walking-calibration-invalidated',(event:any)=>{if(!event.detail.trackingOnly){this.manualBoundary=null;if(this.xr){this.cancelGeneration();this.clearLevel();}}});
+    this.listen(this.scene,'walking-calibration-confirmed',(event:any)=>{
+      this.manualBoundary={points:event.detail.points.map((p:any)=>({...p})),revision:event.detail.revision};this.source='traced';this.clearLevel();
+      this.status('Traced area saved','Step inside it, then Watch → Existing generation or Rooms first → Generate!');
+      this.updateFootprintDisplay();
     });
     this.listen(this.scene, 'watch-menu-ready', () => this.renderStatus());
     this.listen($('ride-button'), 'click', () => this.requestRide());
+    this.listen($('ride-back-button'),'click',()=>this.requestRide(-1));
     this.listen($('generate'), 'click', () => this.generate(true));
     this.listen($('boundary-toggle'), 'click', () => this.toggleOutline());
-    for (const id of ['shape','width','depth','door-width','margin','pieces','seed']) this.listen($(id), 'change', () => this.generate(false));
+    for (const id of ['shape','width','depth','door-width','margin','pieces','seed']) this.listen($(id), 'change', () => {this.syncDesktopSettings();this.generate(false);});
     this.listen(window, 'keydown', (e: KeyboardEvent) => {
       if (this.xr || ['INPUT','SELECT','TEXTAREA','BUTTON'].includes((e.target as HTMLElement)?.tagName)) return;
       this.keys.add(e.key.toLowerCase());
@@ -90,7 +98,13 @@ AFRAME.registerComponent('impossible-game', {
   cycleSetting(id: string, values: number[]) {
     const input = $(id) as HTMLInputElement;
     input.value = String(values[(values.indexOf(Number(input.value)) + 1) % values.length]);
-    this.generate(false);
+    this.syncDesktopSettings();this.generate(false);
+  },
+  calibration(){return this.scene.components['boundary-floor-lab'];},
+  measuring(){return !!this.calibration()?.passthrough;},
+  syncDesktopSettings(){
+    const map={pieceCount:'pieces',boundaryMargin:'margin',minWidth:'door-width',seed:'seed'};
+    for(const item of generationSettings.growth){const input=map[item.id.split(':')[1]];if(input)item.value=Number($(input).value);}
   },
   cancelGeneration() { this.worker?.terminate(); this.worker = null; this.generating = false; },
   clearLevel() {
@@ -98,6 +112,7 @@ AFRAME.registerComponent('impossible-game', {
     this.panel.object3D.visible = false; this.world.object3D.visible = false;
     this.recovery.visible = false;
     $('ride-button').classList.remove('menu-target');
+    $('ride-back-button').classList.remove('menu-target');
     this.panel.querySelector('.elevator-surface').classList.remove('pm-surface');
   },
   status(message: string, detail = '') {
@@ -109,23 +124,34 @@ AFRAME.registerComponent('impossible-game', {
     $('head-status').setAttribute('text', 'value', this.message);
     const text = $('head-status').getObject3D('text');
     if (text) { text.material.depthTest = false; text.material.depthWrite = false; text.renderOrder = 100; }
-    document.querySelectorAll('[hand-with-watch]').forEach(el=>{const watch=el.components['hand-with-watch'];if(watch?.crossbarComponent?.menu.isOpen)watch.crossbarComponent.render();});
+    document.querySelectorAll('[hand-with-watch]').forEach(el=>{const watch=el.components['hand-with-watch'];if(watch?.crossbarComponent?.menu.isOpen)watch.crossbarComponent.menu.refresh();});
     document.querySelectorAll('.game-status').forEach(el => el.setAttribute('text','value',this.message));
     document.querySelectorAll('.game-detail').forEach(el => el.setAttribute('text','value',this.detail));
   },
   toggleOutline() {
     this.outline = !this.outline;
     const reader = $('boundary-reader').components['headset-boundary'];
-    reader.showOutline = this.outline;
-    reader.outline.visible = reader.corners.visible = this.xr && this.outline && this.tracking;
+    reader.showOutline = this.outline&&this.source==='headset';
+    reader.outline.visible = reader.corners.visible = this.xr && reader.showOutline && this.tracking;
     this.previewOutline.visible = !this.xr && this.outline;
     $('boundary-toggle').textContent = this.outline ? 'Hide outline' : 'Show outline';
+    this.updateFootprintDisplay();
+  },
+  updateFootprintDisplay(){
+    const c=this.calibration(),reader=$('boundary-reader').components['headset-boundary'];
+    if(!this.xr||this.measuring())return;
+    reader.showOutline=this.source==='headset'&&this.outline;
+    reader.outline.visible=reader.corners.visible=reader.showOutline&&this.tracking;
+    if(c){c.fill.visible=false;c.root.visible=this.source==='traced'&&!!this.manualBoundary&&this.outline&&this.tracking;}
   },
   onBoundaryFrame(frame: any) {
     if (!this.xr) return;
     this.tracking = true; this.boundary = frame;
+    if(this.manualBoundary&&this.manualBoundary.revision!==frame.revision){this.manualBoundary=null;this.cancelGeneration();this.clearLevel();this.status('Tracking origin changed','Calibrate again before generating.');}
+    this.updateFootprintDisplay();
+    if(this.measuring()){this.world.object3D.visible=false;this.panel.object3D.visible=false;return;}
     if (this.revision !== frame.revision) {
-      this.revision = frame.revision; this.generate(false);
+      this.revision = frame.revision;if(this.source==='headset')this.generate(false);
     }
     if (!this.level) return;
     this.transform.fromArray(frame.matrix);
@@ -145,18 +171,22 @@ AFRAME.registerComponent('impossible-game', {
     this.panel.object3D.visible = !this.outside && this.level.pieces.find((p: any) => p.id === this.state.activeId)?.kind === 'elevator';
     if (this.outside) this.status('Return to the amber ring', 'You stepped through a virtual wall or tracking jumped. Walk back to the ring, or generate here.');
   },
-  generate(newSeed: boolean) {
+  generate(newSeed: boolean,style?:string) {
+    if(style)this.style=style;
+    if(this.measuring()){this.status('Finish calibration first','Save and confirm, or Cancel before generating.');return;}
     this.cancelGeneration();
-    if (newSeed) ($('seed') as HTMLInputElement).value = String((Number(($('seed') as HTMLInputElement).value) + 1) % 1000000);
+    if (newSeed) {const item=generationSettings[this.style].find(item=>item.id.endsWith(':seed'));item.value=(Number(item.value)+1)%1000000;($('seed') as HTMLInputElement).value=String(item.value);}
     if (this.xr && !this.boundary) { this.status('Waiting for headset boundary', 'A real boundary is required to generate in VR.'); return; }
+    if(this.xr&&this.source==='traced'&&!this.manualBoundary){this.status('Calibrate your usable area','Watch → Calibrate area. No headset rectangle is substituted for your trace.');return;}
     try {
       const w = number('width',1,20), h = number('depth',1,20);
-      const points = this.xr ? this.boundary.points : previewBoundary(($('shape') as HTMLSelectElement).value,w,h);
+      const points = this.xr ? this.source==='traced'?this.manualBoundary.points:this.boundary.points : previewBoundary(($('shape') as HTMLSelectElement).value,w,h);
       this.footprint = normalizeFootprint(points);
-      const margin = number('margin',.1,.6), minWidth = number('door-width',.8,2);
+      const settings=generationValues(this.style),margin=settings.boundaryMargin,minWidth=settings.minWidth;
       const startAt = this.xr ? { x: this.boundary.position.x - this.footprint.origin.x, y: this.boundary.position.y - this.footprint.origin.y } : undefined;
       const params = { boundsW:this.footprint.width, boundsH:this.footprint.height, footprint:this.footprint.polygon, boundaryMargin:margin, startAt,
-        stationaryElevators:true, minWidth, mix:DEFAULT_MIX, pieceCount:Math.round(number('pieces',2,24)), minSizePct:3,maxSizePct:15,branchChance:.3,seed:Math.round(number('seed',0,999999)) };
+        stationaryElevators:true, minWidth, mix:DEFAULT_MIX, pieceCount:settings.pieceCount??settings.roomCount, minSizePct:settings.minSizePct??3,maxSizePct:settings.maxSizePct??15,branchChance:settings.branchChance??.3,seed:settings.seed,
+        generationStyle:this.style,roomCount:settings.roomCount,roomsPerLayer:settings.roomsPerLayer,roomSize:settings.roomSize,connectionMode:settings.connectionMode };
       this.clearLevel(); this.generating = true;
       this.status('Generating rooms…', `${this.footprint.width.toFixed(1)} × ${this.footprint.height.toFixed(1)} m · ${points.length} boundary corners`);
       const worker = new Worker(new URL('./generate-worker.ts', import.meta.url), {type:'module'}); this.worker = worker;
@@ -185,9 +215,12 @@ AFRAME.registerComponent('impossible-game', {
       worker.postMessage(params);
     } catch (error) { this.clearLevel(); this.status('Cannot generate', (error as Error).message); }
   },
-  requestRide() {
+  requestRide(direction=1) {
     if (!this.level || this.outside || (this.xr && !this.tracking)) return;
-    if (beginRide(this.level,this.state,this.ride)) this.status('Doors closing', 'Stay inside the cabin.');
+    const layers=this.level.roomsFirst?.layers,index=layers?.findIndex(l=>l.cabinId===this.state.activeId);
+    const destination=layers?(layers[index+direction]?.cabinId||(direction===1?layers[index-1]?.cabinId:undefined)):undefined;
+    if(layers&&!destination){this.status('No layer in that direction','Walk back into the room.');return;}
+    if (beginRide(this.level,this.state,this.ride,destination)) this.status('Doors closing', 'Stay inside the cabin.');
     else if (this.ride.phase === 'idle') this.status('Step fully inside the elevator', 'Press RIDE once you are clear of the doorway.');
   },
   updatePanel() {
@@ -195,6 +228,10 @@ AFRAME.registerComponent('impossible-game', {
     const visible = p.kind === 'elevator' && !this.outside && (!this.xr || this.tracking);
     this.panel.object3D.visible = visible;
     $('ride-button').classList.toggle('menu-target',visible && this.ride.phase === 'idle');
+    const layers=this.level.roomsFirst?.layers,index=layers?.findIndex(l=>l.cabinId===p.id),back=!!layers&&index>0&&index<layers.length-1;
+    $('ride-back-button').object3D.visible=visible&&back;$('ride-back-button').classList.toggle('menu-target',visible&&back&&this.ride.phase==='idle');
+    $('ride-button').setAttribute('width',back ? .18 : .36);$('ride-button').setAttribute('position',back?'0.11 0 0':'0 0 0');
+    $('ride-button').querySelector('a-text').setAttribute('value',layers?(index<layers.length-1?'NEXT':'RETURN'):'RIDE');
     this.panel.querySelector('.elevator-surface').classList.toggle('pm-surface',visible);
     if (!visible) return;
     const d = this.level.doors.find((d: any) => d.a === p.id || d.b === p.id);
@@ -216,7 +253,8 @@ AFRAME.registerComponent('impossible-game', {
     }
     const p = this.level.pieces.find((p: any) => p.id === this.state.activeId);
     const warning = this.level.warning ? `\n${this.level.warning}` : '';
-    this.status(`${this.xr ? '' : 'Preview · '}${p.kind} ${p.id} · ${this.level.pieces.length} pieces`, `${this.footprint.width.toFixed(1)} × ${this.footprint.height.toFixed(1)} m · margin ${this.level.params.boundaryMargin.toFixed(2)} m · seed ${this.level.params.seed}${warning}${nearWall(this.level,this.state) ? '\nVirtual wall nearby — follow the doorway.' : ''}`);
+    const count=this.level.roomsFirst?`${this.level.roomsFirst.requestedRooms} rooms · ${this.level.roomsFirst.layers.length} layers`:`${this.level.pieces.length} pieces`;
+    this.status(`${this.xr ? '' : 'Preview · '}${p.kind} ${p.id} · ${count}`, `${this.footprint.width.toFixed(1)} × ${this.footprint.height.toFixed(1)} m · ${this.xr&&this.source==='traced'?'traced area':'reported / preview area'} · margin ${this.level.params.boundaryMargin.toFixed(2)} m · seed ${this.level.params.seed}${warning}${nearWall(this.level,this.state) ? '\nVirtual wall nearby — follow the doorway.' : ''}`);
   },
   drawPreviewOutline() {
     const positions = this.footprint.polygon.flatMap((p: any) => [p.x,.028,p.y]);
@@ -234,6 +272,8 @@ AFRAME.registerComponent('impossible-game', {
     ctx.globalAlpha=1;ctx.fillStyle='#ffe29a';ctx.beginPath();ctx.arc(ox+this.state.pos.x*scale,oy+this.state.pos.y*scale,5,0,Math.PI*2);ctx.fill();
   },
   tick(time: number, delta: number) {
+    document.querySelectorAll('.calibration-status').forEach(el=>{el.object3D.visible=this.xr&&this.measuring();});
+    if(this.measuring())return;
     if (!this.level) return;
     const dt = Math.min(delta/1000,.05);
     if (!this.xr && this.ride.phase === 'idle') {
@@ -260,6 +300,7 @@ AFRAME.registerComponent('impossible-game', {
         if(inside&&!this.touching.has(id))this.requestRide();
         if(inside)this.touching.add(id);else this.touching.delete(id);
       }
+      if($('ride-back-button').object3D.visible){$('ride-back-button').object3D.getWorldPosition(this.buttonPoint);for(const id of ['left-hand','right-hand']){const finger=$(id).components['hand-with-watch']?.fingertipEl;if(!finger)continue;finger.object3D.getWorldPosition(this.fingerPoint);const inside=this.buttonPoint.distanceTo(this.fingerPoint)<.075,key=id+'-back';if(inside&&!this.touching.has(key))this.requestRide(-1);if(inside)this.touching.add(key);else this.touching.delete(key);}}
     }
     if(time-(this.lastStatus||0)>250){this.lastStatus=time;if(!this.xr||this.tracking)this.showRoomStatus();if(!this.xr)this.drawMap();}
   },

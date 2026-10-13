@@ -44,6 +44,11 @@ let browser;
   }
   // Raycast the exact structural backing triangles: hidden walls must never be drawn.
   // Colored faces sit 1 mm in front, are clipped again, and have separate spacing checks.
+  for(const style of ['growth','rooms-first']){
+  if(style==='rooms-first'){
+    await page.evaluate(()=>document.querySelector('[impossible-game]').components['impossible-game'].generate(false,'rooms-first'));
+    await page.waitForFunction(()=>document.querySelector('[impossible-game]').components['impossible-game'].level);
+  }
   const geometryResult=await page.evaluate(()=>{
     const g=document.querySelector('[impossible-game]').components['impossible-game'],T=AFRAME.THREE;
     let rays=0,coloredVertices=0;const problems=[];
@@ -73,11 +78,15 @@ let browser;
     }
     return {rays,coloredVertices,problems:problems.slice(0,5),count:problems.length};
   });
-  assert.equal(geometryResult.count,0,JSON.stringify(geometryResult));console.log(JSON.stringify({geometryResult}));
+  assert.equal(geometryResult.count,0,JSON.stringify(geometryResult));console.log(JSON.stringify({style,geometryResult}));
+  }
   // Simulate the public boundary events and ensure keyboard input cannot move an XR rig.
   const xrResult=await page.evaluate(async()=>{
     const g=document.querySelector('[impossible-game]').components['impossible-game'],scene=document.querySelector('a-scene');
     scene.emit('enter-vr',{},false);
+    // Explicitly opt into the reported-boundary fallback. Traced area is
+    // the new default and never silently substitutes the headset rectangle.
+    g.source='headset';
     const frame={points:[{x:-3,y:-2.5},{x:3,y:-2.5},{x:3,y:2.5},{x:-3,y:2.5}],matrix:[1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1],position:{x:0,y:0},revision:999};
     scene.emit('headset-boundary-frame',frame,false);
     for(let i=0;i<200&&!g.level;i++)await new Promise(r=>setTimeout(r,20));

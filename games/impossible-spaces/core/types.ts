@@ -31,6 +31,11 @@ export interface Door {
 export interface Portal { id: string; a: string; b: string }
 
 export interface GenParams {
+  generationStyle?: 'growth' | 'rooms-first';
+  roomCount?: number;
+  roomsPerLayer?: number;
+  roomSize?: number;
+  connectionMode?: 'halls' | 'doors' | 'mixed';
   /** Physical boundary in generator coordinates, possibly concave. */
   footprint?: Vec[];
   boundaryMargin?: number;
@@ -55,6 +60,7 @@ export interface GenParams {
 }
 
 export interface Level {
+  roomsFirst?: { requestedRooms:number; layers:{index:number;roomIds:string[];cabinId:string}[] };
   version: 1;
   params: GenParams;
   bounds: { w: number; h: number };

@@ -1,87 +1,116 @@
 # Impossible Spaces
 
-A walking-only WebXR exploration prototype built from the supplied
-`impossible-spaces-poc.zip`. No objectives, thumbstick movement, snap turns, or
-VR camera teleports. Open `/games/impossible-spaces/` using the repository's Vite
-server or production build. WebXR requires HTTPS (or localhost for desktop).
+A walking-only WebXR prototype from `impossible-spaces-poc.zip`, using Boundary
+Lab's shared boundary reader and walking calibration. No objectives, thumbstick
+movement, snap turns or VR camera teleports. Each room has a distinct color.
+Open `/games/impossible-spaces/` over HTTPS (localhost works for desktop).
 
-## In a headset
+## Headset setup
 
-1. Draw a room-scale boundary, stand well inside it, and enter VR.
-2. The game reads the same `bounded-floor` polygon and frame transform as Boundary
-   Lab via `common/headset-boundary.js`. The cyan outline is the reported boundary.
-3. Walk through the colored rooms and doorways. The initial room is generated
-   around the actual headset pose. The rig stays at the XR origin.
-4. Enter an elevator fully and poke **RIDE**, or point and trigger. The panels
-   close for 0.65 s, remain closed for 0.8 s, then reopen over 0.65 s. Only after
-   full closure does the outside room graph change. Both cabins have identical
-   floor geometry, door orientation, and color; your pose does not change.
-5. Use the wrist watch to regenerate around your current position, change the
-   inward margin (0.10 / 0.25 / 0.40 m) or doorway width (0.8 / 1.0 / 1.2 m), and
-   toggle the boundary outline. The current values and seed appear in the watch.
+1. Enter VR, then **Watch → Calibrate area → Start new calibration**.
+   Passthrough reveals the room. Walk its usable perimeter once, then revisit
+   missed edges or corners. The purple filled area grows outward only.
+2. **Save boundary** shows a final yellow preview. **Yes, save boundary**
+   confirms it and draws a green floor ribbon. Step inside the accepted area.
+3. Choose **Existing generation** or **Rooms first** in the watch. Adjust
+   settings, then select **Generate!**. Settings alone do not rebuild the level.
+4. Walk through colored rooms and doorways. Enter an elevator fully before
+   poking or pointing at its button. The doors close for 0.65 s, stay shut for
+   0.8 s, then open over 0.65 s. The outside changes only while fully closed.
+   The cabin and tracked player pose stay in the same physical location.
 
-Browsers without bounded-floor data cannot generate a VR level. Tracking loss
-pauses play. Boundary resets discard the old level and rebuild using fresh data.
-If you physically cross a virtual wall, the game hides the impossible geometry
-and marks your last valid floor position with an amber ring. Walk back there, or
-regenerate from your current position. The camera is never clamped or slid.
+Custom calibration runs in the game's own XR session. It accepts points beyond
+the reported headset rectangle and supplies the entire confirmed polygon to
+both generators. The fitted rectangle is never the placement footprint.
+The watch's **Footprint source** offers an explicit headset-boundary comparison.
+The default requires a trace, without silently falling back to a rectangle.
 
-The boundary is a footprint, not an obstacle scan. The headset's own safety
-boundary remains authoritative. The default inset is 10 cm and the default doorway width is 80 cm. The inset
-is adjustable; it does not estimate arm reach or detect furniture.
+Passthrough is negotiated at the initial XR entry gesture. Walking calibration
+requires an AR-capable session with a non-opaque environment blend mode.
+It uses the same shared component as Boundary Lab, without room-data permission
+or Quest Room Setup. Calibration hides virtual rooms and pauses gameplay.
+Cancel restores the previous accepted trace and level. Confirm replaces the
+trace and clears the previous level; generate explicitly afterward.
 
-## Desktop preview
+Confirmed points are valid only in the current bounded-floor reference space.
+Transient tracking loss hides the world until tracking recovers. Recentring,
+boundary reset or XR exit discards the trace and requires calibration again.
+Stored points are never applied to another tracking origin automatically.
+Browsers must provide bounded-floor tracking. Calibration describes a connected
+floor polygon, without interior holes or obstacle detection.
 
-WASD / arrows move, dragging the scene looks around, and E presses the elevator
-button. Preview settings offer rectangles, L shapes, notches, and chamfered
-boundaries. The top-down diagnostic map includes faint hidden rooms to show
-physical reuse; the 3D renderer draws only declared visible regions. Desktop
-movement is disabled as soon as VR starts.
+## Two generation styles
 
-## Implementation and limits
+**Existing generation** retains the POC's seeded outward growth, room/hall
+templates and physically overlapping visibility graphs. Its submenu exposes
+piece target, room-size percentages, branch chance, doorway width, margin and
+seed. Its piece target includes halls and cabins; short results remain possible
+and are reported.
 
-- `core/` retains the POC's templates, seeded growth, visibility math, and reference
-  runtime. `footprint.ts` adds whole-edge containment and clearance for concave
-  polygons. A bounding box is used only as a candidate-search envelope.
-- `stationaryElevators` changes generation so linked cabins coincide physically.
-  Each destination room grows into the same bounded footprint in a separate
-  visibility graph. `vr-runtime.ts` adds the manual door cycle and tracked walking.
-- Floors, ceilings, and wall segments are clipped by `visibleRegions`;
-  drawing complete neighboring rooms would reveal hidden overlaps. Render groups
-  use colored faces inset by 1 mm into each owner, with joined corners and a
-  uniform backing at the original wall line to preserve occlusion. Colored
-  faces are clipped again after insetting. Render groups are cached per active room and closed-cabin state and disposed on regeneration.
-- Generation runs in a cancellable worker. Settings and seeds reproduce a level
-  for the same boundary and starting pose. Short levels retain the POC warning.
-- Very small/narrow spaces can contain only a short level or no valid layout.
-  The generator never shrinks below the selected doorway width or expands the
-  physical boundary to satisfy the requested piece count. A 1 m doorway implies
-  a minimum 1.5 m room width, plus the chosen inward margin. This is a flat-floor
-  prototype; angled floors and obstacles inside the boundary are unsupported.
-- Controller button/ray interaction uses the shared wrist menu code. A gaze dwell
-  fallback works when no controller has connected. Native articulated-hand
-  tracking/pinch controls are not implemented.
+**Rooms first** is a separate generator. It plans rectangular rooms inside each
+layer of the polygon, then connects them with shared doorways or routed hallways.
+Hall routing tests the entire selected-width body footprint, including corners,
+against the polygon. It can route turns around concave boundaries. Failed
+connections are not emitted as disconnected rooms.
+
+Its submenu exposes room count, maximum rooms per layer, room size, connection
+preference (hallways, compact doorways or mixed), hall/door width, margin and seed.
+Rooms per layer is an upper limit, not a requirement. Small areas may fit only
+one or two rooms per layer; extra elevator layers reuse the same physical floor.
+Cabins and their single doorway coincide on every layer. Middle layers offer
+NEXT and PREV; the last offers RETURN. The watch also offers layer actions.
+A single-layer layout removes its unused reserved cabin.
+
+The new mode returns exactly the requested number of **connected rooms**, or
+an explicit failure if an initial room and stationary elevator cannot fit at
+the selected settings and current position. Halls and cabins do not count as
+rooms. This does not guarantee metres walked, play duration, or a route without
+backtracking. It does not expand the footprint or reduce selected clearance to
+meet a target. Narrow/irregular areas can still be elevator-heavy.
+
+Defaults: 10 cm margin, 80 cm doors/halls, eight rooms, at most three rooms per
+layer and 1.2 m room size. The grid uses half the doorway width; room dimensions
+round upward to whole cells. The margin does not estimate arm reach or furniture.
+Native Guardian is unaffected. This is a flat-floor prototype.
+
+## Rendering and movement
+
+Floors, ceilings and walls are clipped by the POC's `visibleRegions`. Drawing
+complete hidden neighbors would expose overlapping rooms. Colored wall faces
+are inset 1 mm on each side of shared walls, with structural backing preserving
+occlusion. Views are cached per active room and closed-cabin state and disposed
+on regeneration. Both generators run in a cancellable worker.
+
+Physical tracking always controls the XR camera; the player rig stays at the
+tracking origin. Crossing a virtual wall hides impossible geometry and shows an
+amber recovery ring. Walk back there or generate at your new position.
+
+Desktop preview uses WASD/arrows, mouse drag and E for elevators. Its controls
+simulate rectangular, L-shaped, notched and chamfered areas. Watch submenus also
+work in the preview. Desktop movement is disabled on XR entry.
 
 ## Verification
 
-`npm test` runs existing repository tests plus the imported reference tests and
-new VR tests. Node 22.6+ is required for the TypeScript tests' type stripping.
-`npm run build` includes the new entry point and generation worker.
+`npm test` includes repository tests and the TypeScript reference tests (Node
+22.6+). `npm run build` includes the entry point and generation worker.
 
-An optional `npm run test:impossible:browser` runs the browser integration checks
-against a served production build. It uses an installed Playwright package;
-`VR_PLAYWRIGHT_PATH` can select an existing runtime package, `VR_TEST_URL` overrides
-the default `http://127.0.0.1:8088`, and `VR_SCREENSHOT_PATH` optionally saves the
-preview. Playwright is not required by the normal build or `npm test`.
+Optional browser runners against a served production build:
 
-Automated checks cover deterministic generation, comfort widths, containment of
-whole pieces in irregular polygons, independent sightline tracing, clipped
-rendering, walking to every room and back, manual elevator closure and pose
-preservation, unavailable/tracking/reset boundary states, and reference runtime
-behavior. Browser smoke checks exercise real desktop key input and rendered
-button events, 3D structural wall raycasts, colored-face containment and spacing, and simulated boundary events with a fixed XR rig.
+- `node tests/impossible-spaces.browser.cjs`: desktop walking, legacy elevators,
+  structural wall raycasts, colored-face containment and explicit headset fallback.
+- `node tests/impossible-generation.browser.cjs`: real mounted watch rows and
+  settings, both workers, walking calibration in the game, acceptance beyond the
+  reported rectangle, confirmation, full room count, fixed rig/world transform,
+  multi-destination panel buttons, tracking recovery and reset.
+- `node tests/boundary-lab.browser.cjs`: shared calibration regression checks.
 
-Still requires headset playtesting: exact guardian alignment, both-eye seams at
-doorways, button reach, boundary redraw/recentering on hardware, real controller
-events, and Quest 2 performance/comfort. The desktop preview is not a hardware
-validation claim.
+Set `VR_PLAYWRIGHT_PATH` to an installed Playwright package and `VR_TEST_URL`
+to the served origin (default `http://127.0.0.1:8088`). No Playwright dependency
+is required for the normal build/tests. Reference checks physically walk to
+every room and back, including turned corridors, rather than checking only a
+connected graph. They cover small rectangles, narrow L shapes, notches and
+rotated areas, deterministic settings, exact room counts and stationary rides.
+
+Real Quest 2 testing remains necessary for alignment, passthrough, both-eye
+doorway seams, button reach, performance and comfort. Simulated XR checks do not
+replace hardware testing. Windows, distant scenery and open bridges are deferred.

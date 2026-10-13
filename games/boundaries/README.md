@@ -2,7 +2,8 @@
 
 Cyan shows every point in the headset's reported `bounded-floor` polygon.
 Dashed amber is the Lab's conservative fitted rectangle. These diagnostics
-never replace the reported polygon sent to Impossible Spaces.
+never clip the walked calibration polygon. Impossible Spaces now reuses the
+same walking calibration component directly in its own XR session.
 
 ## Walking calibration
 
@@ -101,8 +102,10 @@ poses in the same reference space. An interruption during calibration stops
 sampling and discards its unfinished estimate, keeping passthrough visible
 until Cancel. Boundary changes, recentering, and leaving XR clear the active
 measurement and saved display. Stored records are not automatically restored
-into a new tracking origin. These remain Lab previews; Impossible Spaces uses
-the headset-reported footprint.
+into a new tracking origin. Lab calibrations remain Lab previews. To generate
+in a custom area, open Impossible Spaces and use **Calibrate area** in its watch;
+the same component supplies that session's confirmed polygon to either generator.
+This avoids transferring geometry between unrelated XR tracking origins.
 
 **Save diagnostics** preserves the latest reported polygon, sampling timing and
 change history, accepted manual polygon, and any pending preview. It stores a

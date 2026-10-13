@@ -9,9 +9,9 @@ export function fullyInsideCabin(level: Level, state: RuntimeState): boolean {
   const piece = level.pieces.find(p => p.id === state.activeId);
   return piece?.kind === 'elevator' && piece.parts.some(poly => insideConvex(state.pos, poly) && edgesOf(poly).every(([a, b]) => distPointSeg(state.pos, a, b) >= DEFAULTS.radius + 0.04)) || false;
 }
-export function beginRide(level: Level, state: RuntimeState, ride: Ride): boolean {
+export function beginRide(level: Level, state: RuntimeState, ride: Ride, destination?: string): boolean {
   if (ride.phase !== 'idle' || !fullyInsideCabin(level, state)) return false;
-  const portal = level.portals.find(p => p.a === state.activeId || p.b === state.activeId);
+  const portal = level.portals.find(p => (p.a === state.activeId || p.b === state.activeId)&&(!destination||(p.a===state.activeId?p.b:p.a)===destination));
   if (!portal) return false;
   Object.assign(ride, { phase: 'closing', elapsed: 0, from: state.activeId, to: portal.a === state.activeId ? portal.b : portal.a, switched: false });
   return true;
