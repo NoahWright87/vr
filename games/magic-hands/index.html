@@ -18,7 +18,7 @@
     button { border: 1px solid #5e658d; border-radius: 7px; background: #252a45; color: white; padding: 8px 10px; cursor: pointer; font: inherit; }
     button[aria-pressed="true"] { background: #4b407c; border-color: #b39aff; }
     button:focus-visible, input:focus-visible { outline: 2px solid #94ddff; outline-offset: 3px; }
-    #spell-controls { display: flex; gap: 6px; margin: 10px 0; }
+    #spell-controls { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0; }
     #status { color: #9cdcff; font-size: 12px; margin-top: 12px; }
     label { display: flex; align-items: center; gap: 12px; } input { width: 160px; accent-color: #ad99ff; }
     .quiet { color: #a2accb; font-size: 12px; }
@@ -32,11 +32,14 @@
     <h1>Magic Hands</h1>
     <p>Put the controllers down. Your hands are the magic.</p>
     <details>
-      <summary>Learn the three spells</summary>
+      <summary>Learn the six spells</summary>
       <ul>
         <li><strong>Lightning bolt</strong> — point your index finger and curl the other three fingers. The faint blue line shows your aim; a bright marker shows an assisted target. Raise the thumb roughly perpendicular to the finger, then bend its tip roughly parallel to fire. Either hand can fire independently.</li>
         <li><strong>Farsight</strong> — touch fingertips above and the heels of your hands below to make a circle or diamond. Thumb contact and exact finger shapes do not matter. Bring the window close to your face for about 10× zoom, or extend your arms for about 2×.</li>
         <li><strong>Shield</strong> — extend an open hand to roughly 80% of your arm's reach with the palm facing outward. Each hand makes a 0.5 m shield; bring both extended open hands within 40 cm for a 1 m shield. Retract to dismiss.</li>
+        <li><strong>Boulder fists</strong> — close an empty fist and wait for stone to grow around it. Punch a nearby target or loose stone, then retract to punch again. Relax your hand to shed the boulder.</li>
+        <li><strong>Fireball</strong> — cup your hand palm-up and scoop upward a little. Fire gathers over your palm. Keep your fingers cupped to hold it, then throw forward and open your hand. Open palm-down at rest to dismiss it.</li>
+        <li><strong>Telekinesis</strong> — point at a floating rune stone until it glows purple, then pinch to lift it. Move your pinched hand to guide it. Pull back and close your fist to summon it into your grasp. Open and push to throw; simply release to drop. Nearby stones can also be grabbed directly.</li>
       </ul>
       <p class="quiet">Enable hand tracking on your Quest, then enter VR. A brief hold settles each spell. Tracking loss releases it; lightning needs a fresh thumb lift.</p>
     </details>
@@ -45,10 +48,13 @@
         <button data-spell="lightning" aria-pressed="true">1 · Lightning</button>
         <button data-spell="farsight" aria-pressed="false">2 · Farsight</button>
         <button data-spell="shield" aria-pressed="false">3 · Shield</button>
+        <button data-spell="boulder" aria-pressed="false">4 · Boulders</button>
+        <button data-spell="fireball" aria-pressed="false">5 · Fireball</button>
+        <button data-spell="telekinesis" aria-pressed="false">6 · Telekinesis</button>
       </div>
       <div id="farsight-controls" hidden><label>Face distance <input id="face-distance" aria-label="Farsight distance from face" type="range" min="0.12" max="0.65" step="0.005" value="0.40" /></label></div>
       <div id="shield-controls" hidden><label>Arm extension <input id="shield-distance" aria-label="Shield arm extension" type="range" min="0.20" max="0.70" step="0.01" value="0.65" /></label></div>
-      <p class="quiet">Desktop: drag to look, WASD to move. Space/click bends the right thumb; Q bends the left. Release to reload. Farsight: scroll or slide face distance. Shield: slide arm extension; H switches one/two hands.</p>
+      <p class="quiet">Desktop: drag to look, WASD to move. Space/click uses the right hand; Q uses the left. Lightning: bend thumb. Boulders: hold to punch, release to retract. Fire: hold to scoop, release to throw. Telekinesis: hold to pinch, G pulls to hand, T pushes to throw; release drops. Farsight: scroll or slide face distance. Shield: slide arm extension; H switches one/two hands.</p>
     </div>
     <button id="reset">Reset score · R</button> <a href="../../index.html">All experiences</a>
     <div id="status" role="status">Preparing the spell courtyard…</div>
@@ -78,6 +84,13 @@
     <a-sphere class="magic-target" magic-receiver position="-2.3 2.1 -15" radius=".5" color="#5a69b8" material="emissive: #17244a"></a-sphere>
     <a-sphere class="magic-target" magic-receiver position="2.8 2.5 -28" radius=".65" color="#5a69b8" material="emissive: #17244a"></a-sphere>
     <a-sphere class="magic-target" magic-receiver position="0 3.6 -48" radius=".8" color="#5a69b8" material="emissive: #17244a"></a-sphere>
+    <a-sphere id="punch-left" class="magic-target" magic-receiver position="-.55 1.37 -.95" radius=".22" color="#5a69b8" material="emissive: #17244a"></a-sphere>
+    <a-sphere id="punch-right" class="magic-target" magic-receiver position=".55 1.37 -.95" radius=".22" color="#5a69b8" material="emissive: #17244a"></a-sphere>
+    <a-text value="PUNCH PRACTICE" position="0 .85 -1.15" width="1.15" align="center" color="#c0b4a7"></a-text>
+    <a-entity position="2.2 1.8 -2.4" rotation="0 -32 0">
+      <a-text value="MORE MAGIC" align="center" width="3" position="0 .5 0" color="#ffcf9c"></a-text>
+      <a-text value="FIST / PUNCH\nBoulder hands\n\nPALM UP / SCOOP / THROW\nFireball\n\nPOINT / PINCH / MOVE\nTelekinesis\nPull + fist: grab / Open + push: throw" align="center" width="2.4" color="#d4c1b4"></a-text>
+    </a-entity>
 
     <a-cylinder data-magic-blocker position=".18 .30 -4" radius=".45" height=".6" color="#3b3c58"></a-cylinder>
     <a-cylinder data-magic-blocker position="-1.5 .30 -6" radius=".48" height=".6" color="#3b3c58"></a-cylinder>

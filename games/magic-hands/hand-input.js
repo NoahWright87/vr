@@ -7,13 +7,15 @@ const LINKS = JOINTS.flatMap((name, i) => {
 
 // The desktop adapter produces joints, not spell commands. It therefore uses
 // the same feature extraction, arbitration, thumb edges and hit path as XR.
-export function previewJoints(mode, side, hammerDown, aperture = .16) {
+export function previewJoints(mode, side, hammerDown, aperture = .16, poseKind = null) {
   const joints = { wrist: new THREE.Vector3(0, -.085, 0) };
   const mirror = side === 'left' ? -1 : 1;
   const xs = [-.030, -.010, .010, .030];
   FINGERS.forEach((finger, i) => {
-    const x = xs[i] * mirror, curled = mode !== 'shield' && (finger !== 'index' || mode === 'farsight');
-    const points = curled ? [[0, 0], [.026, 0], [.014, .024], [-.013, .017]] : [[0, 0], [.033, 0], [.061, 0], [.084, 0]];
+    const x = xs[i] * mirror, curled = poseKind === 'fist' || mode === 'boulder' || (!['shield', 'fireball'].includes(mode) && (finger !== 'index' || mode === 'farsight'));
+    const points = poseKind === 'open' ? [[0, 0], [.033, 0], [.061, 0], [.084, 0]] :
+      poseKind === 'cup' ? [[0, 0], [.032, 0], [.046, .026], [.034, .045]] :
+      curled ? [[0, 0], [.026, 0], [.014, .024], [-.013, .017]] : [[0, 0], [.033, 0], [.061, 0], [.084, 0]];
     joints[`${finger}-finger-metacarpal`] = new THREE.Vector3(x * .6, -.045, 0);
     ['phalanx-proximal', 'phalanx-intermediate', 'phalanx-distal', 'tip'].forEach((name, n) => {
       joints[`${finger}-finger-${name}`] = new THREE.Vector3(x, points[n][0], points[n][1]);
@@ -26,6 +28,10 @@ export function previewJoints(mode, side, hammerDown, aperture = .16) {
   });
   joints['thumb-phalanx-distal'].set(-.070 * mirror, .030, 0);
   joints['thumb-tip'].copy(joints['thumb-phalanx-distal']).add(new THREE.Vector3(hammerDown ? 0 : -.035 * mirror, hammerDown ? .035 : 0, 0));
+  if (poseKind === 'pinch') {
+    joints['thumb-tip'].copy(joints['index-finger-tip']).add(new THREE.Vector3(-.008 * mirror, 0, 0));
+    joints['thumb-phalanx-distal'].copy(joints['thumb-tip']).add(new THREE.Vector3(-.025 * mirror, -.008, 0));
+  }
   if (mode === 'farsight') {
     // Fingertips meet above and the wrists/hand heels meet below; no thumb seam.
     const center = new THREE.Vector3(side === 'left' ? .07 : -.07, .01, 0);
@@ -45,6 +51,7 @@ export class HandInput {
     this.mode = 'lightning'; this.hammerDown = { left: false, right: false };
     this.faceDistance = .40; this.shieldDistance = .65; this.shieldHands = 2;
     this.aimHistory = {}; this.lastSample = null;
+    this.resetActions();
     this.visuals = {}; this.root = new THREE.Group(); scene.object3D.add(this.root);
     for (const side of ['left', 'right']) {
       const material = new THREE.MeshBasicMaterial({ color: side === 'left' ? '#8dd7da' : '#bbcaed' });
@@ -58,6 +65,41 @@ export class HandInput {
       this.visuals[side] = { group, spheres, bones };
     }
     this.matrix = new THREE.Matrix4(); this.scale = new THREE.Vector3(); this.q = new THREE.Quaternion();
+  }
+  resetActions() {
+    this.cycles = { left: { down: false, start: null, released: null }, right: { down: false, start: null, released: null } };
+    this.pull = false; this.pullAt = null; this.pushAt = null;
+  }
+  desktopPose(side, time) {
+    const cycle = this.cycles[side], down = this.hammerDown[side];
+    if (down && !cycle.down) { cycle.start = time; cycle.released = null; this.pull = false; this.pullAt = null; }
+    if (!down && cycle.down) cycle.released = time;
+    cycle.down = down;
+    const age = cycle.start === null ? 0 : Math.max(0, time - cycle.start);
+    const release = cycle.released === null ? null : Math.max(0, time - cycle.released);
+    const data = { kind: null, y: -.18, depth: .45, normal: null };
+    if (this.mode === 'boulder') {
+      data.kind = 'fist'; data.depth = .30 + .50 * (down ? Math.min(1, age / 260) : release === null ? 0 : Math.max(0, 1 - release / 250));
+    }
+    if (this.mode === 'fireball') {
+      data.kind = 'cup'; data.y = -.43 + (down ? .15 * Math.min(1, age / 350) : 0); data.depth = .38; data.normal = new THREE.Vector3(0, 1, 0);
+      if (release !== null && release < 280) {
+        data.depth += .50 * Math.min(1, release / 200); data.y = -.28; data.kind = release > 65 ? 'open' : 'cup';
+        data.normal = new THREE.Vector3(0, 0, -1);
+      } else if (!down && release !== null) { data.kind = 'open'; data.normal.set(0, -1, 0); data.depth = .32; }
+    }
+    if (this.mode === 'telekinesis') {
+      data.kind = down ? 'pinch' : release === null ? null : 'open'; data.y = -.36;
+      if (this.pull && down) {
+        this.pullAt ??= time;
+        const pulled = Math.min(1, (time - this.pullAt) / 300); data.depth -= .26 * pulled;
+        if (pulled > .65) data.kind = 'fist';
+      }
+      if (this.pushAt !== null && time - this.pushAt < 280) {
+        data.depth = .25 + .60 * Math.min(1, (time - this.pushAt) / 220); data.kind = 'open'; data.normal = new THREE.Vector3(0, 0, -1);
+      }
+    }
+    return data;
   }
   draw(side, joints, radii = {}) {
     const { group, spheres, bones } = this.visuals[side]; group.visible = !!joints;
@@ -100,14 +142,16 @@ export class HandInput {
     } else {
       for (const side of ['left', 'right']) {
         if (this.mode === 'shield' && this.shieldHands === 1 && side === 'left') continue;
-        const joints = previewJoints(this.mode, side, this.hammerDown[side], .20);
-        const depth = this.mode === 'farsight' ? this.faceDistance : this.mode === 'shield' ? this.shieldDistance : .45;
-        const offset = new THREE.Vector3(this.mode === 'farsight' ? (side === 'left' ? -.075 : .075) : (side === 'left' ? -.18 : .18), this.mode === 'farsight' ? -.003 : -.18, -depth);
+        const action = this.desktopPose(side, time);
+        const joints = previewJoints(this.mode, side, this.hammerDown[side], .20, action.kind);
+        const depth = this.mode === 'farsight' ? this.faceDistance : this.mode === 'shield' ? this.shieldDistance : action.depth;
+        const handX = this.mode === 'farsight' ? .075 : this.mode === 'boulder' ? .4 : .18;
+        const offset = new THREE.Vector3(side === 'left' ? -handX : handX, this.mode === 'farsight' ? -.003 : action.y, -depth);
         const pose = head.quaternion.clone();
-        if (this.mode === 'lightning') pose.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2));
+        if (this.mode === 'lightning' || this.mode === 'telekinesis') pose.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2));
         const origin = offset.applyQuaternion(head.quaternion).add(head.position);
         for (const name of JOINTS) joints[name].applyQuaternion(pose).add(origin);
-        const normal = this.mode === 'shield' ? new THREE.Vector3().copy(head.forward) : new THREE.Vector3(0, 0, 1).applyQuaternion(head.quaternion);
+        const normal = this.mode === 'shield' ? new THREE.Vector3().copy(head.forward) : (action.normal || new THREE.Vector3(0, 0, 1)).applyQuaternion(head.quaternion);
         hands[side] = extractHand(joints, normal);
       }
     }

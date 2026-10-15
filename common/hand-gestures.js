@@ -25,7 +25,8 @@ export function extractHand(joints, palmNormal) {
     if (arc < .015) return null;
     extension[finger] = clamp(distance(chain[0], chain[3]) / arc);
   }
-  return { joints, extension, size, palm: midpoint(joints.wrist, joints['middle-finger-phalanx-proximal']),
+  return { joints, extension, size, pinch: distance(joints['thumb-tip'], joints['index-finger-tip']) / size,
+    palm: midpoint(joints.wrist, joints['middle-finger-phalanx-proximal']),
     normal: unit(palmNormal), tip: joints['index-finger-tip'],
     // A longer baseline is less sensitive to a noisy final index joint.
     aim: unit(sub(joints['index-finger-tip'], joints['index-finger-phalanx-proximal'])),
@@ -127,11 +128,13 @@ export class SpellGestures {
     this.circle.reset(); this.lastLens = null; this.lastTime = null;
     Object.values(this.hands).forEach(h => { Object.values(h.gates).forEach(g => g.reset()); h.hammer.reset(); h.bent.reset(); h.armed = false; h.lastCast = -Infinity; });
   }
-  update(hands, head, time) {
+  update(hands, head, time, reserved = {}) {
     if (this.lastTime !== null && (time - this.lastTime > 180 || time < this.lastTime)) this.reset();
     this.lastTime = time;
-    const lens = farsightPose(hands.left, hands.right, head);
-    const forming = lens || farsightPose(hands.left, hands.right, head, true);
+    const occupied = reserved.left || reserved.right;
+    const lens = occupied ? null : farsightPose(hands.left, hands.right, head);
+    const forming = occupied ? null : lens || farsightPose(hands.left, hands.right, head, true);
+    if (occupied) { this.circle.reset(); this.lastLens = null; }
     if (!hands.left || !hands.right) { this.circle.reset(); this.lastLens = null; }
     const circle = this.circle.update(lens ? 1 : 0, time);
     if (lens) this.lastLens = lens;
@@ -140,7 +143,7 @@ export class SpellGestures {
     // arming so lowering thumbs to close the circle cannot produce a shot.
     for (const side of ['left', 'right']) {
       const state = this.hands[side], hand = hands[side];
-      if (!hand || forming || circle) {
+      if (!hand || reserved[side] || forming || circle) {
         Object.values(state.gates).forEach(g => g.reset()); state.hammer.reset(); state.bent.reset(); state.armed = false; continue;
       }
       const matches = Object.entries(state.gates).filter(([id, gate]) => {

@@ -23,8 +23,8 @@ export function App() {
             interactive
             footer={<Text tone="muted">Cast a spell →</Text>}
           >
-            Your hands are the magic. Fire lightning from a finger gun, peer through
-            a farsight circle, and summon shields with open palms.
+            Your hands are the magic. Punch with boulder fists, throw fireballs,
+            lift objects with a pinch, and cast lightning, farsight, and shields.
           </Card>
           <Card
             title="Pistols at Dawn"
