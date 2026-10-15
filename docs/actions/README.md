@@ -109,6 +109,7 @@ to tune it, and tests.
 | 9 | Defense | `defense.todo.md` | Needs attacker dummies with telegraphed attacks. **Built** (`defense.spec.md`). |
 | 10 | Throwing | `throwing.todo.md` | Extraction from Pistols, generalized. **Built** (`throwing.spec.md`). |
 | 11 | Feedback | `feedback.todo.md` | Parts of it (effect pools, the clock) are needed from step 4 onward; hit-stop and bullet time come here. **Clock, pools, haptics, sound built** (`feedback.spec.md`). |
+| 12 | Brawlers | `brawlers.todo.md` | A group fight: robots that surround you and take turns swinging. Built on melee and defense. **Built** (`brawlers.spec.md`). |
 | — | Physics | `physics.todo.md` | Long-term needs and options. No library yet. |
 
 All of it is demonstrated in one showcase, `primitives/actions/`, the
@@ -118,7 +119,11 @@ against the real room with `play-space-station`. Planned stations:
 - **Motion lab**: live motion-sense readout. Built (left).
 - **Range**: a gun table and a target gallery (near, pop-ups, sliders,
   peekers behind cover, far). Built (ahead).
-- **Dummy**: peg-arm dummies for melee. Built (right).
+- **Dummy**: peg-arm dummies for melee, and a line of brawler robots
+  behind them, some on rails. Built (right).
+- **Brawl**: a ring of Rock 'Em Sock 'Em robots that surround you and
+  take turns swinging (off until B or the visor's Brawl row). Built
+  (around you).
 - **Sparring**: an attacker dummy for defense. Built (behind).
 - **Lane**: throwing. Not a station: you throw at the Range's
   silhouettes (or anything else).

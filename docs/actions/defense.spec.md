@@ -137,3 +137,7 @@ chest toward your head (±5 cm), with a `shot` sound. Tuning ▸ Range ▸
   (`PARRIED sparrer (right hand, 3.2 m/s)`).
 - Fast shooters hit you 7 times in 9 s with guns down. With guns up,
   the guns shoot bullets down and keep killing targets.
+
+## Also attacking
+
+The brawler robots (`brawlers.spec.md`) throw their punches through the same `combat-attacks` contract, so block, parry, the magnetic guard and dodging all work on them. A parried robot is also shoved back, into the robot queued behind it.

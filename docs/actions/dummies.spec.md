@@ -86,3 +86,7 @@ instancing (`dummies.todo.md`).
 
 See `melee.spec.md` (peg dummy) and `defense.spec.md` (attacker dummy
 and the silhouette's `shootMs`).
+
+## Brawler robots
+
+Boxy robots with IK arms that walk, punch, fall over and get back up are in `common/brawlers.js`; see `brawlers.spec.md`. A line of them stands behind the peg dummies.
