@@ -32,7 +32,7 @@
     <h1>Magic Hands</h1>
     <p>Put the controllers down. Your hands are the magic.</p>
     <details>
-      <summary>Learn the six spells</summary>
+      <summary>Learn the seven spells</summary>
       <ul>
         <li><strong>Lightning bolt</strong> — point your index finger and curl the other three fingers. The faint blue line shows your aim; a bright marker shows an assisted target. Raise the thumb roughly perpendicular to the finger, then bend its tip roughly parallel to fire. Either hand can fire independently.</li>
         <li><strong>Farsight</strong> — touch fingertips above and the heels of your hands below to make a circle or diamond. Thumb contact and exact finger shapes do not matter. Bring the window close to your face for about 10× zoom, or extend your arms for about 2×.</li>
@@ -40,6 +40,7 @@
         <li><strong>Boulder fists</strong> — close an empty fist and wait for stone to grow around it. Punch a nearby target or loose stone, then retract to punch again. Relax your hand to shed the boulder.</li>
         <li><strong>Fireball</strong> — cup your hand palm-up and scoop upward a little. Fire gathers over your palm. Keep your fingers cupped to hold it, then throw forward and open your hand. Open palm-down at rest to dismiss it.</li>
         <li><strong>Telekinesis</strong> — point at a floating rune stone until it glows purple, then pinch to lift it. Move your pinched hand to guide it. Pull back and close your fist to summon it into your grasp. Open and push to throw; simply release to drop. Nearby stones can also be grabbed directly.</li>
+        <li><strong>Portal</strong> — point your index and middle fingers at clear ground or a portal wall. Curl the other two fingers; your thumb does not matter. Hold still for one second until the gold line brightens and sparks burst, then draw a loop at least as big as your head. Either direction works. Change the pose or leave it unfinished to cancel. The two portals grow to standing height. Step through, or pinch a glowing pull handle inside the opening and pull it over yourself. Portals viewed through portals show static.</li>
       </ul>
       <p class="quiet">Enable hand tracking on your Quest, then enter VR. A brief hold settles each spell. Tracking loss releases it; lightning needs a fresh thumb lift.</p>
     </details>
@@ -51,10 +52,12 @@
         <button data-spell="boulder" aria-pressed="false">4 · Boulders</button>
         <button data-spell="fireball" aria-pressed="false">5 · Fireball</button>
         <button data-spell="telekinesis" aria-pressed="false">6 · Telekinesis</button>
+        <button data-spell="portal" aria-pressed="false">7 · Portal</button>
       </div>
       <div id="farsight-controls" hidden><label>Face distance <input id="face-distance" aria-label="Farsight distance from face" type="range" min="0.12" max="0.65" step="0.005" value="0.40" /></label></div>
       <div id="shield-controls" hidden><label>Arm extension <input id="shield-distance" aria-label="Shield arm extension" type="range" min="0.20" max="0.70" step="0.01" value="0.65" /></label></div>
       <p class="quiet">Desktop: drag to look, WASD to move. Space/click uses the right hand; Q uses the left. Lightning: bend thumb. Boulders: hold to punch, release to retract. Fire: hold to scoop, release to throw. Telekinesis: hold to pinch, G pulls to hand, T pushes to throw; release drops. Farsight: scroll or slide face distance. Shield: slide arm extension; H switches one/two hands.</p>
+      <p class="quiet">Portal: 7 points two fingers slightly downward. Wait for READY, then hold Space/click to draw. Release early to cancel. After opening, release Space, then hold G to pinch a pull handle and travel.</p>
     </div>
     <button id="reset">Reset score · R</button> <a href="../../index.html">All experiences</a>
     <div id="status" role="status">Preparing the spell courtyard…</div>
@@ -65,13 +68,19 @@
     <a-entity magic-hands></a-entity>
     <a-light type="ambient" color="#9aa6e9" intensity=".8"></a-light>
     <a-light type="directional" color="#e5d6ff" intensity=".9" position="-3 8 2"></a-light>
-    <a-plane data-magic-blocker rotation="-90 0 0" width="120" height="120" color="#192039" material="roughness: 1"></a-plane>
+    <a-plane data-magic-blocker data-portal-surface rotation="-90 0 0" width="120" height="120" color="#192039" material="roughness: 1"></a-plane>
     <a-ring rotation="-90 0 0" position="0 .01 0" radius-inner="1.3" radius-outer="1.34" color="#6565a0" material="shader: flat"></a-ring>
     <a-ring rotation="-90 0 0" position="0 .012 0" radius-inner="2.3" radius-outer="2.32" color="#414864" material="shader: flat"></a-ring>
 
+    <a-entity id="magic-rig">
     <a-entity id="magic-camera" camera look-controls="pointerLockEnabled: false" wasd-controls="acceleration: 12" position="0 1.6 0">
       <a-text id="magic-hud" position="0 -.32 -.9" align="center" width="1.15" color="#c6deff" value="Hold a spell pose"></a-text>
     </a-entity>
+    </a-entity>
+
+    <a-box data-magic-blocker data-portal-surface position="-4 1.5 -8" rotation="0 25 0" width="3.5" height="3" depth=".18" color="#315265"></a-box>
+    <a-box data-magic-blocker data-portal-surface position="4 1.5 -11" rotation="0 -25 0" width="3.5" height="3" depth=".18" color="#4d3e66"></a-box>
+    <a-text value="PORTAL WALL\nTwo fingers / hold / draw a loop" position="-4 3.4 -8" width="4" align="center" color="#ffd48a"></a-text>
 
     <a-entity position="-2.1 1.7 -2.4" rotation="0 32 0">
       <a-text value="MAGIC HANDS" align="center" width="3.4" position="0 .55 0" color="#ccbcff"></a-text>

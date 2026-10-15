@@ -55,6 +55,15 @@ export class SpellSandbox {
     Object.values(this.hands).forEach(s => this.release(s));
     this.hands = { left: newHand(), right: newHand() }; this.projectiles = []; this.bursts = []; this.lastTime = null;
   }
+  teleport(transform) {
+    // Carry owned props and their anchors; loose props/projectiles stay in the world.
+    for (const state of Object.values(this.hands)) {
+      state.motion = null;
+      for (const key of ['anchor', 'origin', 'previousPalm']) if (state[key]) state[key] = transform(state[key]);
+      state.hover = null; state.focus = null; state.scoop = null;
+      if (state.body) { state.body.position = transform(state.body.position); state.body.velocity = v(); }
+    }
+  }
   recovery(side, time) {
     this.release(this.hands[side]); this.hands[side] = { ...newHand(), mode: 'recovery', since: time, motion: this.hands[side].motion };
   }
@@ -260,12 +269,16 @@ export class SpellSandbox {
     }
     this.bursts = this.bursts.filter(b => time - b.born < 450);
   }
-  update(hands, head, time, world = {}) {
+  update(hands, head, time, world = {}, reserved = {}) {
     let elapsed = this.lastTime === null ? 0 : time - this.lastTime;
     if (elapsed > 180 || elapsed < 0) { this.suspend(); elapsed = 0; }
     this.lastTime = time; this.events = [];
     const circle = farsightPose(hands.left, hands.right, head, true);
-    for (const side of ['left', 'right']) this.updateHand(side, hands[side], head, time, Math.min(elapsed / 1000, .10), world, circle);
+    for (const side of ['left', 'right']) {
+      if (reserved[side]) {
+        this.release(this.hands[side]); this.hands[side] = newHand();
+      } else this.updateHand(side, hands[side], head, time, Math.min(elapsed / 1000, .10), world, circle);
+    }
     this.physics(world, time, Math.min(elapsed / 1000, .10));
     return { reserved: Object.fromEntries(['left', 'right'].map(side => [side, this.hands[side].mode !== 'idle'])), hands: this.hands, events: this.events };
   }

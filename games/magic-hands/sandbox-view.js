@@ -74,8 +74,8 @@ export class SandboxView {
     });
     this.worldData = { targets, obstacles }; return this.worldData;
   }
-  update(hands, head, time) {
-    const result = this.engine.update(hands, head, time, this.world(time));
+  update(hands, head, time, reserved = {}) {
+    const result = this.engine.update(hands, head, time, this.world(time), reserved);
     for (const event of result.events) {
       if (event.type === 'hit') this.targets.find(t => t.id === event.target)?.el.emit('magic-hit', event);
       if (event.type === 'cast') this.scene.emit('magic-cast', event);

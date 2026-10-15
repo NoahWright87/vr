@@ -14,6 +14,50 @@ lightning; a missing hand does not disable spells on the other hand.
 | Boulder fists | Close an empty fist; punch after the stone forms | 180 ms fist hold, then at least 12 cm extension and an outward stroke; retract to rearm | Stone surrounds the fist; punches deal 60 points and launch loose stones |
 | Fireball | Cup palm upward and scoop about 8 cm | A static palm does nothing; scoop takes at least 100 ms, then an opening hand and deliberate throw release it | Floating fire orb, gently arcing projectile, 50-point area impact and impulses to nearby props |
 | Telekinesis | Point at a purple-highlighted rune prop, then pinch | Fresh pinch acquires a prop within a 12° aim cone and 8 m range; only one hand owns a prop | Move to lift, pull back + fist to summon/grasp, open + push to throw; release quietly to drop |
+| Portal | Index + middle point; ring + pinky curl, thumb ignored | Hold steady at a valid destination for 1 s, then draw a roughly closed head-sized loop with either hand | Gold aim/ready feedback; two standing-height portals grow from the circles; walk or pinch a pull ring and pull to travel |
+
+## Drawn portals
+
+The faint gold ray stops at solid scenery. Clear courtyard floor and the two
+colored portal walls accept destinations 2.5–50 m away, with a clear standing
+space in front of the exit. Holding still for one second brightens the line,
+bursts sparks at the target and displays READY. The destination then freezes;
+moving the drawing hand cannot drag it around. The thumb is irrelevant.
+
+Draw clockwise or counterclockwise in a roughly vertical plane. Width and
+height must both reach 22 cm; rough ellipses and a small closing gap work.
+Coverage, net turning and path length distinguish a loop from a flick or
+scribble. Start within five seconds of READY and finish within 3.5 seconds of
+starting. Changing the finger pose, losing tracking, moving far out of plane
+or timing out cancels immediately and requires a fresh pointing pose.
+
+The opening grows over 650 ms to a 1.8–2.3 m diameter circle, based on standing
+head height. Both portals stay upright at ground level. Walk through the front
+or pinch either bright ring inside the opening and pull back about 32 cm; the
+door amplifies that pull so your hand need not pass behind your head. Releasing
+the pinch or losing the hand stops the pull. Either opening works for a return
+trip. Crossings are swept, checked inside the opening and given a cooldown.
+The landing footprint is rechecked at travel time. A new completed cast replaces
+the pair; canceling a new cast leaves the existing pair. Reset/session changes
+close both portals.
+
+`portal-gesture.js` contains the pure intent/loop/crossing logic. `portals.js`
+owns placement, rendering and travel. Each visible front-facing portal captures
+its own view for each actual eye, using that eye's asymmetric projection and
+the portal transform. Oblique clipping removes scenery behind the exit plane.
+All other visible portal surfaces use animated static during the capture,
+preventing recursive renders. Farsight also sees static on portal surfaces.
+Targets are 640² per eye/portal, allocated on demand and disposed on closing.
+Renderer target, XR enablement, viewport, scissor, shadow updates and hidden
+objects are restored in `finally`.
+
+Teleport moves a player rig, including the world transform applied to raw XR
+joints. Held props and their anchors move with it; loose props and projectiles
+remain in the courtyard. Hand velocity histories are cleared to prevent a
+teleport jump from becoming a punch or throw. Held fire/telekinesis takes
+precedence over new portal intent; otherwise two-finger preparation reserves
+the casting hand before the other spell recognizers run. Pinching the visible
+portal rings takes precedence over acquiring a new telekinetic prop.
 
 ## Hand ownership and physical spells
 
@@ -87,7 +131,7 @@ runs even though the gesture uses two hands.
 
 ## Rehearsal and verification
 
-Desktop: 1–6 choose synthetic hand poses, drag to look, WASD to move, Space or
+Desktop: 1–7 choose synthetic hand poses, drag to look, WASD to move, Space or
 scene click bends the right lightning thumb; Q bends the left. Release reloads.
 Scroll or the farsight slider moves the fixed-size window toward/away from the
 face. The shield slider extends/retracts arms; H switches one/two shield hands; R resets
@@ -100,6 +144,12 @@ retract. For fireballs, hold Space/Q to scoop, wait for fire to form, then relea
 to throw. For telekinesis, hold Space/Q to pinch the highlighted prop; G pulls it
 into a grasp and T pushes/throws it; a simple release drops it. These controls
 produce joint poses and motion, not direct spell commands.
+
+For portals, 7 points two fingers toward the floor. Wait for READY, then hold
+Space/click to draw the loop. Releasing early cancels; wait for READY again
+before retrying. After opening, release Space and hold G to pinch a visible
+pull ring and pull the portal over yourself. The desktop adapter also uses
+real joint poses and the same loop/crossing path.
 
 Run `npm test` and `npm run build`. Focused tests exercise noisy holds, thumb
 edges, disambiguation, missing/invalid joints, symmetric hands, and zoom limits.
@@ -116,7 +166,6 @@ and an explicit release/rearm condition. Reserve hands for two-hand gestures.
 
 | Next spell | Candidate movement | Separation and next technical work |
 | --- | --- | --- |
-| Teleportation | Point with index + middle extended, other fingers curled; pinch to confirm a visible landing marker | Two extended fingers exclude lightning; needs valid-floor raycast and explicit confirmation |
 | Belt items | Reach into a potion/tool's highlighted belt zone, then grab | Nearby item intent takes precedence over empty-hand spells; needs belt slots and usable items |
 | Two-hand spells | Bring matching prepared spells together and wait for visible linking feedback | Needs explicit pairing and ownership; planned examples include chain lightning, merged fireballs and a boulder ground slam |
 | Necromancy | Index + pinky extended; lift the hand to raise a summon | A distinct silhouette; needs coarse finger recognition, summon behavior and commanding/recall interactions |
