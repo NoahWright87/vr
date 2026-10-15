@@ -46,6 +46,8 @@ See **[DESIGN.md](DESIGN.md)** for the design philosophy these prototypes are bu
 
 ## Prototypes
 
+- **[3D Model Toybox](games/model-viewer/index.html)** — poke the toy chest to open the shared crossbar menu. Browse 228 Kenney models in a credited creator section, plus 14 originals, with a live sidecar preview. Take out multiple toys, grip to move/rotate them, and release to toss. Either wrist watch and the visor control gravity, toy size, recall and clearing the scene. Desktop supports mouse/key menus, WASD, F to grab/drop, R to rotate and T to toss. See [the asset guide](assets/models/README.md) for reuse, licenses and sources. Posing/IK is deferred.
+
 - **[Cube Pop](games/cube-pop/index.html)** — point a Quest controller at a floating cube and pull the trigger to pop it. Counter tracks progress; popping all cubes shows a win state with an in-VR reset button. Its visor (hand beside your head, or backtick) has `Reset cubes` any time, plus the shared visor settings and `Exit VR`. Also has a gaze-reticle fallback so you can validate it from a phone or desktop browser without a headset — see below.
 - **[Boundary Lab](games/boundaries/index.html)** — reads the headset-reported play-space boundary, includes left/right haptics tests at 20%, 60%, or 100%, and has a shared grab cube that gives each controller a short reach cue when Grip can grab it.
 - **[Punch Pop](games/punch-pop/index.html)** — punch-to-move locomotion POC. There are no laser pointers here; you move by physically throwing punches, and you pop cubes by hitting them with a fist that's moving fast enough. See below for how it works and how to tune it.

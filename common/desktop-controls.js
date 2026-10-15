@@ -62,6 +62,7 @@ AFRAME.registerComponent('desktop-controls', {
     sprintEnabled: { default: false },
     mountedMoveSpeed: { default: 1.8 },
     mountedTurnSpeed: { default: 200 },
+    menuPointer: { default: 'reticle', oneOf: ['reticle', 'mouse'] },
   },
 
   init: function () {
@@ -138,6 +139,7 @@ AFRAME.registerComponent('desktop-controls', {
     this.onKeyUp = this.onKeyUp.bind(this);
     this.onPointerDown = this.onPointerDown.bind(this);
     this.onPointerUp = this.onPointerUp.bind(this);
+    this.onPointerMove = this.onPointerMove.bind(this);
     this.onContextMenu = this.onContextMenu.bind(this);
     this._aimKeyHeld = false; // raw right mouse button -- see onPointerDown/onPointerUp
     this._aimActionHeld = false; // touch/gamepad's semantic 'aim' action -- see onSemanticAction
@@ -156,6 +158,7 @@ AFRAME.registerComponent('desktop-controls', {
     document.addEventListener('keyup', this.onKeyUp, true);
     document.addEventListener('pointerdown', this.onPointerDown, true);
     document.addEventListener('pointerup', this.onPointerUp, true);
+    document.addEventListener('pointermove', this.onPointerMove, true);
     document.addEventListener('contextmenu', this.onContextMenu, true);
     this.sceneEl.addEventListener('mounted-interaction-request', this.onMountedRequest);
     this.sceneEl.addEventListener('control-mode-changed', this.onControlModeChanged);
@@ -261,6 +264,10 @@ AFRAME.registerComponent('desktop-controls', {
   // below only ever activates whatever it's currently pointing at.
   onPointerDown: function (evt) {
     if (xrIsPresenting(this.sceneEl)) return;
+    if (this.data.menuPointer === 'mouse') {
+      if (evt.target !== this.sceneEl.canvas) return;
+      this.onPointerMove(evt);
+    }
     if (this.mode === 'normal') {
       // Touch gets its own explicit FIRE button (routed through
       // onSemanticAction's 'activate' fallback below) rather than a raw
@@ -297,6 +304,17 @@ AFRAME.registerComponent('desktop-controls', {
       this._aimKeyHeld = false;
       this.updateAiming();
     }
+  },
+
+  // Optional ordinary mouse pointing for broad desktop catalogs. Reticle
+  // aiming remains the default for every existing experience and for touch.
+  onPointerMove: function (evt) {
+    if (this.data.menuPointer !== 'mouse' || this.mode === 'normal' || evt.pointerType !== 'mouse' || xrIsPresenting(this.sceneEl)) return;
+    var rect = this.sceneEl.canvas.getBoundingClientRect();
+    this.cursorNdc.set(
+      THREE.MathUtils.clamp((evt.clientX-rect.left)/rect.width*2-1,-1,1),
+      THREE.MathUtils.clamp(1-(evt.clientY-rect.top)/rect.height*2,-1,1)
+    );
   },
 
   // Right-click drives ADS (see onPointerDown/onPointerUp) instead of the
@@ -525,6 +543,7 @@ AFRAME.registerComponent('desktop-controls', {
     this.mode = mode;
     this.updatePosedHands();
     this.cursorNdc.set(0, 0);
+    if (this.data.menuPointer === 'mouse') this.cameraEl.setAttribute('look-controls','mouseEnabled',mode === 'normal');
     this.el.setAttribute('data-desktop-mode', mode);
     this.hintSystem.setTargetingEnabled(mode === 'normal');
     this.setGazeEnabled(mode === 'normal');
@@ -566,11 +585,14 @@ AFRAME.registerComponent('desktop-controls', {
     var canvas = this.sceneEl.canvas;
     if (!canvas) return;
     canvas.classList.toggle('desktop-menu-aiming', this.mode !== 'normal');
+    canvas.classList.toggle('desktop-menu-mouse', this.mode !== 'normal' && this.data.menuPointer === 'mouse');
   },
 
   handleControlModeChanged: function (evt) {
     if (evt.detail.mode === 'xr') this.exitInteraction(false);
-    else this.setMode('normal');
+    // A desktop menu suppresses semantic target selection. Entering XR must
+    // restore it as well, or grip/poke cannot acquire any world objects.
+    this.setMode('normal');
   },
 
   handleGrabKey: function (source) {
@@ -682,7 +704,7 @@ AFRAME.registerComponent('desktop-controls', {
   ensureCursorStyleEl: function () {
     if (this.cursorStyleEl) return;
     this.cursorStyleEl = document.createElement('style');
-    this.cursorStyleEl.textContent = 'canvas.desktop-menu-aiming { cursor: none !important; }';
+    this.cursorStyleEl.textContent = 'canvas.desktop-menu-aiming { cursor: none !important; } canvas.desktop-menu-mouse { cursor: default !important; }';
     document.head.appendChild(this.cursorStyleEl);
   },
 
@@ -1507,6 +1529,7 @@ AFRAME.registerComponent('desktop-controls', {
     document.removeEventListener('keyup', this.onKeyUp, true);
     document.removeEventListener('pointerdown', this.onPointerDown, true);
     document.removeEventListener('pointerup', this.onPointerUp, true);
+    document.removeEventListener('pointermove', this.onPointerMove, true);
     document.removeEventListener('contextmenu', this.onContextMenu, true);
     this.sceneEl.removeEventListener('mounted-interaction-request', this.onMountedRequest);
     this.sceneEl.removeEventListener('visor-menu-request', this.onVisorRequest);

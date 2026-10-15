@@ -428,6 +428,9 @@ if (typeof AFRAME !== 'undefined') {
       // fit across it — which together set its text size.
       sidecarWidth: { default: 0.8 },
       sidecarChars: { default: 26 },
+      // Optional space above the text for a non-interactive model/image.
+      // Applications own the content; the shared renderer owns its layout.
+      sidecarContentHeight: { default: 0 },
       // 'top' hangs it from the title, which suits a panel; 'center' puts
       // its middle level with the selected row, for a menu so tall its
       // title is at the edge of your view.
@@ -936,6 +939,10 @@ if (typeof AFRAME !== 'undefined') {
       this.sidecarPlateEl = plate;
       this.sidecarEdgeEl = edge;
       this.sidecarTextEl = text;
+      var content = document.createElement('a-entity');
+      content.classList.add('crossbar-sidecar-content');
+      card.appendChild(content);
+      this.sidecarContentEl = content;
       this.sidecarText = null;
       // The text's mesh is rebuilt asynchronously the first time (the
       // font loads after build), and its size is what the plate is fitted
@@ -980,7 +987,9 @@ if (typeof AFRAME !== 'undefined') {
         width: sw - 2 * pad,
         wrapCount: data.sidecarChars,
       });
-      this.sidecarTextEl.object3D.position.set(-sw / 2 + pad, -pad, 0.003);
+      var contentHeight = Math.max(0, data.sidecarContentHeight);
+      this.sidecarContentEl.object3D.position.set(0, -pad - contentHeight / 2, 0.12);
+      this.sidecarTextEl.object3D.position.set(-sw / 2 + pad, -pad - contentHeight, 0.003);
       this.fitSidecar();
     },
 
@@ -998,7 +1007,7 @@ if (typeof AFRAME !== 'undefined') {
         var box = mesh.geometry.boundingBox;
         if (box && isFinite(box.max.y - box.min.y)) height = (box.max.y - box.min.y) * Math.abs(mesh.scale.y);
       }
-      var total = height + 2 * m.pad;
+      var total = height + 2 * m.pad + Math.max(0, this.data.sidecarContentHeight);
       if (this.data.sidecarAlign === 'center') this.sidecarEl.object3D.position.y = total / 2;
       this.sidecarPlateEl.setAttribute('width', m.width);
       this.sidecarPlateEl.setAttribute('height', total);
