@@ -46,7 +46,7 @@ See **[DESIGN.md](DESIGN.md)** for the design philosophy these prototypes are bu
 
 ## Prototypes
 
-- **[Magic Hands](games/magic-hands/index.html)** — hand tracking spell courtyard: finger-gun lightning with a thumb hammer, a two-hand farsight circle with 2–16× zoom, and open-palm shields (0.5 m per hand or 1 m together). Reactive targets flash and show hit points. Desktop synthetic joints rehearse the same detection path. See the [spellbook and next-spell plan](games/magic-hands/README.md).
+- **[Magic Hands](games/magic-hands/index.html)** — hand tracking spell courtyard: finger-gun lightning with a thumb-bend trigger, aim guide and assisted arcs; a joined-fingertip/hand-heel farsight window with face-distance 2–10× zoom; and extended-arm, outward-palm shields (0.5 m per hand or 1 m together). Reactive targets flash and show hit points. Desktop synthetic joints rehearse the same detection path. See the [spellbook and next-spell plan](games/magic-hands/README.md).
 
 - **[Cube Pop](games/cube-pop/index.html)** — point a Quest controller at a floating cube and pull the trigger to pop it. Counter tracks progress; popping all cubes shows a win state with an in-VR reset button. Its visor (hand beside your head, or backtick) has `Reset cubes` any time, plus the shared visor settings and `Exit VR`. Also has a gaze-reticle fallback so you can validate it from a phone or desktop browser without a headset — see below.
 - **[Boundary Lab](games/boundaries/index.html)** — reads the headset-reported play-space boundary, includes left/right haptics tests at 20%, 60%, or 100%, and has a shared grab cube that gives each controller a short reach cue when Grip can grab it.

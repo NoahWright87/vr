@@ -24,14 +24,17 @@ export function previewJoints(mode, side, hammerDown, aperture = .16) {
   ['metacarpal', 'phalanx-proximal', 'phalanx-distal', 'tip'].forEach((name, i) => {
     joints[`thumb-${name}`] = thumbBase.clone().lerp(thumbEnd, i / 3);
   });
+  joints['thumb-phalanx-distal'].set(-.070 * mirror, .030, 0);
+  joints['thumb-tip'].copy(joints['thumb-phalanx-distal']).add(new THREE.Vector3(hammerDown ? 0 : -.035 * mirror, hammerDown ? .035 : 0, 0));
   if (mode === 'farsight') {
-    // Each hand supplies one semicircle, meeting at index and thumb seams.
+    // Fingertips meet above and the wrists/hand heels meet below; no thumb seam.
     const center = new THREE.Vector3(side === 'left' ? .07 : -.07, .01, 0);
     joints['index-finger-tip'].copy(center).y += aperture / 2;
     joints['index-finger-phalanx-intermediate'].set(center.x * .35, aperture * .42, 0);
     joints['index-finger-phalanx-distal'].set(center.x * .70, aperture * .52, 0);
     joints['thumb-tip'].copy(center).y -= aperture / 2;
     joints['thumb-phalanx-distal'].copy(joints['thumb-tip']).multiplyScalar(.8);
+    joints.wrist.x = side === 'left' ? .05 : -.05;
   }
   return joints;
 }
@@ -39,7 +42,9 @@ export function previewJoints(mode, side, hammerDown, aperture = .16) {
 export class HandInput {
   constructor(scene, camera) {
     this.scene = scene; this.camera = camera;
-    this.mode = 'lightning'; this.hammerDown = false; this.aperture = .16; this.shieldHands = 2;
+    this.mode = 'lightning'; this.hammerDown = { left: false, right: false };
+    this.faceDistance = .40; this.shieldDistance = .65; this.shieldHands = 2;
+    this.aimHistory = {}; this.lastSample = null;
     this.visuals = {}; this.root = new THREE.Group(); scene.object3D.add(this.root);
     for (const side of ['left', 'right']) {
       const material = new THREE.MeshBasicMaterial({ color: side === 'left' ? '#8dd7da' : '#bbcaed' });
@@ -66,7 +71,10 @@ export class HandInput {
     LINKS.forEach(([from, to], i) => { a.setXYZ(i * 2, joints[from].x, joints[from].y, joints[from].z); a.setXYZ(i * 2 + 1, joints[to].x, joints[to].y, joints[to].z); });
     a.needsUpdate = true;
   }
-  sample(head) {
+  sample(head, time) {
+    const gap = this.lastSample === null ? Infinity : time - this.lastSample;
+    if (gap > 180 || gap < 0) this.aimHistory = {};
+    this.lastSample = time;
     const xr = this.scene.renderer.xr, session = xr.getSession();
     const hands = { left: null, right: null };
     if (session) {
@@ -91,9 +99,10 @@ export class HandInput {
       }
     } else {
       for (const side of ['left', 'right']) {
-        if ((this.mode === 'lightning' && side === 'left') || (this.mode === 'shield' && this.shieldHands === 1 && side === 'left')) continue;
-        const joints = previewJoints(this.mode, side, this.hammerDown, this.aperture);
-        const offset = new THREE.Vector3(this.mode === 'farsight' ? (side === 'left' ? -.075 : .075) : (side === 'left' ? -.18 : .18), this.mode === 'farsight' ? -.01 : -.18, -.45);
+        if (this.mode === 'shield' && this.shieldHands === 1 && side === 'left') continue;
+        const joints = previewJoints(this.mode, side, this.hammerDown[side], .20);
+        const depth = this.mode === 'farsight' ? this.faceDistance : this.mode === 'shield' ? this.shieldDistance : .45;
+        const offset = new THREE.Vector3(this.mode === 'farsight' ? (side === 'left' ? -.075 : .075) : (side === 'left' ? -.18 : .18), this.mode === 'farsight' ? -.003 : -.18, -depth);
         const pose = head.quaternion.clone();
         if (this.mode === 'lightning') pose.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2));
         const origin = offset.applyQuaternion(head.quaternion).add(head.position);
@@ -102,7 +111,16 @@ export class HandInput {
         hands[side] = extractHand(joints, normal);
       }
     }
-    for (const side of ['left', 'right']) this.draw(side, hands[side]?.joints, hands[side]?.radii);
+    for (const side of ['left', 'right']) {
+      const hand = hands[side];
+      if (hand) {
+        hand.side = side;
+        const aim = new THREE.Vector3(hand.aim.x, hand.aim.y, hand.aim.z);
+        if (this.aimHistory[side]) aim.copy(this.aimHistory[side]).lerp(hand.aim, 1 - Math.exp(-gap / 45)).normalize();
+        this.aimHistory[side] = aim; hand.aim = aim;
+      } else delete this.aimHistory[side];
+      this.draw(side, hand?.joints, hand?.radii);
+    }
     return hands;
   }
   dispose() {

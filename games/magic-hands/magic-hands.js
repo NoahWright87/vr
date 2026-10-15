@@ -23,26 +23,27 @@ AFRAME.registerComponent('magic-hands', {
       if (e.code === 'Digit1') this.setMode('lightning');
       if (e.code === 'Digit2') this.setMode('farsight');
       if (e.code === 'Digit3') this.setMode('shield');
-      if (e.code === 'Space') { e.preventDefault(); this.input.hammerDown = true; }
+      if (e.code === 'Space' || e.code === 'KeyQ') { e.preventDefault(); this.input.hammerDown[e.code === 'KeyQ' ? 'left' : 'right'] = true; }
       if (e.code === 'KeyR' && !e.repeat) this.reset();
       if (e.code === 'KeyH' && !e.repeat) this.input.shieldHands = this.input.shieldHands === 1 ? 2 : 1;
     };
-    this.onRelease = e => { if (!e || e.code === 'Space') this.input.hammerDown = false; };
-    this.onDown = e => { if (!this.el.sceneEl.renderer.xr.isPresenting && e.button === 0 && e.target === this.el.sceneEl.canvas) this.input.hammerDown = true; };
-    this.onUp = () => { this.input.hammerDown = false; };
+    this.onRelease = e => { if (e.code === 'Space' || e.code === 'KeyQ') this.input.hammerDown[e.code === 'KeyQ' ? 'left' : 'right'] = false; };
+    this.onDown = e => { if (!this.el.sceneEl.renderer.xr.isPresenting && e.button === 0 && e.target === this.el.sceneEl.canvas) this.input.hammerDown.right = true; };
+    this.onUp = () => { this.input.hammerDown.left = this.input.hammerDown.right = false; };
     this.onWheel = e => {
       if (this.el.sceneEl.renderer.xr.isPresenting || this.input.mode !== 'farsight') return;
-      e.preventDefault(); this.input.aperture = Math.max(.025, Math.min(.20, this.input.aperture + Math.sign(e.deltaY) * .008));
-      document.querySelector('#aperture').value = this.input.aperture;
+      e.preventDefault(); this.input.faceDistance = Math.max(.12, Math.min(.65, this.input.faceDistance + Math.sign(e.deltaY) * .025));
+      document.querySelector('#face-distance').value = this.input.faceDistance;
     };
-    this.onAperture = e => { this.input.aperture = Number(e.target.value); };
-    this.onLifecycle = () => { this.onUp(); this.gestures.reset(); this.effects.clear(); };
+    this.onDistance = e => { this.input.faceDistance = Number(e.target.value); };
+    this.onReach = e => { this.input.shieldDistance = Number(e.target.value); };
+    this.onLifecycle = () => { this.onUp(); this.gestures.reset(); this.effects.clear(); this.input.aimHistory = {}; };
     this.onVisibility = () => { if (document.hidden) this.onLifecycle(); };
     this.listeners = [
       [this.el.sceneEl, 'magic-scored', this.onScore], [this.el.sceneEl, 'magic-cast', this.onCast],
       [this.el.sceneEl, 'enter-vr', this.onLifecycle], [this.el.sceneEl, 'exit-vr', this.onLifecycle],
       [document.querySelector('#spell-controls'), 'click', this.onMode], [document.querySelector('#reset'), 'click', this.reset],
-      [document.querySelector('#aperture'), 'input', this.onAperture],
+      [document.querySelector('#face-distance'), 'input', this.onDistance], [document.querySelector('#shield-distance'), 'input', this.onReach],
       [window, 'keydown', this.onKey], [window, 'keyup', this.onRelease], [window, 'pointerdown', this.onDown],
       [window, 'pointerup', this.onUp], [window, 'pointercancel', this.onUp], [window, 'blur', this.onLifecycle],
       [window, 'wheel', this.onWheel], [document, 'visibilitychange', this.onVisibility],
@@ -53,13 +54,15 @@ AFRAME.registerComponent('magic-hands', {
     if (!['lightning', 'farsight', 'shield'].includes(mode) || this.el.sceneEl.renderer.xr.isPresenting) return;
     this.input.mode = mode; this.onLifecycle();
     document.querySelectorAll('[data-spell]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.spell === mode)));
+    document.querySelector('#farsight-controls').hidden = mode !== 'farsight';
+    document.querySelector('#shield-controls').hidden = mode !== 'shield';
   },
   tick(time, dt) {
     if (!this.el.sceneEl.renderer || !this.camera?.object3D) return;
     const head = this.head;
     this.camera.object3D.getWorldPosition(head.position); this.camera.object3D.getWorldQuaternion(head.quaternion);
     head.forward.set(0, 0, -1).applyQuaternion(head.quaternion); head.up.set(0, 1, 0).applyQuaternion(head.quaternion);
-    const hands = this.input.sample(head);
+    const hands = this.input.sample(head, time);
     const result = this.gestures.update(hands, head, time);
     this.effects.update(result, hands, head, time, dt);
     if (time - this.lastHud < 120) return; this.lastHud = time;

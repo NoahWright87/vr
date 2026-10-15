@@ -1,5 +1,5 @@
 // Input-independent gesture features and temporal arbitration. All positions
-// share world metres; extension and thumb travel are relative to hand size.
+// share world metres; finger extension is relative to hand size.
 export const clamp = (x, lo = 0, hi = 1) => Math.max(lo, Math.min(hi, x));
 export const sub = (a, b) => ({ x: a.x - b.x, y: a.y - b.y, z: a.z - b.z });
 export const dot = (a, b) => a.x * b.x + a.y * b.y + a.z * b.z;
@@ -17,7 +17,7 @@ export const JOINTS = ['wrist', 'thumb-metacarpal', 'thumb-phalanx-proximal', 't
 export function extractHand(joints, palmNormal) {
   if (!finite(palmNormal) || JOINTS.some(name => !finite(joints?.[name]))) return null;
   const size = distance(joints['index-finger-phalanx-proximal'], joints['pinky-finger-phalanx-proximal']);
-  if (size < .025 || size > .14) return null;
+  if (size < .025 || size > .14 || distance(joints['thumb-tip'], joints['thumb-phalanx-distal']) < .005) return null;
   const extension = {};
   for (const finger of FINGERS) {
     const chain = ['phalanx-proximal', 'phalanx-intermediate', 'phalanx-distal', 'tip'].map(j => joints[`${finger}-finger-${j}`]);
@@ -27,8 +27,10 @@ export function extractHand(joints, palmNormal) {
   }
   return { joints, extension, size, palm: midpoint(joints.wrist, joints['middle-finger-phalanx-proximal']),
     normal: unit(palmNormal), tip: joints['index-finger-tip'],
-    aim: unit(sub(joints['index-finger-tip'], joints['index-finger-phalanx-distal'])),
-    thumb: distance(joints['thumb-tip'], joints['index-finger-phalanx-proximal']) / size };
+    // A longer baseline is less sensitive to a noisy final index joint.
+    aim: unit(sub(joints['index-finger-tip'], joints['index-finger-phalanx-proximal'])),
+    thumbAlignment: Math.abs(dot(unit(sub(joints['thumb-tip'], joints['thumb-phalanx-distal'])),
+      unit(sub(joints['index-finger-tip'], joints['index-finger-phalanx-proximal'])))) };
 }
 
 function inFront(hand, head) {
@@ -39,31 +41,48 @@ export function fingerGunScore(hand, head) {
   const e = hand.extension;
   return Math.min(ramp(e.index, .68, .86), ...['middle', 'ring', 'pinky'].map(f => 1 - ramp(e[f], .52, .78)));
 }
+export function shieldReach(hand, head) {
+  // WebXR tracks hands and head, not elbows/shoulders. Estimate the shoulder
+  // from horizontal head heading; the default shoulder-to-palm reach is 65 cm.
+  const forward = unit({ x: head.forward.x, y: 0, z: head.forward.z });
+  const right = { x: -forward.z, y: 0, z: forward.x };
+  const side = hand.side === 'left' ? -1 : hand.side === 'right' ? 1 : Math.sign(dot(sub(hand.palm, head.position), right)) || 1;
+  const shoulder = { x: head.position.x + right.x * side * .16 - forward.x * .04,
+    y: head.position.y - .22, z: head.position.z + right.z * side * .16 - forward.z * .04 };
+  const reach = sub(hand.palm, shoulder);
+  return { fraction: length(reach) / (head.armReach || .65), outward: dot(hand.normal, unit(reach)) };
+}
 export function shieldScore(hand, head) {
   if (!hand || !inFront(hand, head)) return 0;
+  const reach = shieldReach(hand, head);
+  if (reach.fraction < .80 || reach.outward < .60) return 0;
   const openness = Math.min(...FINGERS.map(f => ramp(hand.extension[f], .70, .88)));
-  const facing = Math.max(dot(hand.normal, { x: 0, y: 1, z: 0 }), dot(hand.normal, head.forward));
-  return Math.min(openness, ramp(facing, .35, .70));
+  return Math.min(openness, ramp(reach.outward, .50, .80));
 }
-export function farsightPose(left, right, head) {
-  if (!left || !right || !inFront(left, head) || !inFront(right, head)) return null;
+export function farsightPose(left, right, head, forming = false) {
+  if (!left || !right) return null;
   const l = left.joints, r = right.joints;
-  const top = midpoint(l['index-finger-tip'], r['index-finger-tip']);
-  const bottom = midpoint(l['thumb-tip'], r['thumb-tip']);
-  const center = midpoint(top, bottom), aperture = distance(top, bottom);
-  const span = distance(left.palm, right.palm);
-  // Two matching seams, a real aperture, and curled spare fingers distinguish
-  // this from prayer, a clasp, two open palms, and a pair of finger guns.
-  const seam = clamp((left.size + right.size) * .60, .035, .085);
-  if (distance(l['index-finger-tip'], r['index-finger-tip']) > seam ||
-      distance(l['thumb-tip'], r['thumb-tip']) > seam || aperture < .025 - 1e-6 || aperture > .28 + 1e-6 ||
-      span < .085 || span > .5 || dot(sub(top, bottom), head.up) < aperture * .45 ||
-      ['middle', 'ring', 'pinky'].some(f => left.extension[f] > .82 || right.extension[f] > .82)) return null;
+  if (!finite(l?.wrist) || !finite(r?.wrist)) return null;
+  const slack = forming ? 1.45 : 1;
+  const seam = clamp((left.size + right.size) * .75, .055, .11) * slack;
+  if (distance(l.wrist, r.wrist) > seam) return null;
+  const bottom = midpoint(l.wrist, r.wrist);
+  // Any non-thumb fingertips can close the upper seam. The heels close the
+  // lower seam; thumbs, spare finger curl, and exact roundness are irrelevant.
+  const contacts = FINGERS.flatMap(a => FINGERS.map(b => [l[`${a}-finger-tip`], r[`${b}-finger-tip`]]))
+    .filter(([a, b]) => finite(a) && finite(b) && distance(a, b) <= seam)
+    .map(([a, b]) => midpoint(a, b));
+  contacts.sort((a, b) => dot(sub(b, bottom), head.up) - dot(sub(a, bottom), head.up));
+  const top = contacts[0]; if (!top) return null;
+  const center = midpoint(top, bottom), aperture = distance(top, bottom), span = distance(left.palm, right.palm);
+  if (aperture < .065 || aperture > .34 || span < .045 || span > .38 ||
+      dot(sub(top, bottom), head.up) < aperture * .25) return null;
   const normal = unit(cross(sub(right.palm, left.palm), sub(top, bottom)));
-  if (Math.abs(dot(normal, head.forward)) < .65 ||
-      dot(unit(sub(center, head.position)), head.forward) < .80 || distance(center, head.position) > .85) return null;
-  // Small circles can reach telescope territory without an unbounded FOV.
-  return { center, radius: aperture * .5, zoom: clamp(.40 / aperture, 2, 16), score: 1 };
+  const faceDistance = distance(center, head.position);
+  if (Math.abs(dot(normal, head.forward)) < .55 || dot(sub(center, head.position), head.forward) < .055 ||
+      dot(unit(sub(center, head.position)), head.forward) < .70 || faceDistance > 1.05) return null;
+  return { center, radius: clamp(Math.min(aperture * .45, span * .65), .025, .18),
+    zoom: 10 - 8 * clamp((faceDistance - .12) / .53), score: 1 };
 }
 
 // Reusable declarative gesture gate: hysteresis + dwell + optional release grace.
@@ -91,7 +110,7 @@ export class GestureGate {
 export const SPELL_GESTURES = {
   lightning: { score: fingerGunScore, dwell: 160, priority: 10 },
   shield: { score: shieldScore, dwell: 220, priority: 20 },
-  farsight: { dwell: 240, grace: 100, priority: 100, hands: 2 },
+  farsight: { dwell: 180, grace: 100, priority: 100, hands: 2 },
 };
 
 export class SpellGestures {
@@ -99,18 +118,20 @@ export class SpellGestures {
     this.definitions = definitions;
     this.hands = Object.fromEntries(['left', 'right'].map(side => [side, {
       gates: Object.fromEntries(Object.entries(definitions).filter(([, d]) => d.hands !== 2).map(([id, d]) => [id, new GestureGate(d)])),
-      hammer: new GestureGate({ enter: .95, exit: .72, dwell: 100, grace: 0 }), armed: false, lastCast: -Infinity,
+      hammer: new GestureGate({ enter: .55, exit: .40, dwell: 35, grace: 0 }),
+      bent: new GestureGate({ enter: .70, exit: .55, dwell: 20, grace: 0 }), armed: false, lastCast: -Infinity,
     }]));
     this.circle = new GestureGate(definitions.farsight); this.lastTime = null; this.lastLens = null;
   }
   reset() {
     this.circle.reset(); this.lastLens = null; this.lastTime = null;
-    Object.values(this.hands).forEach(h => { Object.values(h.gates).forEach(g => g.reset()); h.hammer.reset(); h.armed = false; h.lastCast = -Infinity; });
+    Object.values(this.hands).forEach(h => { Object.values(h.gates).forEach(g => g.reset()); h.hammer.reset(); h.bent.reset(); h.armed = false; h.lastCast = -Infinity; });
   }
   update(hands, head, time) {
     if (this.lastTime !== null && (time - this.lastTime > 180 || time < this.lastTime)) this.reset();
     this.lastTime = time;
     const lens = farsightPose(hands.left, hands.right, head);
+    const forming = lens || farsightPose(hands.left, hands.right, head, true);
     if (!hands.left || !hands.right) { this.circle.reset(); this.lastLens = null; }
     const circle = this.circle.update(lens ? 1 : 0, time);
     if (lens) this.lastLens = lens;
@@ -119,19 +140,25 @@ export class SpellGestures {
     // arming so lowering thumbs to close the circle cannot produce a shot.
     for (const side of ['left', 'right']) {
       const state = this.hands[side], hand = hands[side];
-      if (!hand || lens || circle) {
-        Object.values(state.gates).forEach(g => g.reset()); state.hammer.reset(); state.armed = false; continue;
+      if (!hand || forming || circle) {
+        Object.values(state.gates).forEach(g => g.reset()); state.hammer.reset(); state.bent.reset(); state.armed = false; continue;
       }
-      const matches = Object.entries(state.gates).filter(([id, gate]) => gate.update(this.definitions[id].score(hand, head), time));
+      const matches = Object.entries(state.gates).filter(([id, gate]) => {
+        const score = this.definitions[id].score(hand, head);
+        // Retracting an arm or turning the palm inward removes a shield now.
+        if (id === 'shield' && score === 0) gate.reset();
+        return gate.update(score, time);
+      });
       matches.sort(([a], [b]) => this.definitions[b].priority - this.definitions[a].priority);
       const spell = matches[0]?.[0] || null; result[side] = spell;
       if (spell !== 'lightning' || fingerGunScore(hand, head) < .45) {
-        state.hammer.reset(); state.armed = false; continue;
+        state.hammer.reset(); state.bent.reset(); state.armed = false; continue;
       }
-      if (state.hammer.update(hand.thumb, time)) state.armed = true;
-      if (state.armed && hand.thumb < .72) {
-        state.armed = false; state.hammer.reset();
-        if (time - state.lastCast >= 300) { result.casts.push(side); state.lastCast = time; }
+      if (state.hammer.update(1 - hand.thumbAlignment, time)) state.armed = true;
+      const bent = state.bent.update(hand.thumbAlignment, time);
+      if (state.armed && bent) {
+        state.armed = false; state.hammer.reset(); state.bent.reset();
+        if (time - state.lastCast >= 100) { result.casts.push(side); state.lastCast = time; }
       }
     }
     return result;

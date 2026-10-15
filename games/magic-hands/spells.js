@@ -1,6 +1,11 @@
 import { distance, midpoint } from '../../common/hand-gestures.js';
+import { LIGHTNING_AIM, selectLightningTarget } from './lightning-aim.js';
 const THREE = AFRAME.THREE;
 const vec = p => new THREE.Vector3(p.x, p.y, p.z);
+function visible(object) {
+  for (let p = object; p; p = p.parent) if (!p.visible) return false;
+  return !!object;
+}
 
 function sigilTexture() {
   const canvas = document.createElement('canvas'); canvas.width = canvas.height = 512;
@@ -59,17 +64,20 @@ export class SpellEffects {
     this.scene = scene; this.handsRoot = handsRoot;
     this.root = new THREE.Group(); scene.object3D.add(this.root);
     this.ray = new THREE.Raycaster(); this.ray.far = 70;
-    this.glows = {}; this.beams = {}; this.shields = [];
+    this.targetEls = [...scene.querySelectorAll('[magic-receiver]')];
+    this.blockerEls = [...scene.querySelectorAll('[data-magic-blocker]')];
+    this.glows = {}; this.beams = {}; this.guides = {}; this.shields = [];
     for (const side of ['left', 'right']) {
       const glow = new THREE.Mesh(new THREE.SphereGeometry(.014, 12, 8), new THREE.MeshBasicMaterial({ color: '#65d8ff' }));
       glow.add(new THREE.Mesh(new THREE.SphereGeometry(.026, 12, 8), new THREE.MeshBasicMaterial({ color: '#219eff', transparent: true, opacity: .22, depthWrite: false })));
       this.root.add(glow); this.glows[side] = glow;
       const beam = new THREE.Group();
-      for (const [radius, color, opacity] of [[.006, '#d5f7ff', 1], [.02, '#259eff', .40]]) {
-        const mesh = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, 1, 6), new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthWrite: false }));
-        beam.add(mesh);
-      }
       this.root.add(beam); this.beams[side] = { object: beam, until: 0 };
+      const geometry = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]);
+      const line = new THREE.Line(geometry, new THREE.LineBasicMaterial({ color: '#69c9ff', transparent: true, opacity: .22, depthWrite: false }));
+      line.frustumCulled = false;
+      const marker = new THREE.Mesh(new THREE.RingGeometry(.8, 1, 24), new THREE.MeshBasicMaterial({ color: '#b0f3ff', transparent: true, opacity: .8, side: THREE.DoubleSide, depthWrite: false }));
+      this.root.add(line, marker); this.guides[side] = { line, marker };
     }
     this.sigil = sigilTexture();
     for (let i = 0; i < 2; i++) {
@@ -89,33 +97,81 @@ export class SpellEffects {
   clear() {
     Object.values(this.glows).forEach(g => { g.visible = false; });
     Object.values(this.beams).forEach(b => { b.object.visible = false; b.until = 0; });
+    Object.values(this.guides).forEach(g => { g.line.visible = g.marker.visible = false; });
     this.shields.forEach(s => { s.visible = false; }); this.lens.visible = false; this.lastRender = -Infinity;
   }
-  cast(side, hand, time) {
-    const origin = vec(hand.tip), direction = vec(hand.aim);
-    this.ray.set(origin, direction);
-    const candidates = [...this.scene.querySelectorAll('[magic-receiver]')].filter(el => el.object3D.visible).map(el => el.getObject3D('mesh')).filter(Boolean);
-    const hits = this.ray.intersectObjects(candidates, true);
-    let hit;
-    for (const candidate of hits) {
-      let object = candidate.object;
-      while (object && !object.el?.components?.['magic-receiver']) object = object.parent;
-      if (object) { hit = { ...candidate, el: object.el }; break; }
+  solveAim(hand) {
+    const origin = vec(hand.tip), direction = vec(hand.aim).normalize();
+    const targets = this.targetEls.map(el => ({ el, mesh: el.getObject3D('mesh') })).filter(t => visible(t.mesh));
+    const blockers = this.blockerEls.map(el => el.getObject3D('mesh')).filter(visible);
+    const meshes = [...targets.map(t => t.mesh), ...blockers];
+    const trace = dir => {
+      this.ray.set(origin, dir); this.ray.near = .015; this.ray.far = LIGHTNING_AIM.range;
+      return this.ray.intersectObjects(meshes, true).find(hit => visible(hit.object));
+    };
+    const recipient = hit => {
+      for (let object = hit?.object; object; object = object.parent) {
+        const target = targets.find(t => t.mesh === object); if (target) return target;
+      }
+      return null;
+    };
+    const raw = trace(direction), direct = recipient(raw);
+    const solution = { origin, direction, rawEnd: raw?.point || origin.clone().addScaledVector(direction, 60), point: null, el: null, kind: 'miss' };
+    if (direct) return { ...solution, point: raw.point, el: direct.el, kind: 'direct' };
+    for (const target of targets) {
+      if (target.mesh.geometry) {
+        if (!target.mesh.geometry.boundingSphere) target.mesh.geometry.computeBoundingSphere();
+        const sphere = target.mesh.geometry.boundingSphere.clone().applyMatrix4(target.mesh.matrixWorld);
+        target.center = sphere.center; target.radius = sphere.radius;
+      } else {
+        const sphere = new THREE.Box3().setFromObject(target.mesh).getBoundingSphere(new THREE.Sphere());
+        target.center = sphere.center; target.radius = sphere.radius;
+      }
+      const hit = trace(target.center.clone().sub(origin).normalize());
+      target.visible = recipient(hit) === target; target.hit = hit;
     }
-    if (hit) hit.el.emit('magic-hit', { spell: 'lightning', damage: 25, point: hit.point, hand: side });
-    const reach = hit?.distance || 60, beam = this.beams[side];
-    beam.object.position.copy(origin).addScaledVector(direction, reach * .5);
-    beam.object.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction);
-    beam.object.scale.set(1, reach, 1); beam.object.visible = true; beam.until = time + 160;
-    this.scene.emit('magic-cast', { spell: 'lightning', hand: side, hit: hit?.el || null });
+    const selected = selectLightningTarget(origin, direction, targets);
+    return selected ? { ...solution, point: selected.target.hit.point, el: selected.target.el, kind: selected.kind } : solution;
+  }
+  cast(side, hand, time, solution = this.solveAim(hand)) {
+    const { origin, direction, point, el, kind } = solution;
+    if (el) el.emit('magic-hit', { spell: 'lightning', damage: 25, point, hand: side, assistance: kind });
+    const end = point || solution.rawEnd, reach = origin.distanceTo(end), beam = this.beams[side];
+    // The path initially follows the real finger direction, then bends toward
+    // the selected hit. The visible endpoint is exactly the scored hit point.
+    const bend = kind === 'arc' ? .70 : .40;
+    const control = origin.clone().addScaledVector(direction, reach * bend);
+    const path = new THREE.CatmullRomCurve3([origin, control, end]);
+    const points = Array.from({ length: 17 }, (_, i) => {
+      const p = path.getPoint(i / 16), envelope = Math.sin(i * Math.PI / 16) * Math.min(.06, reach * .006);
+      p.x += Math.sin(i * 4.7 + time) * envelope; p.y += Math.cos(i * 3.1 + time) * envelope; return p;
+    });
+    const bolt = new THREE.CatmullRomCurve3(points);
+    for (const child of [...beam.object.children]) { child.geometry.dispose(); child.material.dispose(); beam.object.remove(child); }
+    for (const [radius, color, opacity] of [[.006, '#d5f7ff', 1], [.018, '#259eff', .35]]) {
+      beam.object.add(new THREE.Mesh(new THREE.TubeGeometry(bolt, 48, radius, 4, false), new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthWrite: false })));
+    }
+    beam.object.visible = true; beam.until = time + 160;
+    this.scene.emit('magic-cast', { spell: 'lightning', hand: side, hit: el, assistance: kind });
   }
   update(result, hands, head, time, dt) {
     for (const side of ['left', 'right']) {
       const glow = this.glows[side]; glow.visible = result[side] === 'lightning';
       if (glow.visible) { glow.position.copy(vec(hands[side].tip)); glow.scale.setScalar(1 + .12 * Math.sin(time / 90)); }
+      const guide = this.guides[side]; guide.line.visible = glow.visible; guide.marker.visible = false;
+      if (glow.visible) {
+        const solution = this.solveAim(hands[side]), positions = guide.line.geometry.attributes.position;
+        positions.setXYZ(0, solution.origin.x, solution.origin.y, solution.origin.z);
+        positions.setXYZ(1, solution.rawEnd.x, solution.rawEnd.y, solution.rawEnd.z); positions.needsUpdate = true;
+        if (solution.point) {
+          guide.marker.visible = true;
+          guide.marker.position.copy(solution.point).addScaledVector(solution.origin.clone().sub(solution.point).normalize(), .015);
+          guide.marker.lookAt(head.position); guide.marker.scale.setScalar(Math.max(.025, .008 * solution.origin.distanceTo(solution.point)));
+        }
+        if (result.casts.includes(side)) this.cast(side, hands[side], time, solution);
+      }
       const beam = this.beams[side]; if (time >= beam.until) beam.object.visible = false;
     }
-    result.casts.forEach(side => this.cast(side, hands[side], time));
     const palms = ['left', 'right'].filter(side => result[side] === 'shield').map(side => hands[side].palm);
     const shields = palms.length === 2 && distance(palms[0], palms[1]) < .40 ? [{ palm: midpoint(...palms), diameter: 1 }] : palms.map(palm => ({ palm, diameter: .5 }));
     this.shields.forEach((shield, i) => {
