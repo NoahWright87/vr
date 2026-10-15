@@ -105,3 +105,77 @@ test('calibration and world-space slide direction are preserved without changing
   assert.equal(tracker.standingHeight, 1.8);
   tracker.reset(); assert.equal(tracker.standingHeight, 1.8);
 });
+
+function hop({ gain = 5, rise = .28, hz = 90, forward = false } = {}) {
+  const tracker = new MotionEffectsTracker({ jumpEnabled: true, jumpVerticalGain: gain, jumpBoost: 4, jumpPercentLoss: 0 });
+  const outputs = [];
+  for (let i = 0; i <= hz; i++) tracker.sample({ x: 0, y: 1.6, z: forward ? -2 * i / hz : 0 }, i * 1000 / hz);
+  for (let i = 1; i <= hz; i++) {
+    const y = 1.6 + rise * Math.sin(Math.PI * i / hz);
+    const result = tracker.sample({ x: 0, y, z: forward ? -2 : 0 }, 1000 + i * 1000 / hz);
+    outputs.push({ ...result, y });
+  }
+  return { tracker, outputs };
+}
+
+test('vertical jump gain amplifies a hop in place independently of forward momentum', () => {
+  const { tracker, outputs } = hop({ gain: 5 });
+  const peak = outputs.reduce((best, p) => p.y + p.heightOffset > best.y + best.heightOffset ? p : best);
+  // 28 cm real rise: first 8 cm is unmodified, the remaining 20 cm is 5x.
+  close(peak.y + peak.heightOffset - 1.6, 1.08, .001);
+  assert.ok(outputs.every(p => p.worldX === 0 && p.worldZ === 0 && p.momentumSpeed === 0));
+  close(outputs.at(-1).heightOffset, 0);
+  close(tracker.standingHeight, 1.6);
+});
+
+test('height gain of one is a tracked-height baseline and small dips never lift', () => {
+  assert.ok(hop({ gain: 1 }).outputs.every(p => p.heightOffset === 0));
+  assert.ok(hop({ gain: 10, rise: .07 }).outputs.every(p => p.heightOffset === 0));
+  const { tracker } = runAndDip(.8, { jumpEnabled: true, jumpVerticalGain: 10 });
+  assert.equal(tracker.jumpLift, 0);
+});
+
+test('larger real hops yield larger virtual heights; height and forward settings remain independent', () => {
+  const low = hop({ gain: 3, rise: .2 }), high = hop({ gain: 3, rise: .4 });
+  assert.ok(Math.max(...high.outputs.map(p => p.heightOffset)) > Math.max(...low.outputs.map(p => p.heightOffset)) * 2);
+  const a = hop({ gain: 1, forward: true }), b = hop({ gain: 8, forward: true });
+  a.outputs.forEach((p, i) => { close(p.worldZ, b.outputs[i].worldZ); close(p.momentumSpeed, b.outputs[i].momentumSpeed); });
+  assert.ok(b.outputs.some(p => p.heightOffset > 1 && p.momentumSpeed > 0));
+});
+
+test('threshold activation and landing produce no positional step or residual lift', () => {
+  const tracker = new MotionEffectsTracker({ jumpEnabled: true, jumpVerticalGain: 10 });
+  tracker.calibrate(1.6);
+  tracker.sample({ x: 0, y: 1.67, z: 0 }, 0);
+  const entry = tracker.sample({ x: 0, y: 1.6801, z: 0 }, 20);
+  assert.ok(entry.heightOffset >= 0 && entry.heightOffset < .00001);
+  tracker.sample({ x: 0, y: 1.8, z: 0 }, 80);
+  const exit = tracker.sample({ x: 0, y: 1.6801, z: 0 }, 140);
+  assert.ok(exit.heightOffset < .00001);
+  assert.equal(tracker.sample({ x: 0, y: 1.6, z: 0 }, 200).heightOffset, 0);
+});
+
+test('watch, disabling, calibration, reset and lost tracking clear vertical gain', () => {
+  for (const mode of ['watch', 'disable', 'calibrate', 'reset', 'gap', 'invalid', 'pose-jump']) {
+    const tracker = new MotionEffectsTracker({ jumpEnabled: true, jumpVerticalGain: 5 });
+    tracker.sample({ x: 0, y: 1.6, z: 0 }, 0);
+    tracker.sample({ x: 0, y: 1.9, z: 0 }, 100);
+    assert.ok(tracker.jumpLift > .5);
+    if (mode === 'disable') tracker.setSettings({ jumpEnabled: false });
+    if (mode === 'calibrate') tracker.calibrate(1.9);
+    if (mode === 'reset') tracker.reset();
+    const r = tracker.sample({ x: 0, y: mode === 'invalid' ? NaN : mode === 'pose-jump' ? 2.5 : 1.9, z: 0 },
+      mode === 'gap' ? 1000 : 120, { paused: mode === 'watch' });
+    assert.equal(r.heightOffset, 0, mode);
+    assert.equal(tracker.jumpLift, 0, mode);
+  }
+});
+
+test('the same physical hop has the same vertical peak at different headset rates', () => {
+  for (const hz of [60, 72, 90, 120]) {
+    close(Math.max(...hop({ hz }).outputs.map(p => p.y + p.heightOffset)), 2.68, .002);
+  }
+  assert.equal(sanitizeMotionSettings({ jumpVerticalGain: Infinity }).jumpVerticalGain, 3);
+  assert.equal(sanitizeMotionSettings({ jumpVerticalGain: -2 }).jumpVerticalGain, 1);
+  assert.equal(sanitizeMotionSettings({ jumpVerticalGain: 100 }).jumpVerticalGain, 10);
+});

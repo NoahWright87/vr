@@ -38,14 +38,15 @@ export function installExperimentMenus() {
       row('space-slide-percent-loss', 'Percent loss', '0|.001|.01|.05|.1|.3|.5|.75|.9', '0%/s|.1%/s|1%/s|5%/s|10%/s|30%/s|50%/s|75%/s|90%/s', .5, -.56) +
       text('Move, then duck within .6 s.\nDeeper duck = stronger launch.\nStand, open watch or disable to stop.', -.87) + text('OFF', -1.12, 'space-slide-live', '#ffad54') +
       button('space-reset-effects', 'Reset travel + rotation', -1.35), 2.3) +
-    page('jump', 'JUMP MOMENTUM',
-      toggle('space-jump-enabled', 'Jump carry', false, .4) +
-      row('space-jump-boost', 'Launch', '.5|1|1.5|2|3|5|8|10', '.5x|1x|1.5x|2x|3x|5x|8x|10x', 1.5, .16) +
-      row('space-jump-rise', 'Rise', '.03|.05|.08|.12|.2|.3', '3 cm|5 cm|8 cm|12 cm|20 cm|30 cm', .08, -.08) +
-      row('space-jump-loss', 'Speed loss', '0|.001|.01|.05|.1|.3|.5|.75|.9', '0%/s|.1%/s|1%/s|5%/s|10%/s|30%/s|50%/s|75%/s|90%/s', .3, -.32) +
-      text('Move, then rise above standing.\nHorizontal carry; max 1.5 s.\nLanding stops it; height stays real.', -.64) + text('OFF', -.9, 'space-jump-live', '#ffad54') +
-      button('space-calibrate-height', 'Calibrate standing height', -1.13) +
-      button('space-reset-effects', 'Reset travel + rotation', -1.35), 2.3) +
+    page('jump', 'JUMP GAIN',
+      toggle('space-jump-enabled', 'Jumping', false, .4) +
+      row('space-jump-boost', 'Forward', '.5|1|1.5|2|3|5|8|10', '.5x|1x|1.5x|2x|3x|5x|8x|10x', 1.5, .16) +
+      row('space-jump-height', 'Height gain', '1|1.5|2|3|5|8|10', '1x|1.5x|2x|3x|5x|8x|10x', 3, -.08) +
+      row('space-jump-rise', 'Rise', '.03|.05|.08|.12|.2|.3', '3 cm|5 cm|8 cm|12 cm|20 cm|30 cm', .08, -.32) +
+      row('space-jump-loss', 'Speed loss', '0|.001|.01|.05|.1|.3|.5|.75|.9', '0%/s|.1%/s|1%/s|5%/s|10%/s|30%/s|50%/s|75%/s|90%/s', .3, -.56) +
+      text('Height gain applies above Rise.\nHop in place or add forward carry.\nReal landing ends the jump.\nBoosted jumps open the roof.', -.88) + text('OFF', -1.17, 'space-jump-live', '#ffad54') +
+      button('space-calibrate-height', 'Calibrate standing height', -1.42) +
+      button('space-reset-effects', 'Reset travel + rotation', -1.65), 2.5) +
     page('scope', 'BINOCULARS',
       toggle('space-scope-enabled', 'Binoculars', false, .4) +
       toggle('space-scope-stabilize', 'Stabilize', true, .16) +

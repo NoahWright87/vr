@@ -21,7 +21,7 @@ const MOTION_OPTIONS = {
   'space-slide-enabled': 'slideEnabled', 'space-slide-boost': 'slideBoost', 'space-slide-loss-mode': 'slideLossMode',
   'space-slide-flat-loss': 'slideFlatLoss', 'space-slide-percent-loss': 'slidePercentLoss',
   'space-jump-enabled': 'jumpEnabled', 'space-jump-boost': 'jumpBoost', 'space-jump-rise': 'jumpRise',
-  'space-jump-loss': 'jumpPercentLoss',
+  'space-jump-loss': 'jumpPercentLoss', 'space-jump-height': 'jumpVerticalGain',
 };
 
 AFRAME.registerComponent('speed-dependent-gain', {
@@ -83,13 +83,16 @@ AFRAME.registerComponent('speed-dependent-gain', {
         try { localStorage.setItem(REDIRECTION_KEY, JSON.stringify(this.redirection.settings)); } catch (_) {}
       } else {
         this.motion.setSettings({ [motionProperty]: evt.detail.value });
+        if (motionProperty === 'jumpEnabled' && !this.motion.settings.jumpEnabled) this.clearVerticalGain();
         try { localStorage.setItem(MOTION_KEY, JSON.stringify(this.motion.settings)); } catch (_) {}
       }
       this.renderSettings();
     }.bind(this);
     this.onSelection = function (evt) {
       if (['space-reset-travel', 'space-reset-effects'].includes(evt.detail.value)) this.resetTravel();
-      if (evt.detail.value === 'space-calibrate-height' && this.hasPose) this.motion.calibrate(this.rawPosition.y);
+      if (evt.detail.value === 'space-calibrate-height' && this.hasPose) {
+        this.motion.calibrate(this.rawPosition.y); this.clearVerticalGain();
+      }
     }.bind(this);
     const scene = this.el.sceneEl;
     scene.addEventListener('enter-vr', this.onEnter);
@@ -146,7 +149,7 @@ AFRAME.registerComponent('speed-dependent-gain', {
     const slideText = !settings.slideEnabled ? 'OFF' : paused ? 'PAUSED - watch open' :
       'Duck ' + (m.crouchDepth * 100).toFixed(0) + '% | ' + (m.slide?.speed || 0).toFixed(2) + ' m/s';
     const jumpText = !settings.jumpEnabled ? 'OFF' : paused ? 'PAUSED - watch open' :
-      (m.jump?.speed || 0).toFixed(2) + ' m/s | stand ' + (m.standingHeight || 0).toFixed(2) + ' m';
+      'Forward ' + (m.jump?.speed || 0).toFixed(2) + ' m/s | Lift ' + m.jumpLift.toFixed(2) + ' m\nStand ' + (m.standingHeight || 0).toFixed(2) + ' m';
     for (const [selector, text] of [['.space-arm-live', armText], ['.space-slide-live', slideText], ['.space-jump-live', jumpText]])
       this.el.sceneEl.querySelectorAll(selector).forEach(el => el.setAttribute('text', 'value', text));
     for (const [selector, label, enabled] of [['.space-arm-link', 'Arm swing', settings.armEnabled], ['.space-slide-link', 'Sliding', settings.slideEnabled], ['.space-jump-link', 'Jumping', settings.jumpEnabled]])
@@ -154,12 +157,18 @@ AFRAME.registerComponent('speed-dependent-gain', {
   },
 
   resetEstimators: function () {
+    this.clearVerticalGain();
     this.tracker.reset();
     this.redirection.reset();
     this.motion.reset();
     this.lastMotion = { effectiveGain: 1, momentumSpeed: 0 };
     this.travelEpoch++;
     this.hasPose = false;
+  },
+
+  clearVerticalGain: function () {
+    this.el.object3D.position.y -= this.extraTranslation.y;
+    this.extraTranslation.y = 0;
   },
 
   watchOpen: function () {
@@ -222,10 +231,10 @@ AFRAME.registerComponent('speed-dependent-gain', {
       { context: this.redirection.settings.steeringEnabled || this.redirection.settings.turnEnabled ? this.redirectionContext() : null, paused });
     this.transform.apply(position, motion.extraX, motion.extraZ, redirect.yawDelta);
     this.transform.x += motion.worldX; this.transform.z += motion.worldZ;
-    this.step.set(this.transform.x, 0, this.transform.z).sub(this.extraTranslation);
+    this.step.set(this.transform.x, motion.heightOffset, this.transform.z).sub(this.extraTranslation);
     this.el.object3D.position.add(this.step);
     this.el.object3D.rotation.y += redirect.yawDelta;
-    this.extraTranslation.set(this.transform.x, 0, this.transform.z);
+    this.extraTranslation.set(this.transform.x, motion.heightOffset, this.transform.z);
     this.extraYaw = this.transform.yaw;
     this.hasPose = true;
     return result;
@@ -233,7 +242,7 @@ AFRAME.registerComponent('speed-dependent-gain', {
 
   physicalPosition: function (world, out) {
     const physical = this.transform.physicalPoint(world);
-    return out.set(physical.x, world.y, physical.z);
+    return out.set(physical.x, world.y - this.extraTranslation.y, physical.z);
   },
 
   physicalDirection: function (worldDirection) {

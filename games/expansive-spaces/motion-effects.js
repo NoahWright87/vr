@@ -3,14 +3,14 @@ import { ramp, rotateXZ } from './redirection.js';
 export const DEFAULT_MOTION_SETTINGS = {
   armEnabled: false, maxArmGain: 3, armSpeed: 1.5, armStroke: .12, speedLines: true,
   slideEnabled: false, slideBoost: 3, slideLossMode: 'percent', slideFlatLoss: .5, slidePercentLoss: .5,
-  jumpEnabled: false, jumpBoost: 1.5, jumpRise: .08, jumpPercentLoss: .3,
+  jumpEnabled: false, jumpBoost: 1.5, jumpVerticalGain: 3, jumpRise: .08, jumpPercentLoss: .3,
 };
 export function sanitizeMotionSettings(settings = {}) {
   const s = { ...DEFAULT_MOTION_SETTINGS, ...settings }, output = {};
   for (const key of ['armEnabled', 'slideEnabled', 'jumpEnabled', 'speedLines']) output[key] = s[key] === true || s[key] === 'true';
   for (const [key, min, max] of [['maxArmGain', 1, 8], ['armSpeed', .3, 3], ['armStroke', .04, .4],
     ['slideBoost', .25, 10], ['slideFlatLoss', 0, 4], ['slidePercentLoss', 0, .95],
-    ['jumpBoost', .25, 10], ['jumpRise', .03, .3], ['jumpPercentLoss', 0, .95]]) {
+    ['jumpBoost', .25, 10], ['jumpVerticalGain', 1, 10], ['jumpRise', .03, .3], ['jumpPercentLoss', 0, .95]]) {
     const v = Number(s[key]); output[key] = Number.isFinite(v) ? Math.max(min, Math.min(max, v)) : DEFAULT_MOTION_SETTINGS[key];
   }
   output.slideLossMode = s.slideLossMode === 'flat' ? 'flat' : 'percent';
@@ -41,6 +41,7 @@ export class MotionEffectsTracker {
     this.previous = null; this.hands = null; this.handHistory = []; this.impulses = [];
     this.armActivity = 0; this.armGain = 1; this.armTracked = false;
     this.slide = null; this.jump = null; this.wasCrouched = false; this.wasAirborne = false;
+    this.verticalJump = false; this.jumpLift = 0;
     this.crouchDepth = 0; this.speed = 0;
   }
 
@@ -70,7 +71,8 @@ export class MotionEffectsTracker {
   }
 
   sample(position, time, { hands = null, baseGain = 1, yaw = 0, paused = false } = {}) {
-    const neutral = () => ({ extraX: 0, extraZ: 0, worldX: 0, worldZ: 0, armGain: 1, effectiveGain: baseGain, momentumSpeed: 0 });
+    const neutral = () => ({ extraX: 0, extraZ: 0, worldX: 0, worldZ: 0, heightOffset: 0,
+      armGain: 1, effectiveGain: baseGain, momentumSpeed: 0 });
     if (![position.x, position.y, position.z, time].every(Number.isFinite)) { this.reset(); return neutral(); }
     if (this.standingHeight === null && position.y >= .5) this.standingHeight = position.y;
     const old = this.previous; this.previous = { ...position, time };
@@ -86,6 +88,7 @@ export class MotionEffectsTracker {
     }
     if (paused) {
       this.slide = null; this.jump = null; this.impulses = []; this.hands = null;
+      this.verticalJump = false; this.jumpLift = 0;
       this.handHistory = []; this.armActivity = 0; this.armGain = 1;
       this.wasCrouched = true; this.wasAirborne = true;
       return { ...neutral(), extraX: dx * (baseGain - 1), extraZ: dz * (baseGain - 1) };
@@ -112,6 +115,13 @@ export class MotionEffectsTracker {
     }
     if (!this.settings.jumpEnabled || !airborne || (this.jump && time - this.jump.started > 1500)) this.jump = null;
     else if (!this.wasAirborne && dy > .15 && impulse) this.jump = launch(impulse, this.settings.jumpBoost, 'jump');
+    // Height gain needs a real upward threshold crossing, but no horizontal
+    // impulse. Amplify only excess rise, easing the first 4 cm so crossing
+    // the activation threshold cannot produce an instantaneous height step.
+    if (!this.settings.jumpEnabled || !airborne) this.verticalJump = false;
+    else if (!this.wasAirborne && dy > .15) this.verticalJump = true;
+    const excessRise = Math.max(0, position.y - height - this.settings.jumpRise);
+    this.jumpLift = this.verticalJump ? (this.settings.jumpVerticalGain - 1) * excessRise * ramp(excessRise, 0, .04) : 0;
     this.wasCrouched = crouched; this.wasAirborne = airborne;
     let worldX = 0, worldZ = 0, momentumSpeed = 0;
     for (const [name, motion] of [['slide', this.slide], ['jump', this.jump]]) {
@@ -128,6 +138,6 @@ export class MotionEffectsTracker {
     }
     this.speed = speed;
     return { extraX: dx * (gain - 1), extraZ: dz * (gain - 1), worldX, worldZ,
-      armGain: this.armGain, effectiveGain: gain, momentumSpeed };
+      heightOffset: this.jumpLift, armGain: this.armGain, effectiveGain: gain, momentumSpeed };
   }
 }

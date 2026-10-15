@@ -157,6 +157,7 @@ AFRAME.registerComponent('expansive-space', {
       const mesh = new THREE.Mesh(new THREE.BoxGeometry(width, h, depth), material);
       mesh.position.set(x, y, z);
       group.add(mesh);
+      return mesh;
     }
     // Grow width/depth around the boundary center without scaling the room
     // entity itself: raw tracking, hand reach and checker size stay unchanged.
@@ -175,7 +176,7 @@ AFRAME.registerComponent('expansive-space', {
       box(.12, 1.3, .055, x, 1.45, b.centerZ + z, trimMaterial);
     box(.12, .06, opening, x, .8, b.centerZ, trimMaterial);
     box(.12, .06, opening, x, 2.1, b.centerZ, trimMaterial);
-    box(b.width, thickness, b.depth, b.centerX, height + thickness / 2, b.centerZ, ceilingMaterial);
+    this.ceiling = box(b.width, thickness, b.depth, b.centerX, height + thickness / 2, b.centerZ, ceilingMaterial);
     this.el.setObject3D('room-shell', group);
     const floor = this.el.querySelector('#space-floor');
     floor.setAttribute('width', b.width);
@@ -454,6 +455,7 @@ AFRAME.registerComponent('expansive-space', {
     if (xr && xr.getSession() && xr.getSession() !== this.session) this.start();
     const rig = document.querySelector('#space-rig');
     const gain = rig && rig.components['speed-dependent-gain'];
+    if (this.ceiling) this.ceiling.visible = !(gain?.motion.settings.jumpEnabled && gain.motion.settings.jumpVerticalGain > 1);
     const outline = this.el.getObject3D('boundary-outline');
     if (outline && gain) {
       // The physical boundary receives the same full transform as the rig.
