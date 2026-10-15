@@ -39,6 +39,8 @@ AFRAME.registerComponent('expansive-space', {
     this.inverseWorld = new THREE.Matrix4();
     this.outlineMatrix = new THREE.Matrix4();
     this.effectMatrix = new THREE.Matrix4();
+    this.guideDirection = new THREE.Vector3();
+    this.guideHit = new THREE.Vector3();
     this.canvas = document.createElement('canvas');
     this.canvas.width = 512;
     this.canvas.height = 384;
@@ -294,10 +296,20 @@ AFRAME.registerComponent('expansive-space', {
   },
 
   drawMap: function () {
+    const gain = document.querySelector('#space-rig')?.components['speed-dependent-gain'];
+    let reachable = this.points;
+    if (gain) {
+      this.effectMatrix.makeRotationY(gain.extraYaw).setPosition(gain.extraTranslation);
+      this.outlineMatrix.copy(this.inverseWorld).multiply(this.effectMatrix).multiply(this.el.object3D.matrixWorld);
+      reachable = this.points.map(point => {
+        this.guideHit.set(point.x, 0, point.z).applyMatrix4(this.outlineMatrix);
+        return { x: this.guideHit.x, z: this.guideHit.z };
+      });
+    }
     // Both trajectories use the same metric frame. Include retained history
     // and current markers so gained travel is never pinned to the map edge.
     const room = this.virtualBounds;
-    this.layout = mapLayout(measureBounds([...this.points, { x: room.minX, z: room.minZ }, { x: room.maxX, z: room.maxZ }, ...this.physicalTrail.points,
+    this.layout = mapLayout(measureBounds([...this.points, ...reachable, { x: room.minX, z: room.minZ }, { x: room.maxX, z: room.maxZ }, ...this.physicalTrail.points,
       ...this.virtualTrail.points, this.position, this.virtualPosition]), 512, 384, 60);
     const ctx = this.context, b = room, physical = this.bounds, project = this.layout.project;
     ctx.fillStyle = '#101827';
@@ -317,6 +329,14 @@ AFRAME.registerComponent('expansive-space', {
     });
     ctx.closePath();
     ctx.stroke();
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6, 5]);
+    ctx.beginPath();
+    reachable.forEach((point, index) => {
+      const p = project(point);
+      if (index === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y);
+    });
+    ctx.closePath(); ctx.stroke(); ctx.setLineDash([]);
     ctx.save();
     ctx.beginPath(); ctx.rect(8, 40, 496, 294); ctx.clip();
     const drawTrail = (trail, color, width, dash) => {
@@ -350,6 +370,23 @@ AFRAME.registerComponent('expansive-space', {
       ctx.restore();
     };
     const inside = isInsideBoundary(this.position, this.points);
+    const guide = gain?.redirection.guidance, settings = gain?.redirection.settings;
+    const showGuide = guide?.valid && guide.urgency > .05 &&
+      ((settings.steeringEnabled && settings.steeringMode === 'adaptive') || settings.turnEnabled);
+    if (showGuide) {
+      this.guideDirection.set(-Math.sin(guide.desiredHeading), 0, -Math.cos(guide.desiredHeading))
+        .transformDirection(this.inverseWorld);
+      const from = project(this.position), to = project({ x: this.position.x + this.guideDirection.x * .65,
+        z: this.position.z + this.guideDirection.z * .65 });
+      ctx.strokeStyle = '#6ee7a8'; ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.moveTo(from.x, from.y); ctx.lineTo(to.x, to.y); ctx.stroke();
+      drawHeading({ x: this.position.x + this.guideDirection.x * .65, z: this.position.z + this.guideDirection.z * .65 },
+        this.guideDirection, '#6ee7a8', 10, true);
+      this.guideHit.set(guide.hit.x, 0, guide.hit.z).applyMatrix4(this.inverseWorld);
+      const hit = project(this.guideHit);
+      ctx.strokeStyle = '#fb7185'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(hit.x, hit.y, 7, 0, Math.PI * 2); ctx.stroke();
+    }
     drawHeading(this.position, this.direction, PHYSICAL_COLOR, 19, true);
     drawHeading(this.virtualPosition, this.virtualDirection, VIRTUAL_COLOR, 13, false);
     ctx.restore();
@@ -358,10 +395,15 @@ AFRAME.registerComponent('expansive-space', {
     ctx.fillStyle = '#e0f2fe';
     ctx.fillText('Real ' + physical.width.toFixed(1) + ' × ' + physical.depth.toFixed(1) +
       ' m | Room ' + b.width.toFixed(1) + ' × ' + b.depth.toFixed(1) + ' m', 256, 26);
+    ctx.font = '14px system-ui, sans-serif';
+    ctx.fillStyle = '#22d3ee';
+    ctx.fillText('Dashed boundary: reachable game space now', 256, 46);
     ctx.font = '18px system-ui, sans-serif';
     ctx.fillStyle = PHYSICAL_COLOR; ctx.fillText('Real', 64, 350);
     ctx.fillStyle = VIRTUAL_COLOR; ctx.fillText('Game', 155, 350);
-    ctx.fillStyle = '#bfcee2'; ctx.fillText('Last ' + TRAIL_METRES + ' m per trail', 345, 350);
+    ctx.fillStyle = '#bfcee2';
+    ctx.font = '15px system-ui, sans-serif';
+    ctx.fillText('Last ' + TRAIL_METRES + ' m | Green: desired path', 345, 350);
     ctx.font = '17px system-ui, sans-serif';
     ctx.fillStyle = inside ? '#aab8d2' : '#fb7185';
     ctx.fillText(!inside ? 'OUTSIDE ' + (this.detected ? 'BOUNDARY' : 'PREVIEW FOOTPRINT') :

@@ -58,34 +58,40 @@
           </a-entity>
         </a-entity>
         <a-entity data-menu-page="steering" visible="false">
-          <a-plane width="1.12" height="2.1" color="#101827" position="0 -.33 -.01"></a-plane>
+          <a-plane width="1.12" height="2.9" color="#101827" position="0 -.64 -.01"></a-plane>
           <a-entity class="menu-chrome-slot" data-title="WALKING STEERING" data-help="false" data-close="true" data-close-value="steering-close" data-width="1.12" data-bar-y=".64"></a-entity>
           <a-entity menu-option="key: space-steering-enabled; label: Steering; values: false|true; labels: OFF|ON; value: false; width: .96; height: .16; font: sourcecodepro" position="0 .4 0"></a-entity>
-          <a-entity menu-option="key: space-steering-mode; label: Path; values: center|left|right; labels: To center|Curve left|Curve right; value: center; width: .96; height: .16; font: sourcecodepro" position="0 .16 0"></a-entity>
+          <a-entity menu-option="key: space-steering-mode; label: Path; values: adaptive|left|right; labels: Avoid walls|Test left curve|Test right curve; value: adaptive; width: .96; height: .16; font: sourcecodepro" position="0 .16 0"></a-entity>
           <a-entity menu-option="key: space-curvature; label: Max curve; values: 0|1|2|3|5|8|10|15|20; labels: 0 deg/m|1 deg/m|2 deg/m|3 deg/m|5 deg/m|8 deg/m|10 deg/m|15 deg/m|20 deg/m; value: 5; width: .96; height: .16; font: sourcecodepro" position="0 -.08 0"></a-entity>
           <a-entity menu-option="key: space-steering-speed; label: Full at; values: 0.8|1|1.2|1.5|2|2.5|3|4; labels: 0.8 m/s|1.0 m/s|1.2 m/s|1.5 m/s|2.0 m/s|2.5 m/s|3.0 m/s|4.0 m/s; value: 2; width: .96; height: .16; font: sourcecodepro" position="0 -.32 0"></a-entity>
           <a-entity menu-option="key: space-steering-rate; label: Rate cap; values: 1|2|3|5|6|10|15|20|30; labels: 1 deg/s|2 deg/s|3 deg/s|5 deg/s|6 deg/s|10 deg/s|15 deg/s|20 deg/s|30 deg/s; value: 6; width: .96; height: .16; font: sourcecodepro" position="0 -.56 0"></a-entity>
+          <a-entity menu-option="key: space-wall-lookahead; label: Look ahead; values: 0.5|1|1.5|2|2.5|3; labels: 0.5 s|1 s|1.5 s|2 s|2.5 s|3 s; value: 1.5; width: .96; height: .16; font: sourcecodepro" position="0 -.8 0"></a-entity>
+          <a-entity menu-option="key: space-wall-margin; label: Wall margin; values: 0.1|0.2|0.4|0.6|0.8|1; labels: 0.1 m|0.2 m|0.4 m|0.6 m|0.8 m|1 m; value: 0.4; width: .96; height: .16; font: sourcecodepro" position="0 -1.04 0"></a-entity>
           <a-text font="sourcecodepro" value="Below 0.6 m/s: no steering.
-Uses physical metres, not gained.
-Left/right describe your real path.
-Pauses while the watch is open." align="center" color="#bfcee2" width="1.3" wrap-count="37" position="0 -.85 .01"></a-text>
-          <a-text font="sourcecodepro" class="space-steering-live" value="OFF" align="center" color="#ffad54" width="1.3" position="0 -1.08 .01"></a-text>
-          <a-entity class="pm-target" geometry="primitive: plane; width: .96; height: .16" material="color: #182f4a" menu-item="value: space-reset-effects; label: Reset travel and rotation" position="0 -1.25 0">
+Avoids the physical wall ahead.
+Green map arrow: desired real path.
+Look ahead + margin also guide turns.
+Watch / binocular aiming pause it." align="center" color="#bfcee2" width="1.3" wrap-count="40" position="0 -1.38 .01"></a-text>
+          <a-text font="sourcecodepro" class="space-steering-live" value="OFF" align="center" color="#ffad54" width="1.3" position="0 -1.7 .01"></a-text>
+          <a-entity class="pm-target" geometry="primitive: plane; width: .96; height: .16" material="color: #182f4a" menu-item="value: space-reset-effects; label: Reset travel and rotation" position="0 -1.96 0">
             <a-text font="sourcecodepro" value="Reset travel + rotation" align="center" width="1.45" position="0 0 .01"></a-text>
           </a-entity>
         </a-entity>
         <a-entity data-menu-page="turn" visible="false">
-          <a-plane width="1.12" height="1.6" color="#101827" position="0 -.08 -.01"></a-plane>
+          <a-plane width="1.12" height="2.4" color="#101827" position="0 -.4 -.01"></a-plane>
           <a-entity class="menu-chrome-slot" data-title="TURN GAIN" data-help="false" data-close="true" data-close-value="turn-close" data-width="1.12" data-bar-y=".64"></a-entity>
           <a-entity menu-option="key: space-turn-enabled; label: Turn gain; values: false|true; labels: OFF|ON; value: false; width: .96; height: .16; font: sourcecodepro" position="0 .4 0"></a-entity>
-          <a-entity menu-option="key: space-turn-gain; label: Max gain; values: 0.8|0.9|1|1.05|1.1|1.1111111111111112|1.15|1.2|1.3|1.5; labels: 0.80x|0.90x|1.00x|1.05x|1.10x|1.11x|1.15x|1.20x|1.30x|1.50x; value: 1.1111111111111112; width: .96; height: .16; font: sourcecodepro" position="0 .13 0"></a-entity>
-          <a-entity menu-option="key: space-turn-speed; label: Full at; values: 60|90|120|180|240|300|360; labels: 60 deg/s|90 deg/s|120 deg/s|180 deg/s|240 deg/s|300 deg/s|360 deg/s; value: 180; width: .96; height: .16; font: sourcecodepro" position="0 -.14 0"></a-entity>
+          <a-entity menu-option="key: space-turn-gain; label: Max gain; values: 1|1.05|1.1|1.1111111111111112|1.15|1.2|1.3|1.5; labels: 1.00x|1.05x|1.10x|1.11x|1.15x|1.20x|1.30x|1.50x; value: 1.1111111111111112; width: .96; height: .16; font: sourcecodepro" position="0 .13 0"></a-entity>
+          <a-entity menu-option="key: space-turn-min-gain; label: Min gain; values: 0.5|0.6|0.7|0.8|0.9|0.95|1; labels: 0.50x|0.60x|0.70x|0.80x|0.90x|0.95x|1.00x; value: 0.9; width: .96; height: .16; font: sourcecodepro" position="0 -.14 0"></a-entity>
+          <a-entity menu-option="key: space-turn-speed; label: Full at; values: 60|90|120|180|240|300|360; labels: 60 deg/s|90 deg/s|120 deg/s|180 deg/s|240 deg/s|300 deg/s|360 deg/s; value: 180; width: .96; height: .16; font: sourcecodepro" position="0 -.41 0"></a-entity>
+          <a-entity menu-option="key: space-alignment; label: Alignment; values: 0|0.25|0.5|0.75|1; labels: OFF|25 percent|50 percent|75 percent|100 percent; value: 1; width: .96; height: .16; font: sourcecodepro" position="0 -.68 0"></a-entity>
           <a-text font="sourcecodepro" value="Below 30 deg/s: always 1x.
-Fast turns ramp to max gain.
-1.11x: 180 becomes about 200 deg.
-Pauses while the watch is open." align="center" color="#bfcee2" width="1.3" wrap-count="38" position="0 -.41 .01"></a-text>
-          <a-text font="sourcecodepro" class="space-turn-live" value="OFF" align="center" color="#ffad54" width="1.3" position="0 -.61 .01"></a-text>
-          <a-entity class="pm-target" geometry="primitive: plane; width: .96; height: .16" material="color: #182f4a" menu-item="value: space-reset-effects; label: Reset travel and rotation" position="0 -.79 0">
+Fast looks can gain OR lose rotation.
+Avoids walls, then aligns room axes.
+Aligned + clear / no boundary: 1x.
+Watch / binocular aiming pause it." align="center" color="#bfcee2" width="1.3" wrap-count="40" position="0 -1.01 .01"></a-text>
+          <a-text font="sourcecodepro" class="space-turn-live" value="OFF" align="center" color="#ffad54" width="1.3" position="0 -1.32 .01"></a-text>
+          <a-entity class="pm-target" geometry="primitive: plane; width: .96; height: .16" material="color: #182f4a" menu-item="value: space-reset-effects; label: Reset travel and rotation" position="0 -1.56 0">
             <a-text font="sourcecodepro" value="Reset travel + rotation" align="center" width="1.45" position="0 0 .01"></a-text>
           </a-entity>
         </a-entity>

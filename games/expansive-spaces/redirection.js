@@ -1,10 +1,12 @@
 import { isInsideBoundary, measureBounds } from './play-space.js';
+import { planGuidance } from './boundary-guidance.js';
 
 const RAD = Math.PI / 180;
 export const DEFAULT_REDIRECTION_SETTINGS = {
-  steeringEnabled: false, steeringMode: 'center', maxCurvature: 5,
+  steeringEnabled: false, steeringMode: 'adaptive', maxCurvature: 5,
   steeringSpeed: 2, maxSteeringRate: 6,
-  turnEnabled: false, maxTurnGain: 200 / 180, turnSpeed: 180,
+  lookAhead: 1.5, wallMargin: .4,
+  turnEnabled: false, minTurnGain: .9, maxTurnGain: 200 / 180, turnSpeed: 180, alignmentStrength: 1,
 };
 
 export function sanitizeRedirectionSettings(settings = {}) {
@@ -13,13 +15,18 @@ export function sanitizeRedirectionSettings(settings = {}) {
     Math.max(min, Math.min(max, Number(value))) : fallback;
   return {
     steeringEnabled: s.steeringEnabled === true || s.steeringEnabled === 'true',
-    steeringMode: ['center', 'left', 'right'].includes(s.steeringMode) ? s.steeringMode : 'center',
+    // Migrate the old center-seeking mode to boundary-aware steering.
+    steeringMode: ['left', 'right'].includes(s.steeringMode) ? s.steeringMode : 'adaptive',
     maxCurvature: number(s.maxCurvature, 5, 0, 20),
     steeringSpeed: number(s.steeringSpeed, 2, .8, 4),
     maxSteeringRate: number(s.maxSteeringRate, 6, 1, 30),
     turnEnabled: s.turnEnabled === true || s.turnEnabled === 'true',
-    maxTurnGain: number(s.maxTurnGain, 200 / 180, .8, 1.5),
+    lookAhead: number(s.lookAhead, 1.5, .5, 3),
+    wallMargin: number(s.wallMargin, .4, .1, 1),
+    minTurnGain: number(settings.minTurnGain ?? (s.maxTurnGain < 1 ? s.maxTurnGain : s.minTurnGain), .9, .5, 1),
+    maxTurnGain: number(s.maxTurnGain, 200 / 180, 1, 1.5),
     turnSpeed: number(s.turnSpeed, 180, 60, 360),
+    alignmentStrength: number(s.alignmentStrength, 1, 0, 1),
   };
 }
 
@@ -79,8 +86,8 @@ export function boundaryTarget(points) {
 export class RedirectionTracker {
   constructor(settings) { this.settings = sanitizeRedirectionSettings(settings); this.reset(); }
   setSettings(settings) { this.settings = sanitizeRedirectionSettings({ ...this.settings, ...settings }); }
-  reset() { this.previous = null; this.walkSpeed = 0; this.turnRate = 0; this.steeringRate = 0; this.turnGain = 1; this.bias = 1; }
-  sample(position, yaw, timeMs, { target = null, paused = false } = {}) {
+  reset() { this.previous = null; this.walkSpeed = 0; this.turnRate = 0; this.steeringRate = 0; this.turnGain = 1; this.bias = 1; this.guidance = null; }
+  sample(position, yaw, timeMs, { context = null, paused = false } = {}) {
     const neutral = () => ({ yawDelta: 0, steeringRate: 0, turnRate: this.turnRate, turnGain: 1 });
     if (![position.x, position.z, timeMs].every(Number.isFinite)) { this.reset(); return neutral(); }
     const previous = this.previous;
@@ -97,30 +104,38 @@ export class RedirectionTracker {
     this.walkSpeed += (speed - this.walkSpeed) * (1 - Math.exp(-dt / .12));
     this.turnRate += (angularSpeed - this.turnRate) * (1 - Math.exp(-dt / .04));
     const s = this.settings;
-    this.turnGain = !paused && s.turnEnabled ? 1 + (s.maxTurnGain - 1) *
-      ramp(Math.min(angularSpeed, this.turnRate), 30, s.turnSpeed) : 1;
+    const heading = speed > .15 ? Math.atan2(-dx, -dz) : yaw;
+    this.guidance = planGuidance(position, heading, Math.min(speed, this.walkSpeed), context, s, this.bias);
+    if (this.guidance.urgency > .05 && Math.abs(this.guidance.wallError) > .05)
+      this.bias = -Math.sign(this.guidance.wallError);
+    let turnYaw = 0;
+    if (!paused && s.turnEnabled && this.guidance.valid && angularSpeed > 30 + 1e-6 && this.turnRate > 30 && Math.abs(dyaw) > 1e-8) {
+      const goal = this.guidance.correction;
+      const limit = Math.sign(goal) === Math.sign(dyaw) ? s.maxTurnGain - 1 : 1 - s.minTurnGain;
+      const strength = Math.min(1, Math.abs(goal) / (30 * RAD));
+      const available = Math.abs(dyaw) * limit * ramp(Math.min(angularSpeed, this.turnRate), 30, s.turnSpeed) * strength;
+      turnYaw = Math.sign(goal) * Math.min(Math.abs(goal), available);
+    }
+    this.turnGain = Math.abs(dyaw) > 1e-8 ? 1 + turnYaw / dyaw : 1;
     let desired = 0;
     if (!paused && s.steeringEnabled && speed > .6) {
       let direction = s.steeringMode === 'left' ? -1 : 1;
-      if (s.steeringMode === 'center') {
+      if (s.steeringMode === 'adaptive') {
         direction = 0;
-        if (target && Math.hypot(target.x - position.x, target.z - position.z) > .25 && distance > 0) {
-          const heading = Math.atan2(-dx, -dz);
-          const targetHeading = Math.atan2(position.x - target.x, position.z - target.z);
-          const error = wrapYaw(targetHeading - heading);
-          // Keep a stable side when the target is almost directly behind us.
-          if (Math.abs(error) < Math.PI - .2 && Math.abs(error) > .05) this.bias = Math.sign(error);
-          direction = -this.bias * Math.min(1, Math.abs(error) / (Math.PI / 2));
-        }
+        if (this.guidance.valid) direction = Math.sign(this.guidance.wallError) * this.guidance.urgency *
+          Math.min(1, Math.abs(this.guidance.wallError) / (Math.PI / 2));
       }
       const curvature = s.maxCurvature * ramp(Math.min(speed, this.walkSpeed), .6, s.steeringSpeed);
       desired = direction * Math.min(s.maxSteeringRate, curvature * speed);
     }
+    // A changed course must not keep the previous wall's correction alive
+    // through the smoothing interval, particularly after a quick reversal.
+    if (s.steeringMode === 'adaptive' && (desired === 0 || Math.sign(desired) !== Math.sign(this.steeringRate))) this.steeringRate = 0;
     this.steeringRate += (desired - this.steeringRate) * (1 - Math.exp(-dt / .3));
     // No lingering rotation at rest, while looking at settings, or when off.
-    if (paused || !s.steeringEnabled || speed <= .6 || (s.steeringMode === 'center' && !target)) this.steeringRate = 0;
+    if (paused || !s.steeringEnabled || speed <= .6 || (s.steeringMode === 'adaptive' && !this.guidance.valid)) this.steeringRate = 0;
     this.steeringRate = Math.max(-s.maxSteeringRate, Math.min(s.maxSteeringRate, this.steeringRate));
-    return { yawDelta: this.steeringRate * RAD * dt + dyaw * (this.turnGain - 1),
+    return { yawDelta: this.steeringRate * RAD * dt + turnYaw,
       steeringRate: this.steeringRate, turnRate: this.turnRate, turnGain: this.turnGain };
   }
 }

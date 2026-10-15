@@ -11,7 +11,9 @@ const REDIRECTION_OPTIONS = {
   'space-steering-enabled': 'steeringEnabled', 'space-steering-mode': 'steeringMode',
   'space-curvature': 'maxCurvature', 'space-steering-speed': 'steeringSpeed',
   'space-steering-rate': 'maxSteeringRate', 'space-turn-enabled': 'turnEnabled',
-  'space-turn-gain': 'maxTurnGain', 'space-turn-speed': 'turnSpeed',
+  'space-wall-lookahead': 'lookAhead', 'space-wall-margin': 'wallMargin',
+  'space-turn-gain': 'maxTurnGain', 'space-turn-min-gain': 'minTurnGain',
+  'space-turn-speed': 'turnSpeed', 'space-alignment': 'alignmentStrength',
 };
 const MOTION_OPTIONS = {
   'space-arm-enabled': 'armEnabled', 'space-arm-gain': 'maxArmGain', 'space-arm-speed': 'armSpeed',
@@ -44,7 +46,9 @@ AFRAME.registerComponent('speed-dependent-gain', {
     this.direction = new THREE.Vector3();
     this.inverseYaw = new THREE.Quaternion();
     this.up = new THREE.Vector3(0, 1, 0);
-    this.target = new THREE.Vector3();
+    this.guidanceMatrix = new THREE.Matrix4();
+    this.guidancePoint = new THREE.Vector3();
+    this.guidanceBoundary = null;
     this.extraYaw = 0;
     this.travelEpoch = 0;
     this.hasPose = false;
@@ -122,11 +126,15 @@ AFRAME.registerComponent('speed-dependent-gain', {
     this.el.sceneEl.querySelectorAll('.space-gain-live').forEach(el => el.setAttribute('text', 'value', text));
     const s = this.redirection.settings;
     const paused = this.watchOpen();
+    const guide = this.redirection.guidance;
+    const wall = guide?.wallDistance == null ? 'No boundary' : 'Wall ahead ' + guide.wallDistance.toFixed(1) + ' m';
     const steering = !s.steeringEnabled ? 'OFF' : paused ? 'PAUSED - watch open' :
-      s.steeringMode === 'center' && !this.steeringTarget() ? 'Waiting for boundary tracking' :
-      this.redirection.walkSpeed.toFixed(2) + ' m/s | ' + this.redirection.steeringRate.toFixed(1) + ' deg/s';
+      s.steeringMode === 'adaptive' && !guide?.valid ? guide?.reason || 'Waiting for boundary tracking' :
+      wall + '\n' + this.redirection.steeringRate.toFixed(1) + ' deg/s | ' + (s.steeringMode === 'adaptive' ? 'Wall avoidance' : 'Manual curve');
     const turn = !s.turnEnabled ? 'OFF' : paused ? 'PAUSED - watch open' :
-      this.redirection.turnRate.toFixed(0) + ' deg/s -> ' + this.redirection.turnGain.toFixed(2) + 'x';
+      !guide?.valid ? guide?.reason || 'Waiting for boundary tracking' :
+      this.redirection.turnGain.toFixed(2) + 'x | ' + (guide.urgency > .05 ? 'Avoid wall' : 'Align room') +
+      '\nAxis error ' + (guide.alignmentError * 180 / Math.PI).toFixed(0) + ' deg';
     this.el.sceneEl.querySelectorAll('.space-steering-live').forEach(el => el.setAttribute('text', 'value', steering));
     this.el.sceneEl.querySelectorAll('.space-turn-live').forEach(el => el.setAttribute('text', 'value', turn));
     for (const [selector, label, enabled] of [['.space-steering-link', 'Walking steering', s.steeringEnabled], ['.space-turn-link', 'Turn gain', s.turnEnabled]]) {
@@ -158,13 +166,27 @@ AFRAME.registerComponent('speed-dependent-gain', {
     return [...this.el.sceneEl.querySelectorAll('.watch-menu-panel')].some(el => el.object3D.visible);
   },
 
-  steeringTarget: function () {
+  redirectionContext: function () {
     const roomEl = document.querySelector('#space-room');
     const room = roomEl && roomEl.components['expansive-space'];
-    if (!room || !room.steeringCenter || (this.session && !room.detected)) return null;
-    this.target.set(room.steeringCenter.x, 0, room.steeringCenter.z);
-    roomEl.object3D.localToWorld(this.target);
-    return this.target;
+    if (!room?.bounds || !room.virtualBounds || (this.session && !room.detected)) return null;
+    roomEl.object3D.updateWorldMatrix(true, false);
+    const matrix = roomEl.object3D.matrixWorld;
+    if (room.points !== this.guidancePoints || !this.guidanceMatrix.equals(matrix)) {
+      this.guidancePoints = room.points; this.guidanceMatrix.copy(matrix);
+      this.guidanceBoundary = room.points.map(point => {
+        this.guidancePoint.set(point.x, 0, point.z).applyMatrix4(matrix);
+        return { x: this.guidancePoint.x, z: this.guidancePoint.z };
+      });
+    }
+    const axis = bounds => {
+      this.guidancePoint.set(bounds.width >= bounds.depth ? -1 : 0, 0, bounds.width >= bounds.depth ? 0 : -1)
+        .transformDirection(matrix);
+      return Math.atan2(-this.guidancePoint.x, -this.guidancePoint.z);
+    };
+    const weight = bounds => Math.min(1, (Math.max(bounds.width, bounds.depth) / Math.min(bounds.width, bounds.depth) - 1) * 2);
+    return { boundary: this.guidanceBoundary, physicalAxisYaw: axis(room.bounds), virtualAxisYaw: axis(room.virtualBounds),
+      axisWeight: Math.min(weight(room.bounds), weight(room.virtualBounds)), correctionYaw: this.extraYaw };
   },
 
   resetTravel: function () {
@@ -197,7 +219,7 @@ AFRAME.registerComponent('speed-dependent-gain', {
       yaw: this.extraYaw, paused });
     this.lastMotion = motion;
     const redirect = this.redirection.sample(position, yaw, time,
-      { target: this.steeringTarget(), paused });
+      { context: this.redirection.settings.steeringEnabled || this.redirection.settings.turnEnabled ? this.redirectionContext() : null, paused });
     this.transform.apply(position, motion.extraX, motion.extraZ, redirect.yawDelta);
     this.transform.x += motion.worldX; this.transform.z += motion.worldZ;
     this.step.set(this.transform.x, 0, this.transform.z).sub(this.extraTranslation);
