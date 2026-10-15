@@ -90,7 +90,7 @@ document.addEventListener('keydown', function (evt) {
 });
 
 addLabRows(function () {
-  return scene.is('vr-mode') ? [] : [{ kind: 'toggle', id: 'range-guns-up', label: 'Guns up (Q)', value: gunsUp }];
+  return scene.is('vr-mode') ? [] : [{ kind: 'toggle', id: 'range-guns-up', label: 'Hands out (Q)', value: gunsUp }];
 });
 
 document.addEventListener('menu-commit', function (evt) {
