@@ -83,7 +83,7 @@ const base = process.env.VR_TEST_URL || 'http://127.0.0.1:8088';
         const a=outline[i],b=outline[(i+1)%outline.length],steps=Math.ceil(Math.hypot(b.x-a.x,b.y-a.y)/.07);
         for(let n=0;n<steps;n++){const jitter=.008*Math.sin(n+lap*.7);position={x:a.x+(b.x-a.x)*n/steps+jitter,y:1.65,z:a.y+(b.y-a.y)*n/steps+jitter};lab.tick();}
       }position={x:.15,y:1.65,z:.15};lab.tick();};
-      walkLaps(3);const laps=lab.walk.laps;
+      walkLaps(3);lab.redraw();
       const liveFilled=lab.walk.closed&&lab.fill.visible&&lab.fill.geometry.attributes.position.count>0;
       const inside=(p,points)=>{
         let hit=false;
@@ -95,6 +95,9 @@ const base = process.env.VR_TEST_URL || 'http://127.0.0.1:8088';
         return hit;
       };
       let immediateGrowth=true,retainsVisibleArea=true;
+      // Reach the west edge with sampled physical motion, not a synthetic
+      // 85 cm tracking jump (the painter correctly rejects those).
+      for(let y=.15;y<=1;y+=.05){position={x:.1,y:1.65,z:y};lab.tick();}
       for(const p of [{x:.1,y:1},{x:-.1,y:1},{x:-.35,y:1},{x:-.6,y:1}]) {
         const old=lab.walk.points.map(p=>({...p}));position={x:p.x,y:1.65,z:p.y};lab.tick();
         immediateGrowth&&=inside(p,lab.walk.points)&&lab.fill.visible;
@@ -104,7 +107,7 @@ const base = process.env.VR_TEST_URL || 'http://127.0.0.1:8088';
       const expanded=lab.walk.points.map(p=>({...p}));position={x:4.4,y:1.65,z:.2};lab.tick();
       const retainedAfterLeaving=expanded.every(p=>inside(p,lab.walk.points));
       const currentPositionMarker=lab.walkerMarker.visible&&Math.abs(lab.walkerMarker.position.x-position.x)<1e-6&&Math.abs(lab.walkerMarker.position.z-position.z)<1e-6;
-      watch.active=true;const before=JSON.stringify(lab.walk.lap);position={x:2,y:1.65,z:1.5};lab.tick();const paused=JSON.stringify(lab.walk.lap)===before;
+      watch.active=true;const before=lab.walk.revision;position={x:2,y:1.65,z:1.5};lab.tick();const paused=lab.walk.revision===before;
       choose('calibration-save');const extraConfirmation=lab.phase==='review'&&lab.pending&&lab.savedPoints.length===0&&lab.preview.visible&&menu.focusedRow().item.id==='calibration-question';
       const finalCorners=lab.pending.points.length,reviewPoints=JSON.stringify(lab.pending.points);
       const retainedOnSave=expanded.every(p=>inside(p,lab.pending.points));
@@ -138,11 +141,11 @@ const base = process.env.VR_TEST_URL || 'http://127.0.0.1:8088';
       const resetStops=!lab.active&&!lab.pending&&lab.savedPoints.length===0&&!!lab.passthrough;
       lab.endSession();const exitRestores=!lab.passthrough&&scene.renderer.getClearAlpha()===alpha;
       scene.renderer.xr.getSession=originalSession;scene.renderer.xr.getFrame=originalFrame;scene.is=originalIs;
-      return {blockedWithoutAR,blockedOpaque,passthrough,physicalOnly,automaticPage,laps,liveFilled,immediateGrowth,retainsVisibleArea,retainedAfterLeaving,currentPositionMarker,retainedOnSave,acceptsOutsideReported,reviewFilled,savedFilled,paused,extraConfirmation:!!extraConfirmation,questionDoesNotSave,finalCorners,canReturnAndSave,saved,green,ground,restored,persisted,cancelled,savesWithoutStorage,hiddenOnLoss,recovered,resetStops,exitRestores,
-        removedControllerDrawing:!menu.page.items.some(item=>item.id==='page-floor')&&typeof lab.floorHit==='undefined'};
+      return {blockedWithoutAR,blockedOpaque,passthrough,physicalOnly,automaticPage,liveFilled,immediateGrowth,retainsVisibleArea,retainedAfterLeaving,currentPositionMarker,retainedOnSave,acceptsOutsideReported,reviewFilled,savedFilled,paused,extraConfirmation:!!extraConfirmation,questionDoesNotSave,finalCorners,canReturnAndSave,saved,green,ground,restored,persisted,cancelled,savesWithoutStorage,hiddenOnLoss,recovered,resetStops,exitRestores,
+        sharedPaintInputs:lab.inputItem.value==='both'&&lab.trace.isLineSegments};
     });
-    for(const [key,value] of Object.entries(calibrationCheck))if(!['laps','finalCorners'].includes(key))assert.equal(value,true,key);
-    assert.equal(calibrationCheck.laps,1);assert.ok(calibrationCheck.finalCorners<=24);console.log(JSON.stringify({calibrationCheck}));
+    for(const [key,value] of Object.entries(calibrationCheck))if(key!=='finalCorners')assert.equal(value,true,key);
+    assert.ok(calibrationCheck.finalCorners<=32);console.log(JSON.stringify({calibrationCheck}));
     const entryCheck=await page.evaluate(async()=>{
       const scene=document.querySelector('a-scene'),calls=[];
       const request=navigator.xr.requestSession,support=AFRAME.utils.device.checkARSupport,connected=scene.checkHeadsetConnected,enabled=scene.renderer.xr.enabled;
@@ -161,7 +164,7 @@ const base = process.env.VR_TEST_URL || 'http://127.0.0.1:8088';
     });
     assert.equal((await download).suggestedFilename(),'boundary-lab-report.json');
     const report=await page.evaluate(()=>JSON.parse(localStorage.getItem('boundary-lab-report')));
-    assert.equal(report.schema,3);assert.ok(report.manualFloor);assert.equal(report.room,undefined);
+    assert.equal(report.schema,4);assert.ok(report.manualFloor);assert.equal(report.room,undefined);
     assert.deepEqual(errors, []);
     // A simple pair of rectangular rooms checks actual shared-wall surfaces.
     await page.goto(base + '/games/impossible-spaces/');

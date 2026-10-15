@@ -8,10 +8,14 @@ Open `/games/impossible-spaces/` over HTTPS (localhost works for desktop).
 ## Headset setup
 
 1. Enter VR, then **Watch → Calibrate area → Start new calibration**.
-   Passthrough reveals the room. Walk its usable perimeter once, then revisit
-   missed edges or corners. The purple filled area grows outward only.
+   Passthrough reveals the room. Walk its usable perimeter, or point at the
+   floor and hold either controller trigger to paint. Closing an outline fills
+   it; controller painting can patch missing corners after walking. Both inputs
+   add to the same purple area without inward averaging. The watch offers
+   walking, controller painting or both, and 10/20/30 cm controller brushes.
 2. **Save boundary** shows a final yellow preview. **Yes, save boundary**
-   confirms it and draws a green floor ribbon. Step inside the accepted area.
+   confirms it and draws a green floor ribbon. **Keep editing** returns to
+   painting. Step inside the accepted area.
 3. Choose **Existing generation** or **Rooms first** in the watch. Adjust
    settings, then select **Generate!**. Settings alone do not rebuild the level.
 4. Walk through colored rooms and doorways. Enter an elevator fully before
@@ -27,7 +31,7 @@ The default requires a trace, without silently falling back to a rectangle.
 
 Passthrough is negotiated at the initial XR entry gesture. Walking calibration
 requires an AR-capable session with a non-opaque environment blend mode.
-It uses the same shared component as Boundary Lab, without room-data permission
+It uses Boundary Lab's additive 2.5 cm floor grid and shared component, without room-data permission
 or Quest Room Setup. Calibration hides virtual rooms and pauses gameplay.
 Cancel restores the previous accepted trace and level. Confirm replaces the
 trace and clears the previous level; generate explicitly afterward.
@@ -103,6 +107,9 @@ Optional browser runners against a served production build:
   reported rectangle, confirmation, full room count, fixed rig/world transform,
   multi-destination panel buttons, tracking recovery and reset.
 - `node tests/boundary-lab.browser.cjs`: shared calibration regression checks.
+- `node tests/floor-paint.browser.cjs`: walking plus controller corner repair,
+  both trigger sources, brush/input selectors, watch pauses and invalid rays,
+  tested in Boundary Lab and Impossible Spaces.
 
 Set `VR_PLAYWRIGHT_PATH` to an installed Playwright package and `VR_TEST_URL`
 to the served origin (default `http://127.0.0.1:8088`). No Playwright dependency
