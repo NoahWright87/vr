@@ -5,10 +5,11 @@ is Superhot-like: a limited number of low-poly figures and simple
 environments. So these should already be low-poly bodies with zones,
 not abstract cubes.
 
-Built so far: `combat-target` (see `targeting.spec.md`) and the
-steel silhouette, with rail/pop-up/walker movers, tip and shatter
-deaths, and a spawner (see `dummies.spec.md`). Everything below that is
-not marked built is still to do.
+Built so far: `combat-target` (see `targeting.spec.md`); the steel
+silhouette, with rail, pop-up, peek and walker movers and tip or
+shatter deaths; a spawner; and a whole target gallery (see
+`dummies.spec.md`). Everything below that is not marked built is still
+to do.
 
 ## Contract: `combat-target` (built)
 

@@ -186,3 +186,8 @@ test('a forward whip above the eyes is not a punch', () => {
   const { events } = run(frames);
   assert.equal(events.filter((e) => e.phase === 'commit').length, 0, JSON.stringify(events));
 });
+
+test('winding up a throw (hand rising by the ear) is not an uppercut', () => {
+  const { events } = run(path(GUARD_R, { x: 0.22, y: 1.7, z: 0.12 }, 160, 200));
+  assert.equal(events.filter((e) => e.phase === 'commit').length, 0, JSON.stringify(events));
+});

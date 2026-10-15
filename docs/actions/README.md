@@ -101,7 +101,7 @@ to tune it, and tests.
 | 1 | Tuning & debug | `debug-tuning.todo.md` | Before there's much to tune, so every later piece gets rows, readouts and overlays for free. **Built** (`debug-tuning.spec.md`). |
 | 2 | Targets & dummies | `dummies.todo.md` | Silhouettes first. Something to shoot at. **Silhouettes built** (`dummies.spec.md`). |
 | 3 | Targeting | `targeting.todo.md` | One resolver for guns, punches, throws and parries. **Built** (`targeting.spec.md`). |
-| 4 | Autofire | `autofire.todo.md` | Simplest full sense→resolve→sell loop, and the most immediately fun. **Built** (`autofire.spec.md`). |
+| 4 | Guns | `guns.todo.md` | Simplest full sense→resolve→sell loop, and the most immediately fun. **Built**: a table of pistols, SMGs and shotguns; trigger or autofire; always-on assist (`guns.spec.md`). |
 | 5 | Comfort budget | `comfort-budget.todo.md` | Needed before anything moves the hand or view. **Built** (`comfort-budget.spec.md`). |
 | 6 | Virtual hands | `virtual-hands.todo.md` | The tool for selling melee and blocks. **Built** (`virtual-hands.spec.md`). |
 | 7 | Intent | `intent.todo.md` | Strike and guard classifiers, plus recording real motion. **Strikes built** (`melee.spec.md`). |
@@ -116,7 +116,8 @@ way `primitives/menus/` is the Storybook for menus: stations laid out
 against the real room with `play-space-station`. Planned stations:
 
 - **Motion lab**: live motion-sense readout. Built (left).
-- **Range**: silhouettes for autofire. Built (ahead).
+- **Range**: a gun table and a target gallery (near, pop-ups, sliders,
+  peekers behind cover, far). Built (ahead).
 - **Dummy**: peg-arm dummies for melee. Built (right).
 - **Sparring**: an attacker dummy for defense. Built (behind).
 - **Lane**: throwing. Not a station: you throw at the Range's

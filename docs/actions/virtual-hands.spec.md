@@ -37,7 +37,7 @@ vh.offsetLength()                     // metres from the tracked hand
 - **The glove:** low-poly boxes (palm, finger block, thumb, cuff).
   Poses only move the finger block: `open` (the default), `fist` and
   `gun`. **Pose is output:** the game decides what the hand shows.
-  - autofire requests `gun` (priority 1) while a gun is held;
+  - a held gun requests `gun` (priority 1);
   - melee requests `fist` (priority 2) while a strike is in flight.
 - **The ghost:** the same glove, translucent blue and without depth
   write, at the tracked hand, sharing the pose. Tuning ▸ Hands ▸
@@ -51,7 +51,9 @@ vh.offsetLength()                     // metres from the tracked hand
 
 ## Who uses it
 
-- `autofire-gun` sits on a virtual hand (`hand: #right-virtual`) and
-  sends haptics to the virtual hand's tracked controller.
+- A held `gun` (`common/guns.js`) sits at its virtual hand, scaled
+  like it, asks for the `gun` pose, and sends haptics to the hand's
+  tracked controller. `gun-hands` sets `vh.holding` while a hand holds
+  one.
 - `melee-hands` pulls fists to targets and sweeps the virtual fist for
   contact.

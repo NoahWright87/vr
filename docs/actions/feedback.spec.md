@@ -22,9 +22,11 @@ clock.setTimeScale(s, rampMs)  // eased ramp (default Ramp 250 ms)
   time by hand), `Hit stop` and `Ramp`.
 - Pure core (`createClock`, `advanceClock`, `setTimeScale`, `hitStop`,
   `scaledDt`) is tested by `tests/action-clock.test.js`.
-- **Users so far:** `steel-silhouette` (motion, spring, hit-stop on
-  non-gun hits), `action-effects` (all particles and tracers run on
-  world time), and `autofire-gun` (player time).
+- **Users so far:**
+  - `steel-silhouette`: motion, spring, and hit-stop on non-gun hits;
+  - `action-effects`: all particles and tracers run on world time;
+  - `thrown-projectiles` and bullets: world time;
+  - held guns: player time.
 
 ## Effects: `common/action-effects.js`
 
@@ -54,7 +56,8 @@ created per event.
   list of `[intensity, ms]` pulses, where intensity 0 is a gap. Never
   required: hand tracking has none.
 - `sound(name, position?)` plays a Web Audio synthesized sound: `shot`,
-  `thump`, `clang`, `shatter`, `block`, `parry` and `whoosh`. There are
+  `boom` (shotgun), `click` (dry fire), `thump`, `clang`, `shatter`,
+  `block`, `parry` and `whoosh`. There are
   no assets. A position goes through an equal-power `PannerNode`, and a
   scene system keeps the listener on the camera. The voice cap is 24,
   and the audio context starts on the first pointer, key or touch, or

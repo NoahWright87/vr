@@ -30,8 +30,16 @@ post, facing its local +Z.
   - `rail`: slides along its own right, ±`railRange`, at `speed`;
   - `popup`: up for `upMs`, down for `downMs`, and not targetable while
     down;
+  - `peek`: hidden behind cover for `downMs`, then slides `peekDistance`
+    out to its `peekSide` and leans that way over 250 ms, holds for
+    `upMs`, and ducks back. It's targetable only while mostly out;
   - `walker`: turns to face the camera and walks at `speed` to within
     `stopDistance`, returning to its spawn point on revival.
+- **Cheap to have many:** every silhouette shares one merged body
+  geometry (legs, torso and neck) and one head disc, so each is 3
+  meshes (post, body, head) with its own two materials (for the hit
+  flash and the shooter's glowing head). Zones are only recomputed
+  when the body actually moved.
 - All of it runs on the action clock's world time.
 
 ## `target-spawner`
@@ -47,11 +55,32 @@ attribute change rebuilds them. Ids are `<spawner-id>-<n>`.
 In the Action Lab the spawner is driven by Tuning ▸ Range: `Targets`,
 `Distance`, `Arc`, `Stagger`, `Move`, `Speed`, `Death` and `Health`.
 
+## `target-gallery`
+
+```html
+<a-entity target-gallery="crowd: 1; walkers: 0; death: tip; health: 3; shootMs: 0; speed: 0.8"></a-entity>
+```
+
+A whole shooting gallery across its local −Z, rebuilt on any change:
+
+| Group | Count at crowd 1 | Where |
+|---|---|---|
+| near, still | 3 | 3.5 m |
+| pop-ups | 4 | 6 m, 90° arc |
+| sliders on rails | 3 | 8–9 m, different speeds |
+| peekers | 2 per cover wall, 2 walls | ~10 m; each wall is a 0.9 × 2 m slab with one peeker each side |
+| far, still | 5 | 15–20 m, staggered |
+| walkers | optional | 12 m |
+
+That's 19 targets at crowd 1, and roughly double at crowd 2. `crowd: 0`
+builds nothing. In the Action Lab: Tuning ▸ Range ▸ `Layout` (Gallery,
+the default, or Arc for the old single row), `Crowd` and `Walkers`.
+
 ## Cost
 
-Each silhouette is 5 meshes, so 24 of them is about 120 draw calls.
-That's fine for the range, but the swarm needs instancing
-(`dummies.todo.md`).
+Each silhouette is 3 meshes with shared geometry, so a gallery at
+crowd 2 (about 40) is about 120 draw calls. A real swarm still wants
+instancing (`dummies.todo.md`).
 
 ## `peg-dummy` and `attacker-dummy`
 

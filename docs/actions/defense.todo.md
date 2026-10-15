@@ -25,7 +25,7 @@ player-hurt feedback, the attacker dummy and shooters all exist. See
   Audio is already positional.
 - **Disarm.** A parry against an armed attacker drops its gun as
   something you can take. That's the John Wick move, and it depends on
-  how guns get into hands (`autofire.todo.md`).
+  how guns get into hands (`guns.todo.md`).
 - **Swings, not just thrusts.** The attacker only thrusts in a line. A
   swing is an arc. The strike volume can stay a capsule (shoulder→tip)
   whose tip follows the arc; `resolveContact` already handles any tip

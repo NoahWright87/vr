@@ -23,8 +23,8 @@
          station per primitive, stood against your real room by
          play-space-station:
 
-           ahead   the range — steel silhouettes past the front of your
-                   room; hold a hand out at them and its gun fires
+           ahead   the range — a gallery of steel silhouettes past the
+                   front of your room, and a table of guns that restock
            right   the dummies — wooden peg dummies to punch
            behind  sparring — a dummy that attacks you; block, parry,
                    counter, or step aside
@@ -33,14 +33,16 @@
          The plan for the rest (throwing lane, swarm) is in
          docs/actions/README.md.
 
-         Off a headset: Q raises both hands (guns up), T throws a knife
-         at whatever you look at, left click throws a jab, right click
-         an uppercut (hold to charge) — all by moving
+         Off a headset: G / H grab or drop a gun with the right / left
+         hand (walk up to the table first), Space pulls the triggers,
+         T throws (a held gun, or a knife), Q holds both hands out (for
+         autofire), left click throws a jab, right click an uppercut —
+         all by moving
          the simulated hands, so motion-sense and everything after it
          run the real path, not a shortcut. Backtick opens the visor.
     ============================================================== -->
     <div id="overlay">
-      <span>Action Lab — VR: hold a hand out at the targets ahead. Desktop: WASD/mouse, Q guns up, T throw, left click jab, right click uppercut, ` visor. <a href="../../index.html">All prototypes</a></span>
+      <span>Action Lab — VR: grab a gun off the table ahead (grip), trigger to fire, fling it to throw. Desktop: WASD/mouse, G/H grab gun (R/L), Space fire, T throw, Q hands up, click jab, right click uppercut, ` visor. <a href="../../index.html">All prototypes</a></span>
     </div>
 
     <a-scene visor-menu="page: visor" play-space-outline="showDefault: true">
@@ -90,11 +92,10 @@
       <a-entity id="left-virtual" virtual-hand="side: left; rig: #rig; tracked: #left-hand"></a-entity>
       <a-entity id="right-virtual" virtual-hand="side: right; rig: #rig; tracked: #right-hand"></a-entity>
 
-      <!-- One gun per hand, on the virtual hands. Not children of them:
-           each sits at its hand and points along the shoulder-to-hand
-           line, so the wrist never matters (common/autofire.js). -->
-      <a-entity autofire-gun="side: left; rig: #rig; hand: #left-virtual"></a-entity>
-      <a-entity autofire-gun="side: right; rig: #rig; hand: #right-virtual"></a-entity>
+      <!-- Guns: picked up from the table at the range, held by the
+           virtual hands (common/guns.js). Grip to grab, trigger to fire,
+           let go fast to throw; aim assist always on. -->
+      <a-entity gun-hands="rig: #rig; left: #left-virtual; right: #right-virtual; camera: #lab-camera"></a-entity>
 
       <!-- Punches: strikes from intent, contact by the virtual fists
            (common/melee.js). -->
@@ -110,7 +111,11 @@
            middle). Tuning > Range rebuilds them.
       ============================================================ -->
       <a-entity id="station-range" play-space-station="side: front">
-        <a-entity id="range-targets" target-spawner></a-entity>
+        <!-- The table of guns, at the front edge of the room, between
+             you and the range. Each slot restocks 3 s after it empties. -->
+        <a-entity id="gun-table" gun-rack="slots: pistol, pistol, smg, smg, shotgun; spacing: 0.2" position="0 0 0.3"></a-entity>
+        <a-entity id="range-gallery" target-gallery></a-entity>
+        <a-entity id="range-targets" target-spawner="count: 0"></a-entity>
       </a-entity>
 
       <!-- ============================================================
@@ -119,10 +124,12 @@
            so punch down the middle between them) and a plain one in the
            middle. The guns never shoot them (they're team 'dummy').
       ============================================================ -->
+      <!-- Shifted toward the back of the room so the front one clears
+           the gun table in a small room. -->
       <a-entity id="station-dummies" play-space-station="side: right">
-        <a-entity id="dummy-1" peg-dummy position="-0.65 0 0.25" rotation="0 20 0"></a-entity>
-        <a-entity id="dummy-2" peg-dummy="pegs: false" position="0 0 0.35"></a-entity>
-        <a-entity id="dummy-3" peg-dummy position="0.65 0 0.25" rotation="0 -20 0"></a-entity>
+        <a-entity id="dummy-1" peg-dummy position="-0.9 0 0.25" rotation="0 20 0"></a-entity>
+        <a-entity id="dummy-2" peg-dummy="pegs: false" position="-0.25 0 0.35"></a-entity>
+        <a-entity id="dummy-3" peg-dummy position="0.4 0 0.25" rotation="0 -20 0"></a-entity>
       </a-entity>
 
       <!-- ============================================================

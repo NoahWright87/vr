@@ -46,13 +46,56 @@ function disc(parent, r, d, x, y, z, color) {
   return el;
 }
 
+// ---------- shared silhouette geometry ----------
+// Every silhouette shares one merged body geometry (legs, torso, neck)
+// and one head disc, so a silhouette is three meshes (post, body,
+// head) with no geometry of its own — a gallery of forty is cheap.
+
+var shared = null;
+function sharedGeometry() {
+  if (shared) return shared;
+  var parts = [
+    new THREE.BoxGeometry(0.34, 0.72, 0.03).translate(0, 0.38, 0),
+    new THREE.BoxGeometry(0.48, 0.6, 0.03).translate(0, 1.03, 0),
+    new THREE.BoxGeometry(0.12, 0.1, 0.03).translate(0, 1.37, 0),
+  ].map(function (g) { return g.toNonIndexed(); });
+  var count = parts.reduce(function (n, g) { return n + g.attributes.position.count; }, 0);
+  var pos = new Float32Array(count * 3);
+  var nor = new Float32Array(count * 3);
+  var at = 0;
+  parts.forEach(function (g) {
+    pos.set(g.attributes.position.array, at * 3);
+    nor.set(g.attributes.normal.array, at * 3);
+    at += g.attributes.position.count;
+  });
+  var body = new THREE.BufferGeometry();
+  body.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  body.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+  shared = {
+    body: body,
+    head: new THREE.CylinderGeometry(0.13, 0.13, 0.03, 12).rotateX(Math.PI / 2).translate(0, 1.53, 0),
+    post: new THREE.BoxGeometry(0.06, 0.06, 0.3).translate(0, 0.03, 0),
+    postMaterial: new THREE.MeshLambertMaterial({ color: '#3c414b', flatShading: true }),
+  };
+  return shared;
+}
+
+function meshEntity(parent, geometry, material) {
+  var el = document.createElement('a-entity');
+  el.setObject3D('mesh', new THREE.Mesh(geometry, material));
+  parent.appendChild(el);
+  return el;
+}
+
 AFRAME.registerComponent('steel-silhouette', {
   schema: {
     color: { default: STEEL },
     health: { default: 3 },
     death: { default: 'tip', oneOf: ['tip', 'shatter'] },
     resetMs: { default: 2500 },
-    mover: { default: 'none', oneOf: ['none', 'rail', 'popup', 'walker'] },
+    mover: { default: 'none', oneOf: ['none', 'rail', 'popup', 'walker', 'peek'] },
+    peekSide: { default: 1 }, // peek: which way it leans out from behind cover (+1 its right, -1 its left)
+    peekDistance: { default: 0.6 }, // peek: how far out it slides
     railRange: { default: 1.2 }, // m either side
     speed: { default: 0.8 }, // m/s on a rail or walking
     upMs: { default: 2200 }, // popup: time up
@@ -77,16 +120,17 @@ AFRAME.registerComponent('steel-silhouette', {
     this.shootTimer = Math.random() * (this.data.shootMs || 0);
 
     // A short post the silhouette stands on; the body pivots at its foot.
-    box(el, 0.06, 0.06, 0.3, 0, 0.03, 0, '#3c414b');
+    var geo = sharedGeometry();
     this.body = document.createElement('a-entity');
     el.appendChild(this.body);
-    var c = this.data.color;
-    this.parts = [
-      box(this.body, 0.34, 0.72, 0.03, 0, 0.38, 0, c), // legs
-      box(this.body, 0.48, 0.6, 0.03, 0, 1.03, 0, c), // torso
-      box(this.body, 0.12, 0.1, 0.03, 0, 1.37, 0, c), // neck
-      disc(this.body, 0.13, 0.03, 0, 1.53, 0, c), // head
-    ];
+    meshEntity(this.body, geo.post, geo.postMaterial);
+    this.bodyMaterial = new THREE.MeshLambertMaterial({ color: this.data.color, flatShading: true });
+    this.headMaterial = new THREE.MeshLambertMaterial({ color: this.data.color, flatShading: true });
+    meshEntity(this.body, geo.body, this.bodyMaterial);
+    meshEntity(this.body, geo.head, this.headMaterial);
+    this.lean = 0; // peek: 0 hidden behind cover .. 1 leaned out
+    this.peekMs = Math.random() * 1500;
+    this.zoneKey = '';
 
     el.setAttribute('combat-target', { health: this.data.health, aimZone: 'torso' });
     this.target = el.components['combat-target'];
@@ -106,19 +150,29 @@ AFRAME.registerComponent('steel-silhouette', {
     this.el.removeEventListener('action-hit', this.onHit);
   },
 
-  // Zones follow the body's tilt, so a tipped silhouette's hitbox lies
-  // down with it.
+  // Zones follow the body's tilt, lean and slide, so a tipped
+  // silhouette's hitbox lies down with it and a peeker's comes out from
+  // behind cover with it. Only recomputed when the body has moved.
   applyZones: function () {
-    var c = Math.cos(this.angle), s = Math.sin(this.angle);
-    var rot = function (p) { return { x: p.x, y: p.y * c - p.z * s, z: p.y * s + p.z * c }; };
+    var b = this.body.object3D;
+    var key = b.position.x.toFixed(4) + b.rotation.x.toFixed(4) + b.rotation.z.toFixed(4);
+    if (key === this.zoneKey) return;
+    this.zoneKey = key;
+    b.updateMatrix();
+    var m = b.matrix;
+    var v = this.tmp;
+    var xf = function (p) { v.set(p.x, p.y, p.z).applyMatrix4(m); return { x: v.x, y: v.y, z: v.z }; };
     this.target.setZones(this.zones.map(function (z) {
-      return { name: z.name, type: z.type, a: rot(z.a), b: rot(z.b || z.a), r: z.r, damage: z.damage };
+      return { name: z.name, type: z.type, a: xf(z.a), b: xf(z.b || z.a), r: z.r, damage: z.damage };
     }));
   },
 
   setColor: function (color) {
-    for (var i = 0; i < this.parts.length; i++) this.parts[i].setAttribute('material', 'color', color);
+    this.bodyMaterial.color.set(color);
+    this.headMaterial.color.set(color);
   },
+
+  setHeadColor: function (color) { this.headMaterial.color.set(color); },
 
   onHit: function (evt) {
     var hit = evt.detail;
@@ -199,6 +253,10 @@ AFRAME.registerComponent('steel-silhouette', {
     this.angle += this.angleVel * dt;
     if (this.angle < -1.5) { this.angle = -1.5; this.angleVel = Math.abs(this.angleVel) * 0.25; }
     this.body.object3D.rotation.x = this.angle;
+    // Peeking: slide out from behind cover and lean that way.
+    var side = this.data.peekSide >= 0 ? 1 : -1;
+    this.body.object3D.position.x = side * this.data.peekDistance * this.lean;
+    this.body.object3D.rotation.z = -side * 0.3 * this.lean;
     var s = this.body.object3D.scale.x;
     if (s < 1) this.body.object3D.scale.setScalar(Math.min(1, s + dt * 5));
     this.applyZones();
@@ -209,14 +267,14 @@ AFRAME.registerComponent('steel-silhouette', {
   updateShooting: function (dtMs) {
     var every = this.data.shootMs;
     if (!every || this.state !== 'up' || !this.target.alive || this.target.available === false || this.angle < -0.4) {
-      if (this.glowing) { this.glowing = false; this.parts[3].setAttribute('material', 'color', this.data.color); }
+      if (this.glowing) { this.glowing = false; this.setHeadColor(this.data.color); }
       return;
     }
     this.shootTimer += dtMs;
     var glow = this.shootTimer > every - 500;
     if (glow !== this.glowing && this.flashMs <= 0) {
       this.glowing = glow;
-      this.parts[3].setAttribute('material', 'color', glow ? '#ff3b2f' : this.data.color);
+      this.setHeadColor(glow ? '#ff3b2f' : this.data.color);
     }
     if (this.shootTimer < every) return;
     this.shootTimer = Math.random() * every * 0.3;
@@ -249,6 +307,21 @@ AFRAME.registerComponent('steel-silhouette', {
       var up = t < data.upMs;
       this.restAngle = up ? 0 : -1.48;
       this.target.available = up && this.angle > -0.6;
+    } else if (data.mover === 'peek') {
+      // Hidden behind cover for downMs, out over 250 ms, exposed for
+      // upMs, back over 250 ms. Only targetable while mostly out (and
+      // it ducks back in when it's knocked down).
+      var cycleMs = data.downMs + 250 + data.upMs + 250;
+      this.peekMs = (this.peekMs + dt * 1000) % cycleMs;
+      var m = this.peekMs;
+      var want;
+      if (m < data.downMs) want = 0;
+      else if (m < data.downMs + 250) want = (m - data.downMs) / 250;
+      else if (m < data.downMs + 250 + data.upMs) want = 1;
+      else want = 1 - (m - data.downMs - 250 - data.upMs) / 250;
+      if (this.state === 'down') want = 0;
+      this.lean = want * want * (3 - 2 * want);
+      this.target.available = this.lean > 0.6;
     } else if (data.mover === 'walker' && this.state !== 'down') {
       var cam = this.el.sceneEl.camera;
       if (!cam) return;
@@ -307,6 +380,97 @@ AFRAME.registerComponent('target-spawner', {
 
   clear: function () {
     var old = this.el.querySelectorAll('.spawned-target');
+    for (var i = 0; i < old.length; i++) old[i].parentNode.removeChild(old[i]);
+  },
+
+  remove: function () { this.clear(); },
+});
+
+// ============================================================
+// target-gallery: a whole shooting gallery of silhouettes, near to far.
+//
+// Groups across its local -Z (away from the room), each a different
+// kind of problem:
+//
+//   near     still, 3.5 m — point-blank
+//   poppers  popping up and down, 6 m
+//   sliders  sliding back and forth on rails, 8-9 m
+//   peekers  hidden behind cover walls, leaning out to show themselves, 10 m
+//   far      still, 15-20 m
+//   walkers  walking at you (none unless asked for)
+//
+// `crowd` multiplies every group's count. Any attribute change rebuilds.
+// ============================================================
+AFRAME.registerComponent('target-gallery', {
+  schema: {
+    crowd: { default: 1 },
+    walkers: { default: 0 },
+    death: { default: 'tip' },
+    health: { default: 3 },
+    shootMs: { default: 0 },
+    speed: { default: 0.8 },
+  },
+
+  update: function () {
+    this.clear();
+    var d = this.data;
+    if (d.crowd <= 0) return; // off
+    var n = function (base) { return Math.max(0, Math.round(base * d.crowd)); };
+    var self = this;
+    var count = 0;
+    var add = function (x, z, attrs) {
+      var el = document.createElement('a-entity');
+      el.classList.add('gallery-item');
+      el.id = (self.el.id || 'gallery') + '-' + (++count);
+      el.setAttribute('position', { x: x, y: 0, z: z });
+      el.setAttribute('rotation', { x: 0, y: Math.atan2(-x, -z) * 180 / Math.PI, z: 0 });
+      el.setAttribute('steel-silhouette', Object.assign({ death: d.death, health: d.health, resetMs: 2500, shootMs: d.shootMs, speed: d.speed }, attrs));
+      self.el.appendChild(el);
+      return el;
+    };
+    var arc = function (num, dist, spreadDeg, attrs, jitter) {
+      for (var i = 0; i < num; i++) {
+        var f = num === 1 ? 0.5 : i / (num - 1);
+        var a = (f - 0.5) * spreadDeg * Math.PI / 180;
+        var r = dist + (jitter ? (i % 3) * jitter : 0);
+        add(Math.sin(a) * r, -Math.cos(a) * r, attrs);
+      }
+    };
+    arc(n(3), 3.5, 60, { mover: 'none' });
+    arc(n(4), 6, 90, { mover: 'popup', upMs: 1800, downMs: 1600 });
+    var sliders = n(3);
+    for (var s = 0; s < sliders; s++) {
+      var z = -(8 + (s % 2) * 1.2);
+      add((s - (sliders - 1) / 2) * 1.6, z, { mover: 'rail', railRange: 1.4, speed: 0.6 + (s % 3) * 0.35 });
+    }
+    // Peekers: one cover wall per pair, a peeker each side of it.
+    var walls = Math.max(1, Math.round(2 * d.crowd));
+    for (var w = 0; w < walls; w++) {
+      var wx = (w - (walls - 1) / 2) * 3.2;
+      var wz = -10 - (w % 2) * 1.5;
+      var wall = document.createElement('a-entity');
+      wall.classList.add('gallery-item');
+      wall.setAttribute('geometry', { primitive: 'box', width: 0.9, height: 2.0, depth: 0.25 });
+      wall.setAttribute('material', { color: '#2f3645', flatShading: true });
+      wall.setAttribute('position', { x: wx, y: 1.0, z: wz });
+      wall.setAttribute('rotation', { x: 0, y: Math.atan2(-wx, -wz) * 180 / Math.PI, z: 0 });
+      this.el.appendChild(wall);
+      // Behind the wall (further from you), facing you, leaning out
+      // either side.
+      var yaw = Math.atan2(-wx, -wz);
+      var back = 0.35;
+      [-1, 1].forEach(function (side) {
+        var p = add(wx - Math.sin(yaw) * back, wz - Math.cos(yaw) * back,
+          { mover: 'peek', peekSide: side, peekDistance: 0.62, upMs: 1300, downMs: 1600 + Math.random() * 1600 });
+        p.setAttribute('rotation', { x: 0, y: yaw * 180 / Math.PI, z: 0 });
+      });
+    }
+    arc(n(5), 15, 50, { mover: 'none' }, 2.5);
+    arc(Math.round(d.walkers), 12, 70, { mover: 'walker', speed: d.speed });
+  },
+
+  clear: function () {
+    var old = this.el.querySelectorAll('.gallery-item');
     for (var i = 0; i < old.length; i++) old[i].parentNode.removeChild(old[i]);
   },
 

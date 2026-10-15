@@ -41,6 +41,7 @@ el.components['combat-target'].setZones([
   pop-up that's down). A target is a candidate only while alive,
   available and visible. `revive()` restores health.
 - `threat` (0–1), `priority` (0–1) and `lookedAt` feed scoring.
+  `incoming` and `velocity` are described under the resolver below.
 
 ## Resolver: the `combat-targeting` system
 
@@ -66,11 +67,18 @@ targeting.claim(pick.el, 'right'); // lasts 250 ms unless renewed
   - **claimed**: a penalty if another hand has claimed it.
 
   Every pick carries its terms.
-- **Profiles** (`DEFAULT_PROFILES`) are `gun` (25 m, cone set by the
-  gun's Aim), `strike` (1.6 m, 60°) and `throw` (15 m, 25°,
+- **Profiles** (`DEFAULT_PROFILES`) are `gun` (30 m, cone set by the
+  gun's Assist), `strike` (1.6 m, 60°) and `throw` (25 m, 40°,
   gaze-heavy). Tuning ▸ Targeting: `Gun range`, `Hit range`,
-  `Hit cone`, `Throw cone`, `Gaze` and `Sticky` (as % of the profile
-  weights), and `Memory`.
+  `Hit cone`, `Throw cone`, `Throw range`, `Gaze` and `Sticky` (as % of
+  the profile weights), and `Memory`.
+- **Doomed targets are skipped.** `combat-target.incoming` is the damage
+  already flying at it (thrown knives and guns add theirs on launch and
+  take it back on landing). A target whose `incoming` covers its health
+  isn't a candidate, so the next throw goes to someone else.
+- **Target velocity.** Each tick the system measures every live
+  target's aim-point velocity (`target.velocity`), which throws use to
+  lead. A jump over 20 m/s is treated as a respawn, not a speed.
 - No line of sight yet. Targets don't occlude each other.
 - **Readout** `targeting`: the last pick per verb and hand, with its
   score and terms.

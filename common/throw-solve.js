@@ -120,3 +120,53 @@ export function leadTarget(from, pos, vel, opts, settings) {
 export function positionAt(from, vel, t, g) {
   return { x: from.x + vel.x * t, y: from.y + vel.y * t - 0.5 * g * t * t, z: from.z + vel.z * t };
 }
+
+// ============================================================
+// Guided flight: a hit that's basically guaranteed.
+//
+// Solve the arc as above (so it looks like a throw — a lob or a line
+// drive depending on your swing), then fly it bent: the position at
+// time t is the ballistic arc plus the difference between where the
+// target is *now* and where the arc was aimed, eased in over the
+// flight. At t = T (the solved flight time) that difference is fully
+// applied, so the projectile is exactly on the target — wherever it
+// moved to. Early in the flight the correction is zero, so the release
+// still looks like it came off your hand.
+//
+//   var plan = planGuided(from, targetPos, targetVel, opts);
+//   pos = guidedPosition(plan, t, targetNow);
+// ============================================================
+
+export function planGuided(from, pos, vel, opts, settings) {
+  var shot = leadTarget(from, pos, vel || { x: 0, y: 0, z: 0 }, opts, settings);
+  var g = opts.gravity !== undefined ? opts.gravity : DEFAULT_THROW.gravity;
+  var vh = Math.sqrt(shot.velocity.x * shot.velocity.x + shot.velocity.z * shot.velocity.z);
+  var d = Math.sqrt(Math.pow(shot.aim.x - from.x, 2) + Math.pow(shot.aim.z - from.z, 2));
+  return {
+    from: { x: from.x, y: from.y, z: from.z },
+    velocity: shot.velocity,
+    aim: shot.aim,
+    g: g,
+    T: Math.max(0.05, vh > 1e-6 ? d / vh : 0.5),
+    angle: shot.angle,
+    speed: shot.speed,
+    reaches: shot.reaches,
+  };
+}
+
+function smoothstep(k) {
+  var c = k < 0 ? 0 : k > 1 ? 1 : k;
+  return c * c * (3 - 2 * c);
+}
+
+// Where a guided projectile is at time t, given where the target is now.
+export function guidedPosition(plan, t, targetNow) {
+  var p = positionAt(plan.from, plan.velocity, t, plan.g);
+  // Where the plain arc would be at the end of the flight (it lands at
+  // aim only if the solve reached; otherwise it falls short, and the
+  // correction makes up the difference).
+  var end = positionAt(plan.from, plan.velocity, plan.T, plan.g);
+  var to = targetNow || plan.aim;
+  var s = smoothstep(t / plan.T);
+  return { x: p.x + (to.x - end.x) * s, y: p.y + (to.y - end.y) * s, z: p.z + (to.z - end.z) * s };
+}

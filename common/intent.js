@@ -40,6 +40,7 @@ export var DEFAULT_STRIKE_SETTINGS = {
   stopSpeed: 0.6, // m/s: a committed hand that slows below this has landed
   maxReachMs: 700, // an uncommitted extension older than this is a reach
   punchBelowEye: 0.08, // m: a forward strike must be at least this far below the eyes (above is a throw)
+  upMinForward: 0.15, // an uppercut rises in front of you: at least this much forward extension
 };
 
 var AXES = ['forward', 'up'];
@@ -72,9 +73,12 @@ function alongAxis(hand, motion, axis) {
   return axis === 'forward' ? forward >= up : up > forward;
 }
 
-// A fist above your eyes moving forward is a throw, not a punch.
+// A fist above your eyes moving forward is a throw, not a punch — and a
+// hand rising up by your ear (not in front of you) is winding up a
+// throw, not an uppercut.
 function overhand(hand, motion, axis, s) {
-  return axis === 'forward' && hand.position.y > motion.head.position.y - s.punchBelowEye;
+  if (axis === 'forward') return hand.position.y > motion.head.position.y - s.punchBelowEye;
+  return hand.extension.forward < s.upMinForward;
 }
 
 function fraction(hand, axis) {

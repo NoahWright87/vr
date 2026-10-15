@@ -26,9 +26,9 @@ var DEG = Math.PI / 180;
 // Each verb's profile. Weights are relative; ranges in metres and cones
 // as half-angles in degrees. A cone of 180 accepts anything in range.
 export var DEFAULT_PROFILES = {
-  gun: { range: 25, coneDeg: 35, aim: 1.0, distance: 0.35, gaze: 0.25, recent: 0.15, sticky: 0.6, threat: 0.5, priority: 0.2, claimed: 0.9 },
+  gun: { range: 30, coneDeg: 35, aim: 1.0, distance: 0.35, gaze: 0.25, recent: 0.15, sticky: 0.6, threat: 0.5, priority: 0.2, claimed: 0.9 },
   strike: { range: 1.6, coneDeg: 60, aim: 0.6, distance: 0.8, gaze: 0.6, recent: 0.4, sticky: 0.5, threat: 0.3, priority: 0.2, claimed: 0 },
-  throw: { range: 15, coneDeg: 25, aim: 0.5, distance: 0.2, gaze: 1.2, recent: 0.4, sticky: 0.4, threat: 0.3, priority: 0.2, claimed: 0.3 },
+  throw: { range: 25, coneDeg: 40, aim: 0.5, distance: 0.2, gaze: 1.2, recent: 0.4, sticky: 0.4, threat: 0.3, priority: 0.2, claimed: 0.3 },
 };
 
 function sub(a, b) { return { x: a.x - b.x, y: a.y - b.y, z: a.z - b.z }; }
@@ -97,6 +97,7 @@ if (typeof AFRAME !== 'undefined' && !AFRAME.systems['combat-targeting']) {
     { key: 'strikeRange', label: 'Hit range', value: DEFAULT_PROFILES.strike.range, min: 0.5, max: 4, step: 0.1, unit: 'm' },
     { key: 'strikeCone', label: 'Hit cone', value: DEFAULT_PROFILES.strike.coneDeg, min: 10, max: 180, step: 5, unit: '°' },
     { key: 'throwCone', label: 'Throw cone', value: DEFAULT_PROFILES.throw.coneDeg, min: 5, max: 90, step: 5, unit: '°' },
+    { key: 'throwRange', label: 'Throw range', value: DEFAULT_PROFILES.throw.range, min: 3, max: 50, step: 1, unit: 'm' },
     { key: 'gaze', label: 'Gaze', value: 1, min: 0, max: 300, step: 10, unit: '%', scale: 100 },
     { key: 'sticky', label: 'Sticky', value: 1, min: 0, max: 300, step: 10, unit: '%', scale: 100 },
     { key: 'recentMs', label: 'Memory', value: 2000, min: 0, max: 5000, step: 250, unit: 'ms' },
@@ -134,7 +135,7 @@ if (typeof AFRAME !== 'undefined' && !AFRAME.systems['combat-targeting']) {
       var v = tune.values;
       if (name === 'gun') { p.range = v.gunRange; } // the gun's own Aim setting picks its cone
       if (name === 'strike') { p.range = v.strikeRange; p.coneDeg = v.strikeCone; }
-      if (name === 'throw') { p.coneDeg = v.throwCone; }
+      if (name === 'throw') { p.coneDeg = v.throwCone; p.range = v.throwRange; }
       p.gaze *= v.gaze;
       p.sticky *= v.sticky;
       return p;
@@ -195,6 +196,8 @@ if (typeof AFRAME !== 'undefined' && !AFRAME.systems['combat-targeting']) {
         var t = this.targets[i];
         if (!t.alive || !t.targetable()) continue;
         if (team && t.data.team !== team) continue;
+        // Already doomed by what's flying at it (thrown knives and guns).
+        if ((t.incoming || 0) >= t.health) continue;
         var claim = this.claims.get(t.el);
         out.push({
           id: t.el,

@@ -1,7 +1,7 @@
 # Throwing: what's next
 
 Position-only overhand throws, the solver (lifted from Pistols),
-leading, homing and sticking all exist. See `throwing.spec.md`.
+leading, guided flight (a throw at a target hits it, retargeting if it dies or ducks) and sticking all exist. See `throwing.spec.md`.
 
 ## To try in the headset first
 
@@ -10,18 +10,17 @@ leading, homing and sticking all exist. See `throwing.spec.md`.
   sidearm throws are wanted, the cocked rule (hand by the head) is the
   thing to relax, carefully, since it's also what keeps throws apart
   from punches.
-- **Homing at 30°/s.** It's enough to correct a lead on a walker,
-  without making knives curve visibly. Push it toward the bullet-heaven
-  end and see where it stops feeling like your throw.
+- **Does guided read as your throw?** The correction eases in, so a
+  throw aimed well barely bends. A bad one visibly curves onto its
+  target. If that looks like cheating, a smaller cone (Tuning ▸
+  Targeting ▸ Throw cone) makes it only correct throws that were nearly
+  right.
 
 ## Not built yet
 
-- **Held objects.** Pistols releases on a grip opening and classifies
-  the release (toss to the other hand, hurl, overhand). The solver is
-  shared now. A held-object path would feed it from a grip release
-  instead of the whip detector. That comes when objects can be held
-  (it needs a grab that isn't a button; see `autofire.todo.md` on how
-  things get into hands).
+- **Held objects other than guns.** Guns are held and thrown now (grip
+  release or whip, guided). Bottles, chairs and the rest of Pistols'
+  props would take the same path once they're grabbable.
 - **A thrown thing is a slow bullet both ways.** Knives can't be
   blocked or deflected by enemies yet, and enemies don't throw.
 - **Recall to hand** (an axe or boomerang), and **ricochet** between

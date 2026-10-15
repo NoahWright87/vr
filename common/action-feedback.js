@@ -9,7 +9,8 @@
 // actuator APIs). Hand tracking has no haptics, so nothing may depend
 // on them — they only ever add to what's seen and heard.
 //
-// Sounds are synthesized with Web Audio, the way Pistols at Dawn does
+// Sounds (shot, boom, click, thump, clang, shatter, block, parry,
+// whoosh) are synthesized with Web Audio, the way Pistols at Dawn does
 // it: no assets. A voice cap keeps autofire from spawning hundreds of
 // nodes, and positional sounds go through a PannerNode whose listener
 // follows the camera.
@@ -177,6 +178,14 @@ var SOUNDS = {
   parry: function (c, out, t) {
     tone(c, out, t, 'sine', 1800, 0, 0.3, 0.45);
     return tone(c, out, t, 'sine', 2710, 0, 0.18, 0.35);
+  },
+  boom: function (c, out, t) {
+    tone(c, out, t, 'sine', 110, 35, 0.9, 0.18);
+    noiseBurst(c, out, t, 'lowpass', 1400, 0.6, 0.9, 0.22);
+    return noiseBurst(c, out, t, 'bandpass', 700, 0.5, 0.6, 0.3);
+  },
+  click: function (c, out, t) {
+    return tone(c, out, t, 'square', 2400, 1800, 0.12, 0.02);
   },
   whoosh: function (c, out, t) {
     return noiseBurst(c, out, t, 'bandpass', 600, 0.6, 0.35, 0.18);
