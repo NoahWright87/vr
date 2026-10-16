@@ -3,11 +3,13 @@ import { HandInput } from './hand-input.js';
 import { SpellEffects } from './spells.js';
 import { SandboxView } from './sandbox-view.js';
 import { Portals } from './portals.js';
+import { NecromancyView } from './necromancy-view.js';
 const THREE = AFRAME.THREE;
 
 AFRAME.registerComponent('magic-hands', {
   init() {
     this.camera = document.querySelector('#magic-camera');
+    this.necromancy = new NecromancyView(this.el.sceneEl);
     this.input = new HandInput(this.el.sceneEl, this.camera);
     this.effects = new SpellEffects(this.el.sceneEl, this.input.root);
     this.sandbox = new SandboxView(this.el.sceneEl);
@@ -19,6 +21,7 @@ AFRAME.registerComponent('magic-hands', {
       this.score = this.shots = this.hits = 0; this.gestures.reset(); this.effects.clear(); this.sandbox.engine.reset(); this.lastHud = -Infinity;
       this.onUp(); this.input.resetActions();
       this.portals.reset();
+      this.necromancy.reset();
       this.el.sceneEl.querySelectorAll('[magic-receiver]').forEach(el => el.components['magic-receiver']?.reset());
     };
     this.onScore = e => { this.score += e.detail.points; this.hits++; };
@@ -33,6 +36,12 @@ AFRAME.registerComponent('magic-hands', {
       if (e.code === 'Digit5') this.setMode('fireball');
       if (e.code === 'Digit6') this.setMode('telekinesis');
       if (e.code === 'Digit7') this.setMode('portal');
+      if (e.code === 'Digit8') this.setMode('necromancy');
+      if (this.input.mode === 'necromancy') {
+        if (e.code === 'KeyG') this.input.necroCommand = 'attack';
+        if (e.code === 'KeyT') this.input.necroCommand = 'recall';
+        if (e.code === 'Space' || e.code === 'KeyQ') this.input.necroCommand = null;
+      }
       if (e.code === 'KeyG') this.input.pull = true;
       if (e.code === 'KeyG' && !e.repeat && this.input.mode === 'portal' && this.portals.views.root.visible) {
         const position = this.el.sceneEl.camera.getWorldPosition(new THREE.Vector3());
@@ -58,7 +67,7 @@ AFRAME.registerComponent('magic-hands', {
     };
     this.onDistance = e => { this.input.faceDistance = Number(e.target.value); };
     this.onReach = e => { this.input.shieldDistance = Number(e.target.value); };
-    this.onLifecycle = (closePortals = true) => { this.onUp(); this.gestures.reset(); this.effects.clear(); this.sandbox.engine.suspend(); this.input.resetActions(); this.input.aimHistory = {}; this.portals.reset(closePortals !== false); };
+    this.onLifecycle = (closePortals = true) => { this.onUp(); this.gestures.reset(); this.effects.clear(); this.sandbox.engine.suspend(); this.input.resetActions(); this.input.aimHistory = {}; this.portals.reset(closePortals !== false); this.necromancy.engine.suspend(); };
     this.onVisibility = () => { if (document.hidden) this.onLifecycle(); };
     this.listeners = [
       [this.el.sceneEl, 'magic-scored', this.onScore], [this.el.sceneEl, 'magic-cast', this.onCast],
@@ -72,7 +81,7 @@ AFRAME.registerComponent('magic-hands', {
     this.listeners.forEach(([el, event, fn]) => el.addEventListener(event, fn, event === 'wheel' ? { passive: false } : undefined));
   },
   setMode(mode) {
-    if (!['lightning', 'farsight', 'shield', 'boulder', 'fireball', 'telekinesis', 'portal'].includes(mode) || this.el.sceneEl.renderer.xr.isPresenting) return;
+    if (!['lightning', 'farsight', 'shield', 'boulder', 'fireball', 'telekinesis', 'portal', 'necromancy'].includes(mode) || this.el.sceneEl.renderer.xr.isPresenting) return;
     this.input.mode = mode; this.onLifecycle(false);
     document.querySelectorAll('[data-spell]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.spell === mode)));
     document.querySelector('#farsight-controls').hidden = mode !== 'farsight';
@@ -91,20 +100,24 @@ AFRAME.registerComponent('magic-hands', {
       this.el.sceneEl.camera.getWorldPosition(head.position); this.el.sceneEl.camera.getWorldQuaternion(head.quaternion);
       head.forward.set(0, 0, -1).applyQuaternion(head.quaternion); head.up.set(0, 1, 0).applyQuaternion(head.quaternion);
       this.input.aimHistory = {}; this.input.portalPullOrigin = null; hands = this.input.sample(head, time); this.gestures.reset(); this.effects.clear();
+      this.necromancy.engine.suspend();
     }
-    const actions = this.sandbox.update(hands, head, time, portalHands);
-    for (const side of ['left', 'right']) actions.reserved[side] ||= portalHands[side];
+    const occupied = Object.fromEntries(['left', 'right'].map(side => [side, portalHands[side] || ['fireball', 'telekinesis'].includes(this.sandbox.engine.hands[side].mode)]));
+    const necro = this.necromancy.update(hands, head, time, this.sandbox.world(time), occupied);
+    const reserved = Object.fromEntries(['left', 'right'].map(side => [side, portalHands[side] || necro.reserved[side]]));
+    const actions = this.sandbox.update(hands, head, time, reserved);
+    for (const side of ['left', 'right']) actions.reserved[side] ||= reserved[side];
     const result = this.gestures.update(hands, head, time, actions.reserved);
-    for (const side of ['left', 'right']) if (actions.reserved[side]) result[side] = portalHands[side] ? 'portal' : actions.hands[side].mode;
+    for (const side of ['left', 'right']) if (actions.reserved[side]) result[side] = portalHands[side] ? 'portal' : necro.reserved[side] ? 'necromancy' : actions.hands[side].mode;
     this.effects.update(result, hands, head, time, dt);
     if (time - this.lastHud < 120) return; this.lastHud = time;
     const xr = !!this.el.sceneEl.renderer.xr.getSession();
     const label = side => hands[side] ? hands[side].tracked === false ? `${result[side] || 'hand'} (remembered)` : (result[side] || 'idle') : 'untracked';
     const spell = result.lens ? `Farsight ${this.effects.lastZoom.toFixed(1)}x` : `L: ${label('left')}  |  R: ${label('right')}`;
-    const text = `${spell}  |  ${this.score} points  |  ${this.hits} hits / ${this.shots} casts`;
+    const text = `${spell}  |  ${this.score} points  |  ${this.hits} hits / ${this.shots} casts  |  ${necro.active}/3 minions`;
     this.status.textContent = `${xr ? 'Hand tracking' : 'Desktop rehearsal'} · ${text}`;
     this.hud.setAttribute('value', text);
     document.querySelector('#desktop-rehearsal').hidden = xr;
   },
-  remove() { this.listeners.forEach(([el, event, fn]) => el.removeEventListener(event, fn)); this.input.dispose(); this.effects.dispose(); this.sandbox.dispose(); this.portals.dispose(); },
+  remove() { this.listeners.forEach(([el, event, fn]) => el.removeEventListener(event, fn)); this.input.dispose(); this.effects.dispose(); this.sandbox.dispose(); this.portals.dispose(); this.necromancy.dispose(); },
 });

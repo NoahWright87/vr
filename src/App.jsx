@@ -24,9 +24,10 @@ export function App() {
             footer={<Text tone="muted">Cast a spell →</Text>}
           >
             Your hands are the magic. Punch with boulder fists, throw fireballs,
-            catch objects with a yank, push open portals, and cast lightning, farsight, and shields.
+            catch objects with a yank, spread open portals, raise skeleton minions,
+            and cast lightning, farsight, and shields.
           </Card>
-          <Card>
+          <Card
             title="3D Model Toybox"
             subtitle="Open the chest. Make a scene."
             href="/games/model-viewer/"

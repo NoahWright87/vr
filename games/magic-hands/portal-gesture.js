@@ -26,7 +26,7 @@ export function doorAim(hands, head) {
     { x: handAim.x * .22, y: handAim.y * .22, z: handAim.z * .22 }));
 }
 
-// No steady-aim test: deliberate opening movement confirms a softly filtered
+// No steady-aim test: spreading the backs-together hands confirms a filtered
 // gaze/hand destination. Freeze it when movement starts, not while preparing.
 export class PortalGesture {
   constructor() { this.reset(); }
@@ -58,20 +58,19 @@ export class PortalGesture {
     if (!pose || time - s.since > 4500) { this.state = null; this.blockedUntil = time + 200; return { state: null, completed, reserved }; }
     if (s.phase === 'aim') {
       if (destination) { s.destination = destination; s.targetAt = time; }
-      if (s.destination && time - s.targetAt < 650 && time - s.since >= 180) { s.phase = 'ready'; s.anchorSpan = pose.span; s.anchorCenter = pose.center; }
+      if (s.destination && time - s.targetAt < 650 && time - s.since >= 180) s.phase = 'ready';
     }
     if (s.phase === 'ready' || s.phase === 'opening') {
-      const push = dot(sub(pose.center, s.anchorCenter), pose.forward), spread = pose.span - s.anchorSpan;
+      const spread = pose.span - s.anchorSpan;
       if (s.phase === 'ready') {
         if (destination) { s.destination = destination; s.targetAt = time; }
-        if (push > .035 || spread > .06) s.phase = 'opening';
+        if (spread > .06) s.phase = 'opening';
       }
-      s.progress = Math.max(0, Math.min(1, Math.min(push / .08, spread / .14)));
-      if (s.phase === 'opening' && ((push > .08 && spread > .14) || (push > .16 && spread > .08))) {
+      s.progress = Math.max(0, Math.min(1, spread / .14));
+      if (s.phase === 'opening' && spread > .14) {
         completed = { destination: s.destination, origin: pose.center, side: 'both' };
         s.phase = 'complete'; s.completedAt = time;
       }
-      if (push < -.15) { this.state = null; this.blockedUntil = time + 200; }
     }
     return { state: this.state, completed, reserved };
   }

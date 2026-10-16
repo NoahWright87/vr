@@ -31,13 +31,18 @@ test('long-range destination jitter does not restart preparation', () => {
   for (let t = 0; t <= 300; t += 20) g.update(hands(), head, t, { ...destination, position: v(Math.sin(t) * 1.5, 1, -24) });
   assert.equal(g.state.phase, 'ready');
 });
-test('a short forward push and spread opens without tracing or holding still', () => {
-  const g = ready(); const result = g.update(hands(.22, .49), head, 260, destination);
+test('spreading alone opens a door without forward movement or tracing', () => {
+  const g = ready(); const result = g.update(hands(.22, .32), head, 260, destination);
   assert.ok(result.completed); assert.equal(result.state.phase, 'complete'); assert.equal(result.reserved.left, true);
   assert.equal(g.update(hands(.3, .55), head, 280, destination).completed, null);
 });
-test('spreading alone, pushing alone, or closing fingers cannot cast', () => {
-  for (const h of [hands(.3, .32), hands(.065, .6)]) { const g = ready(); assert.equal(g.update(h, head, 260, destination).completed, null); }
+test('a quick spread during preparation is retained without requiring another motion', () => {
+  const g = new PortalGesture(); g.update(hands(), head, 0, destination);
+  assert.equal(g.update(hands(.22), head, 100, destination).completed, null);
+  assert.ok(g.update(hands(.22), head, 200, destination).completed);
+});
+test('pushing alone or closing fingers cannot cast', () => {
+  const push = ready(); assert.equal(push.update(hands(.065, .6), head, 260, destination).completed, null);
   const g = ready(), closed = hands(); Object.values(closed).forEach(h => { Object.keys(h.extension).forEach(f => { h.extension[f] = .4; }); });
   assert.equal(g.update(closed, head, 260, destination).state, null);
 });

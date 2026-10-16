@@ -14,7 +14,8 @@ farsight and portal creation use both hands.
 | Boulder fists | Close an empty fist, then punch | Stone forms after 180 ms. A deliberate extending punch deals 60 points or launches a loose prop; retract to rearm. A nearby physical grab can take precedence over an existing boulder. |
 | Fireball | Briefly hold a cupped palm upward or scoop a little; throw or thrust forward | A floating orb releases on a natural throw or a cupped forward thrust, with gaze influencing its aim. Exact finger opening is unnecessary. Impact deals 50-point area damage. Gather again immediately, without a reset or recovery pose. |
 | Telekinesis | Point at a highlighted rune prop and pinch; yank back and open like a glove to catch | Pinch/move lifts and guides. A quick pull summons the prop into an open catching hand. Push forward to throw. Nearby props can be grabbed with a fist, closing hand or pinch. |
-| Portal | Open hands near the chest, backs together/palms outward; push forward and apart | A gaze/hand aim guide previews the destination. The short push-and-spread opens a rectangular doorway. Grab a side to hold it open, then pull to travel, or step through. |
+| Portal | Open hands near the chest, backs together/palms outward; spread apart | A gaze/hand guide previews the destination. Simply spreading opens a rectangular doorway. Grab a side to hold it open, then pull to travel, or step through. |
+| Necromancy | Index + pinky extended, middle/ring curled; lift to raise, point to command | Graves behind the start glow. Lift an upright horns hand about 12 cm to raise a skeleton. Up to three minions wander nearby. Forward pointing attacks a marked target; downward pointing recalls them. |
 
 ## Tracking and hand ownership
 
@@ -76,8 +77,9 @@ Look toward clear ground or a colored portal wall. Head gaze contributes 78%
 of the aim, with 22% from the palms' forward bisector when available; the aim
 is damped over 160 ms. Level gaze selects distant ground rather than sky. A
 brief 180 ms preparation makes the guide clear. There is no stillness test:
-ordinary aim jitter does not restart it. Push the hands forward about 8 cm
-while spreading them by about 14 cm in total. The destination locks as that
+ordinary aim jitter does not restart it. Spread the hands about 14 cm in total;
+forward movement is unnecessary. A quick spread during preparation is retained.
+The destination locks as that
 movement begins. Brief tracking gaps pause preparation for up to 650 ms.
 
 The opening is rectangular, roughly 0.9–1.15 m wide and 1.8–2.3 m high. The exit
@@ -104,20 +106,62 @@ target, viewport/scissor, XR state, shadow updates and hidden objects are restor
 in `finally`. Player-rig travel transforms XR joints, remembered hands and owned
 props consistently; loose world props and projectiles remain where they are.
 
+## Necromancy
+
+The small fenced graveyard is behind the starting point, at positive Z. It has
+three glowing grave sites, simple rounded headstones and the merged Kenney Mini
+Dungeon gate. Skeletons use `createModel(THREE, 'skeleton')` from the merged model
+library: the same original geometry exported as `starter/skeleton.gltf`. Models
+are static and unrigged; whole-body wobble, bobbing and forward headbutts supply
+movement. The model library's BSD license and Kenney's CC0 credits remain in
+`assets/models/`.
+
+Make horns with either hand: index/pinky extended, middle/ring curled, thumb
+irrelevant. Eligible graves within 12 m glow. Look toward a grave, hold the horns
+upright briefly, then lift about 12 cm relative to the head. Walking or moving
+the head and hand together cannot raise a minion. Lower and lift again, or relax
+and remake the pose, to raise another. Graves replenish after a short cooldown.
+The source contract also accepts single-use corpses marked ready for raising.
+
+Three minions can be active, counting those rising from the ground. Raising a
+fourth immediately retires the oldest: it topples, sinks and is removed over
+about two seconds. Followers wander around the player and use the open graveyard
+gate rather than walking through the fence. They avoid solid scenery. Followers
+left far behind by portal travel can re-emerge near the player.
+
+Aim a horns hand forward at a target and hold it briefly to command the group.
+A green marker identifies the selected target. Minions charge it, wobble/headbutt
+and deal 12 points per successful strike, with an individual 1.1 second cooldown.
+Scenery blocks designation and hits. Point horns down to recall the group: they
+hurry back and resume wandering. Orders persist when the casting hand relaxes or
+leaves tracking. Horns reserve their hand before lightning, fire preparation or
+telekinetic selection, while existing held spells/props retain ownership.
+
+`necromancy.js` contains source validity, lift/command state, the active cap and
+minion movement/attacks. `necromancy-view.js` builds the graveyard, reuses the
+model library, renders feedback and translates minion hits into the existing
+`magic-hit` scoring contract. Reset removes minions and clears source cooldowns.
+
 ## Desktop rehearsal and verification
 
-Buttons/keys 1–7 choose joint poses. Drag to look, WASD to move, Space/click uses
+Buttons/keys 1–8 choose joint poses. Drag to look, WASD to move, Space/click uses
 the right hand and Q the left. Lightning: hold to fire. Boulders: hold to punch,
 release to retract. Fire: hold to scoop, release to throw; repeat without R.
 Telekinesis: hold to pinch, G yanks and opens a catching glove, T pushes to throw.
-Portal: Space moves both palms forward and apart; after opening, G grasps a side
+Portal: Space spreads both palms at constant depth; after opening, G grasps a side
 and pulls. Farsight uses the face-distance slider/scroll; shield uses the reach
-slider and H to switch one/two hands. R resets scores, props and active portals.
+slider and H to switch one/two hands. Necromancy: turn toward the graveyard, hold
+Space to lift, release to lower; Q raises with the left hand. Turn toward targets
+and use G to point/attack, T to point down/recall. R resets scores, props, minions
+and active portals.
 
 `npm test` covers persistence and reacquisition, repeated fireball creation,
 cupped thrusts and gaze, automatic lightning, yank/open catches, direct grabs,
 floor integrity, portal jitter tolerance, opening disambiguation, side grasps,
-shrinking and rectangle crossings. `npm run build` creates the deployable site.
+shrinking, spread-only opening and rectangle crossings. Necromancy tests cover
+both hands, tracking loss, source validity/cooldowns, the cap and retirement,
+commands, gate navigation, damage, scenery occlusion, recall and wandering.
+`npm run build` creates the deployable site.
 Browser regression drives actual keyboard-to-joints-to-actions paths at fixed
 16 ms frames, including tracking-loss injection, repeated throws, automatic
 fire, glove catches, side holding/reopening, pull travel and return travel.
@@ -131,7 +175,6 @@ performance still require real playtesting.
 | --- | --- |
 | Belt items | Highlighted body-relative potion/tool slots with physical grabs |
 | Two-hand spells | Matching prepared spells link visibly before merging: chain lightning, bigger fireballs, ground slam |
-| Necromancy | Index + pinky silhouette, then a deliberate lift to summon |
 | Ice breath | A distinct sustained mouth-relative two-hand pose; hand tracking cannot sense breathing |
 
 Add one family at a time and test it against normal incidental movement and the

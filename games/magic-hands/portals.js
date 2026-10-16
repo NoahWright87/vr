@@ -249,7 +249,7 @@ export class Portals {
       const end = d ? vec(d.point) : head.position.clone().addScaledVector(head.forward, 12), a = this.guide.geometry.attributes.position;
       a.setXYZ(0, center.x, center.y, center.z); a.setXYZ(1, end.x, end.y, end.z); a.needsUpdate = true;
       this.guide.material.opacity = s.phase === 'aim' ? .18 : .6;
-      const text = !d ? 'LOOK AT CLEAR GROUND / MOVE HANDS TO AIM' : s.phase === 'aim' ? 'PALMS OUT / DOOR PREPARING' : 'PUSH HANDS FORWARD + APART';
+      const text = !d ? 'LOOK AT CLEAR GROUND / MOVE HANDS TO AIM' : s.phase === 'aim' ? 'PALMS OUT / DOOR PREPARING' : 'SPREAD YOUR HANDS APART';
       if (text !== this.labelText) { this.label.set(text); this.labelText = text; } this.label.sprite.position.copy(center).y += .18;
       if (d) {
         this.preview.position.copy(d.position); this.preview.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), vec(d.normal)); this.preview.scale.setScalar(d.radius);
