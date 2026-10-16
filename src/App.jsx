@@ -24,7 +24,7 @@ export function App() {
             footer={<Text tone="muted">Cast a spell →</Text>}
           >
             Your hands are the magic. Punch with boulder fists, throw fireballs,
-            lift objects with a pinch, draw portals, and cast lightning, farsight, and shields.
+            catch objects with a yank, push open portals, and cast lightning, farsight, and shields.
           </Card>
           <Card
             title="Pistols at Dawn"

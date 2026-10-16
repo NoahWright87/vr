@@ -1,4 +1,5 @@
 import { extractHand, FINGERS, JOINTS } from '../../common/hand-gestures.js';
+import { HandPersistence } from '../../common/hand-persistence.js';
 const THREE = AFRAME.THREE;
 const LINKS = JOINTS.flatMap((name, i) => {
   if (name === 'wrist') return [];
@@ -12,7 +13,7 @@ export function previewJoints(mode, side, hammerDown, aperture = .16, poseKind =
   const mirror = side === 'left' ? -1 : 1;
   const xs = [-.030, -.010, .010, .030];
   FINGERS.forEach((finger, i) => {
-    const x = xs[i] * mirror, curled = poseKind === 'fist' || mode === 'boulder' || (!['shield', 'fireball'].includes(mode) && ((finger !== 'index' && !(mode === 'portal' && finger === 'middle')) || mode === 'farsight'));
+    const x = xs[i] * mirror, curled = poseKind === 'fist' || mode === 'boulder' || (!['shield', 'fireball', 'portal'].includes(mode) && (finger !== 'index' || mode === 'farsight'));
     const points = poseKind === 'open' ? [[0, 0], [.033, 0], [.061, 0], [.084, 0]] :
       poseKind === 'cup' ? [[0, 0], [.032, 0], [.046, .026], [.034, .045]] :
       curled ? [[0, 0], [.026, 0], [.014, .024], [-.013, .017]] : [[0, 0], [.033, 0], [.061, 0], [.084, 0]];
@@ -48,9 +49,10 @@ export function previewJoints(mode, side, hammerDown, aperture = .16, poseKind =
 export class HandInput {
   constructor(scene, camera) {
     this.scene = scene; this.camera = camera;
+    this.persistence = new HandPersistence();
     this.mode = 'lightning'; this.hammerDown = { left: false, right: false };
     this.faceDistance = .40; this.shieldDistance = .65; this.shieldHands = 2;
-    this.aimHistory = {}; this.portalAimHistory = {}; this.lastSample = null;
+    this.aimHistory = {}; this.lastSample = null;
     this.resetActions();
     this.visuals = {}; this.root = new THREE.Group(); scene.object3D.add(this.root);
     for (const side of ['left', 'right']) {
@@ -70,10 +72,10 @@ export class HandInput {
     this.cycles = { left: { down: false, start: null, released: null }, right: { down: false, start: null, released: null } };
     this.pull = false; this.pullAt = null; this.pushAt = null;
     this.portalPullOrigin = null; this.portalPullAt = null;
-    this.portalAimHistory = {};
+    this.persistence?.reset();
   }
   desktopPose(side, time) {
-    const cycle = this.cycles[side], down = this.hammerDown[side];
+    const cycle = this.cycles[side], down = this.mode === 'portal' ? this.hammerDown.left || this.hammerDown.right : this.hammerDown[side];
     if (down && !cycle.down) { cycle.start = time; cycle.released = null; this.pull = false; this.pullAt = null; }
     if (!down && cycle.down) cycle.released = time;
     cycle.down = down;
@@ -95,20 +97,17 @@ export class HandInput {
       if (this.pull && down) {
         this.pullAt ??= time;
         const pulled = Math.min(1, (time - this.pullAt) / 300); data.depth -= .26 * pulled;
-        if (pulled > .65) data.kind = 'fist';
+        if (pulled > .65) data.kind = 'open';
       }
       if (this.pushAt !== null && time - this.pushAt < 280) {
         data.depth = .25 + .60 * Math.min(1, (time - this.pushAt) / 220); data.kind = 'open'; data.normal = new THREE.Vector3(0, 0, -1);
       }
     }
     if (this.mode === 'portal') {
-      data.y = -.18;
-      if (down) {
-        const angle = Math.min(1, age / 850) * Math.PI * 2;
-        data.x = .17 * (Math.cos(angle) - 1); data.y += .17 * Math.sin(angle);
-      }
-      if (release !== null && release < 180) data.kind = 'fist';
-      if (this.portalPullOrigin) data.kind = 'pinch';
+      const opening = down ? Math.min(1, age / 350) : 0, sign = side === 'left' ? -1 : 1;
+      data.kind = 'open'; data.y = -.30; data.depth = .32 + opening * .19; data.x = sign * opening * .23;
+      data.normal = new THREE.Vector3(sign * (1 - opening), 0, -opening).normalize();
+      if (this.portalPullOrigin && side === 'right') data.kind = 'fist';
     }
     return data;
   }
@@ -126,10 +125,10 @@ export class HandInput {
   }
   sample(head, time) {
     const gap = this.lastSample === null ? Infinity : time - this.lastSample;
-    if (gap > 180 || gap < 0) { this.aimHistory = {}; this.portalAimHistory = {}; }
+    if (gap > 180 || gap < 0) this.aimHistory = {};
     this.lastSample = time;
     const xr = this.scene.renderer.xr, session = xr.getSession();
-    const hands = { left: null, right: null };
+    let hands = { left: null, right: null };
     if (session) {
       const frame = xr.getFrame(), space = xr.getReferenceSpace();
       if (session.visibilityState === 'visible' && frame && space) {
@@ -154,42 +153,37 @@ export class HandInput {
     } else {
       for (const side of ['left', 'right']) {
         if (this.mode === 'shield' && this.shieldHands === 1 && side === 'left') continue;
-        if (this.mode === 'portal' && side === 'left') continue;
         const action = this.desktopPose(side, time);
         const joints = previewJoints(this.mode, side, this.hammerDown[side], .20, action.kind);
         const depth = this.mode === 'farsight' ? this.faceDistance : this.mode === 'shield' ? this.shieldDistance : action.depth;
-        const handX = this.mode === 'farsight' ? .075 : this.mode === 'boulder' ? .4 : .18;
+        const handX = this.mode === 'farsight' ? .075 : this.mode === 'boulder' ? .4 : this.mode === 'portal' ? .065 : .18;
         const offset = new THREE.Vector3((side === 'left' ? -handX : handX) + (action.x || 0), this.mode === 'farsight' ? -.003 : action.y, -depth);
         const pose = head.quaternion.clone();
-        if (['lightning', 'telekinesis', 'portal'].includes(this.mode)) pose.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2));
-        if (this.mode === 'portal') pose.premultiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0).applyQuaternion(head.quaternion), -.15));
+        if (['lightning', 'telekinesis'].includes(this.mode)) pose.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2));
         const origin = offset.applyQuaternion(head.quaternion).add(head.position);
         for (const name of JOINTS) joints[name].applyQuaternion(pose).add(origin);
         const normal = this.mode === 'shield' ? new THREE.Vector3().copy(head.forward) : (action.normal || new THREE.Vector3(0, 0, 1)).applyQuaternion(head.quaternion);
         hands[side] = extractHand(joints, normal);
-        if (this.mode === 'portal' && this.portalPullOrigin && hands[side]) {
-          const pull = Math.min(1, (time - this.portalPullAt) / 1000) * .90;
+        if (this.mode === 'portal' && side === 'right' && this.portalPullOrigin && hands[side]) {
+          const pull = Math.min(1, (time - this.portalPullAt) / 1000) * .38;
           const desired = this.portalPullOrigin.clone().addScaledVector(head.forward, -pull);
           const delta = desired.sub(hands[side].palm);
           Object.values(joints).forEach(p => p.add(delta)); hands[side] = extractHand(joints, normal);
         }
       }
     }
+    if (session && session.visibilityState !== 'visible') this.persistence.reset();
+    hands = this.persistence.update(hands, time);
     for (const side of ['left', 'right']) {
       const hand = hands[side];
       if (hand) {
         hand.side = side;
         const aim = new THREE.Vector3(hand.aim.x, hand.aim.y, hand.aim.z);
-        if (this.aimHistory[side]) aim.copy(this.aimHistory[side]).lerp(hand.aim, 1 - Math.exp(-gap / 45)).normalize();
+        if (this.aimHistory[side] && !hand.reacquired) aim.copy(this.aimHistory[side]).lerp(hand.aim, 1 - Math.exp(-gap / 70)).normalize();
         this.aimHistory[side] = aim; hand.aim = aim;
-        const j = hand.joints;
-        const portalAim = new THREE.Vector3().subVectors(j['index-finger-tip'], j['index-finger-phalanx-proximal']).normalize()
-          .add(new THREE.Vector3().subVectors(j['middle-finger-tip'], j['middle-finger-phalanx-proximal']).normalize()).normalize();
-        const rawPortalAim = portalAim.clone();
-        if (this.portalAimHistory[side]) portalAim.copy(this.portalAimHistory[side]).lerp(rawPortalAim, 1 - Math.exp(-gap / 60)).normalize();
-        this.portalAimHistory[side] = portalAim; hand.portalAim = portalAim;
-      } else { delete this.aimHistory[side]; delete this.portalAimHistory[side]; }
+      } else delete this.aimHistory[side];
       this.draw(side, hand?.joints, hand?.radii);
+      this.visuals[side].group.visible = !!hand && hand.tracked !== false;
     }
     return hands;
   }

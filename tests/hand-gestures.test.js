@@ -40,41 +40,41 @@ test('shield needs 80% reach on either side and dismisses immediately on retract
     assert.equal(hold(engine, { [side]: retracted }, 320, 800)[side], null); engine.reset();
   }
 });
-test('thumb transitions from perpendicular to parallel, then lifts again; no location requirement', () => {
+test('holding the thumb bent fires continuously without lifting or precise thumb location', () => {
   for (const side of ['left', 'right']) {
-    const engine = new SpellGestures();
-    assert.equal(hold(engine, { [side]: gun(.95) }, 0, 300)[side], 'lightning');
-    assert.deepEqual(hold(engine, { [side]: gun(.95) }, 310, 400).casts, []);
-    hold(engine, { [side]: gun(.15) }, 410, 460);
-    assert.deepEqual(hold(engine, { [side]: gun(.80) }, 470, 490).casts, [side]);
-    assert.deepEqual(hold(engine, { [side]: gun(.95) }, 500, 800).casts, []);
-    hold(engine, { [side]: gun(.10) }, 810, 860);
-    assert.deepEqual(hold(engine, { [side]: gun(.75) }, 870, 890).casts, [side]);
+    const engine = new SpellGestures(), casts = [];
+    for (let t = 0; t <= 1000; t += 10) if (engine.update({ [side]: gun(.9) }, head, t).casts.length) casts.push(t);
+    assert.ok(casts.length >= 5);
+    assert.ok(casts.every((t, i) => !i || t - casts[i - 1] >= 150));
+    for (let t = 1010; t <= 1200; t += 10) assert.deepEqual(engine.update({ [side]: gun(.15) }, head, t).casts, []);
   }
 });
-test('both hands rapidly alternate and fire together without shared cooldown', () => {
+test('both hands have independent automatic fire cadence', () => {
   const engine = new SpellGestures(); hold(engine, { left: gun(), right: gun() }, 0, 300);
   assert.deepEqual(hold(engine, { left: gun(.9), right: gun() }, 310, 330).casts, ['left']);
   assert.deepEqual(hold(engine, { left: gun(), right: gun(.9) }, 340, 360).casts, ['right']);
-  hold(engine, { left: gun(), right: gun() }, 370, 430);
-  assert.deepEqual(hold(engine, { left: gun(.9), right: gun(.9) }, 440, 460).casts, ['left', 'right']);
+  const counts = { left: 0, right: 0 };
+  for (let t = 370; t <= 1300; t += 10) for (const side of engine.update({ left: gun(.9), right: gun(.9) }, head, t).casts) counts[side]++;
+  assert.ok(counts.left >= 5 && counts.right >= 5);
 });
-test('angular dead band and one parallel spike do not shoot; sustained bend fires once', () => {
+test('a parallel spike does not fire; holding the thumb down repeats and raising it stops', () => {
   const engine = new SpellGestures(); hold(engine, { right: gun() }, 0, 300);
   assert.deepEqual(engine.update({ right: gun(.60) }, head, 310).casts, []);
   assert.deepEqual(engine.update({ right: gun(.90) }, head, 320).casts, []);
   assert.deepEqual(engine.update({ right: gun(.60) }, head, 330).casts, []);
   assert.deepEqual(hold(engine, { right: gun(.80) }, 340, 360).casts, ['right']);
-  assert.deepEqual(hold(engine, { right: gun(.90) }, 370, 700).casts, []);
+  let count = 0;
+  for (let t = 370; t <= 850; t += 10) count += engine.update({ right: gun(.9) }, head, t).casts.length;
+  assert.equal(count, 3);
 });
-test('tracking loss, pose change and frame gaps clear arming without firing on reacquisition', () => {
-  for (const interruption of [null, open()]) {
-    const engine = new SpellGestures(); hold(engine, { left: gun(), right: gun() }, 0, 300);
-    engine.update({ left: interruption, right: gun() }, head, 310);
-    assert.deepEqual(hold(engine, { left: gun(.9), right: gun(.9) }, 320, 340).casts, ['right']);
-    hold(engine, { left: gun() }, 350, 600);
-    assert.deepEqual(hold(engine, { left: gun(.9) }, 1000, 1030).casts, []);
-  }
+test('remembered hands cannot fire; reacquisition requires a fresh pose dwell', () => {
+  const engine = new SpellGestures(); hold(engine, { right: gun(.9) }, 0, 300);
+  for (let t = 310; t < 1000; t += 10) assert.deepEqual(engine.update({ right: { ...gun(.9), tracked: false } }, head, t).casts, []);
+  assert.deepEqual(engine.update({ right: { ...gun(.9), reacquired: true } }, head, 1000).casts, []);
+  assert.deepEqual(hold(engine, { right: gun(.9) }, 1010, 1100).casts, []);
+  let count = 0;
+  for (let t = 1110; t <= 1600; t += 10) count += engine.update({ right: gun(.9) }, head, t).casts.length;
+  assert.ok(count >= 2);
 });
 test('farsight zoom follows face distance, not opening size; near is 10x and far is 2x', () => {
   const pose = (aperture, depth) => farsightPose(...Object.values(circle(aperture, depth)), head);

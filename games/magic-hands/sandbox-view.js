@@ -105,8 +105,8 @@ export class SandboxView {
           for (let i = 0; i < 13; i++) { const p = curve.getPoint(i / 12); positions.setXYZ(i, p.x, p.y, p.z); } positions.needsUpdate = true;
         }
       }
-      const text = !hand ? '' : state.mode === 'boulder' ? 'BOULDER / PUNCH' : state.mode === 'fireball' ? 'FIRE / OPEN + THROW' : state.mode === 'telekinesis' ?
-        state.phase === 'remote' ? 'LIFT / PULL + FIST TO GRAB' : state.phase === 'pulling' ? 'COME HERE...' : 'GRASPED / OPEN + PUSH' :
+      const text = !hand ? '' : hand.tracked === false && ['boulder', 'fireball', 'telekinesis'].includes(state.mode) ? 'STILL HELD / HAND OUT OF VIEW' : state.mode === 'boulder' ? 'BOULDER / PUNCH' : state.mode === 'fireball' ? 'FIRE / THROW OR THRUST' : state.mode === 'telekinesis' ?
+        state.phase === 'remote' ? 'LIFT / YANK TO CATCH' : state.phase === 'pulling' ? 'OPEN YOUR HAND / CATCH' : 'GRASPED / PUSH TO THROW' :
         state.mode === 'recovery' ? 'RELAX HAND TO READY' : state.fistSince !== null ? 'STONE FORMING...' : state.scoop ? 'SCOOP TO GATHER FIRE' : state.focus ? 'PINCH TO LIFT' : '';
       if (text !== visual.text) { visual.label.setText(text); visual.text = text; }
       visual.label.sprite.visible = !!text;

@@ -34,15 +34,15 @@
     <details>
       <summary>Learn the seven spells</summary>
       <ul>
-        <li><strong>Lightning bolt</strong> — point your index finger and curl the other three fingers. The faint blue line shows your aim; a bright marker shows an assisted target. Raise the thumb roughly perpendicular to the finger, then bend its tip roughly parallel to fire. Either hand can fire independently.</li>
+        <li><strong>Lightning bolt</strong> — point your index finger and loosely curl the others. The blue guide averages the direction of your whole hand and index finger; a bright marker shows aim assistance. Fold your thumb roughly parallel to your finger and hold it there for weaker automatic bolts. Raise it to stop. Either hand works independently.</li>
         <li><strong>Farsight</strong> — touch fingertips above and the heels of your hands below to make a circle or diamond. Thumb contact and exact finger shapes do not matter. Bring the window close to your face for about 10× zoom, or extend your arms for about 2×.</li>
         <li><strong>Shield</strong> — extend an open hand to roughly 80% of your arm's reach with the palm facing outward. Each hand makes a 0.5 m shield; bring both extended open hands within 40 cm for a 1 m shield. Retract to dismiss.</li>
         <li><strong>Boulder fists</strong> — close an empty fist and wait for stone to grow around it. Punch a nearby target or loose stone, then retract to punch again. Relax your hand to shed the boulder.</li>
-        <li><strong>Fireball</strong> — cup your hand palm-up and scoop upward a little. Fire gathers over your palm. Keep your fingers cupped to hold it, then throw forward and open your hand. Open palm-down at rest to dismiss it.</li>
-        <li><strong>Telekinesis</strong> — point at a floating rune stone until it glows purple, then pinch to lift it. Move your pinched hand to guide it. Pull back and close your fist to summon it into your grasp. Open and push to throw; simply release to drop. Nearby stones can also be grabbed directly.</li>
-        <li><strong>Portal</strong> — point your index and middle fingers at clear ground or a portal wall. Curl the other two fingers; your thumb does not matter. Hold still for one second until the gold line brightens and sparks burst, then draw a loop at least as big as your head. Either direction works. Change the pose or leave it unfinished to cancel. The two portals grow to standing height. Step through, or pinch a glowing pull handle inside the opening and pull it over yourself. Portals viewed through portals show static.</li>
+        <li><strong>Fireball</strong> — briefly hold a cupped palm upward, or scoop a little, to gather fire. Throw or simply thrust forward; exact finger opening is unnecessary. Look toward the target to guide the throw. You can gather another immediately. Open palm-down at rest to dismiss it.</li>
+        <li><strong>Telekinesis</strong> — point at a highlighted rune prop and pinch to lift. Yank your hand back, then open it like a glove to summon and catch the prop. Push forward to throw. Close then open to release, or turn an open catching hand palm-down. Gentle releases hover; thrown props settle and float back up. Close your hand or pinch around a nearby prop to grab it directly, even while wearing a boulder.</li>
+        <li><strong>Portal</strong> — bring your open hands close together at chest height, backs together and palms facing out. Look toward a destination; hand direction adds a small aiming bias. Push forward and spread your hands apart to open a rectangular doorway. Grab either side with a fist or pinch to keep it open, then pull back to travel, or step through. The exit faces your old location. Unheld portals start shrinking after about 1.4 seconds and close shortly afterward. The back is solid; another entrance seen through a portal shows static.</li>
       </ul>
-      <p class="quiet">Enable hand tracking on your Quest, then enter VR. A brief hold settles each spell. Tracking loss releases it; lightning needs a fresh thumb lift.</p>
+      <p class="quiet">Enable hand tracking on your Quest, then enter VR. Held spells survive brief hand occlusion for 1.5 seconds. Unseen hands cannot start new actions; lightning pauses until tracking returns.</p>
     </details>
     <div id="desktop-rehearsal">
       <div id="spell-controls" aria-label="Desktop spell pose">
@@ -56,8 +56,8 @@
       </div>
       <div id="farsight-controls" hidden><label>Face distance <input id="face-distance" aria-label="Farsight distance from face" type="range" min="0.12" max="0.65" step="0.005" value="0.40" /></label></div>
       <div id="shield-controls" hidden><label>Arm extension <input id="shield-distance" aria-label="Shield arm extension" type="range" min="0.20" max="0.70" step="0.01" value="0.65" /></label></div>
-      <p class="quiet">Desktop: drag to look, WASD to move. Space/click uses the right hand; Q uses the left. Lightning: bend thumb. Boulders: hold to punch, release to retract. Fire: hold to scoop, release to throw. Telekinesis: hold to pinch, G pulls to hand, T pushes to throw; release drops. Farsight: scroll or slide face distance. Shield: slide arm extension; H switches one/two hands.</p>
-      <p class="quiet">Portal: 7 points two fingers slightly downward. Wait for READY, then hold Space/click to draw. Release early to cancel. After opening, release Space, then hold G to pinch a pull handle and travel.</p>
+      <p class="quiet">Desktop: drag to look, WASD to move. Space/click uses the right hand; Q uses the left. Lightning: hold to fire automatically. Boulders: hold to punch, release to retract. Fire: hold to scoop, release to throw; repeat without resetting. Telekinesis: hold to pinch, G yanks then opens a catching glove, T pushes to throw. Farsight: scroll or slide face distance. Shield: slide arm extension; H switches one/two hands.</p>
+      <p class="quiet">Portal: 7 brings both palms out. Look toward clear ground, then hold Space/click to push the hands forward and apart. After opening, release Space and hold G to grab a side and pull through.</p>
     </div>
     <button id="reset">Reset score · R</button> <a href="../../index.html">All experiences</a>
     <div id="status" role="status">Preparing the spell courtyard…</div>
@@ -80,11 +80,11 @@
 
     <a-box data-magic-blocker data-portal-surface position="-4 1.5 -8" rotation="0 25 0" width="3.5" height="3" depth=".18" color="#315265"></a-box>
     <a-box data-magic-blocker data-portal-surface position="4 1.5 -11" rotation="0 -25 0" width="3.5" height="3" depth=".18" color="#4d3e66"></a-box>
-    <a-text value="PORTAL WALL\nTwo fingers / hold / draw a loop" position="-4 3.4 -8" width="4" align="center" color="#ffd48a"></a-text>
+    <a-text value="PORTAL WALL\nPalms out / push forward + apart" position="-4 3.4 -8" width="4" align="center" color="#ffd48a"></a-text>
 
     <a-entity position="-2.1 1.7 -2.4" rotation="0 32 0">
       <a-text value="MAGIC HANDS" align="center" width="3.4" position="0 .55 0" color="#ccbcff"></a-text>
-      <a-text value="POINT + BEND THUMB\nLightning: follow the aim line\n\nJOIN FINGERTIPS + HAND HEELS\nFarsight: close to face = zoom\n\nEXTEND ARM + PALM OUT\nShield: retract to dismiss" align="center" width="2.3" color="#c4cee9"></a-text>
+      <a-text value="POINT + HOLD THUMB DOWN\nLightning: automatic bolts\n\nJOIN FINGERTIPS + HAND HEELS\nFarsight: close to face = zoom\n\nEXTEND ARM + PALM OUT\nShield: retract to dismiss" align="center" width="2.3" color="#c4cee9"></a-text>
     </a-entity>
 
     <a-sphere class="magic-target" magic-receiver position=".18 1.40 -4" radius=".32" color="#5a69b8" material="emissive: #17244a; roughness: .35"></a-sphere>
@@ -98,7 +98,7 @@
     <a-text value="PUNCH PRACTICE" position="0 .85 -1.15" width="1.15" align="center" color="#c0b4a7"></a-text>
     <a-entity position="2.2 1.8 -2.4" rotation="0 -32 0">
       <a-text value="MORE MAGIC" align="center" width="3" position="0 .5 0" color="#ffcf9c"></a-text>
-      <a-text value="FIST / PUNCH\nBoulder hands\n\nPALM UP / SCOOP / THROW\nFireball\n\nPOINT / PINCH / MOVE\nTelekinesis\nPull + fist: grab / Open + push: throw" align="center" width="2.4" color="#d4c1b4"></a-text>
+      <a-text value="FIST / PUNCH\nBoulder hands\n\nCUP PALM UP / THROW OR THRUST\nFireball: look toward the target\n\nPOINT / PINCH / YANK / CATCH\nTelekinesis\nOpen + push: throw" align="center" width="2.4" color="#d4c1b4"></a-text>
     </a-entity>
 
     <a-cylinder data-magic-blocker position=".18 .30 -4" radius=".45" height=".6" color="#3b3c58"></a-cylinder>

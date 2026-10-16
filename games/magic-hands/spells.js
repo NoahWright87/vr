@@ -135,7 +135,7 @@ export class SpellEffects {
   }
   cast(side, hand, time, solution = this.solveAim(hand)) {
     const { origin, direction, point, el, kind } = solution;
-    if (el) el.emit('magic-hit', { spell: 'lightning', damage: 25, point, hand: side, assistance: kind });
+    if (el) el.emit('magic-hit', { spell: 'lightning', damage: 8, point, hand: side, assistance: kind });
     const end = point || solution.rawEnd, reach = origin.distanceTo(end), beam = this.beams[side];
     // The path initially follows the real finger direction, then bends toward
     // the selected hit. The visible endpoint is exactly the scored hit point.

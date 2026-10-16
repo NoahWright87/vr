@@ -53,19 +53,19 @@ test('walking with a fist or small shakes does not count as punching', () => {
   }
   assert.equal(events.filter(e => e.type === 'cast').length, 0);
 });
-test('a static palm cannot conjure fire; a deliberate upward scoop can', () => {
+test('a cupped palm-up hold or short scoop conjures fire; an open palm does not', () => {
   const engine = new SpellSandbox([]);
-  run(engine, 0, 1000, () => ({ right: hand('cup', v(0, 1.2, -.35), 2, v(0, 1)) }));
+  run(engine, 0, 1000, () => ({ right: hand('open', v(0, 1.2, -.35), 2, v(0, 1)) }));
   assert.equal(engine.hands.right.mode, 'idle'); engine.reset(); gather(engine);
   run(engine, 580, 900, () => ({ right: hand('fist', v(0, 1.23, -.35)) }));
   assert.equal(engine.hands.right.mode, 'fireball');
 });
-test('fire requires opening on a throw stroke, owns that hand, and deals swept impact damage', () => {
+test('fire releases on a throw stroke, immediately frees that hand, and deals swept damage', () => {
   const engine = new SpellSandbox([]), base = new SpellGestures(); gather(engine);
   const world = { targets: [{ id: 'dummy', center: v(0, 1.3, -2.5), radius: .35 }] };
   const r = run(engine, 580, 760, t => ({ right: hand('open', v(0, 1.23, -.35 - (t - 560) * .0025)) }), world);
   assert.equal(r.allEvents.filter(e => e.type === 'cast' && e.spell === 'fireball').length, 1);
-  assert.equal(r.hands.right.mode, 'recovery');
+  assert.equal(r.hands.right.mode, 'idle');
   const out = hand('open', v(.16, 1.38, -.75));
   for (let t = 780; t <= 1000; t += 20) assert.equal(base.update({ right: out }, head, t, { right: true }).right, null);
   const flight = run(engine, 780, 1400, () => ({}), world);
@@ -75,7 +75,7 @@ test('turning the open palm down at rest dismisses held fire without throwing', 
   const engine = new SpellSandbox([]); gather(engine);
   const r = run(engine, 580, 1100, () => ({ right: hand('open', v(0, 1.23, -.35), 2, v(0, -1)) }));
   assert.equal(r.allEvents.filter(e => e.type === 'cast').length, 0); assert.equal(engine.projectiles.length, 0);
-  assert.equal(engine.hands.right.mode, 'recovery');
+  assert.equal(engine.hands.right.mode, 'idle');
 });
 test('point highlights a prop; fresh pinch acquires it and hand movement lifts it', () => {
   const engine = new SpellSandbox([prop()]);
@@ -84,7 +84,7 @@ test('point highlights a prop; fresh pinch acquires it and hand movement lifts i
   assert.equal(r.hands.right.mode, 'telekinesis'); assert.equal(engine.bodies[0].owner, 'right');
   run(engine, 40, 300, t => ({ right: hand('point', v(0, 1.4 + t * .0007, -.4), .2) }));
   assert.ok(engine.bodies[0].position.y > 1.65);
-  run(engine, 320, 500, () => ({ right: hand('open', v(0, 1.61, -.4), 2) }));
+  run(engine, 320, 700, () => ({ right: hand('open', v(0, 1.61, -.4), 2) }));
   assert.equal(engine.bodies[0].owner, null); assert.equal(engine.bodies[0].thrownUntil, 0);
 });
 test('pinch must first be released; occluded props cannot be remotely acquired', () => {
@@ -132,7 +132,7 @@ test('tracking loss releases ownership; recenter gaps cancel held fire and pendi
   const engine = new SpellSandbox([prop()]); engine.update({ right: hand() }, head, 0);
   engine.update({ right: hand('point', v(0, 1.4, -.4), .2) }, head, 20);
   engine.update({}, head, 40); assert.equal(engine.bodies[0].owner, null);
-  engine.reset(); gather(engine); engine.update({ right: hand('open', v(0, 1.4, -.9)) }, head, 2000);
+  engine.reset(); gather(engine); engine.update({ right: hand('open', v(0, 1.4, -.9)) }, head, 3000);
   assert.equal(engine.projectiles.length, 0); assert.equal(engine.hands.right.mode, 'idle');
 });
 test('fast fireballs cannot tunnel through walls or damage enemies through the impact wall', () => {
@@ -167,12 +167,12 @@ test('both hands can independently gather and throw fire without turning into fi
   assert.deepEqual(r.allEvents.filter(e => e.type === 'cast').map(e => e.hand).sort(), ['left', 'right']);
   assert.equal(r.reserved.left, true); assert.equal(r.reserved.right, true);
 });
-test('small natural finger opening releases fire; cupped forward movement does not', () => {
+test('a forward thrust releases cupped fire without a precise finger-opening event', () => {
   const engine = new SpellSandbox([]); gather(engine);
   let r = run(engine, 580, 700, t => ({ right: hand('cup', v(0, 1.23, -.35 - (t - 560) * .001)) }));
-  assert.equal(r.allEvents.filter(e => e.type === 'cast').length, 0);
-  r = run(engine, 720, 840, t => ({ right: hand('open', v(0, 1.23, -.49 - (t - 700) * .002)) }));
   assert.equal(r.allEvents.filter(e => e.type === 'cast').length, 1);
+  r = run(engine, 720, 840, t => ({ right: hand('open', v(0, 1.23, -.49 - (t - 700) * .002)) }));
+  assert.equal(r.allEvents.filter(e => e.type === 'cast').length, 0);
 });
 test('ownership suppresses the original spells even when opening the hand matches their shape', () => {
   const base = new SpellGestures();
@@ -185,10 +185,10 @@ test('ownership suppresses the original spells even when opening the hand matche
   for (let t = 620; t <= 900; t += 20) r = base.update({ right: extended }, head, t);
   assert.equal(r.right, 'shield');
 });
-test('tracking jumps release a held prop without applying the jump as a throw velocity', () => {
+test('tracking jumps preserve a held prop without applying the jump as throw velocity', () => {
   const engine = new SpellSandbox([prop()]); engine.update({ right: hand() }, head, 0);
   engine.update({ right: hand('point', v(0, 1.4, -.4), .2) }, head, 20);
   const r = engine.update({ right: hand('open', v(0, 1.4, -1), 2) }, head, 40);
-  assert.equal(engine.bodies[0].owner, null); assert.equal(engine.bodies[0].thrownUntil, 0);
+  assert.equal(engine.bodies[0].owner, 'right'); assert.equal(engine.bodies[0].thrownUntil, 0);
   assert.equal(r.events.filter(e => e.type === 'cast').length, 0);
 });

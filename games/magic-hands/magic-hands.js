@@ -86,9 +86,11 @@ AFRAME.registerComponent('magic-hands', {
     let hands = this.input.sample(head, time);
     const portalHands = this.portals.update(hands, head, time);
     if (this.portals.teleported) {
+      const mapping = this.portals.teleported;
+      this.input.persistence.transform(p => new THREE.Vector3(p.x, p.y, p.z).applyMatrix4(mapping), d => new THREE.Vector3(d.x, d.y, d.z).transformDirection(mapping));
       this.el.sceneEl.camera.getWorldPosition(head.position); this.el.sceneEl.camera.getWorldQuaternion(head.quaternion);
       head.forward.set(0, 0, -1).applyQuaternion(head.quaternion); head.up.set(0, 1, 0).applyQuaternion(head.quaternion);
-      this.input.aimHistory = {}; this.input.portalAimHistory = {}; this.input.portalPullOrigin = null; hands = this.input.sample(head, time); this.gestures.reset(); this.effects.clear();
+      this.input.aimHistory = {}; this.input.portalPullOrigin = null; hands = this.input.sample(head, time); this.gestures.reset(); this.effects.clear();
     }
     const actions = this.sandbox.update(hands, head, time, portalHands);
     for (const side of ['left', 'right']) actions.reserved[side] ||= portalHands[side];
@@ -97,7 +99,7 @@ AFRAME.registerComponent('magic-hands', {
     this.effects.update(result, hands, head, time, dt);
     if (time - this.lastHud < 120) return; this.lastHud = time;
     const xr = !!this.el.sceneEl.renderer.xr.getSession();
-    const label = side => hands[side] ? (result[side] || 'idle') : 'untracked';
+    const label = side => hands[side] ? hands[side].tracked === false ? `${result[side] || 'hand'} (remembered)` : (result[side] || 'idle') : 'untracked';
     const spell = result.lens ? `Farsight ${this.effects.lastZoom.toFixed(1)}x` : `L: ${label('left')}  |  R: ${label('right')}`;
     const text = `${spell}  |  ${this.score} points  |  ${this.hits} hits / ${this.shots} casts`;
     this.status.textContent = `${xr ? 'Hand tracking' : 'Desktop rehearsal'} · ${text}`;
