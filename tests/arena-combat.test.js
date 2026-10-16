@@ -4,7 +4,8 @@ import { ArenaCombat, CombatShields, ENEMIES, inArena, shieldIntersection } from
 import { Necromancy } from '../games/magic-hands/necromancy.js';
 const v = (x = 0, y = 0, z = 0) => ({ x, y, z });
 const head = { position: v(20, 1.6, 0), forward: v(0, 0, -1) };
-const hand = (x = 20) => ({ palm: v(x, 1.32, -.6), tracked: true });
+const hand = (x = 20) => ({ palm: v(x, 1.32, -.6), normal: v(0, 0, -1), extension: { index: 1, middle: 1, ring: 1, pinky: 1 }, tracked: true });
+const lowered = () => ({ right: { ...hand(), palm: v(20, 1.2, -.1) } });
 const shieldPose = { center: v(20, 1.32, -.8), normal: v(0, 0, 1), radius: .5, sides: ['right'], strength: 1 };
 const dummy = (overrides = {}) => ({ ...ENEMIES[0], position: v(20, 0, -1.1), ...overrides });
 function run(arena, start, end, { player = head, minions = [], shields = new CombatShields(), world = {}, consumed = new Set() } = {}) {
@@ -81,9 +82,16 @@ test('broken shields need a real release and a full second; tracking loss and me
   s.update({ right: 'shield' }, hands, head, 2000); assert.equal(s.poses.length, 0);
   s.update({}, { right: { ...hand(), tracked: false } }, head, 2020); assert.equal(s.hands.right.needsRelease, true);
   s.update({ right: 'shield', left: 'shield' }, hands, head, 2040); assert.deepEqual(s.poses[0].sides, ['left']);
-  s.update({}, hands, head, 2060); s.update({ right: 'shield' }, hands, head, 2080); assert.equal(s.poses.length, 1); assert.equal(s.hands.right.health, 60);
-  s.hit(s.poses[0], 60, 2100); s.update({}, hands, head, 2120); s.update({ right: 'shield' }, hands, head, 2400); assert.equal(s.poses.length, 0);
+  s.update({}, lowered(), head, 2060); s.update({ right: 'shield' }, hands, head, 2080); assert.equal(s.poses.length, 1); assert.equal(s.hands.right.health, 60);
+  s.hit(s.poses[0], 60, 2100); s.update({}, lowered(), head, 2120); s.update({ right: 'shield' }, hands, head, 2400); assert.equal(s.poses.length, 0);
   s.update({ right: 'shield' }, hands, head, 3100); assert.equal(s.poses.length, 1);
+});
+test('reacquisition dwell cannot count as a release while the raw hand still holds a shield pose', () => {
+  const s = new CombatShields(), hands = { right: hand() };
+  s.update({ right: 'shield' }, hands, head, 0); s.hit(s.poses[0], 60, 20);
+  s.update({}, { right: { ...hand(), reacquired: true } }, head, 1500);
+  s.update({}, hands, head, 1600); s.update({ right: 'shield' }, hands, head, 1750);
+  assert.equal(s.poses.length, 0); assert.equal(s.hands.right.needsRelease, true);
 });
 test('two hands create a larger shield with combined durability', () => {
   const s = new CombatShields(); s.update({ right: 'shield', left: 'shield' }, { right: hand(), left: hand(20.2) }, head, 0);

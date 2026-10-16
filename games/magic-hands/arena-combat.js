@@ -1,5 +1,5 @@
 // Combat simulation shared by the headset view and deterministic tests.
-import { sub, dot, unit, distance } from '../../common/hand-gestures.js';
+import { sub, dot, unit, distance, shieldScore } from '../../common/hand-gestures.js';
 import { sweepSphere, sweepBox } from './spell-sandbox.js';
 const v = (x = 0, y = 0, z = 0) => ({ x, y, z });
 const copy = p => v(p.x, p.y, p.z);
@@ -41,7 +41,7 @@ export class CombatShields {
     for (const side of ['left', 'right']) {
       const state = this.hands[side], requested = result[side] === 'shield';
       // Only an observed release counts. Tracking loss cannot reset a broken shield.
-      if (hands[side]?.tracked !== false && hands[side] && !requested) state.needsRelease = false;
+      if (hands[side]?.tracked !== false && hands[side] && !requested && shieldScore(hands[side], head) < .45) state.needsRelease = false;
       if (time >= state.blockedUntil && !state.needsRelease && state.health <= 0) state.health = 60;
       if (time - state.lastHit > 1500 && state.health > 0) state.health = Math.min(60, state.health + dt * 9);
       if (requested && time >= state.blockedUntil && !state.needsRelease && state.health > 0) active.push(side);
