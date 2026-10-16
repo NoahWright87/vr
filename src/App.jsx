@@ -26,6 +26,16 @@ export function App() {
             Your hands are the magic. Punch with boulder fists, throw fireballs,
             catch objects with a yank, push open portals, and cast lightning, farsight, and shields.
           </Card>
+          <Card>
+            title="3D Model Toybox"
+            subtitle="Open the chest. Make a scene."
+            href="/games/model-viewer/"
+            interactive
+            footer={<Text tone="muted">Open toybox →</Text>}
+          >
+            Rummage through 228 Kenney models and a set of originals. Preview
+            toys, take out a handful, then grab, arrange, and toss them in VR.
+          </Card>
           <Card
             title="Pistols at Dawn"
             subtitle="The flagship"
