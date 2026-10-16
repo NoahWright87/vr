@@ -55,9 +55,14 @@ export class SandboxView {
     }
   }
   world(time) {
+    const base = this.staticWorld(time), dynamic = this.dynamicWorld?.() || {};
+    return { ...base, ...dynamic, targets: [...base.targets, ...(dynamic.targets || [])] };
+  }
+  staticWorld(time) {
     if (time - this.lastWorld < 250 && this.worldData) return this.worldData;
     this.lastWorld = time;
     const targets = this.targets.flatMap(({ el, id }) => {
+      if (el.hasAttribute('data-arena-enemy')) return []; // Moving combat targets are sampled every frame.
       const mesh = el.getObject3D('mesh'); if (!show(mesh)) return [];
       mesh.updateWorldMatrix(true, false);
       const sphere = new THREE.Box3().setFromObject(mesh).getBoundingSphere(new THREE.Sphere());

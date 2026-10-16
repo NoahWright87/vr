@@ -21,6 +21,11 @@ export class Necromancy {
   reset() { this.minions = []; this.cooldowns = {}; this.consumed = new Set(); this.nextId = 1; this.lastTime = null; this.events = []; this.suspend(); }
   suspend() { this.hands = { left: handState(), right: handState() }; }
   active() { return this.minions.filter(m => m.mode !== 'dying'); }
+  damage(id, damage, time) {
+    const minion = this.active().find(m => m.id === id); if (!minion || damage <= 0) return;
+    minion.health = Math.max(0, (minion.health ?? 60) - damage); minion.hurtUntil = time + 200;
+    if (!minion.health) { minion.mode = 'dying'; minion.diedAt = time; minion.pendingHit = null; }
+  }
   clearPath(from, to, world, radius = 0) { return !(world.obstacles || []).some(box => sweepBox(from, to, box, radius) !== null); }
   available(source, time) { return source.ready !== false && !this.consumed.has(source.id) && time >= (this.cooldowns[source.id] || 0); }
   sourceFor(head, time) {
@@ -35,7 +40,7 @@ export class Necromancy {
     this.cooldowns[source.id] = time + 1300;
     if (source.reusable !== true) this.consumed.add(source.id);
     this.minions.push({ id: this.nextId++, position: copy(source.position), direction: unit(flat(sub(head.position, source.position))),
-      mode: 'rising', born: time, nextWander: time, attackAt: -Infinity, nextAttack: time + 1000, moving: false });
+      health: 60, mode: 'rising', born: time, nextWander: time, attackAt: -Infinity, nextAttack: time + 1000, moving: false });
     this.events.push({ type: 'raised', spell: 'necromancy', hand: side, source: source.id, minion: this.nextId - 1 });
     // Retirement visuals are bounded even under rapid alternating hands.
     const dying = this.minions.filter(m => m.mode === 'dying');
@@ -49,6 +54,7 @@ export class Necromancy {
   command(kind, target, head, time) {
     for (const m of this.active()) {
       m.order = kind; m.target = kind === 'attack' ? target.id : null; m.nextWander = time; m.pendingHit = null; m.recalling = kind === 'recall';
+      if (kind === 'recall') m.passiveUntil = time + 4500;
       if (m.mode !== 'rising') m.mode = kind === 'attack' ? 'attack' : 'follow';
     }
     this.events.push({ type: 'command', command: kind, target: target?.id });
@@ -65,7 +71,7 @@ export class Necromancy {
     const source = this.sourceFor(head, time);
     if (upright) {
       state.candidate = state.lastCommand = null; state.target = null;
-      state.label = source ? 'LIFT YOUR HAND / RAISE A SKELETON' : 'LOOK TOWARD A GLOWING GRAVE'; state.source = source?.id;
+      state.label = source ? 'LIFT YOUR HAND / RAISE A SKELETON' : 'LOOK TOWARD A GLOWING GRAVE OR CORPSE'; state.source = source?.id;
       if (state.liftBase === null) state.liftBase = relativeY;
       if (state.lifted && relativeY < state.raisedY - .10) { state.lifted = false; state.liftBase = relativeY; state.since = time; }
       if (source && !state.lifted && time - state.since > 140 && time - state.lastRaised > 650 && relativeY - state.liftBase > .12) {
@@ -112,7 +118,7 @@ export class Necromancy {
       const angle = m.id * 2.399 + (m.recalling ? 0 : Math.floor(time / 2800) * .85), radius = 1.8 + (m.id % 3) * .5;
       m.goal = add(flat(head.position), v(Math.sin(angle) * radius, 0, Math.cos(angle) * radius)); m.nextWander = time + 2800;
     }
-    if (distance(m.position, head.position) > 26 && !insideYard(m.position)) {
+    if ((distance(m.position, head.position) > 26 && !insideYard(m.position)) || (world.inArena && distance(m.position, head.position) > 12)) {
       // A recalled follower can catch up after portal travel by re-emerging nearby.
       if (this.canStep(m.goal, m.goal, world)) { m.position = copy(m.goal); m.mode = 'rising'; m.born = time; }
     }
@@ -126,6 +132,11 @@ export class Necromancy {
       if (m.mode === 'rising') {
         if (time - m.born < 1000) continue;
         m.mode = m.order === 'attack' ? 'attack' : 'follow';
+      }
+      if (world.inArena && m.mode === 'follow' && !m.recalling && time >= (m.passiveUntil || 0)) {
+        const enemy = (world.targets || []).filter(t => t.hostile && distance(t.center, m.position) < 10 && this.clearPath(add(m.position, v(0, 1.4)), t.center, world))
+          .sort((a, b) => distance(a.center, m.position) - distance(b.center, m.position))[0];
+        if (enemy) { m.target = enemy.id; m.mode = 'attack'; }
       }
       const target = m.mode === 'attack' && (world.targets || []).find(t => t.id === m.target);
       if (m.mode === 'attack' && !target) { m.mode = 'follow'; m.nextWander = time; }
@@ -148,6 +159,7 @@ export class Necromancy {
     let elapsed = this.lastTime === null ? 0 : time - this.lastTime;
     if (elapsed > 250 || elapsed < 0) { this.suspend(); elapsed = 0; }
     this.lastTime = time; this.events = [];
+    this.sources = world.sources || this.sources;
     const result = { reserved: { left: false, right: false }, hands: this.hands, highlighted: [], events: this.events };
     for (const side of ['left', 'right']) this.gesture(side, hands[side], head, time, world, occupied[side], result);
     if (Object.values(result.reserved).some(Boolean)) result.highlighted = this.sources.filter(s => this.available(s, time) && distance(s.position, head.position) < 12).map(s => s.id);

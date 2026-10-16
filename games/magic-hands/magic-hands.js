@@ -4,11 +4,14 @@ import { SpellEffects } from './spells.js';
 import { SandboxView } from './sandbox-view.js';
 import { Portals } from './portals.js';
 import { NecromancyView } from './necromancy-view.js';
+import { GRAVES } from './necromancy.js';
+import { ArenaView } from './arena-view.js';
 const THREE = AFRAME.THREE;
 
 AFRAME.registerComponent('magic-hands', {
   init() {
     this.camera = document.querySelector('#magic-camera');
+    this.arena = new ArenaView(this.el.sceneEl);
     this.necromancy = new NecromancyView(this.el.sceneEl);
     this.input = new HandInput(this.el.sceneEl, this.camera);
     this.effects = new SpellEffects(this.el.sceneEl, this.input.root);
@@ -16,12 +19,14 @@ AFRAME.registerComponent('magic-hands', {
     this.rig = document.querySelector('#magic-rig'); this.portals = new Portals(this.el.sceneEl, this.rig, this.sandbox);
     this.gestures = new SpellGestures(); this.score = 0; this.shots = 0; this.hits = 0; this.lastHud = -Infinity;
     this.head = { position: new THREE.Vector3(), quaternion: new THREE.Quaternion(), forward: new THREE.Vector3(), up: new THREE.Vector3() };
+    this.sandbox.dynamicWorld = () => ({ targets: this.arena.worldTargets(), sources: [...GRAVES, ...this.arena.sources()], inArena: this.arena.isInside(this.head) });
     this.status = document.querySelector('#status'); this.hud = document.querySelector('#magic-hud');
     this.reset = () => {
       this.score = this.shots = this.hits = 0; this.gestures.reset(); this.effects.clear(); this.sandbox.engine.reset(); this.lastHud = -Infinity;
       this.onUp(); this.input.resetActions();
       this.portals.reset();
       this.necromancy.reset();
+      this.arena.reset();
       this.el.sceneEl.querySelectorAll('[magic-receiver]').forEach(el => el.components['magic-receiver']?.reset());
     };
     this.onScore = e => { this.score += e.detail.points; this.hits++; };
@@ -67,7 +72,7 @@ AFRAME.registerComponent('magic-hands', {
     };
     this.onDistance = e => { this.input.faceDistance = Number(e.target.value); };
     this.onReach = e => { this.input.shieldDistance = Number(e.target.value); };
-    this.onLifecycle = (closePortals = true) => { this.onUp(); this.gestures.reset(); this.effects.clear(); this.sandbox.engine.suspend(); this.input.resetActions(); this.input.aimHistory = {}; this.portals.reset(closePortals !== false); this.necromancy.engine.suspend(); };
+    this.onLifecycle = (closePortals = true) => { this.onUp(); this.gestures.reset(); this.effects.clear(); this.sandbox.engine.suspend(); this.input.resetActions(); this.input.aimHistory = {}; this.portals.reset(closePortals !== false); this.necromancy.engine.suspend(); this.arena.suspend(); };
     this.onVisibility = () => { if (document.hidden) this.onLifecycle(); };
     this.listeners = [
       [this.el.sceneEl, 'magic-scored', this.onScore], [this.el.sceneEl, 'magic-cast', this.onCast],
@@ -109,15 +114,19 @@ AFRAME.registerComponent('magic-hands', {
     for (const side of ['left', 'right']) actions.reserved[side] ||= reserved[side];
     const result = this.gestures.update(hands, head, time, actions.reserved);
     for (const side of ['left', 'right']) if (actions.reserved[side]) result[side] = portalHands[side] ? 'portal' : necro.reserved[side] ? 'necromancy' : actions.hands[side].mode;
-    this.effects.update(result, hands, head, time, dt);
+    const shieldPoses = this.arena.prepareShields(result, hands, head, time);
+    this.effects.update(result, hands, head, time, dt, shieldPoses);
+    this.arena.update(head, this.necromancy.engine, this.effects, necro.highlighted, time, this.sandbox.world(time));
     if (time - this.lastHud < 120) return; this.lastHud = time;
     const xr = !!this.el.sceneEl.renderer.xr.getSession();
     const label = side => hands[side] ? hands[side].tracked === false ? `${result[side] || 'hand'} (remembered)` : (result[side] || 'idle') : 'untracked';
     const spell = result.lens ? `Farsight ${this.effects.lastZoom.toFixed(1)}x` : `L: ${label('left')}  |  R: ${label('right')}`;
-    const text = `${spell}  |  ${this.score} points  |  ${this.hits} hits / ${this.shots} casts  |  ${necro.active}/3 minions`;
+    const combat = this.arena.engine.engaged ? '  |  ARENA / NO PLAYER HP' : '';
+    const broken = Object.values(this.arena.shields.hands).some(s => s.needsRelease) ? '  |  SHIELD BROKEN / LOWER HAND TO RECAST' : '';
+    const text = `${spell}  |  ${this.score} points  |  ${this.hits} hits / ${this.shots} casts  |  ${necro.active}/3 minions${combat}${broken}`;
     this.status.textContent = `${xr ? 'Hand tracking' : 'Desktop rehearsal'} · ${text}`;
     this.hud.setAttribute('value', text);
     document.querySelector('#desktop-rehearsal').hidden = xr;
   },
-  remove() { this.listeners.forEach(([el, event, fn]) => el.removeEventListener(event, fn)); this.input.dispose(); this.effects.dispose(); this.sandbox.dispose(); this.portals.dispose(); this.necromancy.dispose(); },
+  remove() { this.listeners.forEach(([el, event, fn]) => el.removeEventListener(event, fn)); this.input.dispose(); this.effects.dispose(); this.sandbox.dispose(); this.portals.dispose(); this.necromancy.dispose(); this.arena.dispose(); },
 });

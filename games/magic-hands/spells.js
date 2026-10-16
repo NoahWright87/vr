@@ -11,9 +11,9 @@ function sigilTexture() {
   const canvas = document.createElement('canvas'); canvas.width = canvas.height = 512;
   const c = canvas.getContext('2d'); c.translate(256, 256);
   const fill = c.createRadialGradient(0, 0, 20, 0, 0, 250);
-  fill.addColorStop(0, 'rgba(55,139,226,.03)'); fill.addColorStop(.82, 'rgba(72,161,255,.16)'); fill.addColorStop(1, 'rgba(129,211,255,.7)');
+  fill.addColorStop(0, 'rgba(255,255,255,.03)'); fill.addColorStop(.82, 'rgba(255,255,255,.16)'); fill.addColorStop(1, 'rgba(255,255,255,.7)');
   c.fillStyle = fill; c.beginPath(); c.arc(0, 0, 246, 0, Math.PI * 2); c.fill();
-  c.strokeStyle = '#b5e5ff'; c.lineWidth = 3;
+  c.strokeStyle = '#ffffff'; c.lineWidth = 3;
   for (const r of [188, 218, 243]) { c.beginPath(); c.arc(0, 0, r, 0, Math.PI * 2); c.stroke(); }
   for (let i = 0; i < 16; i++) {
     c.save(); c.rotate(i * Math.PI / 8); c.beginPath();
@@ -27,7 +27,7 @@ function sigilTexture() {
 // Receivers own their reaction. Future projectiles/area spells can publish the
 // same magic-hit event without knowing whether the recipient is a target.
 AFRAME.registerComponent('magic-receiver', {
-  schema: { damage: { default: 25 } },
+  schema: { damage: { default: 25 }, external: { default: false } },
   init() {
     this.hits = 0; this.flashUntil = 0;
     this.popup = document.createElement('a-text');
@@ -35,6 +35,7 @@ AFRAME.registerComponent('magic-receiver', {
     this.popup.setAttribute('color', '#b4eaff'); this.popup.setAttribute('visible', false);
     this.el.appendChild(this.popup);
     this.onHit = e => {
+      if (this.data.external) return; // Combat recipients own health, scoring and visuals.
       this.hits++; this.flashUntil = this.el.sceneEl.time + 900;
       this.el.setAttribute('material', 'color', '#d0f7ff');
       this.el.setAttribute('material', 'emissive', '#4cbfff');
@@ -45,6 +46,7 @@ AFRAME.registerComponent('magic-receiver', {
     this.el.addEventListener('magic-hit', this.onHit);
   },
   tick(time) {
+    if (this.data.external) return;
     if (!this.flashUntil) return;
     const elapsed = 900 - (this.flashUntil - time);
     this.popup.object3D.position.set(0, .48 + Math.min(elapsed, 900) / 2200, 0);
@@ -55,7 +57,7 @@ AFRAME.registerComponent('magic-receiver', {
       this.popup.object3D.visible = false; this.flashUntil = 0;
     }
   },
-  reset() { this.hits = 0; this.flashUntil = 1; },
+  reset() { this.hits = 0; this.flashUntil = this.data.external ? 0 : 1; },
   remove() { this.el.removeEventListener('magic-hit', this.onHit); this.popup.remove(); },
 });
 
@@ -154,7 +156,7 @@ export class SpellEffects {
     beam.object.visible = true; beam.until = time + 160;
     this.scene.emit('magic-cast', { spell: 'lightning', hand: side, hit: el, assistance: kind });
   }
-  update(result, hands, head, time, dt) {
+  update(result, hands, head, time, dt, shieldPoses = null) {
     for (const side of ['left', 'right']) {
       const glow = this.glows[side]; glow.visible = result[side] === 'lightning';
       if (glow.visible) { glow.position.copy(vec(hands[side].tip)); glow.scale.setScalar(1 + .12 * Math.sin(time / 90)); }
@@ -174,14 +176,17 @@ export class SpellEffects {
     }
     const palms = ['left', 'right'].filter(side => result[side] === 'shield').map(side => hands[side].palm);
     const shields = palms.length === 2 && distance(palms[0], palms[1]) < .40 ? [{ palm: midpoint(...palms), diameter: 1 }] : palms.map(palm => ({ palm, diameter: .5 }));
-    this.shields.forEach((shield, i) => {
-      shield.visible = !!shields[i]; if (!shields[i]) return;
-      const { palm, diameter } = shields[i];
-      shield.position.copy(vec(palm)).addScaledVector(head.forward, .20);
-      shield.lookAt(head.position); shield.rotateZ(time * .00015);
-      shield.scale.setScalar(diameter * 512 / 492);
-    });
+    this.paintShields(shieldPoses || shields.map(({ palm, diameter }) => ({ center: vec(palm).addScaledVector(head.forward, .20), normal: head.position.clone().sub(vec(palm)).normalize(), radius: diameter / 2, strength: 1 })), time);
     this.updateLens(result.lens, head, time, dt);
+  }
+  paintShields(poses, time = this.scene.time || 0) {
+    this.shields.forEach((shield, i) => {
+      const pose = poses[i]; shield.visible = !!pose; if (!pose) return;
+      shield.position.copy(pose.center); shield.lookAt(vec(pose.center).add(vec(pose.normal))); shield.rotateZ(time * .00015);
+      shield.scale.setScalar(pose.radius * 2 * 512 / 492);
+      shield.material.color.setRGB(1, .12 + .88 * pose.strength, .16 + .84 * pose.strength);
+      shield.material.opacity = .68 + (1 - pose.strength) * .25;
+    });
   }
   updateLens(pose, head, time, dt) {
     const wasActive = this.lens.visible; this.lens.visible = !!pose;

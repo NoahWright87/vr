@@ -63,8 +63,40 @@ settled they rise to a reachable hover. One prop cannot belong to both hands.
 
 Shield reach still estimates shoulders and a default 65 cm arm because WebXR
 does not track elbows. Farsight uses the existing circular secondary view and
-face-distance zoom. Shields currently display the effect; incoming projectile
-blocking remains future work.
+face-distance zoom. Shields block incoming headbutts and slow enemy projectiles
+where their visible disks intercept the attack; flanks and attacks from behind
+can still hit. Each hand has 60 shield strength; a joined shield combines both.
+Damage tints white toward red. After 1.5 seconds without hits, strength recovers
+at 9 per second. Breaking a shield requires a one-second cooldown and lowering
+or changing that hand's pose before recasting. Merging hands cannot repair it.
+
+## Sparring arena
+
+The coliseum is off to the right of spawn, centered at `(24, 0, -3)`, with a
+marked portal landing at `(19, 0, 1)` and broad west/south entrances. Use the
+normal portal gesture, grab a side and pull through. Its floor is flush with
+the courtyard, so regular floor destinations and clearance checks work.
+
+Four CC0 Kenney models from the existing furniture, mini-dungeon, blocky-character
+and blaster packs become a brawler, bruiser, slinger and crate wizard. They have
+different health (40–112), speed, damage and attack cadence. Melee attacks have a
+450 ms headbutt windup; ranged enemies telegraph for 650 ms, then throw visible
+2.8 m/s orbs. They target nearby skeletons preferentially, with a 1.5 m priority
+bonus; a substantially closer player still gets attacked. Scenery blocks attacks.
+
+Enemies stay within the arena and pause combat when the player leaves. Enemy
+projectiles disappear on exiting its bounds or when the arena becomes inactive.
+Player hits show a short red vignette in both eyes, with no HP, death or loss.
+Skeletons have 60 health, can collapse in combat, and automatically defend you
+against nearby enemies in the arena. Explicit horns commands still work; recall
+suppresses automatic defense for 4.5 seconds. Followers catch up after teleporting.
+
+All offensive spells and minion headbutts share the existing `magic-hit` event.
+Enemy health bars shrink on damage. Kills leave a single-use glowing corpse for
+16 seconds; horns + lift raises it just like a grave. Enemies respawn at their
+original positions after 9 seconds, independently of whether their corpse was
+raised. Each death has a fresh corpse ID, so a new life cannot reuse a consumed
+corpse. Reset restores enemies, shields and minions and clears combat effects.
 
 ## Portal doors
 

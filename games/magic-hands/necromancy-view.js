@@ -80,9 +80,12 @@ export class NecromancyView {
       if (!this.models.has(minion.id)) {
         const root = new THREE.Group(), model = createModel(THREE, 'skeleton'); model.scale.setScalar(.85); root.add(model); this.root.add(root);
         model.traverse(mesh => { if (mesh.material) { mesh.material.emissive.set('#53ff91'); mesh.material.emissiveIntensity = mesh.name === 'black' ? .7 : .06; } });
-        this.models.set(minion.id, { root, model });
+        const health = new THREE.Mesh(new THREE.PlaneGeometry(.55, .045), new THREE.MeshBasicMaterial({ color: '#89ffb1', side: THREE.DoubleSide })); health.position.y = 1.75; root.add(health);
+        this.models.set(minion.id, { root, model, health });
       }
       const { root, model } = this.models.get(minion.id); root.position.copy(minion.position); root.rotation.y = Math.atan2(-minion.direction.x, -minion.direction.z);
+      const health = this.models.get(minion.id).health; health.visible = minion.mode !== 'dying'; health.scale.x = minion.health / 60; health.lookAt(head.position);
+      health.material.color.set(time < minion.hurtUntil ? '#ff5656' : '#89ffb1');
       model.position.set(0, 0, 0); model.rotation.set(0, 0, 0);
       if (minion.mode === 'rising') model.position.y = -1.65 * (1 - Math.min(1, (time - minion.born) / 1000)) ** 2;
       else if (minion.mode === 'dying') {
