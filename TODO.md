@@ -4,6 +4,17 @@ Things deliberately deferred, with enough context to pick them up cold.
 Ideas that aren't committed to yet live in DESIGN.md or in conversation;
 this is only for work that has been decided on and postponed.
 
+## 3D Model Toybox
+
+- **Explore two-hand skeletal posing after the rigid-toy workflow is tested.**
+  The first hand should hold the complete toy; a second hand could manipulate
+  an individual limb/bone. The Toybox currently loads complete GLBs (preserving
+  any rigs) and uses shared simple-grabbable for one rigid object per hand.
+  Imported rigs are not necessarily IK rigs or even consistently named. A later
+  pass needs bone picking, per-rig joint limits and a clean handoff between
+  whole-object and bone grabs, without assuming every character has a skeleton.
+  The current static original person/skeleton cannot support this without a rig.
+
 ## Desktop semantic hands
 
 - **Carry the shared hand-intent path through every practical VR mechanic.**

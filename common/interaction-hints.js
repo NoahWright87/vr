@@ -1029,12 +1029,25 @@ AFRAME.registerComponent('simple-grabbable', {
     floorY: { default: 0.13 },
     gravity: { default: 9.8 },
     dropHintDelay: { default: 2500 },
+    // Opt-in toy/prop physics; existing showcase behavior stays unchanged.
+    preserveGrabTransform: { default: false },
+    throwEnabled: { default: false },
+    linearDamping: { default: 0.25 },
+    restitution: { default: 0.22 },
+    halfExtents: { type: 'vec3', default: { x: 0, y: 0, z: 0 } },
   },
 
   init: function () {
     this.state = 'resting';
     this.handEl = null;
     this.fallVelocity = 0;
+    this.velocity = new THREE.Vector3();
+    this.angularVelocity = new THREE.Vector3();
+    this.motionSamples = [];
+    this._motionPosition = new THREE.Vector3();
+    this._motionQuaternion = new THREE.Quaternion();
+    this._spinAxis = new THREE.Vector3();
+    this._spinQuaternion = new THREE.Quaternion();
     this.spawnParent = this.el.object3D.parent;
     this.spawnPosition = this.el.object3D.position.clone();
     this.spawnQuaternion = this.el.object3D.quaternion.clone();
@@ -1053,12 +1066,17 @@ AFRAME.registerComponent('simple-grabbable', {
     var hand = handEl && handEl.components['semantic-hand'];
     if (!hand || hand.heldEl || this.state === 'held') return false;
     hand.gripEl.object3D.attach(this.el.object3D);
-    this.el.object3D.position.set(this.data.heldPosition.x, this.data.heldPosition.y, this.data.heldPosition.z);
-    this.el.object3D.rotation.set(
-      THREE.MathUtils.degToRad(this.data.heldRotation.x),
-      THREE.MathUtils.degToRad(this.data.heldRotation.y),
-      THREE.MathUtils.degToRad(this.data.heldRotation.z)
-    );
+    if (!this.data.preserveGrabTransform) {
+      this.el.object3D.position.set(this.data.heldPosition.x, this.data.heldPosition.y, this.data.heldPosition.z);
+      this.el.object3D.rotation.set(
+        THREE.MathUtils.degToRad(this.data.heldRotation.x),
+        THREE.MathUtils.degToRad(this.data.heldRotation.y),
+        THREE.MathUtils.degToRad(this.data.heldRotation.z)
+      );
+    }
+    this.velocity.set(0, 0, 0); this.angularVelocity.set(0, 0, 0);
+    this.motionSamples.length = 0;
+    this.sampleMotion();
     this.state = 'held';
     this.handEl = handEl;
     this.fallVelocity = 0;
@@ -1072,6 +1090,7 @@ AFRAME.registerComponent('simple-grabbable', {
 
   release: function (handEl) {
     if (this.state !== 'held' || (handEl && this.handEl !== handEl)) return false;
+    if (this.data.throwEnabled) this.captureThrow();
     this.el.sceneEl.object3D.attach(this.el.object3D);
     var hand = this.handEl && this.handEl.components['semantic-hand'];
     if (hand) hand.setHeld(null);
@@ -1085,6 +1104,39 @@ AFRAME.registerComponent('simple-grabbable', {
     return true;
   },
 
+  sampleMotion: function () {
+    if (!this.data.throwEnabled) return;
+    var now = performance.now();
+    this.el.object3D.getWorldPosition(this._motionPosition);
+    this.el.object3D.getWorldQuaternion(this._motionQuaternion);
+    this.motionSamples.push({ time: now, position: this._motionPosition.clone(), quaternion: this._motionQuaternion.clone() });
+    while (this.motionSamples.length > 2 && (now - this.motionSamples[0].time > 100 || this.motionSamples.length > 12)) this.motionSamples.shift();
+  },
+
+  captureThrow: function () {
+    this.sampleMotion();
+    var first = this.motionSamples[0], last = this.motionSamples[this.motionSamples.length - 1];
+    var dt = first && last && (last.time - first.time) / 1000;
+    this.velocity.set(0, 0, 0); this.angularVelocity.set(0, 0, 0);
+    if (!dt || dt < 0.015 || dt > 0.25) return;
+    this.velocity.copy(last.position).sub(first.position).divideScalar(dt).clampLength(0, 8);
+    if (this.velocity.length() < 0.18) this.velocity.set(0, 0, 0);
+    this._spinQuaternion.copy(last.quaternion).multiply(first.quaternion.clone().invert()).normalize();
+    if (this._spinQuaternion.w < 0) {
+      this._spinQuaternion.x *= -1; this._spinQuaternion.y *= -1; this._spinQuaternion.z *= -1; this._spinQuaternion.w *= -1;
+    }
+    var angle = 2 * Math.acos(THREE.MathUtils.clamp(this._spinQuaternion.w, -1, 1));
+    this.angularVelocity.set(this._spinQuaternion.x, this._spinQuaternion.y, this._spinQuaternion.z);
+    if (angle > 0.03 && this.angularVelocity.lengthSq() > 0.000001) this.angularVelocity.normalize().multiplyScalar(Math.min(10, angle / dt));
+    else this.angularVelocity.set(0, 0, 0);
+  },
+
+  getHalfHeight: function () {
+    this.el.object3D.updateMatrix();
+    var e = this.el.object3D.matrix.elements, h = this.data.halfExtents;
+    return Math.abs(e[1])*h.x + Math.abs(e[5])*h.y + Math.abs(e[9])*h.z;
+  },
+
   resetToSpawn: function () {
     if (this.handEl) {
       var hand = this.handEl.components['semantic-hand'];
@@ -1096,14 +1148,41 @@ AFRAME.registerComponent('simple-grabbable', {
     this.handEl = null;
     this.fallVelocity = 0;
     this.state = 'resting';
+    this.velocity.set(0, 0, 0); this.angularVelocity.set(0, 0, 0); this.motionSamples.length = 0;
     this.el.setAttribute('data-grab-state', this.state);
     var zone = this.el.components['hint-zone'];
     if (zone) zone.setLabels(null, null);
   },
 
   tick: function (time, delta) {
+    if (this.state === 'held') { this.sampleMotion(); return; }
     if (this.state !== 'falling') return;
     var dt = Math.min(delta || 0, 50) / 1000;
+    if (this.data.throwEnabled) {
+      this.velocity.y -= this.data.gravity * dt;
+      this.velocity.multiplyScalar(Math.exp(-this.data.linearDamping*dt));
+      this.el.object3D.position.addScaledVector(this.velocity, dt);
+      var spin = this.angularVelocity.length();
+      if (spin > 0.01) {
+        this._spinAxis.copy(this.angularVelocity).divideScalar(spin);
+        this._spinQuaternion.setFromAxisAngle(this._spinAxis, spin*dt);
+        this.el.object3D.quaternion.premultiply(this._spinQuaternion);
+        this.angularVelocity.multiplyScalar(Math.exp(-0.45*dt));
+      }
+      var floor = this.data.floorY + this.getHalfHeight();
+      if (this.el.object3D.position.y < floor) {
+        this.el.object3D.position.y = floor;
+        if (this.velocity.y < 0) this.velocity.y *= -this.data.restitution;
+        this.velocity.x *= 0.85; this.velocity.z *= 0.85; this.angularVelocity.multiplyScalar(0.65);
+        if (Math.abs(this.velocity.y) < 0.3) this.velocity.y = 0;
+        if (this.velocity.length() < 0.08 && this.angularVelocity.length() < 0.08) {
+          this.velocity.set(0, 0, 0); this.angularVelocity.set(0, 0, 0);
+          this.state = 'resting'; this.el.setAttribute('data-grab-state', this.state);
+          this.el.emit('simple-rested', null, false);
+        }
+      }
+      return;
+    }
     this.fallVelocity -= this.data.gravity * dt;
     this.el.object3D.position.y += this.fallVelocity * dt;
     if (this.el.object3D.position.y <= this.data.floorY) {
@@ -1116,6 +1195,10 @@ AFRAME.registerComponent('simple-grabbable', {
   },
 
   remove: function () {
+    if (this.handEl) {
+      var hand = this.handEl.components['semantic-hand'];
+      if (hand && hand.heldEl === this.el) hand.setHeld(null);
+    }
     this.el.removeEventListener('semantic-action', this.onSemanticAction);
   },
 });
