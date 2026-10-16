@@ -2,12 +2,13 @@ import '../../common/watch-menu.js';
 import '../../common/locomotion.js';
 import '../../common/desktop-controls.js';
 import '../../common/checker-floor.js';
+import '../../common/navigation-area.js';
 import './movement-gain.js';
 import { measureBounds, isInsideBoundary, mapLayout, sanitizeWorldScale, scaledRoomBounds } from './play-space.js';
-import { boundaryTarget } from './redirection.js';
 import { TravelTrail, TRAIL_METRES } from './travel-trail.js';
 import { installExperimentMenus } from './experiment-menus.js';
 import './binoculars.js';
+import { overlapFrame } from './overlap-planner.js';
 
 installExperimentMenus();
 
@@ -17,6 +18,7 @@ const PHYSICAL_COLOR = '#ffad54', VIRTUAL_COLOR = '#c084fc';
 const WORLD_SCALE_KEY = 'vr-expansive-world-scale-v1';
 
 AFRAME.registerComponent('expansive-space', {
+  dependencies: ['navigation-area'],
   init: function () {
     let savedScale;
     try { savedScale = JSON.parse(localStorage.getItem(WORLD_SCALE_KEY))?.worldScale; } catch (_) {}
@@ -111,7 +113,6 @@ AFRAME.registerComponent('expansive-space', {
     if (!bounds) return false;
     this.points = Array.from(points, point => ({ x: point.x, z: point.z }));
     this.bounds = bounds;
-    this.steeringCenter = boundaryTarget(this.points);
     this.clearTrails();
     this.layout = mapLayout(bounds);
     this.buildRoom();
@@ -148,6 +149,8 @@ AFRAME.registerComponent('expansive-space', {
   buildRoom: function () {
     this.disposeRoom(false);
     const b = this.virtualBounds = scaledRoomBounds(this.bounds, this.worldScale);
+    this.el.components['navigation-area'].setFootprint([{ x: b.minX, z: b.minZ }, { x: b.maxX, z: b.minZ },
+      { x: b.maxX, z: b.maxZ }, { x: b.minX, z: b.maxZ }]);
     const height = 2.7, thickness = 0.08;
     const group = new THREE.Group();
     const wallMaterial = new THREE.MeshStandardMaterial({ color: '#70849d', roughness: 1 });
@@ -298,6 +301,25 @@ AFRAME.registerComponent('expansive-space', {
 
   drawMap: function () {
     const gain = document.querySelector('#space-rig')?.components['speed-dependent-gain'];
+    let guide = gain?.redirection.guidance;
+    const settings = gain?.redirection.settings;
+    // Display actual post-nudge overlap, also when both modifiers are off.
+    // This diagnostic runs at the map's 10 Hz cadence, not every XR frame.
+    if (gain?.hasPose) {
+      const context = gain.redirectionContext(), frame = overlapFrame(gain.rawPosition, context);
+      if (frame) guide = guide?.valid && guide.areaId === context.area.id ? { ...guide, overlap: frame.fraction } :
+        { valid: true, overlap: frame.fraction, bestOverlap: frame.fraction, correction: 0, areaId: context.area.id,
+          areaFootprint: context.area.floor.points, targetFootprint: frame.floor.points };
+    }
+    const target = guide?.valid && guide.targetFootprint ? guide.targetFootprint.map(point => {
+      this.guideHit.set(point.x, 0, point.z).applyMatrix4(this.inverseWorld);
+      return { x: this.guideHit.x, z: this.guideHit.z };
+    }) : [];
+    const activeArea = guide?.valid && guide.areaFootprint ? guide.areaFootprint.map(point => {
+      this.guideHit.set(point.x, 0, point.z).applyMatrix4(this.inverseWorld);
+      return { x: this.guideHit.x, z: this.guideHit.z };
+    }) : [{ x: this.virtualBounds.minX, z: this.virtualBounds.minZ }, { x: this.virtualBounds.maxX, z: this.virtualBounds.minZ },
+      { x: this.virtualBounds.maxX, z: this.virtualBounds.maxZ }, { x: this.virtualBounds.minX, z: this.virtualBounds.maxZ }];
     let reachable = this.points;
     if (gain) {
       this.effectMatrix.makeRotationY(gain.extraYaw).setPosition(gain.extraTranslation);
@@ -310,17 +332,19 @@ AFRAME.registerComponent('expansive-space', {
     // Both trajectories use the same metric frame. Include retained history
     // and current markers so gained travel is never pinned to the map edge.
     const room = this.virtualBounds;
-    this.layout = mapLayout(measureBounds([...this.points, ...reachable, { x: room.minX, z: room.minZ }, { x: room.maxX, z: room.maxZ }, ...this.physicalTrail.points,
+    this.layout = mapLayout(measureBounds([...this.points, ...reachable, ...target, ...activeArea, ...this.physicalTrail.points,
       ...this.virtualTrail.points, this.position, this.virtualPosition]), 512, 384, 60);
     const ctx = this.context, b = room, physical = this.bounds, project = this.layout.project;
     ctx.fillStyle = '#101827';
     ctx.fillRect(0, 0, 512, 384);
-    const topLeft = project({ x: b.minX, z: b.minZ });
     ctx.fillStyle = '#25344a';
-    ctx.fillRect(topLeft.x, topLeft.y, b.width * this.layout.scale, b.depth * this.layout.scale);
     ctx.strokeStyle = '#788ba5';
     ctx.lineWidth = 2;
-    ctx.strokeRect(topLeft.x, topLeft.y, b.width * this.layout.scale, b.depth * this.layout.scale);
+    ctx.beginPath();
+    activeArea.forEach((point, index) => {
+      const p = project(point); if (index === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y);
+    });
+    ctx.closePath(); ctx.fill(); ctx.stroke();
     ctx.strokeStyle = '#22d3ee';
     ctx.lineWidth = 4;
     ctx.beginPath();
@@ -338,6 +362,14 @@ AFRAME.registerComponent('expansive-space', {
       if (index === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y);
     });
     ctx.closePath(); ctx.stroke(); ctx.setLineDash([]);
+    if (target.length && Math.abs(guide.correction) > .001) {
+      ctx.strokeStyle = '#6ee7a8'; ctx.lineWidth = 2;
+      ctx.beginPath();
+      target.forEach((point, index) => {
+        const p = project(point); if (index === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y);
+      });
+      ctx.closePath(); ctx.stroke();
+    }
     ctx.save();
     ctx.beginPath(); ctx.rect(8, 40, 496, 294); ctx.clip();
     const drawTrail = (trail, color, width, dash) => {
@@ -371,9 +403,7 @@ AFRAME.registerComponent('expansive-space', {
       ctx.restore();
     };
     const inside = isInsideBoundary(this.position, this.points);
-    const guide = gain?.redirection.guidance, settings = gain?.redirection.settings;
-    const showGuide = guide?.valid && guide.urgency > .05 &&
-      ((settings.steeringEnabled && settings.steeringMode === 'adaptive') || settings.turnEnabled);
+    const showGuide = guide?.valid && Math.abs(guide.correction) > .001 && (settings.steeringEnabled || settings.turnEnabled);
     if (showGuide) {
       this.guideDirection.set(-Math.sin(guide.desiredHeading), 0, -Math.cos(guide.desiredHeading))
         .transformDirection(this.inverseWorld);
@@ -398,13 +428,14 @@ AFRAME.registerComponent('expansive-space', {
       ' m | Room ' + b.width.toFixed(1) + ' × ' + b.depth.toFixed(1) + ' m', 256, 26);
     ctx.font = '14px system-ui, sans-serif';
     ctx.fillStyle = '#22d3ee';
-    ctx.fillText('Dashed boundary: reachable game space now', 256, 46);
+    ctx.fillText(guide?.valid ? 'Area: ' + guide.areaId + ' | Overlap ' + (guide.overlap * 100).toFixed(1) +
+      '% -> ' + (guide.bestOverlap * 100).toFixed(1) + '%' : 'Dashed boundary: reachable game space now', 256, 46);
     ctx.font = '18px system-ui, sans-serif';
     ctx.fillStyle = PHYSICAL_COLOR; ctx.fillText('Real', 64, 350);
     ctx.fillStyle = VIRTUAL_COLOR; ctx.fillText('Game', 155, 350);
     ctx.fillStyle = '#bfcee2';
     ctx.font = '15px system-ui, sans-serif';
-    ctx.fillText('Last ' + TRAIL_METRES + ' m | Green: desired path', 345, 350);
+    ctx.fillText(TRAIL_METRES + 'm | Dash: now | Green: goal', 345, 350);
     ctx.font = '17px system-ui, sans-serif';
     ctx.fillStyle = inside ? '#aab8d2' : '#fb7185';
     ctx.fillText(!inside ? 'OUTSIDE ' + (this.detected ? 'BOUNDARY' : 'PREVIEW FOOTPRINT') :

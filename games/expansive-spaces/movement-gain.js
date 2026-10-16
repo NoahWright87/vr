@@ -1,6 +1,8 @@
 import { SpeedGainTracker, DEFAULT_GAIN_SETTINGS } from './speed-gain.js';
-import { RedirectionTracker, LocomotionTransform } from './redirection.js';
+import { RedirectionTracker, LocomotionTransform, rotateXZ } from './redirection.js';
 import { MotionEffectsTracker } from './motion-effects.js';
+import { prepareFloor, sameFloorTransform } from '../../common/floor-overlap.js';
+import { mappedHead } from './overlap-planner.js';
 
 const THREE = AFRAME.THREE;
 const STORAGE_KEY = 'vr-expansive-speed-gain-v1';
@@ -8,7 +10,7 @@ const REDIRECTION_KEY = 'vr-expansive-redirection-v1';
 const MOTION_KEY = 'vr-expansive-motion-effects-v1';
 const GAIN_OPTIONS = { 'space-max-gain': 'maxGain', 'space-gain-speed': 'speedForMax' };
 const REDIRECTION_OPTIONS = {
-  'space-steering-enabled': 'steeringEnabled', 'space-steering-mode': 'steeringMode',
+  'space-steering-enabled': 'steeringEnabled',
   'space-curvature': 'maxCurvature', 'space-steering-speed': 'steeringSpeed',
   'space-steering-rate': 'maxSteeringRate', 'space-turn-enabled': 'turnEnabled',
   'space-wall-lookahead': 'lookAhead', 'space-wall-margin': 'wallMargin',
@@ -131,13 +133,14 @@ AFRAME.registerComponent('speed-dependent-gain', {
     const paused = this.watchOpen();
     const guide = this.redirection.guidance;
     const wall = guide?.wallDistance == null ? 'No boundary' : 'Wall ahead ' + guide.wallDistance.toFixed(1) + ' m';
+    const overlap = guide?.overlap == null ? 'Waiting for area' : 'Overlap ' + (guide.overlap * 100).toFixed(1) +
+      '% -> ' + (guide.bestOverlap * 100).toFixed(1) + '%';
     const steering = !s.steeringEnabled ? 'OFF' : paused ? 'PAUSED - watch open' :
-      s.steeringMode === 'adaptive' && !guide?.valid ? guide?.reason || 'Waiting for boundary tracking' :
-      wall + '\n' + this.redirection.steeringRate.toFixed(1) + ' deg/s | ' + (s.steeringMode === 'adaptive' ? 'Wall avoidance' : 'Manual curve');
+      !guide?.valid ? guide?.reason || 'Waiting for boundary tracking' :
+      overlap + '\n' + this.redirection.steeringRate.toFixed(1) + ' deg/s | ' + wall;
     const turn = !s.turnEnabled ? 'OFF' : paused ? 'PAUSED - watch open' :
       !guide?.valid ? guide?.reason || 'Waiting for boundary tracking' :
-      this.redirection.turnGain.toFixed(2) + 'x | ' + (guide.urgency > .05 ? 'Avoid wall' : 'Align room') +
-      '\nAxis error ' + (guide.alignmentError * 180 / Math.PI).toFixed(0) + ' deg';
+      overlap + '\n' + this.redirection.turnGain.toFixed(2) + 'x | Area: ' + guide.areaId + '\n' + guide.reason;
     this.el.sceneEl.querySelectorAll('.space-steering-live').forEach(el => el.setAttribute('text', 'value', steering));
     this.el.sceneEl.querySelectorAll('.space-turn-live').forEach(el => el.setAttribute('text', 'value', turn));
     for (const [selector, label, enabled] of [['.space-steering-link', 'Walking steering', s.steeringEnabled], ['.space-turn-link', 'Turn gain', s.turnEnabled]]) {
@@ -175,27 +178,27 @@ AFRAME.registerComponent('speed-dependent-gain', {
     return [...this.el.sceneEl.querySelectorAll('.watch-menu-panel')].some(el => el.object3D.visible);
   },
 
-  redirectionContext: function () {
+  redirectionContext: function (position = this.rawPosition, motion = null) {
     const roomEl = document.querySelector('#space-room');
     const room = roomEl && roomEl.components['expansive-space'];
     if (!room?.bounds || !room.virtualBounds || (this.session && !room.detected)) return null;
     roomEl.object3D.updateWorldMatrix(true, false);
     const matrix = roomEl.object3D.matrixWorld;
-    if (room.points !== this.guidancePoints || !this.guidanceMatrix.equals(matrix)) {
+    if (room.points !== this.guidancePoints || !sameFloorTransform(this.guidanceMatrix, matrix)) {
       this.guidancePoints = room.points; this.guidanceMatrix.copy(matrix);
       this.guidanceBoundary = room.points.map(point => {
         this.guidancePoint.set(point.x, 0, point.z).applyMatrix4(matrix);
         return { x: this.guidancePoint.x, z: this.guidancePoint.z };
       });
+      this.guidanceFloor = prepareFloor(this.guidanceBoundary);
     }
-    const axis = bounds => {
-      this.guidancePoint.set(bounds.width >= bounds.depth ? -1 : 0, 0, bounds.width >= bounds.depth ? 0 : -1)
-        .transformDirection(matrix);
-      return Math.atan2(-this.guidancePoint.x, -this.guidancePoint.z);
-    };
-    const weight = bounds => Math.min(1, (Math.max(bounds.width, bounds.depth) / Math.min(bounds.width, bounds.depth) - 1) * 2);
-    return { boundary: this.guidanceBoundary, physicalAxisYaw: axis(room.bounds), virtualAxisYaw: axis(room.virtualBounds),
-      axisWeight: Math.min(weight(room.bounds), weight(room.virtualBounds)), correctionYaw: this.extraYaw };
+    // Score after this frame's gained translation, before injecting yaw.
+    // This matches LocomotionTransform.apply, including slide/jump carry.
+    const extra = rotateXZ({ x: motion?.extraX || 0, z: motion?.extraZ || 0 }, this.extraYaw);
+    const mapping = { yaw: this.extraYaw, x: this.transform.x + extra.x + (motion?.worldX || 0),
+      z: this.transform.z + extra.z + (motion?.worldZ || 0) };
+    const area = this.el.sceneEl.systems['navigation-areas']?.getActiveArea(mappedHead(position, mapping));
+    return { boundary: this.guidanceBoundary, physicalFloor: this.guidanceFloor, area, mapping };
   },
 
   resetTravel: function () {
@@ -228,7 +231,7 @@ AFRAME.registerComponent('speed-dependent-gain', {
       yaw: this.extraYaw, paused });
     this.lastMotion = motion;
     const redirect = this.redirection.sample(position, yaw, time,
-      { context: this.redirection.settings.steeringEnabled || this.redirection.settings.turnEnabled ? this.redirectionContext() : null, paused });
+      { context: this.redirection.settings.steeringEnabled || this.redirection.settings.turnEnabled ? this.redirectionContext(position, motion) : null, paused });
     this.transform.apply(position, motion.extraX, motion.extraZ, redirect.yawDelta);
     this.transform.x += motion.worldX; this.transform.z += motion.worldZ;
     this.step.set(this.transform.x, motion.heightOffset, this.transform.z).sub(this.extraTranslation);

@@ -1,5 +1,5 @@
-import { isInsideBoundary, measureBounds } from './play-space.js';
 import { planGuidance } from './boundary-guidance.js';
+import { OverlapPlanner } from './overlap-planner.js';
 
 const RAD = Math.PI / 180;
 export const DEFAULT_REDIRECTION_SETTINGS = {
@@ -16,7 +16,7 @@ export function sanitizeRedirectionSettings(settings = {}) {
   return {
     steeringEnabled: s.steeringEnabled === true || s.steeringEnabled === 'true',
     // Migrate the old center-seeking mode to boundary-aware steering.
-    steeringMode: ['left', 'right'].includes(s.steeringMode) ? s.steeringMode : 'adaptive',
+    steeringMode: 'adaptive',
     maxCurvature: number(s.maxCurvature, 5, 0, 20),
     steeringSpeed: number(s.steeringSpeed, 2, .8, 4),
     maxSteeringRate: number(s.maxSteeringRate, 6, 1, 30),
@@ -60,33 +60,10 @@ export class LocomotionTransform {
   physicalPoint(point) { return rotateXZ({ x: point.x - this.x, z: point.z - this.z }, -this.yaw); }
 }
 
-export function boundaryTarget(points) {
-  const b = measureBounds(points);
-  if (!b) return null;
-  const center = { x: b.centerX, z: b.centerZ };
-  if (isInsideBoundary(center, points)) return center;
-  // Concave boundaries can put the extents' center outside the guardian.
-  // Choose the interior grid point with the largest clearance to its edges.
-  let best = null, clearance = -1;
-  for (let i = 1; i < 16; i++) for (let j = 1; j < 16; j++) {
-    const p = { x: b.minX + b.width * i / 16, z: b.minZ + b.depth * j / 16 };
-    if (!isInsideBoundary(p, points)) continue;
-    let distance = Infinity;
-    points.forEach((a, k) => {
-      const next = points[(k + 1) % points.length];
-      const dx = next.x - a.x, dz = next.z - a.z;
-      const t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.z - a.z) * dz) / (dx * dx + dz * dz || 1)));
-      distance = Math.min(distance, Math.hypot(p.x - a.x - t * dx, p.z - a.z - t * dz));
-    });
-    if (distance > clearance) { best = p; clearance = distance; }
-  }
-  return best;
-}
-
 export class RedirectionTracker {
   constructor(settings) { this.settings = sanitizeRedirectionSettings(settings); this.reset(); }
   setSettings(settings) { this.settings = sanitizeRedirectionSettings({ ...this.settings, ...settings }); }
-  reset() { this.previous = null; this.walkSpeed = 0; this.turnRate = 0; this.steeringRate = 0; this.turnGain = 1; this.bias = 1; this.guidance = null; }
+  reset() { this.previous = null; this.walkSpeed = 0; this.turnRate = 0; this.steeringRate = 0; this.turnGain = 1; this.bias = 1; this.guidance = null; this.planner = new OverlapPlanner(); }
   sample(position, yaw, timeMs, { context = null, paused = false } = {}) {
     const neutral = () => ({ yawDelta: 0, steeringRate: 0, turnRate: this.turnRate, turnGain: 1 });
     if (![position.x, position.z, timeMs].every(Number.isFinite)) { this.reset(); return neutral(); }
@@ -105,37 +82,38 @@ export class RedirectionTracker {
     this.turnRate += (angularSpeed - this.turnRate) * (1 - Math.exp(-dt / .04));
     const s = this.settings;
     const heading = speed > .15 ? Math.atan2(-dx, -dz) : yaw;
-    this.guidance = planGuidance(position, heading, Math.min(speed, this.walkSpeed), context, s, this.bias);
-    if (this.guidance.urgency > .05 && Math.abs(this.guidance.wallError) > .05)
-      this.bias = -Math.sign(this.guidance.wallError);
+    this.guidance = planGuidance(position, heading, Math.min(speed, this.walkSpeed), context, s, this.planner, timeMs, this.bias);
+    if (Math.abs(this.guidance.correction) > .05) this.bias = Math.sign(this.guidance.correction);
     let turnYaw = 0;
     if (!paused && s.turnEnabled && this.guidance.valid && angularSpeed > 30 + 1e-6 && this.turnRate > 30 && Math.abs(dyaw) > 1e-8) {
       const goal = this.guidance.correction;
       const limit = Math.sign(goal) === Math.sign(dyaw) ? s.maxTurnGain - 1 : 1 - s.minTurnGain;
       const strength = Math.min(1, Math.abs(goal) / (30 * RAD));
-      const available = Math.abs(dyaw) * limit * ramp(Math.min(angularSpeed, this.turnRate), 30, s.turnSpeed) * strength;
+      const available = Math.abs(dyaw) * limit * ramp(Math.min(angularSpeed, this.turnRate), 30, s.turnSpeed) * strength * s.alignmentStrength;
       turnYaw = Math.sign(goal) * Math.min(Math.abs(goal), available);
     }
     this.turnGain = Math.abs(dyaw) > 1e-8 ? 1 + turnYaw / dyaw : 1;
     let desired = 0;
     if (!paused && s.steeringEnabled && speed > .6) {
-      let direction = s.steeringMode === 'left' ? -1 : 1;
-      if (s.steeringMode === 'adaptive') {
-        direction = 0;
-        if (this.guidance.valid) direction = Math.sign(this.guidance.wallError) * this.guidance.urgency *
-          Math.min(1, Math.abs(this.guidance.wallError) / (Math.PI / 2));
-      }
+      const direction = this.guidance.valid ? Math.sign(this.guidance.correction) *
+        Math.min(1, Math.abs(this.guidance.correction) / (Math.PI / 2)) * s.alignmentStrength : 0;
       const curvature = s.maxCurvature * ramp(Math.min(speed, this.walkSpeed), .6, s.steeringSpeed);
       desired = direction * Math.min(s.maxSteeringRate, curvature * speed);
     }
     // A changed course must not keep the previous wall's correction alive
     // through the smoothing interval, particularly after a quick reversal.
-    if (s.steeringMode === 'adaptive' && (desired === 0 || Math.sign(desired) !== Math.sign(this.steeringRate))) this.steeringRate = 0;
+    if (desired === 0 || Math.sign(desired) !== Math.sign(this.steeringRate)) this.steeringRate = 0;
     this.steeringRate += (desired - this.steeringRate) * (1 - Math.exp(-dt / .3));
     // No lingering rotation at rest, while looking at settings, or when off.
-    if (paused || !s.steeringEnabled || speed <= .6 || (s.steeringMode === 'adaptive' && !this.guidance.valid)) this.steeringRate = 0;
+    if (paused || !s.steeringEnabled || speed <= .6 || !this.guidance.valid) this.steeringRate = 0;
     this.steeringRate = Math.max(-s.maxSteeringRate, Math.min(s.maxSteeringRate, this.steeringRate));
-    return { yawDelta: this.steeringRate * RAD * dt + turnYaw,
+    const requested = this.steeringRate * RAD * dt + turnYaw;
+    const bounded = Math.sign(requested) * Math.min(Math.abs(requested), Math.abs(this.guidance.correction), 3 * RAD);
+    const yawDelta = this.guidance.valid ? this.planner.limitYaw(bounded, this.guidance.minimumOverlap) : 0;
+    const ratio = Math.abs(requested) > 1e-10 ? yawDelta / requested : 0;
+    this.steeringRate *= ratio; turnYaw *= ratio;
+    this.turnGain = Math.abs(dyaw) > 1e-8 ? 1 + turnYaw / dyaw : 1;
+    return { yawDelta,
       steeringRate: this.steeringRate, turnRate: this.turnRate, turnGain: this.turnGain };
   }
 }

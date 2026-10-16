@@ -1,196 +1,116 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { RedirectionTracker, LocomotionTransform, rotateXZ, wrapYaw,
-  boundaryTarget, sanitizeRedirectionSettings } from '../games/expansive-spaces/redirection.js';
-import { isInsideBoundary } from '../games/expansive-spaces/play-space.js';
+import {RedirectionTracker,LocomotionTransform,rotateXZ,wrapYaw,sanitizeRedirectionSettings} from '../games/expansive-spaces/redirection.js';
+import {prepareFloor} from '../common/floor-overlap.js';
+import {overlapFrame} from '../games/expansive-spaces/overlap-planner.js';
 
-const RAD = Math.PI / 180;
-const context = { boundary: [{ x: -100, z: -100 }, { x: 100, z: -100 }, { x: 100, z: 100 }, { x: -100, z: 100 }],
-  physicalAxisYaw: 0, virtualAxisYaw: 60 * RAD, correctionYaw: 0, axisWeight: 1 };
-const close = (a, b, tolerance = 1e-8) => assert.ok(Math.abs(a - b) < tolerance, `${a} != ${b}`);
-function run({ speed = 0, turnRate = 0, settings = {}, dt = 1 / 90, seconds = 2, guidance = context } = {}) {
-  const tracker = new RedirectionTracker(settings);
-  tracker.sample({ x: 0, z: 0 }, 0, 0);
-  let yaw = 0, last;
-  for (let i = 1; i <= Math.round(seconds / dt); i++) {
-    last = tracker.sample({ x: 0, z: -speed * i * dt }, wrapYaw(turnRate * RAD * i * dt), i * dt * 1000, { context: guidance });
-    yaw += last.yawDelta;
-  }
-  return { tracker, yaw, last };
+const RAD=Math.PI/180,close=(a,b,t=1e-8)=>assert.ok(Math.abs(a-b)<t,`${a} != ${b}`);
+const rectangle=(w,d)=>[{x:-w/2,z:-d/2},{x:w/2,z:-d/2},{x:w/2,z:d/2},{x:-w/2,z:d/2}];
+const boundary=rectangle(2,10),physicalFloor=prepareFloor(boundary),area={id:'hall',floor:prepareFloor(rectangle(3,15))};
+function fixture(settings={},mapping={x:2,z:0,yaw:0}){
+  const tracker=new RedirectionTracker(settings),transform=new LocomotionTransform();Object.assign(transform,mapping);
+  const context=()=>({boundary,physicalFloor,area,mapping:{x:transform.x,z:transform.z,yaw:transform.yaw}});
+  const sample=(p,yaw,time,paused=false)=>{
+    const r=tracker.sample(p,yaw,time,{context:context(),paused});transform.apply(p,0,0,r.yawDelta);return r;
+  };
+  return{tracker,transform,context,sample};
 }
-
-test('both effects default off, even during fast walking and turning', () => {
-  assert.equal(run({ speed: 3, turnRate: 300 }).yaw, 0);
-  assert.equal(sanitizeRedirectionSettings().steeringEnabled, false);
-  assert.equal(sanitizeRedirectionSettings().turnEnabled, false);
-});
-
-test('slow looks stay 1:1; fast looks amplify or attenuate toward the same useful correction', () => {
-  const settings = { turnEnabled: true, maxTurnGain: 200 / 180, turnSpeed: 180 };
-  assert.equal(run({ turnRate: 30, settings }).yaw, 0);
-  const positive = run({ turnRate: 360, settings, seconds: .5 });
-  const negative = run({ turnRate: -360, settings, seconds: .5 });
-  assert.ok(negative.yaw > 0, 'a rightward look is attenuated to add the same leftward correction');
-  close(negative.last.turnGain, .9);
-  // Acceleration smoothing makes the total slightly under the 20 degree ceiling.
-  assert.ok(positive.yaw / RAD > 18 && positive.yaw / RAD < 20);
-  close(positive.last.turnGain, 200 / 180);
-  const mirrored = run({ turnRate: -360, settings, seconds: .5, guidance: { ...context, virtualAxisYaw: -60 * RAD } });
-  close(positive.yaw, -mirrored.yaw);
-  close(mirrored.last.turnGain, 200 / 180);
-});
-
-test('full-turn-speed setting changes the ramp independently of max gain', () => {
-  const fast = run({ turnRate: 120, settings: { turnEnabled: true, maxTurnGain: 1.3, turnSpeed: 90 } });
-  const slow = run({ turnRate: 120, settings: { turnEnabled: true, maxTurnGain: 1.3, turnSpeed: 300 } });
-  close(fast.last.turnGain, 1.3);
-  assert.ok(slow.last.turnGain < 1.1);
-});
-
-test('yaw crossing +/-180 degrees does not create a false full revolution', () => {
-  const tracker = new RedirectionTracker({ turnEnabled: true, maxTurnGain: 1.2, turnSpeed: 60 });
-  tracker.sample({ x: 0, z: 0 }, 179 * RAD, 0);
-  const result = tracker.sample({ x: 0, z: 0 }, -179 * RAD, 10);
-  assert.ok(result.yawDelta >= 0 && result.yawDelta < .4 * RAD);
-});
-
-test('walking steering ramps with physical speed and respects its independent rate cap', () => {
-  const settings = { steeringEnabled: true, steeringMode: 'left', maxCurvature: 5, steeringSpeed: 2, maxSteeringRate: 6 };
-  assert.equal(run({ speed: .6, settings }).yaw, 0);
-  const fast = run({ speed: 3, settings });
-  close(fast.last.steeringRate, -6, .01);
-  const right = run({ speed: 3, settings: { ...settings, steeringMode: 'right' } });
-  close(right.yaw, -fast.yaw);
-  const slowerRamp = run({ speed: 1.2, settings: { ...settings, steeringSpeed: 3 } });
-  assert.ok(Math.abs(slowerRamp.last.steeringRate) < 1);
-});
-
-test('adaptive walking steering requests rotation only when an actual edge is approaching', () => {
-  const settings = { steeringEnabled: true };
-  assert.equal(run({ speed: 2, settings }).yaw, 0, 'distant walls need no correction');
-  const guidance = { ...context, boundary: [{ x: -2, z: -5 }, { x: 2, z: -5 }, { x: 2, z: 5 }, { x: -2, z: 5 }] };
-  assert.ok(Math.abs(run({ speed: 2, settings, guidance }).yaw) > .01);
-  assert.equal(run({ speed: 2, settings, guidance: null }).yaw, 0, 'no boundary means no adaptive steering');
-});
-
-test('stopping, slow movement and watch pause do not coast or bank rotation', () => {
-  const { tracker } = run({ speed: 3, turnRate: 300, settings: { steeringEnabled: true, steeringMode: 'right', turnEnabled: true } });
-  let result = tracker.sample({ x: 0, z: -6 }, wrapYaw(600 * RAD), 2010);
-  assert.equal(result.yawDelta, 0);
-  result = tracker.sample({ x: 0, z: -6.03 }, wrapYaw(603 * RAD), 2020, { paused: true });
-  assert.equal(result.yawDelta, 0);
-  result = tracker.sample({ x: 0, z: -6.03 }, wrapYaw(603 * RAD), 2030);
-  assert.equal(result.yawDelta, 0);
-  result = tracker.sample({ x: 0, z: -6.034 }, wrapYaw(603.2 * RAD), 2040);
-  assert.equal(result.yawDelta, 0);
-});
-
-test('gaps, pose jumps, invalid yaw and reference resets cannot amplify discontinuities', () => {
-  const { tracker } = run({ speed: 2, turnRate: 180, settings: { steeringEnabled: true, turnEnabled: true } });
-  assert.equal(tracker.sample({ x: 20, z: 0 }, 1, 2010).yawDelta, 0);
-  assert.equal(tracker.sample({ x: 20, z: 0 }, 2, 3010).yawDelta, 0);
-  assert.equal(tracker.sample({ x: 20, z: 0 }, 3, 3010).yawDelta, 0);
-  tracker.reset();
-  assert.equal(tracker.sample({ x: 20, z: 0 }, 0, 4000).yawDelta, 0);
-  assert.equal(tracker.sample({ x: 20, z: 0 }, null, 4010).yawDelta, 0);
-  assert.equal(tracker.sample({ x: 20, z: 0 }, 2, 4020).yawDelta, 0);
-  assert.equal(tracker.sample({ x: NaN, z: 0 }, 2, 4030).yawDelta, 0);
-  assert.equal(tracker.sample({ x: 20, z: 0 }, 1, 4040).yawDelta, 0);
-});
-
-test('the toggles disable each effect independently without undoing prior rotation', () => {
-  const { tracker } = run({ speed: 3, turnRate: 180, settings: { steeringEnabled: true, steeringMode: 'right', turnEnabled: true } });
-  tracker.setSettings({ steeringEnabled: false });
-  const turnOnly = tracker.sample({ x: 0, z: -6.03 }, wrapYaw(361.8 * RAD), 2010, { context });
-  assert.equal(turnOnly.steeringRate, 0);
-  assert.ok(turnOnly.yawDelta > 0);
-  tracker.setSettings({ turnEnabled: false });
-  assert.equal(tracker.sample({ x: 0, z: -6.06 }, wrapYaw(363.6 * RAD), 2020, { context }).yawDelta, 0);
-});
-
-test('rotation pivots around an off-origin head and preserves metric hand reach', () => {
-  const t = new LocomotionTransform(), head = { x: 3, z: -2 }, hand = { x: 3.4, z: -2 };
-  t.apply(head, 0, 0, Math.PI / 2);
-  const h = rotateXZ(head, t.yaw), arm = rotateXZ(hand, t.yaw);
-  close(h.x + t.x, head.x); close(h.z + t.z, head.z);
-  close(Math.hypot(arm.x - h.x, arm.z - h.z), .4);
-  const raw = t.physicalPoint({ x: arm.x + t.x, z: arm.z + t.z });
-  close(raw.x, hand.x); close(raw.z, hand.z);
-});
-
-test('movement gain combines with yaw in virtual travel direction without scaling steering', () => {
-  const t = new LocomotionTransform();
-  t.apply({ x: 0, z: 0 }, 0, 0, Math.PI / 2);
-  t.apply({ x: 0, z: -1 }, 0, -.2, .1);
-  const mapped = rotateXZ({ x: 0, z: -1 }, t.yaw);
-  close(mapped.x + t.x, -1.2); close(mapped.z + t.z, 0);
-  close(t.yaw, Math.PI / 2 + .1);
-  const before = { ...t };
-  t.apply({ x: 0, z: -1 }, 0, 0, 0);
-  close(t.x, before.x); close(t.z, before.z); close(t.yaw, before.yaw);
-  t.reset(); assert.deepEqual({ ...t }, { x: 0, z: 0, yaw: 0 });
-});
-
-test('sampling is consistent across headset frame rates', () => {
-  const results = [60, 72, 90, 120].map(hz => run({ speed: 2.5, turnRate: 180,
-    settings: { steeringEnabled: true, steeringMode: 'right', turnEnabled: true }, dt: 1 / hz }));
-  for (const result of results) close(result.yaw, results[0].yaw, .003);
-});
-
-test('automatic steering targets stay inside concave boundaries', () => {
-  const polygon = [{ x: 0, z: 0 }, { x: 3, z: 0 }, { x: 3, z: 1 }, { x: 1, z: 1 }, { x: 1, z: 3 }, { x: 0, z: 3 }];
-  assert.ok(isInsideBoundary(boundaryTarget(polygon), polygon));
-  assert.equal(boundaryTarget([]), null);
-});
-
-test('saved settings reject malformed booleans, modes and nonfinite numbers', () => {
-  const settings = sanitizeRedirectionSettings({ steeringEnabled: 'false', turnEnabled: 'true', steeringMode: 'garbage',
-    maxCurvature: Infinity, steeringSpeed: 0, maxSteeringRate: 100, maxTurnGain: -1, turnSpeed: NaN });
-  assert.deepEqual(settings, { steeringEnabled: false, turnEnabled: true, steeringMode: 'adaptive', maxCurvature: 5,
-    steeringSpeed: .8, maxSteeringRate: 30, lookAhead: 1.5, wallMargin: .4,
-    minTurnGain: .5, maxTurnGain: 1, turnSpeed: 180, alignmentStrength: 1 });
-});
-
-test('repeated alternating head glances recover alignment without banking more rotation once aligned', () => {
-  const tracker = new RedirectionTracker({ turnEnabled: true, minTurnGain: .8, maxTurnGain: 1.2, turnSpeed: 90 });
-  let correctionYaw = 70 * RAD;
-  tracker.sample({ x: 0, z: 0 }, 0, 0);
-  for (let i = 1; i <= 2400; i++) {
-    const yaw = Math.sin(i / 35) * 1.5;
-    const result = tracker.sample({ x: 0, z: 0 }, yaw, i * 1000 / 90,
-      { context: { ...context, virtualAxisYaw: 0, correctionYaw } });
-    assert.ok(result.yawDelta <= 1e-8, 'every injected turn should reduce this positive misalignment');
-    correctionYaw += result.yawDelta;
+function run({speed=0,turnRate=0,settings={},hz=90,seconds=2,mapping}={}){
+  const f=fixture(settings,mapping);let total=0,absoluteTotal=0,last;
+  f.sample({x:-.8,z:0},0,0);
+  for(let i=1;i<=Math.round(seconds*hz);i++){
+    last=f.sample({x:-.8,z:-speed*i/hz},wrapYaw(turnRate*RAD*i/hz),i*1000/hz);total+=last.yawDelta;absoluteTotal+=Math.abs(last.yawDelta);
   }
-  assert.ok(Math.abs(correctionYaw) < .2 * RAD);
-  const aligned = run({ turnRate: 360, settings: { turnEnabled: true }, guidance: { ...context, virtualAxisYaw: 0 } });
-  assert.equal(aligned.yaw, 0);
+  return{...f,total,absoluteTotal,last};
+}
+test('both effects default off despite poor overlap, fast walking and head turns',()=>{
+  assert.equal(run({speed:3,turnRate:300}).total,0);
+  assert.equal(sanitizeRedirectionSettings().steeringEnabled,false);
+  assert.equal(sanitizeRedirectionSettings().turnEnabled,false);
 });
-
-test('turn gain alone can avoid a wall while walking, for glances in either direction', () => {
-  const guidance = { ...context, boundary: [{ x: -10, z: -1 }, { x: 10, z: -1 }, { x: 10, z: 5 }, { x: -10, z: 5 }], virtualAxisYaw: 0 };
-  const settings = { turnEnabled: true, turnSpeed: 90 };
-  const leftLook = run({ speed: 1, turnRate: 180, settings, guidance, seconds: .4 });
-  const rightLook = run({ speed: 1, turnRate: -180, settings, guidance, seconds: .4 });
-  assert.ok(leftLook.yaw < 0 && rightLook.yaw < 0);
-  assert.ok(leftLook.last.turnGain < 1 && rightLook.last.turnGain > 1);
-  assert.equal(leftLook.last.steeringRate, 0);
+test('slow looks remain 1:1; opposite fast looks gain or lose rotation toward the same fit',()=>{
+  const settings={turnEnabled:true,maxTurnGain:200/180,turnSpeed:180};
+  assert.equal(run({turnRate:30,settings}).total,0);
+  const left=run({turnRate:360,settings,seconds:.5}),right=run({turnRate:-360,settings,seconds:.5});
+  assert.ok(left.total>18*RAD&&left.total<20*RAD);assert.ok(right.total>0);
+  close(left.last.turnGain,200/180);close(right.last.turnGain,.9);
 });
-
-test('adaptive turn gain is neutral without boundary data or when alignment is disabled', () => {
-  const settings = { turnEnabled: true };
-  assert.equal(run({ turnRate: 360, settings, guidance: null }).yaw, 0);
-  assert.equal(run({ turnRate: 360, settings: { ...settings, alignmentStrength: 0 } }).yaw, 0);
-  assert.equal(sanitizeRedirectionSettings({ steeringMode: 'center' }).steeringMode, 'adaptive');
+test('full-turn-speed control changes available correction without changing the overlap objective',()=>{
+  const fast=run({turnRate:120,settings:{turnEnabled:true,maxTurnGain:1.3,turnSpeed:90},seconds:.5});
+  const slow=run({turnRate:120,settings:{turnEnabled:true,maxTurnGain:1.3,turnSpeed:300},seconds:.5});
+  assert.ok(fast.total>slow.total*2);assert.ok(fast.tracker.guidance.bestOverlap>.99);
 });
-
-test('changing course away from a wall immediately cancels its old walking correction', () => {
-  const tracker = new RedirectionTracker({ steeringEnabled: true, steeringSpeed: .8 });
-  const guidance = { ...context, boundary: [{ x: -10, z: -1 }, { x: 10, z: -1 }, { x: 10, z: 10 }, { x: -10, z: 10 }] };
-  tracker.sample({ x: 0, z: 0 }, 0, 0, { context: guidance });
-  for (let i = 1; i <= 20; i++) tracker.sample({ x: 0, z: -.01 * i }, 0, i * 10, { context: guidance });
-  assert.ok(Math.abs(tracker.steeringRate) > .1);
-  const away = tracker.sample({ x: 0, z: -.19 }, 0, 210, { context: guidance });
-  assert.equal(away.steeringRate, 0);
-  assert.equal(away.yawDelta, 0);
+test('yaw wrapping does not inject a spurious full revolution',()=>{
+  const f=fixture({turnEnabled:true,maxTurnGain:1.2,turnSpeed:60});
+  f.sample({x:-.8,z:0},179*RAD,0);
+  const r=f.sample({x:-.8,z:0},-179*RAD,10);assert.ok(r.yawDelta>=0&&r.yawDelta<.4*RAD);
+});
+test('walking recovery uses physical speed and its own rate cap',()=>{
+  const settings={steeringEnabled:true,maxCurvature:5,steeringSpeed:2,maxSteeringRate:6};
+  assert.equal(run({speed:.6,settings}).total,0);
+  const fast=run({speed:3,settings,seconds:1});assert.ok(Math.abs(fast.last.steeringRate)>.1&&Math.abs(fast.last.steeringRate)<=6);
+  const slow=run({speed:1.2,settings:{...settings,steeringSpeed:3},seconds:1});assert.ok(slow.absoluteTotal<fast.absoluteTotal/3);
+});
+test('stopping and the watch do not coast or bank yaw',()=>{
+  const f=fixture({steeringEnabled:true,turnEnabled:true});f.sample({x:-.8,z:0},0,0);
+  for(let i=1;i<=50;i++)f.sample({x:-.8,z:-.02*i},i*.03,i*10);
+  assert.equal(f.sample({x:-.8,z:-1},1.5,510).yawDelta,0);
+  assert.equal(f.sample({x:-.8,z:-1.02},1.53,520,true).yawDelta,0);
+});
+test('gaps, invalid yaw and tracking jumps cannot amplify discontinuities',()=>{
+  const f=fixture({steeringEnabled:true,turnEnabled:true});f.sample({x:-.8,z:0},0,0);
+  assert.equal(f.sample({x:20,z:0},1,10).yawDelta,0);
+  assert.equal(f.sample({x:20,z:0},2,1000).yawDelta,0);
+  f.tracker.reset();assert.equal(f.sample({x:-.8,z:0},null,1100).yawDelta,0);
+  assert.equal(f.sample({x:-.8,z:0},2,1110).yawDelta,0);
+  assert.equal(f.tracker.sample({x:NaN,z:0},2,1120).yawDelta,0);
+});
+test('walking and turn toggles remain independent',()=>{
+  const f=run({speed:2,turnRate:180,settings:{steeringEnabled:true,turnEnabled:true},seconds:.5});
+  f.tracker.setSettings({steeringEnabled:false});
+  const onlyTurn=f.sample({x:-.8,z:-1.02},91.8*RAD,510);assert.equal(onlyTurn.steeringRate,0);assert.ok(onlyTurn.yawDelta>0);
+  f.tracker.setSettings({turnEnabled:false});assert.equal(f.sample({x:-.8,z:-1.04},93.6*RAD,520).yawDelta,0);
+});
+test('off-origin head pivot and metric hand reach are preserved',()=>{
+  const t=new LocomotionTransform(),head={x:3,z:-2},hand={x:3.4,z:-2};t.apply(head,0,0,Math.PI/2);
+  const h=rotateXZ(head,t.yaw),arm=rotateXZ(hand,t.yaw);close(h.x+t.x,head.x);close(h.z+t.z,head.z);
+  close(Math.hypot(arm.x-h.x,arm.z-h.z),.4);
+  const raw=t.physicalPoint({x:arm.x+t.x,z:arm.z+t.z});close(raw.x,hand.x);close(raw.z,hand.z);
+});
+test('movement gain combines with yaw without scaling old travel',()=>{
+  const t=new LocomotionTransform();t.apply({x:0,z:0},0,0,Math.PI/2);t.apply({x:0,z:-1},0,-.2,.1);
+  const head=rotateXZ({x:0,z:-1},t.yaw);close(head.x+t.x,-1.2);close(head.z+t.z,0);
+  const before={...t};t.apply({x:0,z:-1},0,0,0);assert.deepEqual({...t},before);
+});
+test('stationary glances recover a displaced thin strip and stop at a usable fit',()=>{
+  const f=fixture({turnEnabled:true,minTurnGain:.8,maxTurnGain:1.2,turnSpeed:90});let minimum=1;
+  f.sample({x:-.8,z:0},0,0);
+  for(let i=1;i<=3600;i++){
+    f.sample({x:-.8,z:0},Math.sin(i/35)*1.5,i*1000/90);
+    minimum=Math.min(minimum,overlapFrame({x:-.8,z:0},f.context()).fraction);
+  }
+  assert.ok(minimum>=.25-1e-6);assert.ok(overlapFrame({x:-.8,z:0},f.context()).fraction>.9999);
+  assert.equal(f.tracker.guidance.correction,0);
+});
+test('already useful floor is not rotated out of the room while walking and glancing',()=>{
+  const f=fixture({steeringEnabled:true,turnEnabled:true,minTurnGain:.5,maxTurnGain:1.5},{x:0,z:0,yaw:0});
+  for(let i=0;i<1500;i++){
+    const p={x:.8*Math.sin(i*.01),z:4.5*Math.sin(i*.005)};
+    f.sample(p,Math.sin(i/25)*2,i*1000/90);
+    assert.ok(overlapFrame(p,f.context()).fraction>.99999);
+  }
+});
+test('sampling is consistent across headset refresh rates',()=>{
+  const values=[60,72,90,120].map(hz=>run({turnRate:180,hz,settings:{turnEnabled:true},seconds:1}).total);
+  values.forEach(v=>close(v,values[0],.003));
+});
+test('unknown area, unavailable tracking and zero response are neutral',()=>{
+  const f=fixture({turnEnabled:true,steeringEnabled:true});f.sample({x:-.8,z:0},0,0);
+  assert.equal(f.tracker.sample({x:-.8,z:-.02},.05,10,{context:{...f.context(),area:null}}).yawDelta,0);
+  assert.equal(run({turnRate:360,settings:{turnEnabled:true,alignmentStrength:0}}).total,0);
+});
+test('saved legacy curve modes migrate to overlap guidance and numeric settings are bounded',()=>{
+  for(const steeringMode of ['center','left','right','garbage'])assert.equal(sanitizeRedirectionSettings({steeringMode}).steeringMode,'adaptive');
+  const s=sanitizeRedirectionSettings({maxCurvature:Infinity,steeringSpeed:0,maxSteeringRate:100,maxTurnGain:-1,turnSpeed:NaN});
+  assert.equal(s.maxCurvature,5);assert.equal(s.steeringSpeed,.8);assert.equal(s.maxSteeringRate,30);assert.equal(s.minTurnGain,.5);assert.equal(s.maxTurnGain,1);
 });

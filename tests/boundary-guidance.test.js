@@ -1,96 +1,86 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { axisError, planGuidance, rayBoundary } from '../games/expansive-spaces/boundary-guidance.js';
+import { planGuidance, rayBoundary } from '../games/expansive-spaces/boundary-guidance.js';
+import { OverlapPlanner, overlapFrame, chooseOverlapRotation } from '../games/expansive-spaces/overlap-planner.js';
 import { sanitizeRedirectionSettings, rotateXZ } from '../games/expansive-spaces/redirection.js';
+import { prepareFloor, intersectionArea, moveFloor } from '../common/floor-overlap.js';
 
-const RAD = Math.PI / 180;
-const boundary = [{ x: -1, z: -5 }, { x: 1, z: -5 }, { x: 1, z: 5 }, { x: -1, z: 5 }];
-const settings = sanitizeRedirectionSettings();
-const context = { boundary, physicalAxisYaw: 0, virtualAxisYaw: 0, correctionYaw: 0, axisWeight: 1 };
-const plan = (position, heading, speed = 1, ctx = context) => planGuidance(position, heading, speed, ctx, settings);
-const close = (a, b) => assert.ok(Math.abs(a - b) < 1e-8, `${a} != ${b}`);
+const rect = (w,d,x=0,z=0) => [{x:x-w/2,z:z-d/2},{x:x+w/2,z:z-d/2},{x:x+w/2,z:z+d/2},{x:x-w/2,z:z+d/2}];
+const boundary=rect(2,10), settings=sanitizeRedirectionSettings();
+const context={boundary,physicalFloor:prepareFloor(boundary),area:{id:'hall',floor:prepareFloor(rect(3,15))},mapping:{yaw:0,x:0,z:0}};
+const plan=(p,h=0,s=1,ctx=context)=>planGuidance(p,h,s,ctx,settings,new OverlapPlanner(),1000);
+const close=(a,b,t=1e-7)=>assert.ok(Math.abs(a-b)<t,`${a} != ${b}`);
 
-test('the obstacle ahead wins over a closer wall behind or alongside the player', () => {
-  const position = { x: .9, z: 0 };
-  close(rayBoundary(position, 0, boundary).distance, 5);
-  close(rayBoundary(position, Math.PI / 2, boundary).distance, 1.9);
-  close(rayBoundary(position, -Math.PI / 2, boundary).distance, .1);
-  assert.equal(plan(position, 0).urgency, 0);
+test('the obstacle ahead wins over nearer walls behind or alongside',()=>{
+  close(rayBoundary({x:.9,z:0},0,boundary).distance,5);
+  close(rayBoundary({x:.9,z:0},-Math.PI/2,boundary).distance,.1);
+  assert.equal(plan({x:.9,z:0},0).urgency,0);
 });
-
-test('either side wall produces a physical path away from that wall into open space', () => {
-  const right = plan({ x: .8, z: 0 }, -Math.PI / 2);
-  const left = plan({ x: -.8, z: 0 }, Math.PI / 2);
-  assert.ok(right.valid && left.valid && right.urgency > .99 && left.urgency > .99);
-  assert.ok(Math.abs(right.wallError) > .1 && Math.abs(left.wallError) > .1);
-  for (const guide of [right, left]) {
-    const position = guide === right ? { x: .8, z: 0 } : { x: -.8, z: 0 };
-    assert.ok(rayBoundary(position, guide.desiredHeading, boundary).distance > guide.wallDistance * 5);
-    assert.ok(-Math.sin(guide.desiredHeading) * (guide === right ? -1 : 1) > 0);
+test('parallel but displaced rectangles recover from a thin strip using the actual head pivot',()=>{
+  const ctx={...context,mapping:{yaw:0,x:2,z:0}}, p={x:-.8,z:0}, goal=plan(p,0,0,ctx);
+  close(goal.overlap,.25); close(goal.bestOverlap,1);
+  assert.ok(Math.abs(goal.correction)>160*Math.PI/180);
+  close(intersectionArea(prepareFloor(goal.targetFootprint),ctx.area.floor),20);
+  const wrong=moveFloor(overlapFrame(p,ctx).floor,goal.correction,{x:0,z:0});
+  assert.ok(intersectionArea(wrong,ctx.area.floor)<10);
+});
+test('matching axes alone cannot hide lost usable floor',()=>{
+  assert.equal(plan({x:-.8,z:0},0,0).correction,0);
+  const offset=plan({x:-.8,z:0},0,0,{...context,mapping:{yaw:0,x:2,z:0}});
+  assert.ok(offset.bestOverlap>offset.overlap+.7);
+});
+test('physical wall avoidance cannot sacrifice full overlap',()=>{
+  const goal=plan({x:.95,z:0},-Math.PI/2,2);
+  assert.ok(goal.urgency>.99); close(goal.overlap,1);close(goal.bestOverlap,1);
+  close(intersectionArea(prepareFloor(goal.targetFootprint),context.area.floor),20,.00001);
+});
+test('speed changes wall urgency without replacing the overlap objective',()=>{
+  const slow=plan({x:0,z:2},Math.PI,.7),fast=plan({x:0,z:2},Math.PI,3);
+  assert.equal(slow.urgency,0);assert.ok(fast.urgency>.3);close(fast.bestOverlap,1);
+});
+test('current-area shape changes the goal without changing physical geometry',()=>{
+  const goal=plan({x:0,z:0},0,0,{...context,area:{id:'cross-hall',floor:prepareFloor(rect(15,3))}});
+  close(goal.overlap,.3);close(goal.bestOverlap,1);assert.equal(goal.areaId,'cross-hall');
+  assert.ok(Math.abs(goal.correction)>70*Math.PI/180);close(goal.wallDistance,5);
+});
+test('rotated and translated reference spaces preserve overlap decisions',()=>{
+  const yaw=.8,offset={x:20,z:-7},p={x:-.8,z:0};
+  const transform=p=>{const r=rotateXZ(p,yaw);return{x:r.x+offset.x,z:r.z+offset.z};};
+  const original=plan(p,0,0,{...context,mapping:{yaw:0,x:2,z:0}});
+  const b=boundary.map(transform),t=rotateXZ({x:2,z:0},yaw);
+  const changed=plan(transform(p),yaw,0,{boundary:b,physicalFloor:prepareFloor(b),
+    area:{id:'hall',floor:prepareFloor(context.area.floor.points.map(transform))},mapping:{yaw:0,...t}});
+  close(original.overlap,changed.overlap);close(original.bestOverlap,changed.bestOverlap);
+  close(original.correction,changed.correction,.005);
+});
+test('concave polygons and either winding count genuinely walkable space',()=>{
+  const shape=[{x:0,z:0},{x:3,z:0},{x:3,z:1},{x:1,z:1},{x:1,z:3},{x:0,z:3}];
+  for(const boundary of [shape,[...shape].reverse()]){
+    close(rayBoundary({x:.5,z:2},-Math.PI/2,boundary).distance,.5);
+    const floor=prepareFloor(boundary),goal=plan({x:.5,z:2},0,0,{boundary,physicalFloor:floor,area:{id:'L',floor},mapping:{yaw:0,x:0,z:0}});
+    close(goal.overlap,1);assert.equal(goal.correction,0);
   }
 });
-
-test('speed changes when a wall enters the look-ahead horizon, without using virtual gain', () => {
-  const position = { x: 0, z: 2 };
-  const slow = plan(position, Math.PI, .7), fast = plan(position, Math.PI, 3);
-  assert.equal(slow.urgency, 0); assert.ok(fast.urgency > .3);
-  const earlier = planGuidance(position, Math.PI, .7, context, { ...settings, lookAhead: 3, wallMargin: 1 });
-  assert.ok(earlier.urgency > slow.urgency);
+test('missing boundary or area and invalid tracking positions cannot request turns',()=>{
+  assert.equal(plan({x:2,z:0}).valid,false);
+  assert.equal(plan({x:0,z:0},0,1,null).correction,0);
+  assert.equal(plan({x:0,z:0},0,1,{...context,area:null}).valid,false);
+  assert.equal(plan({x:0,z:0},null).valid,false);
 });
-
-test('wall danger overrides competing room alignment', () => {
-  const danger = plan({ x: .95, z: 0 }, -Math.PI / 2, 1, { ...context, correctionYaw: -Math.PI / 3 });
-  assert.ok(danger.alignmentError > 0, 'room alignment would rotate the other way');
-  assert.ok(danger.correction < 0, 'the approaching right wall wins');
+test('stationary glances do not invent a collision course',()=>{
+  const goal=plan({x:.8,z:0},-Math.PI/2,0);assert.equal(goal.urgency,0);assert.equal(goal.correction,0);
 });
-
-test('long room axes align modulo 180 degrees and do not impose a compass heading', () => {
-  const position = { x: 0, z: 0 };
-  close(plan(position, 0, 1, { ...context, correctionYaw: Math.PI }).correction, 0);
-  const offAxis = plan(position, 0, 1, { ...context, correctionYaw: 40 * RAD });
-  close(offAxis.correction, -40 * RAD);
-  close(plan(position, 0, 1, { ...context, virtualAxisYaw: Math.PI / 2, correctionYaw: 40 * RAD }).correction, 50 * RAD);
-  close(plan(position, 0, 1, { ...context, axisWeight: 0, correctionYaw: 40 * RAD }).correction, 0);
-  close(axisError(90 * RAD, -1), -90 * RAD);
+test('combined nudges cannot cross the permitted overlap floor',()=>{
+  const planner=new OverlapPlanner(),goal=planner.sample({x:0,z:0},context,0,{heading:0,urgency:0});
+  const limited=planner.limitYaw(Math.PI/2,goal.minimumOverlap);
+  const after=moveFloor(planner.frame.floor,limited,{x:0,z:0},planner.frame.pivot);
+  assert.ok(Math.abs(limited)<.15);assert.ok(intersectionArea(after,context.area.floor)/20>=1-1.1e-7);
 });
-
-test('changing the active room changes the alignment goal without moving the physical polygon', () => {
-  const position = { x: 0, z: 0 };
-  assert.equal(plan(position, 0).correction, 0);
-  const changed = plan(position, 0, 1, { ...context, virtualAxisYaw: Math.PI / 2 });
-  assert.ok(Math.abs(changed.correction) > 1.5);
-  assert.equal(changed.wallDistance, 5);
-});
-
-test('translated and rotated reference spaces preserve the physical guidance decision', () => {
-  const yaw = .8, offset = { x: 20, z: -7 }, position = { x: .8, z: 1 };
-  const transform = p => { const r = rotateXZ(p, yaw); return { x: r.x + offset.x, z: r.z + offset.z }; };
-  const original = plan(position, -Math.PI / 2, 1, { ...context, correctionYaw: .4 });
-  const changed = plan(transform(position), -Math.PI / 2 + yaw, 1, { ...context,
-    boundary: boundary.map(transform), physicalAxisYaw: yaw, virtualAxisYaw: yaw, correctionYaw: .4 });
-  close(original.wallDistance, changed.wallDistance);
-  close(original.correction, changed.correction);
-  close(Math.sin(original.desiredHeading + yaw), Math.sin(changed.desiredHeading));
-});
-
-test('concave polygons and either winding use the first actual wall intersection', () => {
-  const polygon = [{ x: 0, z: 0 }, { x: 3, z: 0 }, { x: 3, z: 1 }, { x: 1, z: 1 }, { x: 1, z: 3 }, { x: 0, z: 3 }];
-  const position = { x: .5, z: 2 };
-  for (const shape of [polygon, [...polygon].reverse()]) {
-    close(rayBoundary(position, -Math.PI / 2, shape).distance, .5);
-    const result = plan(position, -Math.PI / 2, 1, { ...context, boundary: shape });
-    assert.ok(result.valid && result.correction < 0);
+test('a committed route can cross local peaks without worsening its starting overlap',()=>{
+  const ctx={...context,mapping:{yaw:0,x:2,z:0}},frame=overlapFrame({x:-.8,z:0},ctx),best=chooseOverlapRotation(frame);
+  for(let i=1;i<=360;i++){
+    const step=moveFloor(frame.floor,best.delta*i/360,{x:0,z:0},frame.pivot);
+    assert.ok(intersectionArea(step,ctx.area.floor)/20>=frame.fraction-1e-7);
   }
-});
-
-test('missing tracking geometry and positions outside the polygon cannot request rotation', () => {
-  assert.equal(plan({ x: 2, z: 0 }, 0).valid, false);
-  assert.equal(plan({ x: 0, z: 0 }, 0, 1, null).correction, 0);
-  assert.equal(plan({ x: 0, z: 0 }, null).valid, false);
-});
-
-test('stationary glances do not invent a collision course toward the looked-at wall', () => {
-  const result = plan({ x: .8, z: 0 }, -Math.PI / 2, 0);
-  assert.equal(result.urgency, 0);
-  assert.equal(result.correction, 0);
+  close(best.fraction,1);
 });
