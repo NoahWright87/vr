@@ -11,7 +11,7 @@ const assert=require('node:assert/strict'),base=process.env.VR_TEST_URL||'http:/
     const result=await page.evaluate(async()=>{
       const scene=document.querySelector('a-scene'),g=document.querySelector('[impossible-game]').components['impossible-game'],lab=scene.components['boundary-floor-lab'];
       const hand=document.querySelector('#left-hand').components['hand-with-watch'],component=hand.crossbarComponent,menu=component.menu;
-      const click=id=>{menu.refresh();const index=menu.level().items.findIndex(item=>item.id===id);if(index<0)throw new Error('Missing watch row '+id);menu.moveFocus(index-menu.level().index);component.focusedSlot().el.emit('click');};
+      const click=id=>{menu.refresh();if(['rooms-first-style','growth-style'].includes(id)&&!menu.level().items.some(item=>item.id===id)){menu.reset();click('generate-level');}const index=menu.level().items.findIndex(item=>item.id===id);if(index<0)throw new Error('Missing watch row '+id);menu.moveFocus(index-menu.level().index);component.focusedSlot().el.emit('click');};
       const root=()=>{menu.open();menu.reset();menu.refresh();};
       const set=(id,value)=>{click(id);const row=menu.focusedRow();if(menu.level().kind==='number')menu.moveFocus((value-row.value)/menu.level().source.step);else menu.moveFocus(menu.level().items.findIndex(item=>item.value===value)-menu.level().index);component.focusedSlot().el.emit('click');};
       const wait=async()=>{for(let i=0;i<500&&!g.level;i++)await new Promise(r=>setTimeout(r,10));if(!g.level)throw new Error(g.message+' '+g.detail);};
@@ -43,6 +43,7 @@ const assert=require('node:assert/strict'),base=process.env.VR_TEST_URL||'http:/
       position={x:.1,y:1.65,z:.1};lab.tick();root();click('boundary-calibration');click('calibration-save');
       const reviewed=lab.phase==='review'&&lab.pending&&!g.manualBoundary;click('calibration-confirm');
       const accepted=!!g.manualBoundary&&!g.measuring()&&g.manualBoundary.points.some(p=>p.x<1||p.y>1.3);
+      const generationAfterSave=menu.level().source?.id==='generate-level'&&menu.focusedRow().item.id==='generate-current';
       position={x:.8,y:1.65,z:.8};scene.emit('headset-boundary-frame',frame(),false);
       root();click('rooms-first-style');click('generate-rooms-first');await wait();menu.close();
       const level=g.level,origin=g.footprint.origin,traced={count:level.pieces.filter(p=>p.kind==='room').length,corners:level.params.footprint.length,width:level.bounds.w,height:level.bounds.h,setting:level.params.roomsPerLayer};
@@ -64,7 +65,7 @@ const assert=require('node:assert/strict'),base=process.env.VR_TEST_URL||'http:/
       scene.emit('headset-boundary-frame',frame(),false);const recovered=g.world.object3D.visible&&lab.root.visible;
       scene.emit('headset-boundary-reset',{},false);const resetClears=!g.manualBoundary&&!g.level;
       scene.renderer.xr.getSession=original.session;scene.renderer.xr.getFrame=original.frame;scene.renderer.xr.getReferenceSpace=original.space;scene.is=original.is;g.xr=false;
-      return {explicitGenerate,desktop,oldPreserved,traceRequired,passthrough,reviewed:!!reviewed,accepted,traced,transformMatches,rigFixed,savedOutline,middleButtons,lastReturn,bothStylesUseTrace,trackingHidden,recovered,resetClears};
+      return {explicitGenerate,desktop,oldPreserved,traceRequired,passthrough,reviewed:!!reviewed,accepted,generationAfterSave,traced,transformMatches,rigFixed,savedOutline,middleButtons,lastReturn,bothStylesUseTrace,trackingHidden,recovered,resetClears};
     });
     for(const [key,value] of Object.entries(result))if(!['desktop','traced'].includes(key))assert.equal(value,true,key);
     assert.equal(result.desktop.count,9);assert.equal(result.desktop.setting,2);assert.equal(result.traced.count,9);assert.equal(result.traced.setting,2);assert.ok(result.traced.corners>=6&&result.traced.width>4.6);

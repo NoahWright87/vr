@@ -88,9 +88,18 @@ same reference space. Losing tracking during editing discards the unfinished
 estimate and leaves passthrough on until Cancel. Recentring, boundary reset
 or leaving XR invalidates the active calibration.
 
-Impossible Spaces reuses this component in its own XR session via **Calibrate
-area**. Its two generators consume the confirmed polygon. Lab geometry is not
-silently transferred between independent XR origins.
+**Generate level** is the first item in Boundary Lab's wrist watch. Confirming
+a calibration opens that submenu directly on **Generate new rooms**. Step
+inside the green area and select it to generate immediately with the current
+style and a new seed. **Rooms first** and **Existing generation** beneath it
+offer their own settings and **Generate!** actions.
+
+Generated rooms run in this same Lab scene and XR session, using the confirmed
+polygon and existing tracking origin. The floor, sky, cube and diagnostics hide,
+and virtual locomotion stops. **Return to Lab** restores the diagnostics and
+keeps the saved area ready. You can regenerate or recalibrate without leaving
+VR. The standalone Impossible Spaces page has the same Generate level menu;
+there is no automatic boundary transfer between independent XR sessions.
 
 **Save diagnostics** stores/downloads a schema-4 JSON report with reported
 boundary observations, accepted/pending polygons, current painted contours,
@@ -118,6 +127,10 @@ Against a served production build:
   pause with the watch, lose a ray/pose, save and confirm the resulting polygon.
 - `node tests/impossible-generation.browser.cjs` verifies that both generators
   consume the confirmed floor in the same tracking space.
+- `node tests/boundary-generation.browser.cjs` starts in the actual Lab, walks
+  and confirms a boundary, verifies the automatically focused generation action,
+  generates/regenerates both styles without navigation or a new XR session,
+  rides an elevator, and returns to Lab with the saved polygon intact.
 
 Set `VR_PLAYWRIGHT_PATH` to an installed Playwright package; `VR_TEST_URL`
 defaults to `http://127.0.0.1:8088`. The paint runner optionally saves a top-down

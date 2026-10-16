@@ -15,6 +15,7 @@
     <script type="module" src="../../common/visor-menu.js"></script>
     <script type="module" src="../../common/headset-boundary.js"></script>
     <script type="module" src="./floor-setup.js"></script>
+    <script type="module" src="./level-preview.ts"></script>
     <script type="module" src="../../common/locomotion.js"></script>
     <script type="module" src="../../common/desktop-controls.js"></script>
 
@@ -67,6 +68,7 @@
     <script type="module">
       import { registerMenuPage } from '../../common/menu-crossbar.js';
       import { registerVisorPage } from '../../common/visor-page.js';
+      import { generationMenu } from '../impossible-spaces/generation-menu.js';
 
       var LEVELS = { low: 0.2, medium: 0.6, high: 1.0 };
       var hapticsStatus = 'Choose a controller and level.';
@@ -93,8 +95,10 @@
         title: '',
         onOpen: component => sceneEl.components['boundary-floor-lab']?.focusCalibration(component),
         items: [
+          generationMenu(),
           { kind: 'info', id: 'boundary-status', label: 'Boundary', info: boundaryInfo },
           { kind: 'submenu', id: 'boundary-calibration', label: 'Calibrate boundary', info: () => sceneEl.components['boundary-floor-lab']?.describe() || '', items: () => sceneEl.components['boundary-floor-lab']?.menuItems() || [] },
+          { kind: 'action', id: 'return-to-lab', label: 'Return to Lab', info: 'Hide the generated rooms and return to boundary diagnostics. Your saved boundary stays ready for generation.' },
           { kind: 'action', id: 'save-diagnostics', label: 'Save diagnostics', info: () => sceneEl.components['boundary-floor-lab']?.reportStatus || '' },
           {
             // One wrist menu can test either controller, so a grab or

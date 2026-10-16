@@ -1,4 +1,4 @@
-import { generationSettings, generationValues } from './generation-menu.js';
+import { generationSettings, generationValues, focusGeneration } from './generation-menu.js';
 import { DEFAULT_MIX } from './core/templates.ts';
 import { createRuntime, movePlayer, renderWalls } from './core/runtime.ts';
 import { centroid } from './core/geometry.ts';
@@ -22,30 +22,31 @@ export function previewBoundary(shape: string, w: number, h: number) {
 }
 
 AFRAME.registerComponent('impossible-game', {
+  schema:{lab:{default:false},rig:{type:'selector',default:'#player'},camera:{type:'selector',default:'#camera'},reader:{type:'selector',default:'#boundary-reader'}},
   init() {
     this.xr = false; this.level = null; this.state = null; this.view = null; this.worker = null;
-    this.style='growth';this.source='traced';this.manualBoundary=null;
+    this.style=this.data.lab?'rooms-first':'growth';this.source='traced';this.manualBoundary=null;this.labMode=false;
     this.boundary = null; this.revision = null; this.ride = createRide(); this.keys = new Set(); this.outline = true;
     this.tracking = false; this.outside = false; this.message = ''; this.detail = ''; this.generating = false;
-    this.scene = this.el.sceneEl; this.camera = $('camera'); this.world = $('world'); this.panel = $('elevator-panel');
+    this.scene = this.el.sceneEl; this.rig=this.data.rig;this.camera = this.data.camera;this.reader=this.data.reader; this.world = $('world'); this.panel = $('elevator-panel');
     this.transform = new THREE.Matrix4(); this.originTransform = new THREE.Matrix4(); this.buttonPoint = new THREE.Vector3(); this.fingerPoint = new THREE.Vector3();
     this.previewOutline = new THREE.LineLoop(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: '#22d3ee', depthTest: false }));
     this.scene.object3D.add(this.previewOutline);
     this.recovery = new THREE.Mesh(new THREE.RingGeometry(.15,.2,32),new THREE.MeshBasicMaterial({color:'#ffe29a',side:THREE.DoubleSide,depthTest:false}));
     this.recovery.rotation.x = -Math.PI/2;this.recovery.visible=false;this.scene.object3D.add(this.recovery);
     this.handlers = [];
-    this.listen = (target: any, event: string, callback: any) => { target.addEventListener(event, callback); this.handlers.push([target,event,callback]); };
+    this.listen = (target: any, event: string, callback: any) => { if(!target)return;target.addEventListener(event, callback); this.handlers.push([target,event,callback]); };
     this.listen(this.scene, 'enter-vr', () => {
       this.xr = true; this.keys.clear(); this.boundary = null; this.revision = null; this.tracking = false;
       this.manualBoundary=null;
       this.cancelGeneration(); this.clearLevel(); this.previewOutline.visible = false;
-      $('player').object3D.position.set(0,0,0);
+      this.rig.object3D.position.set(0,0,0);
       const look = this.camera.components['look-controls'];
       if (look) { look.yawObject.rotation.y = 0; look.pitchObject.rotation.x = 0; }
-      document.body.classList.add('xr-active'); this.status('Calibrate your usable area', 'Watch → Calibrate area. Then choose a generation style.');
+      document.body.classList.add('xr-active'); this.status('Calibrate your usable area', 'Save and confirm your boundary, then Watch → Generate level.');
     });
     this.listen(this.scene, 'exit-vr', () => {
-      this.xr = false; document.body.classList.remove('xr-active'); this.cancelGeneration(); this.generate(false);
+      this.xr = false; document.body.classList.remove('xr-active'); this.cancelGeneration();if(this.data.lab){this.clearLevel();this.restoreLab();}else this.generate(false);
     });
     this.listen(this.scene, 'headset-boundary-frame', (event: any) => this.onBoundaryFrame(event.detail));
     this.listen(this.scene, 'headset-boundary-reset', () => {
@@ -58,6 +59,8 @@ AFRAME.registerComponent('impossible-game', {
     this.listen(this.scene, 'menu-action', (event: any) => {
       if (event.detail.id === 'ride') this.requestRide();
       if (event.detail.id === 'regenerate') this.generate(true);
+      if (event.detail.id === 'generate-current') this.generate(true);
+      if (event.detail.id === 'return-to-lab') {if(this.measuring())this.status('Finish calibration first','Save or Cancel before returning to the Lab.');else{this.cancelGeneration();this.clearLevel();this.restoreLab();this.status('Boundary Lab','Your saved area is ready. Watch → Generate level.');}}
       if (event.detail.id === 'outline') this.toggleOutline();
       if (event.detail.id === 'margin') this.cycleSetting('margin', [.1,.25,.4]);
       if (event.detail.id === 'width') this.cycleSetting('door-width', [.8,1,1.2]);
@@ -73,8 +76,9 @@ AFRAME.registerComponent('impossible-game', {
     this.listen(this.scene,'walking-calibration-invalidated',(event:any)=>{if(!event.detail.trackingOnly){this.manualBoundary=null;if(this.xr){this.cancelGeneration();this.clearLevel();}}});
     this.listen(this.scene,'walking-calibration-confirmed',(event:any)=>{
       this.manualBoundary={points:event.detail.points.map((p:any)=>({...p})),revision:event.detail.revision};this.source='traced';this.clearLevel();
-      this.status('Traced area saved','Step inside it, then Watch → Existing generation or Rooms first → Generate!');
+      this.status('Boundary saved — generate a level','Step inside the green outline. Watch → Generate level → Generate new rooms.');
       this.updateFootprintDisplay();
+      document.querySelectorAll('[hand-with-watch]').forEach(el=>{const c=el.components['hand-with-watch']?.crossbarComponent;if(c?.menu.isOpen)focusGeneration(c);});
     });
     this.listen(this.scene, 'watch-menu-ready', () => this.renderStatus());
     this.listen($('ride-button'), 'click', () => this.requestRide());
@@ -93,7 +97,26 @@ AFRAME.registerComponent('impossible-game', {
     this.listen(document, 'visibilitychange', () => this.keys.clear());
     // Hardware-independent touch support, including controller-only and hand-tracked sessions.
     this.touching = new Set();
-    this.generate(false);
+    if(!this.data.lab)this.generate(false);
+  },
+  enterLabLevel(){
+    if(!this.data.lab||this.labMode)return;
+    const rig=this.rig,reader=this.reader.components['headset-boundary'];
+    this.labState={locomotion:rig.getAttribute('locomotion-demo'),position:rig.object3D.position.clone(),quaternion:rig.object3D.quaternion.clone(),objects:Array.from(this.scene.querySelectorAll('[data-level-lab-prop]')).map(el=>({el,visible:el.object3D.visible})),readerFlags:{showOutline:reader.showOutline,showFit:reader.data.showFit}};
+    this.labMode=true;rig.removeAttribute('locomotion-demo');rig.object3D.position.set(0,0,0);rig.object3D.quaternion.identity();
+    const look=this.camera.components['look-controls'];if(look){look.yawObject.rotation.y=0;look.pitchObject.rotation.x=0;}
+    this.labState.objects.forEach(({el})=>{el.object3D.visible=false;});this.updateFootprintDisplay();
+  },
+  restoreLab(){
+    if(!this.labState)return;
+    const old=this.labState,reader=this.reader.components['headset-boundary'];this.labState=null;this.labMode=false;
+    old.objects.forEach(({el,visible})=>{el.object3D.visible=visible;});
+    this.rig.object3D.position.copy(old.position);this.rig.object3D.quaternion.copy(old.quaternion);
+    if(old.locomotion)this.rig.setAttribute('locomotion-demo',old.locomotion);
+    reader.showOutline=old.readerFlags.showOutline;reader.outline.visible=reader.corners.visible=this.xr&&reader.showOutline!==false;
+    reader.fitOutline.visible=this.xr&&old.readerFlags.showFit;
+    const c=this.calibration();if(c){c.redraw();c.root.visible=this.xr&&this.tracking;}
+    $('head-status')?.setAttribute('visible',false);
   },
   cycleSetting(id: string, values: number[]) {
     const input = $(id) as HTMLInputElement;
@@ -120,8 +143,9 @@ AFRAME.registerComponent('impossible-game', {
     this.message = message; this.detail = detail; this.renderStatus();
   },
   renderStatus() {
-    $('status').textContent = this.message + (this.detail ? ' · ' + this.detail.replaceAll('\n',' ') : '');
+    if($('status'))$('status').textContent = this.message + (this.detail ? ' · ' + this.detail.replaceAll('\n',' ') : '');
     $('head-status').setAttribute('text', 'value', this.message);
+    if(this.data.lab)$('head-status').object3D.visible=this.labMode&&!this.measuring();
     const text = $('head-status').getObject3D('text');
     if (text) { text.material.depthTest = false; text.material.depthWrite = false; text.renderOrder = 100; }
     document.querySelectorAll('[hand-with-watch]').forEach(el=>{const watch=el.components['hand-with-watch'];if(watch?.crossbarComponent?.menu.isOpen)watch.crossbarComponent.menu.refresh();});
@@ -130,18 +154,19 @@ AFRAME.registerComponent('impossible-game', {
   },
   toggleOutline() {
     this.outline = !this.outline;
-    const reader = $('boundary-reader').components['headset-boundary'];
+    const reader = this.reader.components['headset-boundary'];
     reader.showOutline = this.outline&&this.source==='headset';
     reader.outline.visible = reader.corners.visible = this.xr && reader.showOutline && this.tracking;
     this.previewOutline.visible = !this.xr && this.outline;
-    $('boundary-toggle').textContent = this.outline ? 'Hide outline' : 'Show outline';
+    if($('boundary-toggle'))$('boundary-toggle').textContent = this.outline ? 'Hide outline' : 'Show outline';
     this.updateFootprintDisplay();
   },
   updateFootprintDisplay(){
-    const c=this.calibration(),reader=$('boundary-reader').components['headset-boundary'];
-    if(!this.xr||this.measuring())return;
+    const c=this.calibration(),reader=this.reader.components['headset-boundary'];
+    if(!this.xr||this.measuring()||(this.data.lab&&!this.labMode))return;
     reader.showOutline=this.source==='headset'&&this.outline;
     reader.outline.visible=reader.corners.visible=reader.showOutline&&this.tracking;
+    reader.fitOutline.visible=false;
     if(c){c.fill.visible=false;c.root.visible=this.source==='traced'&&!!this.manualBoundary&&this.outline&&this.tracking;}
   },
   onBoundaryFrame(frame: any) {
@@ -151,7 +176,7 @@ AFRAME.registerComponent('impossible-game', {
     this.updateFootprintDisplay();
     if(this.measuring()){this.world.object3D.visible=false;this.panel.object3D.visible=false;return;}
     if (this.revision !== frame.revision) {
-      this.revision = frame.revision;if(this.source==='headset')this.generate(false);
+      this.revision = frame.revision;if(this.source==='headset'&&(!this.data.lab||this.labMode))this.generate(false);
     }
     if (!this.level) return;
     this.transform.fromArray(frame.matrix);
@@ -172,14 +197,15 @@ AFRAME.registerComponent('impossible-game', {
     if (this.outside) this.status('Return to the amber ring', 'You stepped through a virtual wall or tracking jumped. Walk back to the ring, or generate here.');
   },
   generate(newSeed: boolean,style?:string) {
+    if(this.data.lab&&!this.xr){this.status('Enter VR to generate here','Save a boundary, then Watch → Generate level.');return;}
     if(style)this.style=style;
     if(this.measuring()){this.status('Finish calibration first','Save and confirm, or Cancel before generating.');return;}
     this.cancelGeneration();
-    if (newSeed) {const item=generationSettings[this.style].find(item=>item.id.endsWith(':seed'));item.value=(Number(item.value)+1)%1000000;($('seed') as HTMLInputElement).value=String(item.value);}
+    if (newSeed) {const item=generationSettings[this.style].find(item=>item.id.endsWith(':seed'));item.value=(Number(item.value)+1)%1000000;if($('seed'))($('seed') as HTMLInputElement).value=String(item.value);}
     if (this.xr && !this.boundary) { this.status('Waiting for headset boundary', 'A real boundary is required to generate in VR.'); return; }
     if(this.xr&&this.source==='traced'&&!this.manualBoundary){this.status('Calibrate your usable area','Watch → Calibrate area. No headset rectangle is substituted for your trace.');return;}
     try {
-      const w = number('width',1,20), h = number('depth',1,20);
+      const w = this.xr?0:number('width',1,20), h = this.xr?0:number('depth',1,20);
       const points = this.xr ? this.source==='traced'?this.manualBoundary.points:this.boundary.points : previewBoundary(($('shape') as HTMLSelectElement).value,w,h);
       this.footprint = normalizeFootprint(points);
       const settings=generationValues(this.style),margin=settings.boundaryMargin,minWidth=settings.minWidth;
@@ -187,7 +213,7 @@ AFRAME.registerComponent('impossible-game', {
       const params = { boundsW:this.footprint.width, boundsH:this.footprint.height, footprint:this.footprint.polygon, boundaryMargin:margin, startAt,
         stationaryElevators:true, minWidth, mix:DEFAULT_MIX, pieceCount:settings.pieceCount??settings.roomCount, minSizePct:settings.minSizePct??3,maxSizePct:settings.maxSizePct??15,branchChance:settings.branchChance??.3,seed:settings.seed,
         generationStyle:this.style,roomCount:settings.roomCount,roomsPerLayer:settings.roomsPerLayer,roomSize:settings.roomSize,connectionMode:settings.connectionMode };
-      this.clearLevel(); this.generating = true;
+      this.enterLabLevel();this.clearLevel(); this.generating = true;
       this.status('Generating rooms…', `${this.footprint.width.toFixed(1)} × ${this.footprint.height.toFixed(1)} m · ${points.length} boundary corners`);
       const worker = new Worker(new URL('./generate-worker.ts', import.meta.url), {type:'module'}); this.worker = worker;
       worker.onmessage = (event: any) => {
@@ -198,7 +224,7 @@ AFRAME.registerComponent('impossible-game', {
         this.ride = createRide(); this.outside = false;
         if (!this.xr) {
           this.world.object3D.matrixAutoUpdate = true; this.world.object3D.position.set(0,0,0); this.world.object3D.rotation.set(0,0,0);
-          $('player').object3D.position.set(this.state.pos.x,0,this.state.pos.y);
+          this.rig.object3D.position.set(this.state.pos.x,0,this.state.pos.y);
           this.camera.object3D.rotation.set(0,0,0);
           const d = this.level.doors.find((d: any) => d.a === this.state.activeId || d.b === this.state.activeId);
           const look = this.camera.components['look-controls'];
@@ -206,7 +232,7 @@ AFRAME.registerComponent('impossible-game', {
           this.drawPreviewOutline();
         } else {
           // Undo only desktop preview offsets at XR entry, before any tracked frame is used.
-          $('player').object3D.position.set(0,0,0);
+          this.rig.object3D.position.set(0,0,0);
           this.onBoundaryFrame(this.boundary);
         }
         this.world.object3D.visible = !this.outside; this.view.show(this.state); this.updatePanel(); this.showRoomStatus();
@@ -272,7 +298,7 @@ AFRAME.registerComponent('impossible-game', {
     ctx.globalAlpha=1;ctx.fillStyle='#ffe29a';ctx.beginPath();ctx.arc(ox+this.state.pos.x*scale,oy+this.state.pos.y*scale,5,0,Math.PI*2);ctx.fill();
   },
   tick(time: number, delta: number) {
-    document.querySelectorAll('.calibration-status').forEach(el=>{el.object3D.visible=this.xr&&this.measuring();});
+    if(!this.data.lab||this.labMode)document.querySelectorAll('.calibration-status').forEach(el=>{el.object3D.visible=this.xr&&this.measuring();});
     if(this.measuring())return;
     if (!this.level) return;
     const dt = Math.min(delta/1000,.05);
@@ -284,7 +310,7 @@ AFRAME.registerComponent('impossible-game', {
         const dx=(x*Math.cos(yaw)+z*Math.sin(yaw))/length*amount, dy=(-x*Math.sin(yaw)+z*Math.cos(yaw))/length*amount;
         const n=Math.max(1,Math.ceil(amount/.015));for(let i=0;i<n;i++)movePlayer(this.level,this.state,dx/n,dy/n);
       }
-      $('player').object3D.position.set(this.state.pos.x,0,this.state.pos.y);
+      this.rig.object3D.position.set(this.state.pos.x,0,this.state.pos.y);
     }
     if (!this.outside && (!this.xr||this.tracking)) advanceRide(this.level,this.state,this.ride,dt);
     this.view.show(this.state);
@@ -305,7 +331,7 @@ AFRAME.registerComponent('impossible-game', {
     if(time-(this.lastStatus||0)>250){this.lastStatus=time;if(!this.xr||this.tracking)this.showRoomStatus();if(!this.xr)this.drawMap();}
   },
   remove() {
-    this.cancelGeneration(); this.clearLevel();
+    this.cancelGeneration(); this.clearLevel();this.restoreLab();
     for(const [target,event,callback] of this.handlers)target.removeEventListener(event,callback);
     this.previewOutline.removeFromParent(); this.previewOutline.geometry.dispose();this.previewOutline.material.dispose();
     this.recovery.removeFromParent();this.recovery.geometry.dispose();this.recovery.material.dispose();

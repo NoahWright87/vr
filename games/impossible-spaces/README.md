@@ -16,8 +16,10 @@ Open `/games/impossible-spaces/` over HTTPS (localhost works for desktop).
 2. **Save boundary** shows a final yellow preview. **Yes, save boundary**
    confirms it and draws a green floor ribbon. **Keep editing** returns to
    painting. Step inside the accepted area.
-3. Choose **Existing generation** or **Rooms first** in the watch. Adjust
-   settings, then select **Generate!**. Settings alone do not rebuild the level.
+3. The watch opens **Generate level** after confirmation. Select **Generate
+   new rooms** to use current settings with a new seed, or enter **Rooms first**
+   / **Existing generation**, adjust settings and choose **Generate!**. Settings
+   alone do not rebuild the level. Generate level is also first at the watch root.
 4. Walk through colored rooms and doorways. Enter an elevator fully before
    poking or pointing at its button. The doors close for 0.65 s, stay shut for
    0.8 s, then open over 0.65 s. The outside changes only while fully closed.
@@ -40,6 +42,9 @@ Confirmed points are valid only in the current bounded-floor reference space.
 Transient tracking loss hides the world until tracking recovers. Recentring,
 boundary reset or XR exit discards the trace and requires calibration again.
 Stored points are never applied to another tracking origin automatically.
+Boundary Lab also hosts this same runtime: its watch can generate levels
+directly after calibration without leaving the Lab's XR session. **Return to
+Lab** restores its diagnostics and retains the accepted area for another level.
 Browsers must provide bounded-floor tracking. Calibration describes a connected
 floor polygon, without interior holes or obstacle detection.
 
@@ -110,6 +115,8 @@ Optional browser runners against a served production build:
 - `node tests/floor-paint.browser.cjs`: walking plus controller corner repair,
   both trigger sources, brush/input selectors, watch pauses and invalid rays,
   tested in Boundary Lab and Impossible Spaces.
+- `node tests/boundary-generation.browser.cjs`: complete calibration-to-level
+  flow through the Lab's actual watch, in one scene and tracking session.
 
 Set `VR_PLAYWRIGHT_PATH` to an installed Playwright package and `VR_TEST_URL`
 to the served origin (default `http://127.0.0.1:8088`). No Playwright dependency

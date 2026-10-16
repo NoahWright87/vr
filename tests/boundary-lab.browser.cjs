@@ -73,7 +73,7 @@ const base = process.env.VR_TEST_URL || 'http://127.0.0.1:8088';
       scene.renderer.xr.getFrame=()=>frame;
       choose('calibration-start');const blockedWithoutAR=!lab.active&&!lab.walk&&lab.status.includes('passthrough');
       ar=true;session.environmentBlendMode='opaque';choose('calibration-start');const blockedOpaque=!lab.active&&!lab.walk;
-      session.environmentBlendMode='alpha-blend';const background=scene.object3D.background,alpha=scene.renderer.getClearAlpha(),props=Array.from(scene.querySelectorAll('[data-calibration-opaque]'));
+      session.environmentBlendMode='alpha-blend';const background=scene.object3D.background,alpha=scene.renderer.getClearAlpha(),props=Array.from(scene.querySelectorAll('[data-level-lab-prop]'));
       choose('calibration-start');watch.active=false;watch.visible=false;
       const passthrough=scene.object3D.background===null&&scene.renderer.getClearAlpha()===0&&props.every(el=>!el.object3D.visible);
       const physicalOnly=!document.querySelector('#boundary-rig').components['locomotion-demo'];
