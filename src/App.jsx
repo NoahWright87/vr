@@ -17,6 +17,17 @@ export function App() {
       <Container padding="lg">
         <CardGrid gap="lg" minCardWidth="340px">
           <Card
+            title="Magic Hands"
+            subtitle="Hand tracking"
+            href="/games/magic-hands/"
+            interactive
+            footer={<Text tone="muted">Cast a spell →</Text>}
+          >
+            Your hands are the magic. Punch with boulder fists, throw fireballs,
+            catch objects with a yank, spread open portals, raise skeleton minions,
+            and cast lightning, farsight, and shields.
+          </Card>
+          <Card
             title="3D Model Toybox"
             subtitle="Open the chest. Make a scene."
             href="/games/model-viewer/"
