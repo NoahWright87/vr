@@ -52,6 +52,8 @@ export default defineConfig({
         cubePop: resolve(root, 'games/cube-pop/index.html'),
         punchPop: resolve(root, 'games/punch-pop/index.html'),
         boundaries: resolve(root, 'games/boundaries/index.html'),
+        impossibleSpaces: resolve(root, 'games/impossible-spaces/index.html'),
+        impossiblePlayground: resolve(root, 'games/impossible-spaces/playground/index.html'),
         magicHands: resolve(root, 'games/magic-hands/index.html'),
         modelViewer: resolve(root, 'games/model-viewer/index.html'),
         pistolsAtDawn: resolve(root, 'games/pistols-at-dawn/index.html'),
