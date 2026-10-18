@@ -45,6 +45,24 @@ export class MotionEffectsTracker {
     this.crouchDepth = 0; this.speed = 0;
   }
 
+  clipMomentum(normals) {
+    const project = velocity => {
+      for (const normal of normals) {
+        const into = velocity.x * normal.x + velocity.z * normal.z;
+        if (into < 0) { velocity.x -= into * normal.x; velocity.z -= into * normal.z; }
+      }
+      return Math.hypot(velocity.x, velocity.z);
+    };
+    for (const motion of [this.slide, this.jump]) {
+      if (!motion) continue;
+      const old = motion.speed, velocity = { x: motion.x * old, z: motion.z * old }, speed = project(velocity);
+      motion.x = speed > 1e-8 ? velocity.x / speed : 0; motion.z = speed > 1e-8 ? velocity.z / speed : 0;
+      motion.speed = speed; motion.seedSpeed *= old > 1e-8 ? speed / old : 0;
+    }
+    // Do not relaunch a crouch from the velocity that the wall just removed.
+    this.impulses = this.impulses.filter(impulse => (impulse.speed = project(impulse)) > .001);
+  }
+
   sampleArms(head, hands, direction, speed, dt, time) {
     this.armTracked = Boolean(hands?.left && hands?.right && [hands.left.x, hands.left.z, hands.right.x, hands.right.z].every(Number.isFinite));
     if (!this.armTracked || !this.settings.armEnabled || speed <= .3) {

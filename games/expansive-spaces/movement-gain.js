@@ -49,6 +49,9 @@ AFRAME.registerComponent('speed-dependent-gain', {
     this.inverseYaw = new THREE.Quaternion();
     this.up = new THREE.Vector3(0, 1, 0);
     this.guidanceMatrix = new THREE.Matrix4();
+    this.collisionFrame = new THREE.Matrix4();
+    this.collisionPosition = null;
+    this.collisionLayout = null;
     this.guidancePoint = new THREE.Vector3();
     this.guidanceBoundary = null;
     this.extraYaw = 0;
@@ -160,6 +163,7 @@ AFRAME.registerComponent('speed-dependent-gain', {
   },
 
   resetEstimators: function () {
+    this.collisionPosition = null;
     this.clearVerticalGain();
     this.tracker.reset();
     this.redirection.reset();
@@ -235,12 +239,13 @@ AFRAME.registerComponent('speed-dependent-gain', {
     if (previous) {
       const dt = (time - previous.timeMs) / 1000;
       const speed = Math.hypot(position.x - previous.x, position.z - previous.z) / dt;
-      if (dt <= 0 || dt > .25 || speed > 8) this.travelEpoch++;
+      if (dt <= 0 || dt > .25 || speed > 8) { this.travelEpoch++; this.collisionPosition = null; }
     }
     const result = this.tracker.sample(position, time);
     const paused = this.watchOpen() || Boolean(document.querySelector('#space-binoculars')?.components['space-binoculars']?.active);
     const motion = this.motion.sample(position, time, { hands: this.armHands, baseGain: result.gain,
       yaw: this.extraYaw, paused });
+    this.constrainMotion(position, motion);
     this.lastMotion = motion;
     const redirect = this.redirection.sample(position, yaw, time,
       { context: this.redirection.settings.steeringEnabled || this.redirection.settings.turnEnabled ? this.redirectionContext(position, motion) : null, paused });
@@ -253,6 +258,28 @@ AFRAME.registerComponent('speed-dependent-gain', {
     this.extraYaw = this.transform.yaw;
     this.hasPose = true;
     return result;
+  },
+
+  constrainMotion: function (position, motion) {
+    const room = document.querySelector('#space-room')?.components['expansive-space'];
+    if (!room?.wallCollision) { this.collisionPosition = null; return; }
+    room.el.object3D.updateWorldMatrix(true, false);
+    const world = room.el.object3D.matrixWorld;
+    if (this.collisionLayout !== room.wallCollision || !sameFloorTransform(this.collisionFrame, world)) {
+      this.collisionPosition = null; this.collisionLayout = room.wallCollision; this.collisionFrame.copy(world);
+    }
+    const extra = rotateXZ({ x: motion.extraX, z: motion.extraZ }, this.extraYaw);
+    const current = mappedHead(position, { yaw: this.extraYaw, x: this.transform.x, z: this.transform.z });
+    const target = { x: current.x + extra.x + motion.worldX, z: current.z + extra.z + motion.worldZ };
+    // On reacquisition there is no observed raw path, but added motion still
+    // has a known start and must be swept even on a layout-rebuild frame.
+    const clipped = room.clipMovement(this.collisionPosition || current, target);
+    motion.worldX += clipped.x - target.x; motion.worldZ += clipped.z - target.z;
+    this.collisionPosition = { x: clipped.x, z: clipped.z };
+    if (clipped.normals.length) {
+      this.motion.clipMomentum(clipped.normals);
+      motion.momentumSpeed = (this.motion.slide?.speed || 0) + (this.motion.jump?.speed || 0);
+    }
   },
 
   physicalPosition: function (world, out) {

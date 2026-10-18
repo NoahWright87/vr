@@ -7,6 +7,7 @@ import './movement-gain.js';
 import { measureBounds, isInsideBoundary, mapLayout, sanitizeWorldScale } from './play-space.js';
 import { createRoomLayout } from './room-layout.js';
 import { buildRoomMeshes } from './room-renderer.js';
+import { WallCollision } from './wall-collision.js';
 import { TravelTrail, TRAIL_METRES } from './travel-trail.js';
 import { installExperimentMenus } from './experiment-menus.js';
 import './binoculars.js';
@@ -45,6 +46,8 @@ AFRAME.registerComponent('expansive-space', {
     this.effectMatrix = new THREE.Matrix4();
     this.guideDirection = new THREE.Vector3();
     this.guideHit = new THREE.Vector3();
+    this.collisionStart = new THREE.Vector3();
+    this.collisionEnd = new THREE.Vector3();
     this.canvas = document.createElement('canvas');
     this.canvas.width = 512;
     this.canvas.height = 384;
@@ -167,6 +170,7 @@ AFRAME.registerComponent('expansive-space', {
   buildRoom: function () {
     this.disposeRoom(false);
     this.roomLayout = createRoomLayout(this.bounds, this.worldScale);
+    this.wallCollision = new WallCollision(this.roomLayout.walls);
     this.virtualBounds = this.roomLayout.bounds;
     this.roomMeshes = buildRoomMeshes(this.roomLayout);
     this.ceiling = this.roomMeshes.ceiling;
@@ -202,6 +206,23 @@ AFRAME.registerComponent('expansive-space', {
     for (const material of [this.roomMeshes.active, this.roomMeshes.inactive]) {
       material.map = this.checkerTexture; material.needsUpdate = true;
     }
+  },
+
+  clipMovement: function (start, end) {
+    this.el.object3D.updateWorldMatrix(true, false);
+    const world = this.el.object3D.matrixWorld;
+    this.inverseWorld.copy(world).invert();
+    this.collisionStart.set(start.x, 0, start.z).applyMatrix4(this.inverseWorld);
+    this.collisionEnd.set(end.x, 0, end.z).applyMatrix4(this.inverseWorld);
+    const result = this.wallCollision.move(this.collisionStart, this.collisionEnd);
+    this.collisionEnd.set(result.x, 0, result.z).applyMatrix4(world);
+    // Momentum lives in reference-space coordinates, not room coordinates.
+    const e = world.elements;
+    const normals = result.normals.map(n => {
+      const x = e[0] * n.x + e[8] * n.z, z = e[2] * n.x + e[10] * n.z, length = Math.hypot(x, z);
+      return { x: x / length, z: z / length };
+    });
+    return { x: this.collisionEnd.x, z: this.collisionEnd.z, normals };
   },
 
   updateActiveRoom: function (areaId) {
