@@ -3,6 +3,7 @@ import { RedirectionTracker, LocomotionTransform, rotateXZ } from './redirection
 import { MotionEffectsTracker } from './motion-effects.js';
 import { prepareFloor, sameFloorTransform } from '../../common/floor-overlap.js';
 import { mappedHead } from './overlap-planner.js';
+import { syncExperimentMenus, refreshExperimentMenus, experimentMenuOpen } from './experiment-menus.js';
 
 const THREE = AFRAME.THREE;
 const STORAGE_KEY = 'vr-expansive-speed-gain-v1';
@@ -76,9 +77,9 @@ AFRAME.registerComponent('speed-dependent-gain', {
       else panel.addEventListener('loaded', this.renderSettings.bind(this), { once: true });
     }.bind(this);
     this.onOption = function (evt) {
-      const property = GAIN_OPTIONS[evt.detail.key];
-      const redirectProperty = REDIRECTION_OPTIONS[evt.detail.key];
-      const motionProperty = MOTION_OPTIONS[evt.detail.key];
+      const property = GAIN_OPTIONS[evt.detail.id];
+      const redirectProperty = REDIRECTION_OPTIONS[evt.detail.id];
+      const motionProperty = MOTION_OPTIONS[evt.detail.id];
       if (!property && !redirectProperty && !motionProperty) return;
       if (property) {
         this.tracker.setSettings({ [property]: evt.detail.value });
@@ -94,8 +95,8 @@ AFRAME.registerComponent('speed-dependent-gain', {
       this.renderSettings();
     }.bind(this);
     this.onSelection = function (evt) {
-      if (['space-reset-travel', 'space-reset-effects'].includes(evt.detail.value)) this.resetTravel();
-      if (evt.detail.value === 'space-calibrate-height' && this.hasPose) {
+      if (['space-reset-travel', 'space-reset-effects'].includes(evt.detail.id)) this.resetTravel();
+      if (evt.detail.id === 'space-calibrate-height' && this.hasPose) {
         this.motion.calibrate(this.rawPosition.y); this.clearVerticalGain();
       }
     }.bind(this);
@@ -103,63 +104,41 @@ AFRAME.registerComponent('speed-dependent-gain', {
     scene.addEventListener('enter-vr', this.onEnter);
     scene.addEventListener('exit-vr', this.onExit);
     scene.addEventListener('watch-menu-ready', this.onWatchReady);
-    scene.addEventListener('menu-option-change', this.onOption);
-    scene.addEventListener('menu-item-select', this.onSelection);
+    scene.addEventListener('menu-commit', this.onOption);
+    scene.addEventListener('menu-action', this.onSelection);
     const camera = this.el.querySelector('a-camera');
     if (camera) camera.setAttribute('gain-speed-lines', '');
   },
 
   renderSettings: function () {
-    let synchronized = 0;
-    this.el.sceneEl.querySelectorAll('[menu-option]').forEach(el => {
-      const row = el.components['menu-option'];
-      if (!row) return;
-      const property = GAIN_OPTIONS[row.data.key] || REDIRECTION_OPTIONS[row.data.key] || MOTION_OPTIONS[row.data.key];
-      if (property) {
-        row.setValue(GAIN_OPTIONS[row.data.key] ? this.tracker.settings[property] :
-          REDIRECTION_OPTIONS[row.data.key] ? this.redirection.settings[property] : this.motion.settings[property]);
-        row.valueTextEl.setAttribute('width', MOTION_OPTIONS[row.data.key] ? 1.2 : 1.4);
-        synchronized++;
-      }
-    });
-    // A-Frame can initialize the two watches before this rig component, or
-    // finish a projected panel after watch-menu-ready. Retry until both rows
-    // on both wrists exist, so saved settings cannot leave stale UI defaults.
-    this.settingsDirty = synchronized < 2 * (Object.keys(GAIN_OPTIONS).length + Object.keys(REDIRECTION_OPTIONS).length + Object.keys(MOTION_OPTIONS).length);
+    syncExperimentMenus();
+    this.settingsDirty = false;
     this.renderTelemetry();
   },
 
   renderTelemetry: function () {
     const text = this.tracker.speed.toFixed(2) + ' m/s  ->  ' + this.tracker.gain.toFixed(2) + 'x';
-    this.el.sceneEl.querySelectorAll('.space-gain-live').forEach(el => el.setAttribute('text', 'value', text));
     const s = this.redirection.settings;
     const paused = this.watchOpen();
     const guide = this.redirection.guidance;
     const wall = guide?.wallDistance == null ? 'No boundary' : 'Wall ahead ' + guide.wallDistance.toFixed(1) + ' m';
     const overlap = guide?.overlap == null ? 'Waiting for area' : 'Overlap ' + (guide.overlap * 100).toFixed(1) +
       '% -> ' + (guide.bestOverlap * 100).toFixed(1) + '%';
-    const steering = !s.steeringEnabled ? 'OFF' : paused ? 'PAUSED - watch open' :
+    const steering = !s.steeringEnabled ? 'OFF' : paused ? 'PAUSED - menu open' :
       !guide?.valid ? guide?.reason || 'Waiting for boundary tracking' :
       overlap + '\n' + this.redirection.steeringRate.toFixed(1) + ' deg/s | ' + wall;
-    const turn = !s.turnEnabled ? 'OFF' : paused ? 'PAUSED - watch open' :
+    const turn = !s.turnEnabled ? 'OFF' : paused ? 'PAUSED - menu open' :
       !guide?.valid ? guide?.reason || 'Waiting for boundary tracking' :
       overlap + '\n' + this.redirection.turnGain.toFixed(2) + 'x | Area: ' + guide.areaId + '\n' + guide.reason;
-    this.el.sceneEl.querySelectorAll('.space-steering-live').forEach(el => el.setAttribute('text', 'value', steering));
-    this.el.sceneEl.querySelectorAll('.space-turn-live').forEach(el => el.setAttribute('text', 'value', turn));
-    for (const [selector, label, enabled] of [['.space-steering-link', 'Walking steering', s.steeringEnabled], ['.space-turn-link', 'Turn gain', s.turnEnabled]]) {
-      this.el.sceneEl.querySelectorAll(selector).forEach(el => el.setAttribute('text', 'value', label + (enabled ? ': ON >' : ': OFF >')));
-    }
     const m = this.motion, settings = m.settings;
-    const armText = !settings.armEnabled ? 'OFF' : paused ? 'PAUSED - watch open' : !m.armTracked ? 'Requires two tracked XR controllers' :
+    const armText = !settings.armEnabled ? 'OFF' : paused ? 'PAUSED - menu open' : !m.armTracked ? 'Requires two tracked XR controllers' :
       m.armActivity.toFixed(2) + ' m/s | arms ' + m.armGain.toFixed(2) + 'x\nCombined ' + this.lastMotion.effectiveGain.toFixed(2) + 'x';
-    const slideText = !settings.slideEnabled ? 'OFF' : paused ? 'PAUSED - watch open' :
+    const slideText = !settings.slideEnabled ? 'OFF' : paused ? 'PAUSED - menu open' :
       'Duck ' + (m.crouchDepth * 100).toFixed(0) + '% | ' + (m.slide?.speed || 0).toFixed(2) + ' m/s';
-    const jumpText = !settings.jumpEnabled ? 'OFF' : paused ? 'PAUSED - watch open' :
+    const jumpText = !settings.jumpEnabled ? 'OFF' : paused ? 'PAUSED - menu open' :
       'Forward ' + (m.jump?.speed || 0).toFixed(2) + ' m/s | Lift ' + m.jumpLift.toFixed(2) + ' m\nStand ' + (m.standingHeight || 0).toFixed(2) + ' m';
-    for (const [selector, text] of [['.space-arm-live', armText], ['.space-slide-live', slideText], ['.space-jump-live', jumpText]])
-      this.el.sceneEl.querySelectorAll(selector).forEach(el => el.setAttribute('text', 'value', text));
-    for (const [selector, label, enabled] of [['.space-arm-link', 'Arm swing', settings.armEnabled], ['.space-slide-link', 'Sliding', settings.slideEnabled], ['.space-jump-link', 'Jumping', settings.jumpEnabled]])
-      this.el.sceneEl.querySelectorAll(selector).forEach(el => el.setAttribute('text', 'value', label + (enabled ? ': ON >' : ': OFF >')));
+    this.telemetry = { gain: text, steering, turn, arm: armText, slide: slideText, jump: jumpText };
+    refreshExperimentMenus(this.el.sceneEl);
   },
 
   resetEstimators: function () {
@@ -179,7 +158,7 @@ AFRAME.registerComponent('speed-dependent-gain', {
   },
 
   watchOpen: function () {
-    return [...this.el.sceneEl.querySelectorAll('.watch-menu-panel')].some(el => el.object3D.visible);
+    return experimentMenuOpen(this.el.sceneEl);
   },
 
   redirectionContext: function (position = this.rawPosition, motion = null) {
@@ -391,8 +370,8 @@ AFRAME.registerComponent('speed-dependent-gain', {
     scene.removeEventListener('enter-vr', this.onEnter);
     scene.removeEventListener('exit-vr', this.onExit);
     scene.removeEventListener('watch-menu-ready', this.onWatchReady);
-    scene.removeEventListener('menu-option-change', this.onOption);
-    scene.removeEventListener('menu-item-select', this.onSelection);
+    scene.removeEventListener('menu-commit', this.onOption);
+    scene.removeEventListener('menu-action', this.onSelection);
   },
 });
 

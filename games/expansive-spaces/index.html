@@ -21,84 +21,19 @@
     <div id="overlay">
       <span><strong>Expansive Spaces</strong> · Explore rooms and test movement effects.
         <small>Explore connected rooms. Green floor = current room. Watch: movement settings and map.
-          Desktop: WASD / Shift sprint / C crouch / Tab watch / B binoculars / right-click aim / left-click shot.</small></span>
+          Desktop: WASD / Shift sprint / C crouch / Tab watch / ` visor / B binoculars / right-click aim / left-click shot.</small></span>
       <a href="../../index.html">All prototypes</a>
     </div>
 
-    <template id="watch-menu-template">
-      <a-entity class="watch-menu-panel" visible="false">
-        <a-entity data-menu-page="main">
-          <a-plane width="1.12" height="2.35" color="#101827" position="0 -.455 -.01"></a-plane>
-          <a-entity class="menu-chrome-slot" data-title="EXPANSIVE SPACES" data-help="false" data-close="true" data-width="1.12" data-bar-y=".64"></a-entity>
-          <a-text font="sourcecodepro" class="space-status" value="Preview boundary - 4.0 x 3.0 m\n1. Foyer - World 1.50x" align="center" color="#e0f2fe" width="1.65" position="0 .43 .01"></a-text>
-          <a-entity boundary-map="width: .96; height: .72" position="0 -.02 .01"></a-entity>
-          <a-text font="sourcecodepro" value="Orange: real   Purple: game\nCyan: boundary   Green: current room" align="center" color="#bfcee2" width="1.6" position="0 -.48 .01"></a-text>
-          <a-text font="sourcecodepro" class="space-detail" value="Enter VR to read your boundary." align="center" color="#94a3b8" width="1.3" wrap-count="36" position="0 -.59 .01"></a-text>
-          <a-entity menu-option="key: space-world-scale; label: World scale; values: 1|1.25|1.5|1.75|2; labels: 1.00x|1.25x|1.50x|1.75x|2.00x; value: 1.5; width: .96; height: .16; font: sourcecodepro" position="0 -.77 0"></a-entity>
-          <a-entity class="pm-target" geometry="primitive: plane; width: .96; height: .16" material="color: #182f4a" menu-item="value: page-gain; label: Movement gain" position="0 -.99 0">
-            <a-text font="sourcecodepro" value="Movement gain >" align="center" width="1.65" position="0 0 .01"></a-text>
-          </a-entity>
-          <a-entity class="pm-target" geometry="primitive: plane; width: .96; height: .16" material="color: #182f4a" menu-item="value: page-steering; label: Walking steering" position="0 -1.21 0">
-            <a-text font="sourcecodepro" class="space-steering-link" value="Walking steering: OFF >" align="center" width="1.5" position="0 0 .01"></a-text>
-          </a-entity>
-          <a-entity class="pm-target" geometry="primitive: plane; width: .96; height: .16" material="color: #182f4a" menu-item="value: page-turn; label: Turn gain" position="0 -1.43 0">
-            <a-text font="sourcecodepro" class="space-turn-link" value="Turn gain: OFF >" align="center" width="1.5" position="0 0 .01"></a-text>
-          </a-entity>
-        </a-entity>
-        <a-entity data-menu-page="gain" visible="false">
-          <a-plane width="1.12" height="1.6" color="#101827" position="0 -.08 -.01"></a-plane>
-          <a-entity class="menu-chrome-slot" data-title="MOVEMENT GAIN" data-help="false" data-close="true" data-close-value="gain-close" data-width="1.12" data-bar-y=".64"></a-entity>
-          <a-text font="sourcecodepro" value="Faster steps, farther travel" align="center" color="#7dd3fc" width="1.5" position="0 .42 .01"></a-text>
-          <a-entity menu-option="key: space-max-gain; label: Max gain; values: 1|1.05|1.1|1.15|1.2|1.3|1.4|1.5|1.75|2; labels: 1.00x (off)|1.05x|1.10x|1.15x|1.20x|1.30x|1.40x|1.50x|1.75x|2.00x; value: 1.2; width: .96; height: .16; font: sourcecodepro" position="0 .19 0"></a-entity>
-          <a-entity menu-option="key: space-gain-speed; label: Full gain at; values: 0.8|1|1.2|1.5|2|2.5|3|4; labels: 0.8 m/s|1.0 m/s|1.2 m/s|1.5 m/s|2.0 m/s|2.5 m/s|3.0 m/s|4.0 m/s; value: 2; width: .96; height: .16; font: sourcecodepro" position="0 -.08 0"></a-entity>
-          <a-text font="sourcecodepro" value="Below 0.6 m/s: always 1x.\nGain ramps smoothly above that.\nThe map compares real/game travel." align="center" color="#bfcee2" width="1.35" wrap-count="36" position="0 -.35 .01"></a-text>
-          <a-text font="sourcecodepro" class="space-gain-live" value="0.00 m/s -> 1.00x" align="center" color="#ffad54" width="1.4" position="0 -.57 .01"></a-text>
-          <a-entity class="pm-target" geometry="primitive: plane; width: .96; height: .16" material="color: #182f4a" menu-item="value: space-reset-travel; label: Reset added travel" position="0 -.77 0">
-            <a-text font="sourcecodepro" value="Reset travel + rotation" align="center" width="1.45" position="0 0 .01"></a-text>
-          </a-entity>
-        </a-entity>
-        <a-entity data-menu-page="steering" visible="false">
-          <a-plane width="1.12" height="2.9" color="#101827" position="0 -.64 -.01"></a-plane>
-          <a-entity class="menu-chrome-slot" data-title="WALKING STEERING" data-help="false" data-close="true" data-close-value="steering-close" data-width="1.12" data-bar-y=".64"></a-entity>
-          <a-entity menu-option="key: space-steering-enabled; label: Steering; values: false|true; labels: OFF|ON; value: false; width: .96; height: .16; font: sourcecodepro" position="0 .4 0"></a-entity>
-          <a-text font="sourcecodepro" value="MAXIMIZE FLOOR OVERLAP" align="center" color="#6ee7a8" width="1.3" position="0 .16 .01"></a-text>
-          <a-entity menu-option="key: space-curvature; label: Max curve; values: 0|1|2|3|5|8|10|15|20; labels: 0 deg/m|1 deg/m|2 deg/m|3 deg/m|5 deg/m|8 deg/m|10 deg/m|15 deg/m|20 deg/m; value: 5; width: .96; height: .16; font: sourcecodepro" position="0 -.08 0"></a-entity>
-          <a-entity menu-option="key: space-steering-speed; label: Full at; values: 0.8|1|1.2|1.5|2|2.5|3|4; labels: 0.8 m/s|1.0 m/s|1.2 m/s|1.5 m/s|2.0 m/s|2.5 m/s|3.0 m/s|4.0 m/s; value: 2; width: .96; height: .16; font: sourcecodepro" position="0 -.32 0"></a-entity>
-          <a-entity menu-option="key: space-steering-rate; label: Rate cap; values: 1|2|3|5|6|10|15|20|30; labels: 1 deg/s|2 deg/s|3 deg/s|5 deg/s|6 deg/s|10 deg/s|15 deg/s|20 deg/s|30 deg/s; value: 6; width: .96; height: .16; font: sourcecodepro" position="0 -.56 0"></a-entity>
-          <a-entity menu-option="key: space-wall-lookahead; label: Look ahead; values: 0.5|1|1.5|2|2.5|3; labels: 0.5 s|1 s|1.5 s|2 s|2.5 s|3 s; value: 1.5; width: .96; height: .16; font: sourcecodepro" position="0 -.8 0"></a-entity>
-          <a-entity menu-option="key: space-wall-margin; label: Wall margin; values: 0.1|0.2|0.4|0.6|0.8|1; labels: 0.1 m|0.2 m|0.4 m|0.6 m|0.8 m|1 m; value: 0.4; width: .96; height: .16; font: sourcecodepro" position="0 -1.04 0"></a-entity>
-          <a-text font="sourcecodepro" value="Below 0.6 m/s: no steering.
-Fits your floor into the active area.
-Green map outline: target footprint.
-Wall clearance breaks overlap ties.
-Watch / binocular aiming pause it." align="center" color="#bfcee2" width="1.3" wrap-count="40" position="0 -1.38 .01"></a-text>
-          <a-text font="sourcecodepro" class="space-steering-live" value="OFF" align="center" color="#ffad54" width="1.3" position="0 -1.7 .01"></a-text>
-          <a-entity class="pm-target" geometry="primitive: plane; width: .96; height: .16" material="color: #182f4a" menu-item="value: space-reset-effects; label: Reset travel and rotation" position="0 -1.96 0">
-            <a-text font="sourcecodepro" value="Reset travel + rotation" align="center" width="1.45" position="0 0 .01"></a-text>
-          </a-entity>
-        </a-entity>
-        <a-entity data-menu-page="turn" visible="false">
-          <a-plane width="1.12" height="2.4" color="#101827" position="0 -.4 -.01"></a-plane>
-          <a-entity class="menu-chrome-slot" data-title="TURN GAIN" data-help="false" data-close="true" data-close-value="turn-close" data-width="1.12" data-bar-y=".64"></a-entity>
-          <a-entity menu-option="key: space-turn-enabled; label: Turn gain; values: false|true; labels: OFF|ON; value: false; width: .96; height: .16; font: sourcecodepro" position="0 .4 0"></a-entity>
-          <a-entity menu-option="key: space-turn-gain; label: Max gain; values: 1|1.05|1.1|1.1111111111111112|1.15|1.2|1.3|1.5; labels: 1.00x|1.05x|1.10x|1.11x|1.15x|1.20x|1.30x|1.50x; value: 1.1111111111111112; width: .96; height: .16; font: sourcecodepro" position="0 .13 0"></a-entity>
-          <a-entity menu-option="key: space-turn-min-gain; label: Min gain; values: 0.5|0.6|0.7|0.8|0.9|0.95|1; labels: 0.50x|0.60x|0.70x|0.80x|0.90x|0.95x|1.00x; value: 0.9; width: .96; height: .16; font: sourcecodepro" position="0 -.14 0"></a-entity>
-          <a-entity menu-option="key: space-turn-speed; label: Full at; values: 60|90|120|180|240|300|360; labels: 60 deg/s|90 deg/s|120 deg/s|180 deg/s|240 deg/s|300 deg/s|360 deg/s; value: 180; width: .96; height: .16; font: sourcecodepro" position="0 -.41 0"></a-entity>
-          <a-entity menu-option="key: space-alignment; label: Response; values: 0|0.25|0.5|0.75|1; labels: OFF|25 percent|50 percent|75 percent|100 percent; value: 1; width: .96; height: .16; font: sourcecodepro" position="0 -.68 0"></a-entity>
-          <a-text font="sourcecodepro" value="Below 30 deg/s: always 1x.
-Fast looks can gain OR lose rotation.
-Maximizes overlap with active area.
-Response also controls walk steering.
-Watch / binocular aiming pause it." align="center" color="#bfcee2" width="1.3" wrap-count="40" position="0 -1.01 .01"></a-text>
-          <a-text font="sourcecodepro" class="space-turn-live" value="OFF" align="center" color="#ffad54" width="1.3" position="0 -1.32 .01"></a-text>
-          <a-entity class="pm-target" geometry="primitive: plane; width: .96; height: .16" material="color: #182f4a" menu-item="value: space-reset-effects; label: Reset travel and rotation" position="0 -1.56 0">
-            <a-text font="sourcecodepro" value="Reset travel + rotation" align="center" width="1.45" position="0 0 .01"></a-text>
-          </a-entity>
-        </a-entity>
+    <template id="watch-crossbar-template">
+      <a-entity class="watch-crossbar-panel" visible="false">
+        <a-entity class="watch-crossbar" position="0 .17 0"
+          crossbar-menu="page: expansive-watch; font: sourcecodepro; width: 1.2; rowHeight: .2; maxChars: 22; open: false; closeBehavior: hide; memory: temporary; hint: false; stickRange: .35; crumbs: title; breadcrumbDepth: 1; plateOpacity: .94; exitKey: Tab; exitButton: WATCH; sidecarWidth: 1; sidecarChars: 28; sidecarContentHeight: .76"
+          crossbar-menu-registration></a-entity>
       </a-entity>
     </template>
 
-    <a-scene background="color: #b1d5ef" webxr="referenceSpaceType: local-floor; optionalFeatures: bounded-floor">
+    <a-scene keyboard-shortcuts="enterVR: false" visor-menu="page: expansive-visor; font: sourcecodepro" background="color: #b1d5ef" webxr="referenceSpaceType: local-floor; optionalFeatures: bounded-floor">
       <a-light type="ambient" color="#e4edff" intensity=".85"></a-light>
       <a-light type="directional" color="#fff4df" intensity=".5" position="1 3 1"></a-light>
       <a-entity id="space-room" expansive-space>

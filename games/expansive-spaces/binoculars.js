@@ -1,4 +1,5 @@
 import { DEFAULT_SCOPE_SETTINGS, sanitizeScopeSettings, ScopePoseFilter } from './scope-filter.js';
+import { syncExperimentMenus, refreshExperimentMenus } from './experiment-menus.js';
 
 const THREE = AFRAME.THREE, STORAGE_KEY = 'vr-expansive-binoculars-v1';
 const OPTIONS = { 'space-scope-enabled': 'enabled', 'space-scope-stabilize': 'stabilize', 'space-scope-zoom': 'zoom',
@@ -98,13 +99,13 @@ AFRAME.registerComponent('space-binoculars', {
     this.screen.renderOrder = 20;
     this.hud.querySelector('.scope-image').setObject3D('mesh', this.screen);
     this.onOption = evt => {
-      const key = OPTIONS[evt.detail.key]; if (!key) return;
+      const key = OPTIONS[evt.detail.id]; if (!key) return;
       this.settings = sanitizeScopeSettings({ ...this.settings, [key]: evt.detail.value });
       try { localStorage.setItem(STORAGE_KEY, JSON.stringify(this.settings)); } catch (_) {}
       this.filter.reset(); this.uiDirty = true;
       if (!this.settings.enabled) this.returnToNeck();
     };
-    this.onSelection = evt => { if (evt.detail.value === 'space-reset-targets') this.resetScores(); };
+    this.onSelection = evt => { if (evt.detail.id === 'space-reset-targets') this.resetScores(); };
     this.onReady = () => { this.uiDirty = true; };
     this.onRelease = () => {
       this.el.components['simple-grabbable'].resetToSpawn(); this.setActive(false); this.restoreWatch();
@@ -128,7 +129,7 @@ AFRAME.registerComponent('space-binoculars', {
       this.fireBindings.push([hand, fire]);
     }
     this.el.addEventListener('simple-released', this.onRelease); this.el.addEventListener('simple-grabbed', this.onGrab);
-    this.el.sceneEl.addEventListener('menu-option-change', this.onOption); this.el.sceneEl.addEventListener('menu-item-select', this.onSelection);
+    this.el.sceneEl.addEventListener('menu-commit', this.onOption); this.el.sceneEl.addEventListener('menu-action', this.onSelection);
     this.el.sceneEl.addEventListener('watch-menu-ready', this.onReady); this.el.sceneEl.addEventListener('exit-vr', this.onRelease);
     window.addEventListener('keydown', this.onKey);
   },
@@ -159,15 +160,8 @@ AFRAME.registerComponent('space-binoculars', {
     this.el.setAttribute('data-scope-active', active ? 'true' : 'false');
   },
   renderUI: function () {
-    let count = 0;
-    for (const el of this.el.sceneEl.querySelectorAll('[menu-option]')) {
-      const row = el.components['menu-option'], key = row && OPTIONS[row.data.key];
-      if (key) { row.setValue(this.settings[key]); row.valueTextEl.setAttribute('width', 1.2); count++; }
-    }
-    this.uiDirty = count < Object.keys(OPTIONS).length * 2;
-    this.el.sceneEl.querySelectorAll('.space-scope-link').forEach(el => el.setAttribute('text', 'value', 'Binoculars: ' + (this.settings.enabled ? 'ON >' : 'OFF >')));
-    const raw = this.scores.raw, damp = this.scores.damped;
-    this.el.sceneEl.querySelectorAll('.space-scope-live').forEach(el => el.setAttribute('text', 'value', `Raw ${raw.hits}/${raw.shots} | Damped ${damp.hits}/${damp.shots}`));
+    syncExperimentMenus(); this.uiDirty = false;
+    refreshExperimentMenus(this.el.sceneEl);
   },
   resetScores: function () {
     this.scores = { raw: { hits: 0, shots: 0 }, damped: { hits: 0, shots: 0 } };
@@ -241,7 +235,7 @@ AFRAME.registerComponent('space-binoculars', {
     if (time - this.lastRender < 33) return;
     this.lastRender = time;
     const renderer = this.el.sceneEl.renderer, target = renderer.getRenderTarget(), xrEnabled = renderer.xr.enabled;
-    const hidden = [...this.el.sceneEl.querySelectorAll('.hand, .watch-menu-panel, .interaction-hint-card')]
+    const hidden = [...this.el.sceneEl.querySelectorAll('.hand, .watch-crossbar-panel, #visor-menu, .interaction-hint-card')]
       .map(el => [el.object3D, el.object3D.visible]);
     hidden.forEach(([object]) => { object.visible = false; });
     this.hud.object3D.visible = false;
@@ -259,7 +253,7 @@ AFRAME.registerComponent('space-binoculars', {
   remove: function () {
     this.returnToNeck();
     this.el.removeEventListener('simple-released', this.onRelease); this.el.removeEventListener('simple-grabbed', this.onGrab);
-    this.el.sceneEl.removeEventListener('menu-option-change', this.onOption); this.el.sceneEl.removeEventListener('menu-item-select', this.onSelection);
+    this.el.sceneEl.removeEventListener('menu-commit', this.onOption); this.el.sceneEl.removeEventListener('menu-action', this.onSelection);
     this.el.sceneEl.removeEventListener('watch-menu-ready', this.onReady); this.el.sceneEl.removeEventListener('exit-vr', this.onRelease);
     window.removeEventListener('keydown', this.onKey);
     this.fireBindings.forEach(([hand, fn]) => { hand.removeEventListener('triggerdown', fn); hand.removeEventListener('desktop-trigger-attempt', fn); });

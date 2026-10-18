@@ -5,9 +5,22 @@ import test from 'node:test';
 const page = readFileSync(new URL('../games/pistols-at-dawn/index.html', import.meta.url), 'utf8');
 const loader = readFileSync(new URL('../games/pistols-at-dawn/js/world-town.js', import.meta.url), 'utf8');
 const menu = readFileSync(new URL('../games/pistols-at-dawn/js/world-menu.js', import.meta.url), 'utf8');
+const dayNight = readFileSync(new URL('../games/pistols-at-dawn/js/world-day-night.js', import.meta.url), 'utf8');
+const pages = readFileSync(new URL('../games/pistols-at-dawn/js/menu-pages.js', import.meta.url), 'utf8');
+
+// The watch's Teleport submenu is built from TOWN_LOCATIONS — one
+// teleport-<id> row per destination — so a destination listed in the
+// town's loader is reachable from the watch.
+test('the watch teleports to every town location', () => {
+  assert.match(pages, /\(window\.TOWN_LOCATIONS \|\| \[\]\)\.map/);
+  assert.match(pages, /id: 'teleport-' \+ loc\.id, label: loc\.label/);
+  assert.match(loader, /addEventListener\('menu-action', this\.onMenuSelect\)/);
+  assert.match(loader, /id\.indexOf\('teleport-'\) !== 0/);
+});
 const ghostTown = readFileSync(new URL('../games/pistols-at-dawn/areas/ghost-town.html', import.meta.url), 'utf8');
 const saloonInterior = readFileSync(new URL('../games/pistols-at-dawn/js/world-saloon-interior.js', import.meta.url), 'utf8');
 const hubInteriors = readFileSync(new URL('../games/pistols-at-dawn/js/world-hub-interiors.js', import.meta.url), 'utf8');
+const ghostTownEnvironment = readFileSync(new URL('../games/pistols-at-dawn/js/world-ghost-town-environment.js', import.meta.url), 'utf8');
 
 test('destinations are lazy fragments instead of simultaneous scene entities', () => {
   for (const id of ['ghost-town', 'range', 'saloon', 'farm', 'stable', 'sheriff-office', 'general-store', 'bank', 'pharmacy', 'post-office', 'boots-suits', 'shooting-gallery']) {
@@ -15,8 +28,79 @@ test('destinations are lazy fragments instead of simultaneous scene entities', (
   }
   assert.match(page, /<a-entity id="area-host" data-area-persistent><\/a-entity>/);
   assert.match(page, /id="carried-items" data-area-persistent/);
-  assert.match(page, /data-area-persistent light="type: ambient; color: #d8d0c0; intensity: 0\.48"/);
-  assert.match(page, /data-area-persistent light="type: directional; color: #fff3d6; intensity: 0\.75"/);
+  assert.match(page, /<a-scene[^>]*day-night-cycle weather-clouds[^>]*visor-menu="page: visor"[^>]*light="defaultLightsEnabled: false"/);
+  assert.match(dayNight, /FAST_FORWARD_TIME_SCALE = 20/);
+  assert.match(dayNight, /LUNAR_SYNODIC_DAYS = 29\.53059/);
+  assert.match(dayNight, /this\.elapsedGameMs \+= Math\.min\(delta \|\| 16, 100\) \* this\.timeScale/);
+  assert.match(dayNight, /this\.elapsedGameMs \/ \(DAY_NIGHT_CYCLE_MS \* LUNAR_SYNODIC_DAYS\)/);
+  assert.match(dayNight, /var solarAngle = \(this\.elapsedGameMs \/ DAY_NIGHT_CYCLE_MS\) \* Math\.PI \* 2/);
+  assert.doesNotMatch(dayNight, /var solarAngle = \(this\.clock \/ DAY_NIGHT_CYCLE_MS\)/);
+  assert.match(dayNight, /nightSky\.object3D\.rotation\.y = -\(this\.elapsedGameMs \/ DAY_NIGHT_CYCLE_MS\)/);
+  assert.match(dayNight, /nightSky\.object3D\.rotation\.y/);
+  assert.match(dayNight, /registerComponent\('weather-clouds'/);
+  assert.match(dayNight, /groupCount: \{ type: 'int', default: 20 \}/);
+  assert.match(dayNight, /minCloudsPerGroup: \{ type: 'int', default: 5 \}/);
+  assert.match(dayNight, /maxCloudsPerGroup: \{ type: 'int', default: 13 \}/);
+  assert.match(dayNight, /windDirection: \{ type: 'number', default: 0 \}/);
+  assert.match(dayNight, /minHeight: \{ type: 'number', default: 90 \}/);
+  assert.match(dayNight, /maxHeight: \{ type: 'number', default: 165 \}/);
+  assert.match(dayNight, /verticalSpread: \{ type: 'number', default: 8 \}/);
+  assert.match(dayNight, /formationDistance: \{ type: 'number', default: 120 \}/);
+  assert.match(dayNight, /maxShadowGroups: \{ type: 'int', default: 6 \}/);
+  assert.match(dayNight, /weatherTimeScale = cycle \? cycle\.timeScale : 1/);
+  assert.match(dayNight, /group\.x \+= Math\.cos\(heading\)/);
+  assert.match(dayNight, /var heading = this\.windAngle \+ wobble/);
+  assert.match(dayNight, /this\.resetGroup\(group, false, 0\)/);
+  assert.match(dayNight, /new THREE\.DodecahedronGeometry\(0\.5, 0\)/);
+  assert.match(dayNight, /new THREE\.MeshLambertMaterial/);
+  assert.match(dayNight, /this\.cloudMesh = new THREE\.InstancedMesh/);
+  assert.match(dayNight, /flatShading: true/);
+  assert.match(dayNight, /this\.cloudMesh\.castShadow = false/);
+  assert.match(dayNight, /this\.cloudMesh\.receiveShadow = false/);
+  assert.doesNotMatch(dayNight, /instanceOpacity|cloudOpacity|minOpacity|maxOpacity/);
+  assert.match(dayNight, /thickness: size \* this\.randomBetween\(0\.38, 0\.92\)/);
+  assert.match(dayNight, /dummy\.rotation\.set\(cloud\.rotationX, cloud\.rotationY, cloud\.rotationZ\)/);
+  assert.match(dayNight, /sizeCeiling = this\.data\.minSize/);
+  assert.match(dayNight, /cloud\.sizeTarget = this\.randomBetween\(cloud\.minScale, cloud\.maxScale\)/);
+  assert.match(dayNight, /this\.pickCloudOffsetTarget\(group, cloud\)/);
+  assert.match(dayNight, /var fadeOut = smoothStep\(0, this\.data\.formationDistance, exitDistance\)/);
+  assert.match(dayNight, /var formationScale = presence/);
+  assert.doesNotMatch(dayNight, /cloud\.sizeVelocity/);
+  assert.match(dayNight, /this\.cloudMesh\.setMatrixAt\(instance, dummy\.matrix\)/);
+  assert.match(dayNight, /this\.shadowMesh = new THREE\.InstancedMesh/);
+  assert.match(dayNight, /TODO\(high-graphics\): allow per-cloud or real/);
+  assert.doesNotMatch(dayNight, /mesh\.frustumCulled = false/);
+  assert.doesNotMatch(dayNight, /spawnCell/);
+  assert.doesNotMatch(dayNight, /setFromUnitVectors/);
+  assert.match(dayNight, /this\.sunOrb\.renderOrder = -10/);
+  assert.match(dayNight, /weather-cloud-underside-atlas-v1\.png/);
+  assert.match(dayNight, /var vertexCount = groupCount \* 6/);
+  assert.match(dayNight, /alphaTest: 0\.2/);
+  assert.match(dayNight, /transparent: false/);
+  assert.doesNotMatch(dayNight, /this\.cloudMeshes|cloudOrientation\.makeBasis/);
+  assert.doesNotMatch(dayNight, /new THREE\.BoxGeometry\(1, 0\.18, 0\.62\)/);
+  assert.match(dayNight, /evt\.code !== 'Backslash'/);
+  assert.match(page, /desert-day-skybox-v2\.png/);
+  assert.match(page, /id="night-sky" radius="650"/);
+  assert.doesNotMatch(page, /cloud-sky/);
+  assert.match(dayNight, /sun-billboard-v1\.png/);
+  assert.match(dayNight, /makeCelestialPlane\('assets\/textures\/sun-billboard-v1\.png', 24, false\)/);
+  assert.match(dayNight, /this\.scene\.add\(this\.sunOrb\)/);
+  assert.match(dayNight, /moon-billboard-v1\.png/);
+  assert.match(dayNight, /this\.moonOrb\.rotation\.y = -Math\.PI \/ 2/);
+  assert.match(dayNight, /this\.sunOrb\.lookAt\(0, 0, 0\)/);
+  assert.match(dayNight, /new THREE\.Mesh\(new THREE\.PlaneGeometry\(1, 1\), new THREE\.MeshBasicMaterial/);
+  assert.doesNotMatch(dayNight, /new THREE\.Sprite/);
+  assert.match(dayNight, /this\.sunShadows = true/);
+  assert.match(dayNight, /this\.lowPowerShadows/);
+  assert.match(dayNight, /this\.lowPowerShadows \? 512 : 1024/);
+  assert.match(dayNight, /if \(!force && !stateChanged && !root\) return/);
+  assert.match(dayNight, /this\.daySky\.object3D\.visible = daylight > 0\.003/);
+  assert.match(dayNight, /this\.nightSky\.object3D\.visible = daylight < 0\.997/);
+  assert.match(ghostTownEnvironment, /new THREE\.InstancedMesh\(geometry, material, parts\.length\)/);
+  assert.match(ghostTownEnvironment, /new THREE\.InstancedMesh\(geometry, material, this\.tumbleweeds\.length\)/);
+  assert.doesNotMatch(ghostTownEnvironment, /createElement\('a-cylinder'\)|createElement\('a-torus'\)/);
+  assert.match(loader, /return Promise\.all\(scripts\.map/);
   assert.match(loader, /preservePlayerItems: function/);
   assert.doesNotMatch(page, /<a-entity (?:saloon-darts|farm|stable)>/);
 });
@@ -25,7 +109,6 @@ test('Ghost Town is the startup hub with its two welcome gateways, nine building
   assert.match(loader, /this\.switchTo\('ghost-town'\)/);
   assert.match(loader, /id: 'ghost-town', label: 'Ghost Town', position: \{ x: 0, y: 0, z: 24 \}/);
   assert.match(loader, /rig\.object3D\.position\.set\(location\.position\.x, location\.position\.y, location\.position\.z\)/);
-  assert.match(page, /menu-item="value: teleport-ghost-town; label: Ghost Town"/);
   assert.equal((ghostTown.match(/class="ghost-town-welcome-gateway/g) || []).length, 2);
   assert.equal((ghostTown.match(/Welcome to Ghost Town!/g) || []).length, 2);
   assert.match(ghostTown, /class="ghost-town-welcome-gateway" position="0 0 20">/);
@@ -44,7 +127,6 @@ test('the Shooting Gallery facade leads to an intentionally oversized indoor tar
   const gallery = readFileSync(new URL('../games/pistols-at-dawn/areas/shooting-gallery.html', import.meta.url), 'utf8');
   const galleryBuilder = readFileSync(new URL('../games/pistols-at-dawn/js/world-ghost-town-gallery.js', import.meta.url), 'utf8');
   assert.match(loader, /id: 'shooting-gallery', label: 'Shooting Gallery'/);
-  assert.match(page, /menu-item="value: teleport-shooting-gallery; label: Shooting Gallery"/);
   assert.match(galleryBuilder, /ghost-town-gallery-door/);
   assert.match(galleryBuilder, /destination: shooting-gallery/);
   assert.match(gallery, /shooting-gallery-interior/);
@@ -96,8 +178,6 @@ test('Ghost Town connects to a Sheriff’s Office and stocked General Store', ()
   assert.match(loader, /id: 'sheriff-office', label: "Sheriff's Office"/);
   assert.match(loader, /id: 'general-store', label: 'General Store'/);
   assert.match(loader, /js\/world-hub-interiors\.js/);
-  assert.match(page, /menu-item="value: teleport-sheriff-office; label: Sheriff's Office"/);
-  assert.match(page, /menu-item="value: teleport-general-store; label: General Store"/);
   assert.match(ghostTown, /id="ghost-town-sheriff-door"/);
   assert.match(ghostTown, /town-door="destination: sheriff-office"/);
   assert.match(ghostTown, /id="ghost-town-store-door"/);
@@ -120,7 +200,6 @@ test('Ghost Town connects to a Sheriff’s Office and stocked General Store', ()
 test('the Bank is a hub interior with a street door and vault', () => {
   const bank = readFileSync(new URL('../games/pistols-at-dawn/areas/bank.html', import.meta.url), 'utf8');
   assert.match(loader, /id: 'bank', label: 'The Bank'/);
-  assert.match(page, /menu-item="value: teleport-bank; label: The Bank"/);
   assert.match(ghostTown, /id="ghost-town-bank-door"/);
   assert.match(ghostTown, /town-door="destination: bank"/);
   assert.match(bank, /bank-interior/);
@@ -132,7 +211,6 @@ test('the Bank is a hub interior with a street door and vault', () => {
 test('the Pharmacy brings elixirs, soda, and medical supplies to Ghost Town', () => {
   const pharmacy = readFileSync(new URL('../games/pistols-at-dawn/areas/pharmacy.html', import.meta.url), 'utf8');
   assert.match(loader, /id: 'pharmacy', label: 'The Pharmacy'/);
-  assert.match(page, /menu-item="value: teleport-pharmacy; label: The Pharmacy"/);
   assert.match(ghostTown, /id="ghost-town-pharmacy-door"/);
   assert.match(ghostTown, /town-door="destination: pharmacy"/);
   assert.match(pharmacy, /pharmacy-interior/);
@@ -146,8 +224,6 @@ test('the Post Office and Boots & Suits fill the final town building slots', () 
   const bootsSuits = readFileSync(new URL('../games/pistols-at-dawn/areas/boots-suits.html', import.meta.url), 'utf8');
   assert.match(loader, /id: 'post-office', label: 'Post Office'/);
   assert.match(loader, /id: 'boots-suits', label: 'Boots & Suits'/);
-  assert.match(page, /menu-item="value: teleport-post-office; label: Post Office"/);
-  assert.match(page, /menu-item="value: teleport-boots-suits; label: Boots &amp; Suits"/);
   assert.match(ghostTown, /town-door="destination: post-office"/);
   assert.match(ghostTown, /town-door="destination: boots-suits"/);
   assert.match(postOffice, /post-office-interior/);
@@ -162,10 +238,13 @@ test('Carriage Tickets use the projected menu to reach out-of-town destinations'
   const carriage = readFileSync(new URL('../games/pistols-at-dawn/js/world-ghost-town-carriage.js', import.meta.url), 'utf8');
   assert.match(carriage, /registerComponent\('carriage-ticket-stall'/);
   assert.match(carriage, /projected-menu/);
+  assert.match(carriage, /projected-crossbar/);
+  assert.match(carriage, /crossbar-menu="page: carriage/);
+  for (const id of ['range', 'farm', 'stable']) assert.match(pages, new RegExp(`id: 'carriage-${id}'`));
   assert.match(carriage, /laserScale: 1; offset: 0 \.45 0/);
   assert.match(carriage, /radius: 1\.6; maxReach: 1\.65; gazeThreshold: \.72/);
-  for (const id of ['range', 'farm', 'stable']) assert.match(carriage, new RegExp(`carriage-${id}`));
-  assert.match(carriage, /hub\.teleportTo\(value\.slice\('carriage-'\.length\)\)/);
+  assert.match(carriage, /addEventListener\('menu-action', this\.onTicket\)/);
+  assert.match(carriage, /hub\.teleportTo\(id\.slice\('carriage-'\.length\)\)/);
 });
 
 test('destination builders are absent from the eager script list', () => {
@@ -180,8 +259,17 @@ test('destination builders are absent from the eager script list', () => {
 });
 
 test('HUD visibility is exposed through the watch menu', () => {
-  assert.match(page, /menu-item="value: toggle-hud; label: Hide HUD"/);
+  assert.match(pages, /id: 'pistols-hud', label: 'HUD', value: true/);
   assert.match(page, /id="player-hud"/);
+  assert.match(menu, /id === 'pistols-hud'\) \{ this\.setHudVisible\(value\)/);
   assert.match(menu, /PLAYER_HUD_VISIBLE = this\.hudVisible/);
-  assert.match(page, /menu-item="value: toggle-performance; label: Show Performance"/);
+});
+
+test('cloud rendering quality is exposed through the new environment menu', () => {
+  assert.match(pages, /id: 'pistols-cloud-quality', label: 'Clouds', value: 'sprites'/);
+  assert.match(dayNight, /quality: \{ type: 'string', default: 'sprites' \}/);
+  assert.match(dayNight, /if \(this\.quality !== 'sprites'\)/);
+  assert.match(dayNight, /if \(this\.quality !== '3d'\)/);
+  assert.match(dayNight, /if \(this\.quality === 'off'/);
+  assert.match(menu, /id === 'pistols-cloud-quality'/);
 });

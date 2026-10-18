@@ -614,7 +614,7 @@
       // watch's Debug page (world-menu.js's onOptionChange) and read by
       // world-systems.updateLaserSight, which draws a translucent line +
       // impact dot out of any held firearm's muzzle. Session-only, same
-      // as the shooting gallery's own menu-option settings -- no need to
+      // as the shooting gallery's own watch settings -- no need to
       // survive a reload.
       var LASER_SIGHT = 'none';
       var LASER_SIGHT_COLORS = { red: '#ff3b3b', green: '#3bff6a' };
@@ -2205,6 +2205,7 @@
           if (pool.flame) {
             pool.flame.object3D.visible = true;
             var phase = (time / 1000) * FIRE_WIGGLE_HZ + pool.phase;
+            setFlameSpriteFrame(pool.flame, time, pool.phase);
             var height = FIRE_MIN_RADIUS + (FIRE_MAX_RADIUS - FIRE_MIN_RADIUS) * Math.sqrt(strength);
             var stretch = 1.7 + 0.35 * Math.sin(phase);
             pool.flame.object3D.scale.set(height * (1 + 0.12 * Math.sin(phase * 1.3)), height * stretch, height);

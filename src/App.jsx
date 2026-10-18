@@ -17,6 +17,27 @@ export function App() {
       <Container padding="lg">
         <CardGrid gap="lg" minCardWidth="340px">
           <Card
+            title="Magic Hands"
+            subtitle="Hand tracking"
+            href="/games/magic-hands/"
+            interactive
+            footer={<Text tone="muted">Cast a spell →</Text>}
+          >
+            Your hands are the magic. Punch with boulder fists, throw fireballs,
+            catch objects with a yank, spread open portals, raise skeleton minions,
+            and cast lightning, farsight, and shields.
+          </Card>
+          <Card
+            title="3D Model Toybox"
+            subtitle="Open the chest. Make a scene."
+            href="/games/model-viewer/"
+            interactive
+            footer={<Text tone="muted">Open toybox →</Text>}
+          >
+            Rummage through 228 Kenney models and a set of originals. Preview
+            toys, take out a handful, then grab, arrange, and toss them in VR.
+          </Card>
+          <Card
             title="Pistols at Dawn"
             subtitle="The flagship"
             href="/games/pistols-at-dawn/"

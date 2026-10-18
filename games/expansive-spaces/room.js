@@ -9,11 +9,9 @@ import { createRoomLayout } from './room-layout.js';
 import { buildRoomMeshes } from './room-renderer.js';
 import { WallCollision } from './wall-collision.js';
 import { TravelTrail, TRAIL_METRES } from './travel-trail.js';
-import { installExperimentMenus } from './experiment-menus.js';
+import { syncExperimentMenus } from './experiment-menus.js';
 import './binoculars.js';
 import { overlapFrame } from './overlap-planner.js';
-
-installExperimentMenus();
 
 const THREE = AFRAME.THREE;
 const PREVIEW = [{ x: -2, z: -1.5 }, { x: 2, z: -1.5 }, { x: 2, z: 1.5 }, { x: -2, z: 1.5 }];
@@ -59,18 +57,15 @@ AFRAME.registerComponent('expansive-space', {
     this.onEnter = this.start.bind(this);
     this.onExit = this.stop.bind(this);
     this.onWatchReady = function (evt) {
-      evt.detail.panelEl.querySelectorAll('a-text').forEach(el => {
-        el.setAttribute('font', 'sourcecodepro');
-        el.setAttribute('shader', 'sdf');
-      });
+      this.attachWatchMaps();
       this.renderStatus();
       this.scaleSettingsDirty = true;
     }.bind(this);
     this.onReset = this.refreshBoundary.bind(this);
     this.onTravelReset = this.clearTrails.bind(this);
     this.onVisitRoom = evt => {
-      if (!evt.detail.value?.startsWith('visit-space-')) return;
-      const room = this.roomLayout.rooms.find(area => 'visit-' + area.id === evt.detail.value);
+      if (!evt.detail.id?.startsWith('visit-space-')) return;
+      const room = this.roomLayout.rooms.find(area => 'visit-' + area.id === evt.detail.id);
       const gain = document.querySelector('#space-rig')?.components['speed-dependent-gain'];
       if (!room || !gain) return;
       this.el.object3D.updateWorldMatrix(true, false);
@@ -79,7 +74,7 @@ AFRAME.registerComponent('expansive-space', {
       this.clearTrails(); this.updateActiveRoom(room.id); this.drawMap();
     };
     this.onWorldScale = function (evt) {
-      if (evt.detail.key !== 'space-world-scale') return;
+      if (evt.detail.id !== 'space-world-scale') return;
       this.worldScale = sanitizeWorldScale(evt.detail.value);
       try { localStorage.setItem(WORLD_SCALE_KEY, JSON.stringify({ worldScale: this.worldScale })); } catch (_) {}
       // Resize only the room geometry: preserve the pose transform and trails.
@@ -92,8 +87,8 @@ AFRAME.registerComponent('expansive-space', {
     this.el.sceneEl.addEventListener('exit-vr', this.onExit);
     this.el.sceneEl.addEventListener('watch-menu-ready', this.onWatchReady);
     this.el.sceneEl.addEventListener('space-travel-reset', this.onTravelReset);
-    this.el.sceneEl.addEventListener('menu-item-select', this.onVisitRoom);
-    this.el.sceneEl.addEventListener('menu-option-change', this.onWorldScale);
+    this.el.sceneEl.addEventListener('menu-action', this.onVisitRoom);
+    this.el.sceneEl.addEventListener('menu-commit', this.onWorldScale);
     this.setBoundary(PREVIEW);
     this.setStatus('Preview boundary - 4.0 x 3.0 m', 'Enter VR to read your boundary.');
     this.drawMap();
@@ -113,15 +108,22 @@ AFRAME.registerComponent('expansive-space', {
   },
 
   renderWorldScale: function () {
-    let synchronized = 0;
-    this.el.sceneEl.querySelectorAll('[menu-option]').forEach(el => {
-      const row = el.components['menu-option'];
-      if (!row || row.data.key !== 'space-world-scale') return;
-      row.setValue(this.worldScale);
-      row.valueTextEl.setAttribute('width', 1.4);
-      synchronized++;
-    });
-    this.scaleSettingsDirty = synchronized < 2;
+    syncExperimentMenus();
+    this.scaleSettingsDirty = false;
+  },
+
+  attachWatchMaps: function () {
+    let count = 0;
+    for (const el of this.el.sceneEl.querySelectorAll('.watch-crossbar')) {
+      const host = el.components['crossbar-menu']?.sidecarContentEl;
+      if (!host) continue;
+      if (!host.querySelector('[boundary-map]')) {
+        const map = document.createElement('a-entity');
+        map.setAttribute('boundary-map', 'width: .96; height: .72'); host.appendChild(map);
+      }
+      count++;
+    }
+    this.watchMapsReady = count >= 2;
   },
 
   setBoundary: function (points) {
@@ -538,6 +540,7 @@ AFRAME.registerComponent('expansive-space', {
 
   tick: function (time) {
     if (this.scaleSettingsDirty) this.renderWorldScale();
+    if (!this.watchMapsReady) this.attachWatchMaps();
     this.attachChecker();
     // enter-vr can precede the renderer attaching its session by a frame.
     const xr = this.el.sceneEl.renderer && this.el.sceneEl.renderer.xr;
@@ -567,8 +570,8 @@ AFRAME.registerComponent('expansive-space', {
     this.el.sceneEl.removeEventListener('exit-vr', this.onExit);
     this.el.sceneEl.removeEventListener('watch-menu-ready', this.onWatchReady);
     this.el.sceneEl.removeEventListener('space-travel-reset', this.onTravelReset);
-    this.el.sceneEl.removeEventListener('menu-item-select', this.onVisitRoom);
-    this.el.sceneEl.removeEventListener('menu-option-change', this.onWorldScale);
+    this.el.sceneEl.removeEventListener('menu-action', this.onVisitRoom);
+    this.el.sceneEl.removeEventListener('menu-commit', this.onWorldScale);
     this.disposeRoom();
     this.mapTexture.dispose();
   },

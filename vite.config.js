@@ -19,6 +19,7 @@ function copyRuntimeAssets() {
     async closeBundle() {
       await Promise.all([
         copyDirectory(resolve(root, 'vendor'), resolve(output, 'vendor')),
+        copyDirectory(resolve(root, 'assets/models'), resolve(output, 'assets/models')),
         copyDirectory(
           resolve(root, 'games/pistols-at-dawn/js'),
           resolve(output, 'games/pistols-at-dawn/js'),
@@ -52,6 +53,8 @@ export default defineConfig({
         punchPop: resolve(root, 'games/punch-pop/index.html'),
         boundaries: resolve(root, 'games/boundaries/index.html'),
         expansiveSpaces: resolve(root, 'games/expansive-spaces/index.html'),
+        magicHands: resolve(root, 'games/magic-hands/index.html'),
+        modelViewer: resolve(root, 'games/model-viewer/index.html'),
         pistolsAtDawn: resolve(root, 'games/pistols-at-dawn/index.html'),
         menuShowcase: resolve(root, 'primitives/menus/index.html'),
       },
