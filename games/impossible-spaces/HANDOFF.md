@@ -81,6 +81,10 @@ at least 1.8 m rooms. Routing can turn around concave footprint edges, but rooms
 remain axis-aligned; rotated/narrow areas can pack poorly. Unconnectable plans
 are omitted and additional stationary elevator layers supply the room count.
 
+Neither generator target nor the rooms-per-layer setting has an application-set
+upper limit (2D and VR watch); inputs must be valid whole numbers. Per-layer
+packing is limited by the physical footprint.
+
 It returns the exact requested number of **connected rooms**, provided a
 starting room/cabin module fits, or fails explicitly. This does **not** guarantee
 metres walked, play time, a long simple path, room variety or no backtracking.
@@ -96,9 +100,9 @@ themes and movement gain are separate follow-ups.
 ## Start the next session in 2D
 
 Open `/games/impossible-spaces/playground/`. It begins with a filled square on
-a metre grid. Tap corners and Add area (the extension must overlap the fill),
-or paint a loop/patch by dragging. Confirm the boundary, then generate with
-either engine. Explore with tap-to-walk, WASD/arrows or held direction buttons;
+a metre grid. Paint a loop/patch by tapping or dragging; closed loops fill
+automatically. Painting is the only drawing tool. Confirm the boundary, then
+generate with either engine. Explore with tap-to-walk, WASD/arrows or held direction buttons;
 inspect full overlapping layouts and jump to individual pieces for debugging.
 The shared stationary ride cycle is available in cabins.
 

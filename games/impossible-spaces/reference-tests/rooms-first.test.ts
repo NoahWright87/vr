@@ -117,3 +117,10 @@ test('unsupported footprints and settings fail explicitly rather than returning 
   assert.throws(()=>generateRoomsFirst({...params(),roomsPerLayer:NaN}),/Check/);
   assert.throws(()=>generateRoomsFirst({...params(),minWidth:NaN}),/Check/);
 });
+
+test('large requested room counts remain connected and contained across stationary layers',()=>{
+  const level=generateRoomsFirst({...params(),roomCount:64});
+  assert.equal(level.pieces.filter(p=>p.kind==='room').length,64);
+  assert.equal(walkingTour(level).size,level.pieces.length);
+  for(const piece of level.pieces)assert.ok(pieceInFootprint(piece,level.params.footprint!,.1));
+});

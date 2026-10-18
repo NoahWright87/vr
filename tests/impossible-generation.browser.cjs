@@ -17,6 +17,9 @@ const assert=require('node:assert/strict'),base=process.env.VR_TEST_URL||'http:/
       const wait=async()=>{for(let i=0;i<500&&!g.level;i++)await new Promise(r=>setTimeout(r,10));if(!g.level)throw new Error(g.message+' '+g.detail);};
       root();click('rooms-first-style');const existing=g.level;set('rooms-first:roomCount',9);set('rooms-first:roomsPerLayer',2);set('rooms-first:connectionMode','halls');
       const explicitGenerate=g.level===existing&&!g.generating;click('generate-rooms-first');await wait();
+      set('rooms-first:roomCount',64);click('generate-rooms-first');await wait();
+      const largeTarget=g.level.pieces.filter(p=>p.kind==='room').length===64;
+      set('rooms-first:roomCount',9);click('generate-rooms-first');await wait();
       const desktop={rooms:g.level.roomsFirst.requestedRooms,count:g.level.pieces.filter(p=>p.kind==='room').length,layers:g.level.roomsFirst.layers.length,setting:g.level.params.roomsPerLayer};
       root();click('growth-style');set('growth:pieceCount',5);click('generate-growth');await wait();const oldPreserved=g.level.params.generationStyle==='growth'&&!g.level.roomsFirst&&g.level.params.pieceCount===5;
       menu.close();scene.emit('enter-vr',{},false);
@@ -65,7 +68,7 @@ const assert=require('node:assert/strict'),base=process.env.VR_TEST_URL||'http:/
       scene.emit('headset-boundary-frame',frame(),false);const recovered=g.world.object3D.visible&&lab.root.visible;
       scene.emit('headset-boundary-reset',{},false);const resetClears=!g.manualBoundary&&!g.level;
       scene.renderer.xr.getSession=original.session;scene.renderer.xr.getFrame=original.frame;scene.renderer.xr.getReferenceSpace=original.space;scene.is=original.is;g.xr=false;
-      return {explicitGenerate,desktop,oldPreserved,traceRequired,passthrough,reviewed:!!reviewed,accepted,generationAfterSave,traced,transformMatches,rigFixed,savedOutline,middleButtons,lastReturn,bothStylesUseTrace,trackingHidden,recovered,resetClears};
+      return {explicitGenerate,largeTarget,desktop,oldPreserved,traceRequired,passthrough,reviewed:!!reviewed,accepted,generationAfterSave,traced,transformMatches,rigFixed,savedOutline,middleButtons,lastReturn,bothStylesUseTrace,trackingHidden,recovered,resetClears};
     });
     for(const [key,value] of Object.entries(result))if(!['desktop','traced'].includes(key))assert.equal(value,true,key);
     assert.equal(result.desktop.count,9);assert.equal(result.desktop.setting,2);assert.equal(result.traced.count,9);assert.equal(result.traced.setting,2);assert.ok(result.traced.corners>=6&&result.traced.width>4.6);

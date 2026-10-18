@@ -20,6 +20,8 @@ interface Node { piece: Piece; slots: WSlot[]; parent: string | null; children: 
 interface Exit { p1: Vec; p2: Vec; normal: Vec }
 
 export function generateLevel(params: GenParams): Level {
+  if (!Number.isSafeInteger(params.pieceCount) || params.pieceCount < 2)
+    throw new Error('Choose a whole piece target of at least 2.');
   // A bad start (e.g. a room jammed into a corner) can strand the whole level. Retry from a
   // fresh start a few times, same RNG stream so it stays deterministic, and keep the best.
   const rng = mulberry32(params.seed);

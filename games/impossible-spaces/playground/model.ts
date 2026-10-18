@@ -36,21 +36,13 @@ export function restorePaint(raw:PaintSnapshot){
   }
   paint.bounds={...b};paint.dirty=true;paint.flush();return paint;
 }
-export function extendWithCorners(paint:FloorPaint,corners:Vec[]){
-  const error=validateFloor(corners);if(error)throw new Error(error);
-  const next=restorePaint(snapshotPaint(paint));
-  corners.forEach((a,i)=>paintSegment(next,'corners',a,corners[(i+1)%corners.length]));
-  next.endStrokes();next.flush();
-  if(next.contours.length!==1)throw new Error('Include part of the filled area in your extension so it joins the room.');
-  return next;
-}
 export function makeParams(points:Vec[],settings=DEFAULT_SETTINGS):GenParams{
   const error=validateFloor(points);if(error)throw new Error(error);
   const f=normalizeFootprint(points),s={...DEFAULT_SETTINGS,...settings};
   const finite=(value:number,min:number,max:number)=>Number.isFinite(value)&&value>=min&&value<=max;
   if(!['growth','rooms-first'].includes(s.style)||!['halls','doors','mixed'].includes(s.connectionMode)||
-    !finite(s.rooms,2,24)||!Number.isInteger(s.rooms)||!finite(s.pieces,2,24)||!Number.isInteger(s.pieces)||
-    !finite(s.roomsPerLayer,1,5)||!Number.isInteger(s.roomsPerLayer)||!finite(s.roomSize,1.2,2)||
+    !Number.isSafeInteger(s.rooms)||s.rooms<2||!Number.isSafeInteger(s.pieces)||s.pieces<2||
+    !Number.isSafeInteger(s.roomsPerLayer)||s.roomsPerLayer<1||!finite(s.roomSize,1.2,2)||
     ![.8,1,1.2].includes(s.width)||![.1,.15,.25,.4].includes(s.margin)||![1.2,1.6,2].includes(s.roomSize)||!finite(s.seed,0,999999)||!Number.isInteger(s.seed)||
     !finite(s.minSize,1,50)||!finite(s.maxSize,s.minSize,50)||!finite(s.branches,0,.75))throw new Error('Check the generation settings and room-size range.');
   return {generationStyle:s.style as GenParams['generationStyle'],boundsW:f.width,boundsH:f.height,footprint:f.polygon,boundaryMargin:s.margin,

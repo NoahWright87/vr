@@ -10,15 +10,11 @@ to reproduce generation problems before returning to headset testing.
 The metre grid starts with a nominal **3 × 3 m square** painted in the middle.
 As in VR, the brush adds a small allowance around its sampled centreline.
 
-- **Tap corners**: tap/click the corners of a larger area, then **Add area**.
-  Include some existing filled floor in the polygon so the extension joins it.
-  Drawing a larger outline around the starter also works. Tap corners anywhere
-  on the empty grid; there is no headset rectangle or fitted-box veto.
-- **Paint**: hold/drag a 30 cm brush. It uses the same additive `FloorPaint`
-  implementation as VR. Close a loop to fill its interior, or brush across gaps.
+- **Paint** (default): tap a spot or hold/drag a 30 cm brush. It uses the same
+  additive `FloorPaint` implementation as VR. Close a loop to fill its interior, or brush across gaps.
 - **Pan**, **+ / −**, and **Fit** move/resize the view. These change the view,
   not the physical area. The grid remains one metre per square.
-- **Undo** removes a draft corner or the last committed edit (up to 20 edits).
+- **Undo** removes the last painted stroke (up to 20 edits).
   **Reset square** restores the starter and can itself be undone.
 - **Set boundary** shows the simplified yellow polygon. **Use boundary** locks
   it; **Keep editing** returns to the raw painted area. The final polygon must
@@ -26,6 +22,10 @@ As in VR, the brush adds a small allowance around its sampled centreline.
 - Choose **Rooms first** or **Original growth**, set target/seed and optionally
   sizes/width/inset/connections, then **Generate level**. **New seed & generate**
   changes the seed. Editing a setting alone does not rebuild the displayed level.
+
+Room/piece targets and rooms per layer have no application-set upper limit in
+either 2D or the VR watch. Actual packing limits each layer to what fits; extra
+layers meet the rooms-first target.
 
 Both generators receive the complete normalized polygon. The bounding rectangle
 is only a search envelope. There is no 2D-specific generator or alternate
@@ -57,10 +57,10 @@ shortfall warnings remain visible. See [the handoff](../HANDOFF.md).
 
 ## Save a reproduction
 
-Committed paint, the confirmed outline and settings auto-save under
-`impossible-spaces-2d-v1` in local storage. Uncommitted draft corners and the
-generated level are not restored on reload. Storage failure leaves the current
-page usable; Export remains available.
+Paint, the confirmed outline and settings auto-save under
+`impossible-spaces-2d-v1` in local storage. The generated level is not restored
+on reload. Storage failure leaves the current page usable; Export remains
+available.
 
 **Export** downloads `impossible-spaces-2d.json`: format/version, exact painted
 grid, confirmed boundary, settings, current generated level and player location.
@@ -78,12 +78,12 @@ grid encoding need a format-version migration rather than silently changing it.
 ## Check locally
 
 `npm run build`, then serve with Vite preview. The normal `npm test` includes
-`reference-tests/playground.test.ts`: additive concave extensions, failure
-without mutation, exact save/load replay, both generators' full footprints,
+`reference-tests/playground.test.ts`: additive concave painting, undo snapshots,
+uncapped room targets, exact save/load replay, both generators' full footprints,
 containment, malformed imports and invalid settings.
 
 `node tests/impossible-playground.browser.cjs` tests the served production page
-at desktop and phone sizes, including touch taps, undo/reset, confirmation,
+at desktop and phone sizes, including touch painting, undo/reset, confirmation,
 workers, walking, stationary rides, inspection, settings/seed changes,
 export/load, reload persistence and brush input. Set `VR_PLAYWRIGHT_PATH` to an
 installed Playwright package and optionally `VR_TEST_URL` (default

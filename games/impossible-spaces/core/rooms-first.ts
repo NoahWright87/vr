@@ -17,9 +17,9 @@ const hallGap=(a:Box,b:Box)=>((a.x+a.w+2===b.x||b.x+b.w+2===a.x)&&Math.min(a.y+a
  * and full-width grid routes. Stationary elevator layers reuse the footprint
  * to meet the exact room target. Failure never returns a shorter level. */
 export function generateRoomsFirst(P:GenParams):Level {
-  const target=Math.round(P.roomCount??P.pieceCount),perLayer=Math.round(P.roomsPerLayer??3);
+  const target=P.roomCount??P.pieceCount,perLayer=P.roomsPerLayer??3;
   const roomSide=P.roomSize??1.2,margin=P.boundaryMargin??.1,w=P.minWidth,step=w/2;
-  if(!Number.isFinite(target)||target<1||target>32||!Number.isFinite(perLayer)||perLayer<1||perLayer>6||!Number.isFinite(roomSide)||roomSide<w||!Number.isFinite(w)||w<.8||!Number.isFinite(margin)||margin<0||!Number.isFinite(P.boundsW)||!Number.isFinite(P.boundsH))
+  if(!Number.isSafeInteger(target)||target<1||!Number.isSafeInteger(perLayer)||perLayer<1||!Number.isFinite(roomSide)||roomSide<w||!Number.isFinite(w)||w<.8||!Number.isFinite(margin)||margin<0||!Number.isFinite(P.boundsW)||!Number.isFinite(P.boundsH))
     throw new Error('Check the room target, room size, width and margin.');
   const footprint=P.footprint??[{x:0,y:0},{x:P.boundsW,y:0},{x:P.boundsW,y:P.boundsH},{x:0,y:P.boundsH}];
   if(P.startAt&&clearance(P.startAt,footprint)<margin+.16)throw new Error('Step farther inside your traced area, then Generate!');

@@ -1,4 +1,4 @@
-import { DEFAULT_SETTINGS, STORAGE_KEY, STARTER, starterPaint, snapshotPaint, restorePaint, extendWithCorners, paintSegment, makeParams, exportProject, importProject } from './model.ts';
+import { DEFAULT_SETTINGS, STORAGE_KEY, STARTER, starterPaint, snapshotPaint, restorePaint, paintSegment, makeParams, exportProject, importProject } from './model.ts';
 import { normalizeFootprint } from '../core/footprint.ts';
 import { createRuntime, movePlayer, renderWalls } from '../core/runtime.ts';
 import { createRide, beginRide, advanceRide, doorClosure, fullyInsideCabin } from '../core/vr-runtime.ts';
@@ -10,7 +10,7 @@ const canvas=$('map') as HTMLCanvasElement,ctx=canvas.getContext('2d')!;
 let paint=starterPaint(),boundary:Vec[]|null=null,pending:Vec[]|null=null,settings={...DEFAULT_SETTINGS};
 let validSettings={...DEFAULT_SETTINGS};
 let level:Level|null=null,runtime:ReturnType<typeof createRuntime>|null=null,ride=createRide(),worker:Worker|null=null;
-let phase:'edit'|'review'|'ready'='edit',tool='corners',draft:Vec[]=[],history:ReturnType<typeof snapshotPaint>[]=[];
+let phase:'edit'|'review'|'ready'='edit',tool='paint',history:ReturnType<typeof snapshotPaint>[]=[];
 let origin={x:0,y:0},goal:Vec|null=null,drag:any=null,width=0,height=0,dpr=1,scale=65,center={x:0,y:0},lastMask=0;
 const held=new Set<string>();let lastTime=performance.now(),lastHud='';
 const message=(text:string)=>{$('status').textContent=text;};
@@ -29,7 +29,7 @@ function remember(){history.push(snapshotPaint(paint));if(history.length>20)hist
 function path(points:Vec[]){ctx.beginPath();points.forEach((p,i)=>{const s=screen(p);if(i)ctx.lineTo(s.x,s.y);else ctx.moveTo(s.x,s.y);});ctx.closePath();}
 function line(a:Vec,b:Vec){const p=screen(a),q=screen(b);ctx.beginPath();ctx.moveTo(p.x,p.y);ctx.lineTo(q.x,q.y);ctx.stroke();}
 function fit(){
-  const points=[...(boundary||paint.contours.flat()),...draft];if(!points.length)return;
+  const points=boundary||paint.contours.flat();if(!points.length)return;
   const minX=Math.min(...points.map(p=>p.x)),maxX=Math.max(...points.map(p=>p.x)),minY=Math.min(...points.map(p=>p.y)),maxY=Math.max(...points.map(p=>p.y));
   center={x:(minX+maxX)/2,y:(minY+maxY)/2};scale=Math.min(130,(width-55)/Math.max(6,maxX-minX+2),(height-70)/Math.max(6,maxY-minY+2));
 }
@@ -53,7 +53,7 @@ function refresh(){
   $('drawing-actions').hidden=!edit;$('review-actions').hidden=!review;$('edit-tools').hidden=!edit;
   $('walk-controls').hidden=!has;$('explore-card').hidden=!has;$('edit-ready').hidden=edit||review||has;
   $('generate').disabled=phase!=='ready'||!!worker;$('new-seed').disabled=phase!=='ready'||!!worker;
-  $('generate').textContent=worker?'Generating…':'Generate level';$('add-area').disabled=draft.length<3;
+  $('generate').textContent=worker?'Generating…':'Generate level';
   $('phase-label').textContent=edit?'01 / DRAW YOUR AREA':review?'REVIEW / FINAL OUTLINE':has?'03 / EXPLORE THE LEVEL':'02 / READY TO GENERATE';
   $('map-title').textContent=edit?'Start small. Make room.':review?'Does this outline look right?':has?'One floor. Many places.':'Your boundary is ready.';
   $('area').textContent=`${(boundary?Math.abs(boundary.reduce((n,a,i)=>{const b=boundary![(i+1)%boundary!.length];return n+a.x*b.y-a.y*b.x;},0))/2:paint.area).toFixed(2)} m²`;
@@ -71,7 +71,7 @@ function refresh(){
     $('ride-next').textContent=ride.phase!=='idle'?`Doors ${ride.phase}`:layers?(index===layers.length-1?'Return':'Next layer'):'Ride elevator';
   }
 }
-function editBoundary(){discardLevel();phase='edit';boundary=null;pending=null;draft=[];paint.endStrokes();message('Tap corners around an extension and Add area, or Paint by dragging. Include part of the filled area.');refresh();save();}
+function editBoundary(){discardLevel();phase='edit';boundary=null;pending=null;paint.endStrokes();message('Hold and drag to paint more floor. Close a loop to fill it, or brush across gaps.');refresh();save();}
 function generate(newSeed=false){
   if(phase!=='ready'||!boundary)return;
   try{
@@ -102,14 +102,13 @@ function rideTo(previous=false){
 }
 function populateImport(raw:any){
   const restored=importProject(raw);discardLevel();paint=restored.paint;boundary=restored.boundary;settings=restored.settings;
-  pending=null;draft=[];history=[];phase=boundary?'ready':'edit';syncSettings();fit();refresh();save();
+  pending=null;history=[];phase=boundary?'ready':'edit';syncSettings();fit();refresh();save();
 }
 
 canvas.addEventListener('pointerdown',e=>{
   if(e.button!==0||!e.isPrimary||drag)return;canvas.focus({preventScroll:true});canvas.setPointerCapture(e.pointerId);const p=pointer(e);
   if(phase==='review')return;
   if(phase==='ready'){if(level&&runtime){goal={x:p.x-origin.x,y:p.y-origin.y};}return;}
-  if(tool==='corners'){draft.push(p);message(`${draft.length} corners. Tap more corners or Add area to close this extension.`);refresh();return;}
   drag={id:e.pointerId,last:p,x:e.clientX,y:e.clientY,center:{...center}};
   if(tool==='paint'){remember();paint.paint('pointer',p,.15);}
 });
@@ -120,11 +119,10 @@ canvas.addEventListener('pointermove',e=>{
 });
 function endPointer(e:PointerEvent){if(!drag||drag.id!==e.pointerId)return;paint.endStrokes();paint.flush();drag=null;if(paint.error)message(paint.error);refresh();save();}
 canvas.addEventListener('pointerup',endPointer);canvas.addEventListener('pointercancel',endPointer);
-document.querySelectorAll('[data-tool]').forEach((el:HTMLElement)=>el.addEventListener('click',()=>{tool=el.dataset.tool!;paint.endStrokes();drag=null;message(tool==='corners'?'Tap corners, then Add area. Include part of the filled square to connect your extension.':tool==='paint'?'Hold and drag to paint. Close a loop to fill it, or brush directly across gaps.':'Drag the map to pan. Use + / − to zoom.');refresh();}));
-$('add-area').addEventListener('click',()=>{try{const next=extendWithCorners(paint,draft);remember();paint=next;draft=[];message('Area added. Extend it again, paint a gap, or Set boundary.');refresh();save();}catch(error){message((error as Error).message);}});
-$('undo').addEventListener('click',()=>{if(draft.length)draft.pop();else if(history.length)paint=restorePaint(history.pop()!);message('Last edit undone.');refresh();save();});
-$('reset').addEventListener('click',()=>{remember();paint=starterPaint();draft=[];message('Back to the starter square. Undo can restore your previous area.');fit();refresh();save();});
-$('review').addEventListener('click',()=>{if(draft.length){message('Add your outlined area or Undo its corners before setting the boundary.');return;}const result=paint.finalise();if(result.error){message(result.error);return;}pending=result.points;phase='review';message('Review the yellow polygon. It contains all painted floor, with a small allowance for straighter edges.');refresh();});
+document.querySelectorAll('[data-tool]').forEach((el:HTMLElement)=>el.addEventListener('click',()=>{tool=el.dataset.tool!;paint.endStrokes();drag=null;message(tool==='paint'?'Hold and drag to paint. Close a loop to fill it, or brush directly across gaps.':'Drag the map to pan. Use + / − to zoom.');refresh();}));
+$('undo').addEventListener('click',()=>{if(history.length)paint=restorePaint(history.pop()!);message('Last edit undone.');refresh();save();});
+$('reset').addEventListener('click',()=>{remember();paint=starterPaint();message('Back to the starter square. Undo can restore your previous area.');fit();refresh();save();});
+$('review').addEventListener('click',()=>{const result=paint.finalise();if(result.error){message(result.error);return;}pending=result.points;phase='review';message('Review the yellow polygon. It contains all painted floor, with a small allowance for straighter edges.');refresh();});
 $('keep-editing').addEventListener('click',()=>{pending=null;phase='edit';message('Continue adding to the purple area.');refresh();});
 $('confirm').addEventListener('click',()=>{boundary=pending!.map(p=>({...p}));pending=null;phase='ready';message('Boundary confirmed. Choose a style and Generate level.');refresh();save();if(innerWidth<=850)document.querySelector('.settings')!.scrollIntoView({block:'start'});});
 $('edit-boundary').addEventListener('click',editBoundary);$('edit-ready').addEventListener('click',editBoundary);
@@ -165,8 +163,6 @@ function draw(now:number){
   for(let y=minY;y<=maxY;y++){ctx.strokeStyle=y===0?'#314c64':'#1c2e41';line({x:minX,y},{x:maxX,y});}
   if(!level){
     for(const ring of paint.rings){path(ring);ctx.fillStyle='#9576cf38';ctx.fill();ctx.strokeStyle='#bc9ce6';ctx.lineWidth=1.3;ctx.stroke();}
-    if(draft.length){path(draft);ctx.fillStyle='#87b6fc18';ctx.fill();ctx.setLineDash([5,4]);ctx.strokeStyle='#9ac9ff';ctx.stroke();ctx.setLineDash([]);
-      draft.forEach((p,i)=>{const s=screen(p);ctx.beginPath();ctx.arc(s.x,s.y,5,0,Math.PI*2);ctx.fillStyle='#cae6ff';ctx.fill();ctx.fillText(String(i+1),s.x+8,s.y-8);});}
     if(phase==='edit'){const c=screen({x:0,y:0});ctx.fillStyle='#b7a9cd';ctx.textAlign='center';ctx.fillText('3 × 3 m starter',c.x,c.y);ctx.textAlign='left';}
   }else if(runtime){
     const inspect=$('view').value==='inspect';
