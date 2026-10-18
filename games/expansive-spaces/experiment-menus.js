@@ -1,3 +1,5 @@
+import { ROOM_DESTINATIONS } from './room-layout.js';
+
 // The lab uses the existing shared menu rows, navigation and wrist hardware.
 const row = (key, label, values, labels, value, y) => {
   const normalized = values.split('|').map(v => Number.isFinite(Number(v)) ? String(Number(v)) : v).join('|');
@@ -22,7 +24,11 @@ export function installExperimentMenus() {
       button('page-jump', 'Jumping: OFF >', -.19, 'space-jump-link') +
       button('page-scope', 'Binoculars: OFF >', -.46, 'space-scope-link') +
       text('New effects start OFF.\nStand normally, then calibrate.\nBinoculars return to your neck.', -.8) +
-      button('space-calibrate-height', 'Calibrate standing height', -1.1)) +
+      button('space-calibrate-height', 'Calibrate standing height', -1.1) +
+      button('page-rooms', 'Visit a room >', -1.37), 2.3) +
+    page('rooms', 'VISIT A ROOM',
+      text('Test shortcuts. All rooms also\nconnect through real doorways.', .38) +
+      ROOM_DESTINATIONS.map((room, i) => button('visit-' + room.id, (i + 1) + '. ' + room.name, .12 - i * .22)).join(''), 2.5) +
     page('arm', 'ARM SWING',
       toggle('space-arm-enabled', 'Arm swing', false, .4) +
       row('space-arm-gain', 'Max boost', '1|1.5|2|3|4|6|8', '1.0x|1.5x|2.0x|3.0x|4.0x|6.0x|8.0x', 3, .16) +

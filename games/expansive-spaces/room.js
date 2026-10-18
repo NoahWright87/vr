@@ -4,7 +4,9 @@ import '../../common/desktop-controls.js';
 import '../../common/checker-floor.js';
 import '../../common/navigation-area.js';
 import './movement-gain.js';
-import { measureBounds, isInsideBoundary, mapLayout, sanitizeWorldScale, scaledRoomBounds } from './play-space.js';
+import { measureBounds, isInsideBoundary, mapLayout, sanitizeWorldScale } from './play-space.js';
+import { createRoomLayout } from './room-layout.js';
+import { buildRoomMeshes } from './room-renderer.js';
 import { TravelTrail, TRAIL_METRES } from './travel-trail.js';
 import { installExperimentMenus } from './experiment-menus.js';
 import './binoculars.js';
@@ -18,7 +20,6 @@ const PHYSICAL_COLOR = '#ffad54', VIRTUAL_COLOR = '#c084fc';
 const WORLD_SCALE_KEY = 'vr-expansive-world-scale-v1';
 
 AFRAME.registerComponent('expansive-space', {
-  dependencies: ['navigation-area'],
   init: function () {
     let savedScale;
     try { savedScale = JSON.parse(localStorage.getItem(WORLD_SCALE_KEY))?.worldScale; } catch (_) {}
@@ -28,6 +29,7 @@ AFRAME.registerComponent('expansive-space', {
     this.boundedSpace = null;
     this.frameHandle = null;
     this.detected = false;
+    this.areaEls = [];
     this.lastDraw = -Infinity;
     this.matrix = new THREE.Matrix4();
     this.viewerMatrix = new THREE.Matrix4();
@@ -63,6 +65,16 @@ AFRAME.registerComponent('expansive-space', {
     }.bind(this);
     this.onReset = this.refreshBoundary.bind(this);
     this.onTravelReset = this.clearTrails.bind(this);
+    this.onVisitRoom = evt => {
+      if (!evt.detail.value?.startsWith('visit-space-')) return;
+      const room = this.roomLayout.rooms.find(area => 'visit-' + area.id === evt.detail.value);
+      const gain = document.querySelector('#space-rig')?.components['speed-dependent-gain'];
+      if (!room || !gain) return;
+      this.el.object3D.updateWorldMatrix(true, false);
+      const target = new THREE.Vector3(room.labelPoint.x, 0, room.labelPoint.z).applyMatrix4(this.el.object3D.matrixWorld);
+      if (!gain.relocate(target)) return;
+      this.clearTrails(); this.updateActiveRoom(room.id); this.drawMap();
+    };
     this.onWorldScale = function (evt) {
       if (evt.detail.key !== 'space-world-scale') return;
       this.worldScale = sanitizeWorldScale(evt.detail.value);
@@ -77,6 +89,7 @@ AFRAME.registerComponent('expansive-space', {
     this.el.sceneEl.addEventListener('exit-vr', this.onExit);
     this.el.sceneEl.addEventListener('watch-menu-ready', this.onWatchReady);
     this.el.sceneEl.addEventListener('space-travel-reset', this.onTravelReset);
+    this.el.sceneEl.addEventListener('menu-item-select', this.onVisitRoom);
     this.el.sceneEl.addEventListener('menu-option-change', this.onWorldScale);
     this.setBoundary(PREVIEW);
     this.setStatus('Preview boundary - 4.0 x 3.0 m', 'Enter VR to read your boundary.');
@@ -90,8 +103,8 @@ AFRAME.registerComponent('expansive-space', {
   },
 
   renderStatus: function () {
-    const b = this.virtualBounds;
-    const roomSize = b ? '\nRoom ' + b.width.toFixed(1) + ' x ' + b.depth.toFixed(1) + ' m (' + this.worldScale.toFixed(2) + 'x)' : '';
+    const room = this.activeRoom;
+    const roomSize = room ? '\n' + room.number + '. ' + room.name + ' | World ' + this.worldScale.toFixed(2) + 'x' : '';
     this.el.sceneEl.querySelectorAll('.space-status').forEach(el => el.setAttribute('text', 'value', this.status + roomSize));
     this.el.sceneEl.querySelectorAll('.space-detail').forEach(el => el.setAttribute('text', 'value', this.detail));
   },
@@ -129,6 +142,9 @@ AFRAME.registerComponent('expansive-space', {
   },
 
   disposeRoom: function (removeOutline = true) {
+    this.areaEls?.forEach(el => el.remove());
+    this.areaEls = [];
+    this.checkerTexture?.dispose(); this.checkerTexture = null;
     const outline = this.el.getObject3D('boundary-outline');
     if (outline && removeOutline) {
       outline.geometry.dispose();
@@ -137,58 +153,68 @@ AFRAME.registerComponent('expansive-space', {
     }
     const group = this.el.getObject3D('room-shell');
     if (!group) return;
-    const materials = new Set();
+    const materials = new Set(), geometries = new Set();
     group.traverse(object => {
-      if (object.geometry) object.geometry.dispose();
+      if (object.geometry) geometries.add(object.geometry);
       if (object.material) materials.add(object.material);
     });
+    geometries.forEach(geometry => geometry.dispose());
+    if (this.roomMeshes) { materials.add(this.roomMeshes.active); materials.add(this.roomMeshes.inactive); }
     materials.forEach(material => material.dispose());
     this.el.removeObject3D('room-shell');
   },
 
   buildRoom: function () {
     this.disposeRoom(false);
-    const b = this.virtualBounds = scaledRoomBounds(this.bounds, this.worldScale);
-    this.el.components['navigation-area'].setFootprint([{ x: b.minX, z: b.minZ }, { x: b.maxX, z: b.minZ },
-      { x: b.maxX, z: b.maxZ }, { x: b.minX, z: b.maxZ }]);
-    const height = 2.7, thickness = 0.08;
-    const group = new THREE.Group();
-    const wallMaterial = new THREE.MeshStandardMaterial({ color: '#70849d', roughness: 1 });
-    const ceilingMaterial = new THREE.MeshStandardMaterial({ color: '#b2bed0', roughness: 1 });
-    const trimMaterial = new THREE.MeshStandardMaterial({ color: '#263550', roughness: 1 });
-    function box(width, h, depth, x, y, z, material) {
-      const mesh = new THREE.Mesh(new THREE.BoxGeometry(width, h, depth), material);
-      mesh.position.set(x, y, z);
-      group.add(mesh);
-      return mesh;
+    this.roomLayout = createRoomLayout(this.bounds, this.worldScale);
+    this.virtualBounds = this.roomLayout.bounds;
+    this.roomMeshes = buildRoomMeshes(this.roomLayout);
+    this.ceiling = this.roomMeshes.ceiling;
+    this.el.setObject3D('room-shell', this.roomMeshes.group);
+    for (const room of this.roomLayout.rooms) {
+      const area = document.createElement('a-entity'); area.id = room.id;
+      area.setAttribute('navigation-area', '');
+      const setFloor = () => area.components['navigation-area']?.setFootprint(room.points);
+      area.addEventListener('loaded', setFloor, { once: true });
+      this.el.appendChild(area); this.areaEls.push(area);
+      if (area.hasLoaded) { area.removeEventListener('loaded', setFloor); setFloor(); }
     }
-    // Grow width/depth around the boundary center without scaling the room
-    // entity itself: raw tracking, hand reach and checker size stay unchanged.
-    [b.minZ - thickness / 2, b.maxZ + thickness / 2].forEach(z => {
-      box(b.width + thickness * 2, height, thickness, b.centerX, height / 2, z, wallMaterial);
-      box(b.width, .09, .02, b.centerX, .045, z < b.centerZ ? b.minZ + .01 : b.maxZ - .01, trimMaterial);
-    });
-    box(thickness, height, b.depth, b.minX - thickness / 2, height / 2, b.centerZ, wallMaterial);
-    box(.02, .09, b.depth, b.minX + .01, .045, b.centerZ, trimMaterial);
-    const opening = Math.min(3.6, b.depth * .8), side = (b.depth - opening) / 2, x = b.maxX + thickness / 2;
-    box(thickness, .8, opening, x, .4, b.centerZ, wallMaterial);
-    box(thickness, .6, opening, x, 2.4, b.centerZ, wallMaterial);
-    for (const sign of [-1, 1]) box(thickness, height, side, x, height / 2,
-      b.centerZ + sign * (opening / 2 + side / 2), wallMaterial);
-    for (const z of [-opening / 2, -opening / 6, opening / 6, opening / 2])
-      box(.12, 1.3, .055, x, 1.45, b.centerZ + z, trimMaterial);
-    box(.12, .06, opening, x, .8, b.centerZ, trimMaterial);
-    box(.12, .06, opening, x, 2.1, b.centerZ, trimMaterial);
-    this.ceiling = box(b.width, thickness, b.depth, b.centerX, height + thickness / 2, b.centerZ, ceilingMaterial);
-    this.el.setObject3D('room-shell', group);
-    const floor = this.el.querySelector('#space-floor');
-    floor.setAttribute('width', b.width);
-    floor.setAttribute('height', b.depth);
-    floor.setAttribute('position', { x: b.centerX, y: 0, z: b.centerZ });
+    this.activeRoom = null;
+    this.updateActiveRoom(this.roomLayout.rooms[0].id);
+    this.attachChecker();
+    const b = this.roomLayout.rooms[0].bounds;
     const panel = this.el.querySelector('#space-wall-panel');
-    panel.setAttribute('position', { x: b.centerX, y: 1.6, z: b.minZ + .025 });
+    // Leave the north doorway clear. The shared map is also on both wrists.
+    panel.setAttribute('position', { x: b.centerX, y: 1.6, z: b.maxZ - .06 });
+    panel.setAttribute('rotation', '0 180 0');
     panel.object3D.scale.setScalar(Math.min(1, b.width / 1.7));
-    this.el.sceneEl.emit('space-room-resized', { bounds: b }, false);
+    this.el.sceneEl.emit('space-room-resized', { bounds: b, layout: this.roomLayout }, false);
+  },
+
+  attachChecker: function () {
+    if (this.checkerTexture) return;
+    const checker = this.el.querySelector('#space-floor')?.components['checker-floor'];
+    if (!checker?.texture) return;
+    // Reuse the shared checker canvas; shape UVs are already metric positions.
+    this.checkerTexture = checker.texture.clone();
+    this.checkerTexture.repeat.set(1 / (2 * checker.data.squareSize), 1 / (2 * checker.data.squareSize));
+    this.checkerTexture.needsUpdate = true;
+    for (const material of [this.roomMeshes.active, this.roomMeshes.inactive]) {
+      material.map = this.checkerTexture; material.needsUpdate = true;
+    }
+  },
+
+  updateActiveRoom: function (areaId) {
+    if (this.activeRoom?.id === areaId) return;
+    const next = this.roomLayout.rooms.find(room => room.id === areaId);
+    if (!next) return;
+    this.activeRoom = next;
+    for (const room of this.roomLayout.rooms) {
+      const active = room === next;
+      this.roomMeshes.floors.get(room.id).material = active ? this.roomMeshes.active : this.roomMeshes.inactive;
+      this.roomMeshes.outlines.get(room.id).visible = active;
+    }
+    this.renderStatus();
   },
 
   buildBoundaryOutline: function () {
@@ -307,6 +333,7 @@ AFRAME.registerComponent('expansive-space', {
     // This diagnostic runs at the map's 10 Hz cadence, not every XR frame.
     if (gain?.hasPose) {
       const context = gain.redirectionContext(), frame = overlapFrame(gain.rawPosition, context);
+      if (frame) this.updateActiveRoom(context.area.id);
       if (frame) guide = guide?.valid && guide.areaId === context.area.id ? { ...guide, overlap: frame.fraction } :
         { valid: true, overlap: frame.fraction, bestOverlap: frame.fraction, correction: 0, areaId: context.area.id,
           areaFootprint: context.area.floor.points, targetFootprint: frame.floor.points };
@@ -331,20 +358,29 @@ AFRAME.registerComponent('expansive-space', {
     }
     // Both trajectories use the same metric frame. Include retained history
     // and current markers so gained travel is never pinned to the map edge.
-    const room = this.virtualBounds;
-    this.layout = mapLayout(measureBounds([...this.points, ...reachable, ...target, ...activeArea, ...this.physicalTrail.points,
+    const room = this.activeRoom.bounds;
+    this.layout = mapLayout(measureBounds([...this.roomLayout.rooms.flatMap(area => area.points), ...this.points, ...reachable, ...target, ...activeArea, ...this.physicalTrail.points,
       ...this.virtualTrail.points, this.position, this.virtualPosition]), 512, 384, 60);
     const ctx = this.context, b = room, physical = this.bounds, project = this.layout.project;
     ctx.fillStyle = '#101827';
     ctx.fillRect(0, 0, 512, 384);
-    ctx.fillStyle = '#25344a';
-    ctx.strokeStyle = '#788ba5';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    activeArea.forEach((point, index) => {
-      const p = project(point); if (index === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y);
-    });
-    ctx.closePath(); ctx.fill(); ctx.stroke();
+    const drawArea = points => {
+      ctx.beginPath();
+      points.forEach((point, index) => {
+        const p = project(point); if (index === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y);
+      });
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+    };
+    for (const area of this.roomLayout.rooms) {
+      const active = area === this.activeRoom;
+      ctx.fillStyle = active ? '#285848' : '#25344a';
+      ctx.strokeStyle = active ? '#8ff0ba' : '#788ba5'; ctx.lineWidth = active ? 2 : 1;
+      drawArea(area.points);
+    }
+    ctx.fillStyle = '#d9e8f4'; ctx.font = '12px system-ui, sans-serif'; ctx.textAlign = 'center';
+    for (const area of this.roomLayout.rooms) {
+      const label = project(area.labelPoint); ctx.fillText(area.number, label.x, label.y - 4);
+    }
     ctx.strokeStyle = '#22d3ee';
     ctx.lineWidth = 4;
     ctx.beginPath();
@@ -363,7 +399,7 @@ AFRAME.registerComponent('expansive-space', {
     });
     ctx.closePath(); ctx.stroke(); ctx.setLineDash([]);
     if (target.length && Math.abs(guide.correction) > .001) {
-      ctx.strokeStyle = '#6ee7a8'; ctx.lineWidth = 2;
+      ctx.strokeStyle = '#facc15'; ctx.lineWidth = 2;
       ctx.beginPath();
       target.forEach((point, index) => {
         const p = project(point); if (index === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y);
@@ -409,10 +445,10 @@ AFRAME.registerComponent('expansive-space', {
         .transformDirection(this.inverseWorld);
       const from = project(this.position), to = project({ x: this.position.x + this.guideDirection.x * .65,
         z: this.position.z + this.guideDirection.z * .65 });
-      ctx.strokeStyle = '#6ee7a8'; ctx.lineWidth = 4;
+      ctx.strokeStyle = '#facc15'; ctx.lineWidth = 4;
       ctx.beginPath(); ctx.moveTo(from.x, from.y); ctx.lineTo(to.x, to.y); ctx.stroke();
       drawHeading({ x: this.position.x + this.guideDirection.x * .65, z: this.position.z + this.guideDirection.z * .65 },
-        this.guideDirection, '#6ee7a8', 10, true);
+        this.guideDirection, '#facc15', 10, true);
       this.guideHit.set(guide.hit.x, 0, guide.hit.z).applyMatrix4(this.inverseWorld);
       const hit = project(this.guideHit);
       ctx.strokeStyle = '#fb7185'; ctx.lineWidth = 3;
@@ -428,14 +464,14 @@ AFRAME.registerComponent('expansive-space', {
       ' m | Room ' + b.width.toFixed(1) + ' × ' + b.depth.toFixed(1) + ' m', 256, 26);
     ctx.font = '14px system-ui, sans-serif';
     ctx.fillStyle = '#22d3ee';
-    ctx.fillText(guide?.valid ? 'Area: ' + guide.areaId + ' | Overlap ' + (guide.overlap * 100).toFixed(1) +
-      '% -> ' + (guide.bestOverlap * 100).toFixed(1) + '%' : 'Dashed boundary: reachable game space now', 256, 46);
+    ctx.fillText(this.activeRoom.number + '. ' + this.activeRoom.name + (guide?.valid ? ' | Overlap ' + (guide.overlap * 100).toFixed(1) +
+      '% -> ' + (guide.bestOverlap * 100).toFixed(1) + '%' : ' | Green floor = current room'), 256, 46);
     ctx.font = '18px system-ui, sans-serif';
     ctx.fillStyle = PHYSICAL_COLOR; ctx.fillText('Real', 64, 350);
     ctx.fillStyle = VIRTUAL_COLOR; ctx.fillText('Game', 155, 350);
     ctx.fillStyle = '#bfcee2';
     ctx.font = '15px system-ui, sans-serif';
-    ctx.fillText(TRAIL_METRES + 'm | Dash: now | Green: goal', 345, 350);
+    ctx.fillText(TRAIL_METRES + 'm | Green: room | Yellow: goal', 345, 350);
     ctx.font = '17px system-ui, sans-serif';
     ctx.fillStyle = inside ? '#aab8d2' : '#fb7185';
     ctx.fillText(!inside ? 'OUTSIDE ' + (this.detected ? 'BOUNDARY' : 'PREVIEW FOOTPRINT') :
@@ -481,6 +517,7 @@ AFRAME.registerComponent('expansive-space', {
 
   tick: function (time) {
     if (this.scaleSettingsDirty) this.renderWorldScale();
+    this.attachChecker();
     // enter-vr can precede the renderer attaching its session by a frame.
     const xr = this.el.sceneEl.renderer && this.el.sceneEl.renderer.xr;
     if (xr && xr.getSession() && xr.getSession() !== this.session) this.start();
@@ -509,6 +546,7 @@ AFRAME.registerComponent('expansive-space', {
     this.el.sceneEl.removeEventListener('exit-vr', this.onExit);
     this.el.sceneEl.removeEventListener('watch-menu-ready', this.onWatchReady);
     this.el.sceneEl.removeEventListener('space-travel-reset', this.onTravelReset);
+    this.el.sceneEl.removeEventListener('menu-item-select', this.onVisitRoom);
     this.el.sceneEl.removeEventListener('menu-option-change', this.onWorldScale);
     this.disposeRoom();
     this.mapTexture.dispose();

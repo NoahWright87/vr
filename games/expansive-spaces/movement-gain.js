@@ -214,6 +214,18 @@ AFRAME.registerComponent('speed-dependent-gain', {
     this.renderTelemetry();
   },
 
+  relocate: function (target) {
+    if (!this.hasPose) return false;
+    const current = mappedHead(this.rawPosition, { yaw: this.extraYaw, x: this.transform.x, z: this.transform.z });
+    const dx = target.x - current.x, dz = target.z - current.z;
+    this.transform.x += dx; this.transform.z += dz;
+    this.extraTranslation.x += dx; this.extraTranslation.z += dz;
+    this.el.object3D.position.x += dx; this.el.object3D.position.z += dz;
+    this.resetEstimators(); // No momentum or turn goal may cross a shortcut.
+    this.hasPose = true; // The raw tracked pose and yaw remain unchanged.
+    return true;
+  },
+
   applySample: function (position, time, yaw = null) {
     if (![position.x, position.z, time].every(Number.isFinite)) {
       this.resetEstimators();

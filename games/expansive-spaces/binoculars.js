@@ -27,7 +27,7 @@ AFRAME.registerComponent('scope-landscape', {
     this.onResize = evt => this.align(evt.detail.bounds);
     this.el.sceneEl.addEventListener('space-room-resized', this.onResize);
     const room = this.el.parentEl.components['expansive-space'];
-    if (room?.virtualBounds) this.align(room.virtualBounds);
+    if (room?.roomLayout) this.align(room.roomLayout.rooms[0].bounds);
   },
   align: function (bounds) { this.el.object3D.position.set(bounds.maxX, 0, bounds.centerZ); },
   flash: function (target, time) {
