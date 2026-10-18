@@ -648,3 +648,13 @@ test('the close button has no info of its own', () => {
   menu.back();
   assert.equal(menu.getInfo().text, 'Page');
 });
+
+test('uncapped numbers window and commit large counts without wrapping or materializing rows', () => {
+  const item={kind:'number',id:'rooms',label:'Rooms',value:8,min:2,max:Infinity,step:1};
+  const menu=createMenu({title:'Generation',items:[item]});menu.open();menu.activate();
+  menu.moveFocus(99992);assert.equal(menu.focusedRow().value,100000);
+  assert.deepEqual(menu.getWindow().map(row=>row.value),[99998,99999,100000,100001,100002]);
+  menu.back();assert.equal(item.value,100000);menu.activate();assert.equal(menu.focusedRow().value,100000);
+  menu.moveFocus(-200000);assert.equal(menu.focusedRow().value,2);
+  assert.deepEqual(menu.getWindow().map(row=>row.value),[2,3,4]);
+});

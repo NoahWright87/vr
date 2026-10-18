@@ -65,12 +65,31 @@ export function App() {
             Point, shoot, pop. A quick warm-up for getting used to VR controls.
           </Card>
           <Card
+            title="Impossible Spaces"
+            href="/games/impossible-spaces/"
+            interactive
+            footer={<Text tone="muted">Explore →</Text>}
+          >
+            Walk a maze larger than your real room. Colored spaces overlap, and
+            stationary elevators change the world behind closed doors.
+          </Card>
+          <Card
             title="Boundary Lab"
             href="/games/boundaries/"
             interactive
             footer={<Text tone="muted">Open lab →</Text>}
           >
-            Read the headset boundary, test controller haptics, and grab a cube with tactile reach feedback.
+            Walk or paint a floor boundary, then generate rooms in that same VR session. Also includes controller haptics tests.
+          </Card>
+          <Card
+            title="Impossible Spaces · 2D"
+            subtitle="Phone & laptop playground"
+            href="/games/impossible-spaces/playground/"
+            interactive
+            footer={<Text tone="muted">Draw & generate →</Text>}
+          >
+            Extend a square on a metre grid, generate inside your full boundary,
+            and explore overlapping rooms without a headset.
           </Card>
           <Card
             title="Expansive Spaces"
