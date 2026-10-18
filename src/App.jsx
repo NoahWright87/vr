@@ -79,7 +79,17 @@ export function App() {
             interactive
             footer={<Text tone="muted">Open lab →</Text>}
           >
-            Read the headset boundary, test controller haptics, and grab a cube with tactile reach feedback.
+            Walk or paint a floor boundary, then generate rooms in that same VR session. Also includes controller haptics tests.
+          </Card>
+          <Card
+            title="Impossible Spaces · 2D"
+            subtitle="Phone & laptop playground"
+            href="/games/impossible-spaces/playground/"
+            interactive
+            footer={<Text tone="muted">Draw & generate →</Text>}
+          >
+            Extend a square on a metre grid, generate inside your full boundary,
+            and explore overlapping rooms without a headset.
           </Card>
         </CardGrid>
       </Container>

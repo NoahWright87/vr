@@ -1,5 +1,10 @@
 # Boundary Lab
 
+As of 2026-10-18 the user reports that boundary creation works well in the
+Quest headset. Preserve this flow while improving generation. See the
+[handoff](../impossible-spaces/HANDOFF.md) and the
+[phone/laptop 2D playground](../impossible-spaces/playground/).
+
 Cyan is the headset's WebXR-reported `bounded-floor` polygon; dashed amber is
 the fitted rectangle. Neither clips custom floor painting. Quest's native
 Guardian is independent and can expose more detail than WebXR supplies.

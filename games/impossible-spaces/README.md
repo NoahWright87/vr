@@ -5,6 +5,10 @@ Lab's shared boundary reader and walking calibration. No objectives, thumbstick
 movement, snap turns or VR camera teleports. Each room has a distinct color.
 Open `/games/impossible-spaces/` over HTTPS (localhost works for desktop).
 
+For phone/laptop drawing and generation, open the [2D playground](playground/).
+Start the next development session with [HANDOFF.md](HANDOFF.md): the user has
+confirmed boundary creation works well; room-generation quality remains open.
+
 ## Headset setup
 
 1. Enter VR, then **Watch → Calibrate area → Start new calibration**.
@@ -117,6 +121,8 @@ Optional browser runners against a served production build:
   tested in Boundary Lab and Impossible Spaces.
 - `node tests/boundary-generation.browser.cjs`: complete calibration-to-level
   flow through the Lab's actual watch, in one scene and tracking session.
+- `node tests/impossible-playground.browser.cjs`: 2D phone/laptop drawing,
+  generation, collision/ride controls, inspection and portable reproduction files.
 
 Set `VR_PLAYWRIGHT_PATH` to an installed Playwright package and `VR_TEST_URL`
 to the served origin (default `http://127.0.0.1:8088`). No Playwright dependency
