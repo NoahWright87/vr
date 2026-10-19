@@ -186,6 +186,13 @@ if (typeof AFRAME !== 'undefined') {
     return this;
   };
 
+  // Redraw without lighting up: for things that change all the time
+  // (a minimap, a compass) where a change is not news.
+  Widget.prototype.redraw = function () {
+    this.dirty = true;
+    return this;
+  };
+
   Widget.prototype.wake = function () {
     this.wakeAt = this.system.now;
     return this;
@@ -275,6 +282,9 @@ if (typeof AFRAME !== 'undefined') {
       this.prefs = loadPreferences(storage());
       this.widgets = [];
       this.previewOn = { frame: false, rings: false };
+      // Games that want the aim rings in view (aim-targeting request
+      // with rings: true), by key.
+      this.ringRequests = {};
       this.menuSide = null;
       this.focusTarget = null;
       this.focusDistance = this.frame.distance;
@@ -550,6 +560,12 @@ if (typeof AFRAME !== 'undefined') {
       if (which.rings != null) this.previewOn.rings = Boolean(which.rings);
     },
 
+    // A game asking for the rings to be drawn, outside the menu.
+    showRings: function (key, on) {
+      if (on) this.ringRequests[key] = true;
+      else delete this.ringRequests[key];
+    },
+
     buildPreview: function () {
       var self = this;
       this.previewWidgets = SLOT_NAMES.map(function (slot) {
@@ -655,11 +671,12 @@ if (typeof AFRAME !== 'undefined') {
       var prefs = this.prefs;
       var menuSide = this.menuSide;
       var showFrame = this.previewOn.frame || this.firstRunUntil > time;
+      var showRings = this.previewOn.rings || Object.keys(this.ringRequests).length > 0;
       for (var i = 0; i < this.widgets.length; i++) {
         var widget = this.widgets[i];
         var target;
         if (widget.previewOnly) {
-          target = widget === this.ringsWidget ? (this.previewOn.rings ? 1 : 0) : (showFrame ? 1 : 0);
+          target = widget === this.ringsWidget ? (showRings ? 1 : 0) : (showFrame ? 1 : 0);
         } else if (!widget.visible) {
           target = 0;
         } else if (widget.internal) {
@@ -669,8 +686,9 @@ if (typeof AFRAME !== 'undefined') {
           if (menuSide) target *= CORNERS[widget.slot] === menuSide ? 0 : MENU_DIM;
           if (widget.fade && prefs.idleFade && time - widget.wakeAt > IDLE_AFTER_MS) target *= IDLE_LEVEL;
         }
-        // Light up quickly, dim slowly.
-        var rate = target > widget.opacity ? 10 : 2;
+        // Light up quickly, dim slowly; the adjustment preview goes as
+        // soon as you leave the menu that showed it.
+        var rate = target > widget.opacity ? 10 : (widget.previewOnly ? 8 : 2);
         widget.opacity += (target - widget.opacity) * Math.min(1, rate * dt);
         if (Math.abs(target - widget.opacity) < 0.004) widget.opacity = target;
         var shown = widget.opacity > 0.003 && widget.rect;

@@ -106,11 +106,19 @@ export function drawIcon(ctx, name, x, y, size, options) {
   ctx.restore();
 }
 
-// Text with a dark outline. Returns its width.
+// Text with a dark outline. Returns its width. `maxWidth` shrinks the
+// text (never grows it) until it fits.
 export function drawText(ctx, text, x, y, options) {
   options = options || {};
   var size = options.size || 28;
   ctx.font = hudFont(size, options);
+  if (options.maxWidth) {
+    var measured = ctx.measureText(text).width;
+    if (measured > options.maxWidth) {
+      size = Math.max(4, size * options.maxWidth / measured);
+      ctx.font = hudFont(size, options);
+    }
+  }
   ctx.textAlign = options.align || 'left';
   ctx.textBaseline = options.baseline || 'middle';
   if (options.outline !== false) {

@@ -43,7 +43,12 @@
            left       a pedestal button — press it and a panel floats up
            behind     a platform of boxes to grab, spawn and reset
            your wrist the watch (raise it, or Tab)
-           your head  the visor (hand beside your temple, or backtick)
+           your head  the visor (hand beside your temple, or backtick),
+                      and its HUD: pick a style from the visor's
+                      HUD style row (hud-demo.js)
+           corners    the HUD's props: a bench beside the boxes (a
+                      blaster, a grenade, a potion), spikes by the
+                      pedestal, and targets out past the room's edge
 
          The four stations stand against the sides of your real room:
          the headset's boundary when it reports one (common/play-space.js,
@@ -51,7 +56,7 @@
          around where you start when it does not.
     ============================================================== -->
     <div id="overlay">
-      <span>Showcase — every menu, one room. Ahead: static panel (walk up, E). Right: wall screen. Left: pedestal. Behind: boxes (F to grab). Tab: watch. `: visor. Keyboard: WASD/mouse, C crouch. <a href="../../index.html">All prototypes</a></span>
+      <span>Showcase — every menu, one room. Ahead: static panel (walk up, E). Right: wall screen. Left: pedestal. Behind: boxes (F to grab) and the HUD prop bench (click fires/drinks, T throws). Tab: watch. `: visor (HUD style, Visor ▸ Adjust). Keyboard: WASD/mouse, C crouch. <a href="../../index.html">All prototypes</a></span>
     </div>
 
     <!-- keyboard-shortcuts' enterVR binds "F" to toggle desktop VR
@@ -71,6 +76,7 @@
       keyboard-shortcuts="enterVR: false"
       visor-menu="page: visor"
       play-space-outline="showDefault: true"
+      hud-demo
     >
       <a-light id="ambient-light" type="ambient" color="#fff" intensity="0.7"></a-light>
       <a-light id="sun-light" type="directional" position="2 3 2" intensity="0.7"></a-light>
@@ -184,7 +190,7 @@
 
       <a-entity id="station-wall" play-space-station="side: right">
         <a-entity id="wall-slab" position="0 1.4 0">
-          <a-box width="1.4" height="1.8" depth="0.1" color="#2b2f38" position="0 0 -0.05"></a-box>
+          <a-box class="aim-occluder" width="1.4" height="1.8" depth="0.1" color="#2b2f38" position="0 0 -0.05"></a-box>
           <!-- radialAnchor approaches to a set distance from the trigger
                (widened if the panel would not fit the viewer's field of
                view — see getFramedInteractionDistance in
@@ -225,7 +231,7 @@
 
       <a-entity id="station-pedestal" play-space-station="side: left">
         <a-entity id="pedestal">
-          <a-cylinder radius="0.15" height="0.9" position="0 0.45 0" color="#555"></a-cylinder>
+          <a-cylinder class="aim-occluder" radius="0.15" height="0.9" position="0 0.45 0" color="#555"></a-cylinder>
           <a-entity id="pedestal-button"
             geometry="primitive: cylinder; radius: 0.08; height: 0.04"
             material="color: #b33"
@@ -251,7 +257,7 @@
            static panel and the wall screen.
       ============================================================ -->
       <a-entity id="station-boxes" play-space-station="side: back">
-        <a-box id="box-test-stand" width="1.2" height="0.62" depth="0.8" color="#353b48" position="0 0.31 0"></a-box>
+        <a-box id="box-test-stand" class="aim-occluder" width="1.2" height="0.62" depth="0.8" color="#353b48" position="0 0.31 0"></a-box>
         <a-text class="station-caption"
           value="BOXES&#10;Reach in and grip, or look and press F"
           align="center" color="#7fe3ff" width="1.1" wrap-count="44" position="0 0.75 0.42"
@@ -264,7 +270,87 @@
         play-space-anchor="station: #station-boxes; offset: -0.15 0.77 0"
         simple-grabbable="heldPosition: 0 0 -0.08; floorY: 0.13"
         hint-zone="action: grab; radius: 0.34; maxReach: 1.0; gazeThreshold: 0.93; priority: 10; desktopKey: F; desktopLabel: Grab; xrKey: GRIP; xrLabel: Grab; hintOffset: 0 0.32 0"
+        data-hud-item="box"
       ></a-box>
+
+      <!-- ============================================================
+           THE HUD'S PROPS (hud-demo.js). Just enough to make each HUD
+           readout move for a real reason. A bench beside the boxes holds
+           a blaster (ammo, auto-aim brackets), a grenade (gaze brackets
+           and throw assist) and a potion (health, mana, whisky or fuel,
+           by style); spikes by the pedestal hurt; targets stand on posts
+           out past the room's edge. Kenney models (CC0).
+      ============================================================ -->
+      <a-box id="demo-bench" class="aim-occluder" width="0.7" height="0.62" depth="0.45" color="#3b3348"
+        play-space-anchor="station: #station-boxes; offset: 1.02 0.31 0"
+      ></a-box>
+      <a-text value="HUD PROPS&#10;Grab one, then look at your visor" align="center" color="#7fe3ff" width="0.9" wrap-count="30"
+        play-space-anchor="station: #station-boxes; offset: 1.02 0.78 0.24"
+      ></a-text>
+
+      <a-entity id="demo-blaster" data-hud-item="blaster"
+        play-space-anchor="station: #station-boxes; offset: 0.86 0.68 0"
+        simple-grabbable="heldPosition: 0 0 0; floorY: 0; throwEnabled: true; halfExtents: 0.04 0.06 0.17"
+        hint-zone="action: grab; radius: 0.3; maxReach: 1.0; gazeThreshold: 0.93; priority: 11; desktopKey: F; desktopLabel: Grab blaster; xrKey: GRIP; xrLabel: Grab; hintOffset: 0 0.22 0"
+        demo-blaster
+      >
+        <!-- The model's barrel points +Z and its grip sits toward -Z, so
+             it is turned round and shifted until the grip is at the
+             hand and the barrel points down the hand's -Z. -->
+        <a-entity gltf-model="../../assets/models/kenney/blaster-kit/blaster-a.glb"
+          rotation="0 180 0" scale="0.4 0.4 0.4" position="0 0.06 -0.054"></a-entity>
+        <a-entity class="demo-muzzle" position="0 0.075 -0.2"></a-entity>
+      </a-entity>
+
+      <a-entity id="demo-grenade" data-hud-item="grenade"
+        play-space-anchor="station: #station-boxes; offset: 1.08 0.68 0.1"
+        simple-grabbable="heldPosition: 0 0 -0.04; floorY: 0; throwEnabled: true; halfExtents: 0.035 0.06 0.035"
+        hint-zone="action: grab; radius: 0.26; maxReach: 1.0; gazeThreshold: 0.93; priority: 11; desktopKey: F; desktopLabel: Grab grenade; xrKey: GRIP; xrLabel: Grab; hintOffset: 0 0.2 0"
+        demo-throwable
+      >
+        <a-entity gltf-model="../../assets/models/kenney/blaster-kit/grenade-a.glb" scale="0.5 0.5 0.5" position="0 -0.06 0"></a-entity>
+      </a-entity>
+
+      <a-entity id="demo-potion" data-hud-item="potion"
+        play-space-anchor="station: #station-boxes; offset: 1.24 0.69 -0.08"
+        simple-grabbable="heldPosition: 0 0 -0.05; floorY: 0; throwEnabled: true; halfExtents: 0.06 0.07 0.06"
+        hint-zone="action: grab; radius: 0.26; maxReach: 1.0; gazeThreshold: 0.93; priority: 11; desktopKey: F; desktopLabel: Grab potion; xrKey: GRIP; xrLabel: Grab; hintOffset: 0 0.22 0"
+        demo-potion
+      >
+        <a-entity gltf-model="../../assets/models/kenney/mini-dungeon/potion.glb" scale="0.35 0.35 0.35" position="0 -0.07 0"></a-entity>
+      </a-entity>
+
+      <a-entity id="demo-spikes"
+        gltf-model="../../assets/models/kenney/mini-dungeon/trap.glb"
+        play-space-anchor="station: #station-pedestal; offset: 0.95 0 0.55"
+      ></a-entity>
+
+      <a-entity class="demo-targets">
+        <a-entity demo-target aim-target="offset: 0 1.4 0; radius: 0.5">
+          <a-cylinder class="demo-target-post" radius="0.04" height="1.4" color="#5b4a3a"></a-cylinder>
+          <a-entity class="demo-target-face" gltf-model="../../assets/models/kenney/blaster-kit/target-large.glb" rotation="0 90 0" scale="3 3 3"></a-entity>
+        </a-entity>
+        <a-entity demo-target aim-target="offset: 0 1.8 0; radius: 0.5">
+          <a-cylinder class="demo-target-post" radius="0.04" height="1.8" color="#5b4a3a"></a-cylinder>
+          <a-entity class="demo-target-face" gltf-model="../../assets/models/kenney/blaster-kit/target-large.glb" rotation="0 90 0" scale="3 3 3"></a-entity>
+        </a-entity>
+        <a-entity demo-target aim-target="offset: 0 2.4 0; radius: 0.5">
+          <a-cylinder class="demo-target-post" radius="0.04" height="2.4" color="#5b4a3a"></a-cylinder>
+          <a-entity class="demo-target-face" gltf-model="../../assets/models/kenney/blaster-kit/target-large.glb" rotation="0 90 0" scale="3 3 3"></a-entity>
+        </a-entity>
+        <a-entity demo-target aim-target="offset: 0 1.2 0; radius: 0.32">
+          <a-cylinder class="demo-target-post" radius="0.04" height="1.2" color="#5b4a3a"></a-cylinder>
+          <a-entity class="demo-target-face" gltf-model="../../assets/models/kenney/blaster-kit/target-small.glb" rotation="0 90 0" scale="3 3 3"></a-entity>
+        </a-entity>
+        <a-entity demo-target aim-target="offset: 0 1.6 0; radius: 0.5">
+          <a-cylinder class="demo-target-post" radius="0.04" height="1.6" color="#5b4a3a"></a-cylinder>
+          <a-entity class="demo-target-face" gltf-model="../../assets/models/kenney/blaster-kit/target-large.glb" rotation="0 90 0" scale="3 3 3"></a-entity>
+        </a-entity>
+        <a-entity demo-target aim-target="offset: 0 1.1 0; radius: 0.32">
+          <a-cylinder class="demo-target-post" radius="0.04" height="1.1" color="#5b4a3a"></a-cylinder>
+          <a-entity class="demo-target-face" gltf-model="../../assets/models/kenney/blaster-kit/target-small.glb" rotation="0 90 0" scale="3 3 3"></a-entity>
+        </a-entity>
+      </a-entity>
     </a-scene>
 
     <script type="module">
@@ -273,6 +359,7 @@
       import { registerMenuPage, findMenuItem } from '../../common/menu-crossbar.js';
       import { registerVisorPage } from '../../common/visor-page.js';
       import { ROOM_CODE_CHARS } from '../../worker/src/signal-rooms.js';
+      import { HUD_STYLES, currentHudStyle } from './hud-demo.js';
 
       var TOWNS = [
         'Ghost Town', 'The Range', 'The Saloon', "Sheriff's Office",
@@ -285,9 +372,16 @@
       // The visor: the showcase's own rows. registerVisorPage adds what
       // every visor has after them — its settings and Exit VR — and
       // handles those itself (common/visor-page.js).
+      var hudStyleRow = {
+        kind: 'select', id: 'hud-style', label: 'HUD style', value: currentHudStyle(), options: HUD_STYLES,
+        info: ['HUD STYLES', 'The same visor HUD as a', 'shooter, a fantasy RPG,', 'a western, a car, or', 'nearly nothing.', '', 'Props on the bench by', 'the boxes make each', 'readout move.'],
+      };
       registerVisorPage('visor', {
         title: 'VISOR',
+        onOpen: function () { hudStyleRow.value = currentHudStyle(); },
         items: [
+          hudStyleRow,
+          { kind: 'action', id: 'hud-props-reset', label: 'Reset props' },
           { kind: 'action', id: 'spawn-box', label: 'Spawn box' },
           {
             kind: 'submenu', id: 'visor-destinations', label: 'Destinations',
