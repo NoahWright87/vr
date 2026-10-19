@@ -604,7 +604,7 @@ function applyStyle(style) {
   }
   if (style === 'shooter') {
     add('shields', 'top', { draw: drawShieldHealth });
-    add('compass', 'bottom', { draw: drawCompass, fade: false, fps: 30 });
+    add('compass', 'bottom', { draw: drawCompass, fade: false, fps: 20, ppd: 18 });
     add('map', 'top-right', { draw: drawMap, state: { rotate: true, round: true }, fade: false, fps: 15 });
     add('score', 'top-left', { draw: drawScore, weight: 0.4, state: { icon: 'crosshair', color: HUD_COLORS.accent } });
     add('down', 'above', { draw: drawDown, fade: false });
@@ -623,7 +623,7 @@ function applyStyle(style) {
     add('score', 'top-left', { draw: drawScore, weight: 0.4, state: { icon: 'wanted-reward', color: HUD_COLORS.warn } });
     add('down', 'above', { draw: drawDown, fade: false });
   } else if (style === 'driver') {
-    add('compass', 'top', { draw: drawCompass, fade: false, fps: 30, weight: 1.6 });
+    add('compass', 'top', { draw: drawCompass, fade: false, fps: 20, ppd: 18, weight: 1.6 });
     add('place', 'top', { draw: drawPlace, order: 1 });
     add('fuel', 'bottom-left', { draw: drawFuel });
     add('speed', 'bottom-right', { draw: drawSpeed, fps: 20 });
@@ -637,6 +637,9 @@ function applyStyle(style) {
 }
 
 var lastPosition = null;
+var lastMapAt = -Infinity;
+// Scratch, so a frame allocates nothing it does not have to.
+var scratch = { position: new THREE.Vector3(), forward: new THREE.Vector3(), spikes: new THREE.Vector3() };
 
 // Everything live, once a frame; each widget redraws only if what it
 // shows actually changed.
@@ -645,16 +648,16 @@ function update(time, delta) {
   var camera = scene.camera;
   if (!camera) return;
   var dt = Math.min(delta || 16, 100) / 1000;
-  var position = camera.getWorldPosition(new THREE.Vector3());
-  var forward = new THREE.Vector3();
-  camera.getWorldDirection(forward);
+  var position = camera.getWorldPosition(scratch.position);
+  var forward = camera.getWorldDirection(scratch.forward);
   demo.heading = ((Math.atan2(forward.x, -forward.z) / DEG) + 360) % 360;
   if (lastPosition && dt > 0) {
     var moved = Math.hypot(position.x - lastPosition.x, position.z - lastPosition.z) / dt;
     demo.speed += (Math.min(moved, 12) - demo.speed) * Math.min(1, dt * 4);
     if (demo.speed < 0.05) demo.speed = 0;
   }
-  lastPosition = position.clone();
+  lastPosition = lastPosition || new THREE.Vector3();
+  lastPosition.copy(position);
 
   // Where you are: the station you are standing nearest, within 1.3 m.
   var space = scene.systems['play-space'];
@@ -687,7 +690,7 @@ function update(time, delta) {
   var spikes = document.querySelector('#demo-spikes');
   var hurting = false;
   if (spikes && demo.downUntil <= time) {
-    var sp = spikes.object3D.getWorldPosition(new THREE.Vector3());
+    var sp = spikes.object3D.getWorldPosition(scratch.spikes);
     if (Math.hypot(sp.x - position.x, sp.z - position.z) < 0.5) {
       hurting = true;
       var damage = 30 * dt;
@@ -715,7 +718,12 @@ function update(time, delta) {
   if (time - demo.hurtAt > 600) demo.ghost += (demo.health - demo.ghost) * Math.min(1, dt * 3);
   if (demo.ghost < demo.health) demo.ghost = demo.health;
 
-  refreshMap(position, layout);
+  // The map and compass only redraw at 15-20 Hz, so their data need not
+  // be gathered every frame either.
+  if (time - lastMapAt > 60) {
+    lastMapAt = time;
+    refreshMap(position, layout);
+  }
   refreshHints(time);
 
   var round = function (v, step) { return Math.round(v / step) * step; };
