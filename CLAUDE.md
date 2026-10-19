@@ -18,6 +18,14 @@ by accident rather than on purpose, and add to it (with real context,
 not just a title) when you defer something rather than letting it
 evaporate.
 
+**`todo/` holds the plan for turning Pistols at Dawn into a full
+game.** `todo/todo.md` is the big picture and the decisions made so
+far, `todo/<topic>.todo.md` holds per-topic design, and
+`todo/phaseNN[-x].todo.md` is the ordered work. Tracks sharing a phase
+number (`phase01-a`, `phase01-b`, ...) can run in parallel. If you're
+picking up a phase, read `todo/todo.md` and the topic files it links
+first.
+
 ## Testing without a headset
 
 Run `npm install`, then `npm run dev` for source development. Use

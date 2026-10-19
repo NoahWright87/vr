@@ -4,6 +4,10 @@ Things deliberately deferred, with enough context to pick them up cold.
 Ideas that aren't committed to yet live in DESIGN.md or in conversation;
 this is only for work that has been decided on and postponed.
 
+The plan for turning Pistols at Dawn into a complete game (the ghost
+premise, wardrobe-as-health, duels, style, the economy, multiplayer, and
+phased work) lives in `todo/`. Start at `todo/todo.md`.
+
 ## 3D Model Toybox
 
 - **Explore two-hand skeletal posing after the rigid-toy workflow is tested.**
