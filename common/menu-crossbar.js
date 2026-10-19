@@ -196,6 +196,44 @@ export function overlayAll(el) {
   });
 }
 
+// The faces a menu can be set in (crossbar-menu's `font` and
+// `titleFont`). A-Frame text needs a pre-baked MSDF atlas rather than a
+// web font; ours are in vendor/fonts (see its README). Root-relative:
+// A-Frame finds each atlas's image by swapping .json for .png, so they
+// cannot go through the bundler's hashed file names — vendor/ is copied
+// to the build as it is. Anything else given is taken as an atlas URL.
+//
+//   roboto        A-Frame's own, the default
+//   b612          B612 Bold: made for cockpit displays, the most legible
+//   b612-regular  B612 at regular weight
+//   wright        Wright Sans: headings and titles, not body text
+//   sourcecodepro A-Frame's monospace (the watch's clock)
+//
+// `face` is the name inside each atlas, which is how a label checks that
+// the font it ended up with is the one it last asked for (see
+// setTextFont).
+export var MENU_FONTS = {
+  roboto: { font: 'roboto', negate: true, face: 'Roboto' },
+  b612: { font: '/vendor/fonts/B612-Bold-msdf.json', negate: false, face: 'B612-Bold' },
+  'b612-regular': { font: '/vendor/fonts/B612-Regular-msdf.json', negate: false, face: 'B612-Regular' },
+  // Wright Sans has no ‹ ›, so a row's chevron falls back to B612.
+  wright: { font: '/vendor/fonts/WrightSans-Bold-msdf.json', negate: false, face: 'WrightSans-Bold', chevrons: 'b612' },
+  sourcecodepro: { font: 'sourcecodepro', negate: true, face: 'Source Code Pro Semibold' },
+};
+
+// The face inside an atlas, by the font value a label was given; '' for
+// one we do not know (an arbitrary URL).
+function faceOf(font) {
+  for (var name in MENU_FONTS) if (MENU_FONTS[name].font === font) return MENU_FONTS[name].face;
+  return '';
+}
+
+function resolveFont(name) {
+  if (!name) return MENU_FONTS.roboto;
+  // The bundled atlases ship with an inverted field; ours do not.
+  return MENU_FONTS[name] || { font: name, negate: false };
+}
+
 if (typeof AFRAME !== 'undefined') {
   var THREE = AFRAME.THREE;
 
@@ -468,6 +506,12 @@ if (typeof AFRAME !== 'undefined') {
       screenWidth: { default: 0.34 },
       color: { type: 'color', default: '#dff3ff' },
       accent: { type: 'color', default: '#7fe3ff' },
+      // The typeface: `font` for the rows, footer and sidecar, `titleFont`
+      // for the title and breadcrumbs ('' = the same as `font`). A name
+      // from MENU_FONTS (roboto, b612, b612-regular, wright) or an MSDF
+      // atlas URL. Live: changing either restyles the panel in place.
+      font: { default: 'roboto' },
+      titleFont: { default: '' },
     },
 
     init: function () {
@@ -541,6 +585,57 @@ if (typeof AFRAME !== 'undefined') {
       this.render();
     },
 
+    // ---------- typeface ----------
+
+    // Mark a text element as body, title or chevron, and set it in that
+    // face.
+    //
+    // A-Frame's text loads a font asynchronously and applies whichever
+    // load finishes last, not whichever was asked for last — so scrolling
+    // a Font row through three faces could leave a label in the second.
+    // Each label therefore checks the face it got against the font it
+    // currently asks for, and asks again if they differ (the load is
+    // cached by then).
+    setTextFont: function (el, role) {
+      el.dataset.fontRole = role;
+      var face = resolveFont(role === 'title' ? (this.data.titleFont || this.data.font) : this.data.font);
+      if (role === 'chevron' && face.chevrons) face = resolveFont(face.chevrons);
+      el.setAttribute('font', face.font);
+      el.setAttribute('negate', face.negate);
+      if (el.dataset.fontChecked) return;
+      el.dataset.fontChecked = 'true';
+      el.addEventListener('textfontset', function () {
+        var text = el.components.text;
+        var got = text && text.currentFont && text.currentFont.info && text.currentFont.info.face;
+        var want = text && faceOf(text.data.font);
+        if (want && got && got !== want) text.updateFont();
+      });
+    },
+
+    // Restyle every text element already built. Glyph widths differ by
+    // face, so the panel is laid out again once the new meshes exist.
+    applyFonts: function () {
+      var self = this;
+      this.el.querySelectorAll('[data-font-role]').forEach(function (el) {
+        self.setTextFont(el, el.dataset.fontRole);
+      });
+      if (this.menu) this.render();
+    },
+
+    // body and title: MENU_FONTS names or atlas URLs; title optional.
+    setFont: function (body, title) {
+      var change = { font: body || 'roboto' };
+      if (title !== undefined) change.titleFont = title || '';
+      this.el.setAttribute('crossbar-menu', change);
+    },
+
+    update: function (oldData) {
+      // Only a change after build; the first update runs before there is
+      // anything to restyle, and build sets each face as it goes.
+      if (!this.rows || oldData.font === undefined) return;
+      if (oldData.font !== this.data.font || oldData.titleFont !== this.data.titleFont) this.applyFonts();
+    },
+
     setScrim: function (opacity) {
       this.el.setAttribute('crossbar-menu', 'scrim', opacity);
       if (!this.scrimEl) return;
@@ -594,6 +689,7 @@ if (typeof AFRAME !== 'undefined') {
       // Row-sized: set apart by colour and capitals rather than by size,
       // which on a narrow surface would push it off the panel.
       title.setAttribute('wrap-count', data.maxChars);
+      this.setTextFont(title, 'title');
       content.appendChild(title);
       this.titleEl = title;
 
@@ -611,6 +707,7 @@ if (typeof AFRAME !== 'undefined') {
         closeGlyph.setAttribute('color', data.accent);
         closeGlyph.setAttribute('wrap-count', data.maxChars);
         closeGlyph.setAttribute('position', '0 0 0.004');
+        this.setTextFont(closeGlyph, 'body');
         close.appendChild(closeGlyph);
         close.addEventListener('click', this.onCloseClick);
         content.appendChild(close);
@@ -640,6 +737,7 @@ if (typeof AFRAME !== 'undefined') {
 
         var text = document.createElement('a-text');
         text.setAttribute('color', data.color);
+        this.setTextFont(text, 'body');
         row.appendChild(text);
 
         // Marks a row you can go deeper into. Sits on the inboard edge
@@ -651,6 +749,7 @@ if (typeof AFRAME !== 'undefined') {
         chevron.setAttribute('align', 'center');
         chevron.setAttribute('wrap-count', data.maxChars);
         chevron.object3D.visible = false;
+        this.setTextFont(chevron, 'chevron');
         row.appendChild(chevron);
 
         content.appendChild(row);
@@ -683,6 +782,7 @@ if (typeof AFRAME !== 'undefined') {
           charEl.setAttribute('color', data.accent);
           charEl.setAttribute('wrap-count', CRUMB_WRAP);
           charEl.object3D.visible = false;
+          this.setTextFont(charEl, 'title');
           crumb.appendChild(charEl);
           chars.push(charEl);
         }
@@ -729,6 +829,7 @@ if (typeof AFRAME !== 'undefined') {
       footer.setAttribute('color', data.accent);
       footer.setAttribute('wrap-count', 46);
       footer.object3D.visible = false;
+      this.setTextFont(footer, 'body');
       content.appendChild(footer);
       this.footerEl = footer;
 
@@ -879,6 +980,7 @@ if (typeof AFRAME !== 'undefined') {
       text.setAttribute('align', 'left');
       text.setAttribute('anchor', 'left');
       text.setAttribute('baseline', 'top');
+      this.setTextFont(text, 'body');
       card.appendChild(text);
       card.object3D.visible = false;
       this.contentEl.appendChild(card);

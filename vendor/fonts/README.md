@@ -21,6 +21,13 @@ anything a player reads at a glance. Source:
 export the font files, so the two weights the HUD uses are copied here. A
 display face falls apart at small sizes in a headset, so keep it to titles.
 
+## In a menu
+
+Any crossbar menu takes them by name: `crossbar-menu="font: b612;
+titleFont: wright"` (see `MENU_FONTS` in `common/menu-crossbar.js`), or
+`setFont(body, title)` to change one live. Wright Sans has no `‹ ›`, so
+under it a row's chevron falls back to B612.
+
 ## Using the atlases with `<a-text>`
 
 ```html
@@ -34,7 +41,7 @@ fringes around each glyph.
 
 ## Regenerating
 
-Characters baked: printable ASCII plus `°·×–—…’‘“”•←→↑↓`. To add more, or
+Characters baked: printable ASCII plus `°·×–—…’‘“”•←→↑↓‹›▸`. To add more, or
 another weight:
 
 ```sh

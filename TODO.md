@@ -234,14 +234,17 @@ the menus showcase. Decided on and deferred:
   brightness screen; that wants the grab-to-adjust model above, since
   asking a new player to find a menu at their temple first is backwards.
 
-- **B612 and Wright Sans in the menus.** Both are baked as MSDF atlases
-  (`vendor/fonts/*-msdf.json`, `negate: false`), and the HUD's canvases
-  already use them. Switching `crossbar-menu`'s labels from A-Frame's
-  Roboto to B612 (and its titles to Wright Sans) changes every menu in
-  every game and the width maths that fits labels to rows, so it wants
-  its own pass and a look in the headset. The atlases bake printable
-  ASCII plus `°·×–—…’‘“”•←→↑↓`; anything else needs a re-bake (see
-  `vendor/fonts/README.md`).
+- **Pick the default menu face.** Every crossbar menu can now be set in
+  any face (`crossbar-menu`'s `font` and `titleFont`: `roboto`, `b612`,
+  `b612-regular`, `wright`, `sourcecodepro`, or an MSDF atlas URL; live,
+  via `setFont`), and the showcase has a B612 panel and a Wright Sans
+  panel either side of the static one to compare them. The default is
+  still A-Frame's Roboto everywhere; deciding whether B612 (with Wright
+  Sans titles?) becomes the default for the watch, the visor and every
+  game's panels is the remaining call, best made in the headset. The
+  atlases bake printable ASCII plus `°·×–—…’‘“”•←→↑↓‹›▸`; Wright Sans has
+  no `‹ ›`, so a menu's chevrons fall back to B612 under it. Anything
+  else needs a re-bake (see `vendor/fonts/README.md`).
 
 - **Hints from interaction-hints in the reticle slot.** The HUD has a
   hint line above and below the reticle (`hud.setHint`), and the showcase

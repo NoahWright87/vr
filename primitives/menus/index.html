@@ -171,6 +171,20 @@
           value="STATIC PANEL&#10;Walk up and press E (W/S move, D in, A back)&#10;VR: empty hand near it, then the stick"
           align="center" color="#7fe3ff" width="1.1" wrap-count="44" position="0 0.52 0"
         ></a-text>
+        <!-- Either side of it, the same kind of panel in the other faces
+             a menu can be set in (crossbar-menu's font / titleFont): B612
+             throughout on the left, Wright Sans titles over B612 rows on
+             the right. Each has Font rows that restyle that panel alone. -->
+        <a-entity id="font-panel-b612"
+          position="-1.05 1.32 0.28" rotation="0 28 0"
+          crossbar-menu="page: font-b612; windowSize: 5; width: 0.8; rowHeight: 0.13; maxChars: 18; stickRange: 0.5; closable: false; font: b612; titleFont: b612; hintLabel: B612 menu"
+          crossbar-menu-registration
+        ></a-entity>
+        <a-entity id="font-panel-wright"
+          position="1.05 1.32 0.28" rotation="0 -28 0"
+          crossbar-menu="page: font-wright; windowSize: 5; width: 0.8; rowHeight: 0.13; maxChars: 18; stickRange: 0.5; closable: false; font: b612; titleFont: wright; hintLabel: Wright Sans menu"
+          crossbar-menu-registration
+        ></a-entity>
       </a-entity>
 
       <!-- ============================================================
@@ -623,6 +637,19 @@
               return { kind: 'action', id: 'letter-' + letter, label: letter };
             }),
           },
+          {
+            kind: 'submenu', id: 'showcase-fonts', label: 'Font',
+            items: [
+              { kind: 'select', id: 'showcase-font', label: 'Font', value: 'roboto', options: [
+                { value: 'roboto', label: 'Roboto' }, { value: 'b612', label: 'B612' },
+                { value: 'b612-regular', label: 'B612 Regular' }, { value: 'wright', label: 'Wright Sans' },
+              ] },
+              { kind: 'select', id: 'showcase-title-font', label: 'Title font', value: '', options: [
+                { value: '', label: 'Same' }, { value: 'roboto', label: 'Roboto' }, { value: 'b612', label: 'B612' },
+                { value: 'b612-regular', label: 'B612 Regular' }, { value: 'wright', label: 'Wright Sans' },
+              ] },
+            ],
+          },
           // Nothing to press: its text is in the sidecar while it is
           // selected. A row's own info, as opposed to a submenu's.
           {
@@ -642,6 +669,57 @@
           findMenuItem(page.items, 'showcase-move-speed').value = locomotion.data.speedMultiplier;
         },
       });
+
+      // ------------------------------------------------------------
+      // The font panels, either side of the static panel. Same rows in
+      // each, so the faces can be compared line for line; the two Font
+      // rows restyle whichever panel they are on (and the static panel
+      // has them too), which is all "a font per menu" takes.
+      // ------------------------------------------------------------
+      var FONT_OPTIONS = [
+        { value: 'roboto', label: 'Roboto' },
+        { value: 'b612', label: 'B612' },
+        { value: 'b612-regular', label: 'B612 Regular' },
+        { value: 'wright', label: 'Wright Sans' },
+      ];
+      var TITLE_FONT_OPTIONS = [{ value: '', label: 'Same' }].concat(FONT_OPTIONS);
+      // Which panel each page's font rows restyle.
+      var FONT_PANELS = { showcase: '#showcase-panel', 'font-b612': '#font-panel-b612', 'font-wright': '#font-panel-wright' };
+      function fontRows (page, body, title) {
+        return [
+          { kind: 'select', id: page + '-font', label: 'Font', value: body, options: FONT_OPTIONS },
+          { kind: 'select', id: page + '-title-font', label: 'Title font', value: title, options: TITLE_FONT_OPTIONS },
+        ];
+      }
+      function fontPage (page, title, body, titleFont, about) {
+        registerMenuPage(page, {
+          title: title,
+          items: fontRows(page, body, titleFont).concat([
+            { kind: 'info', id: page + '-about', label: 'About this face', info: about },
+            { kind: 'info', id: page + '-ammo', label: 'Ammo 06/12', info: ['Every figure the same', 'width in B612, so a', 'counter does not jitter.'] },
+            { kind: 'info', id: page + '-shapes', label: 'Il1 O0 rn m 5S 8B', info: ['The shapes that get', 'confused at a glance.'] },
+            { kind: 'info', id: page + '-hint', label: 'Pick up (hold X)', info: ['A control hint, as', 'the HUD shows them.'] },
+            {
+              kind: 'submenu', id: page + '-towns', label: 'Long list',
+              items: TOWNS.map(function (name, i) { return { kind: 'action', id: page + '-town-' + i, label: name }; }),
+            },
+          ]),
+        });
+      }
+      fontPage('font-b612', 'B612', 'b612', 'b612', ['B612', 'Commissioned by Airbus', 'for cockpit displays.', 'Open shapes, and every', 'figure the same width.', 'SIL Open Font License.']);
+      fontPage('font-wright', 'WRIGHT SANS', 'b612', 'wright', ['WRIGHT SANS', "Noah's own heading", 'face, from the design', 'package. Titles and big', 'moments; rows stay in', 'B612 for legibility.']);
+      function applyFontRow (evt) {
+        var id = evt.detail.id;
+        Object.keys(FONT_PANELS).forEach(function (page) {
+          var panel = document.querySelector(FONT_PANELS[page]);
+          var menu = panel && panel.components['crossbar-menu'];
+          if (!menu) return;
+          if (id === page + '-font') menu.setFont(evt.detail.value);
+          else if (id === page + '-title-font') menu.setFont(menu.data.font, evt.detail.value);
+        });
+      }
+      document.querySelector('a-scene').addEventListener('menu-preview', applyFontRow);
+      document.querySelector('a-scene').addEventListener('menu-commit', applyFontRow);
 
       // ------------------------------------------------------------
       // The wall screen, to your right. Rows that change the room you
