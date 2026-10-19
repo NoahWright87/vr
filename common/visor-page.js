@@ -5,8 +5,11 @@
 // rows; this adds what every visor carries after them, in every game, so
 // a player who has found them once can find them anywhere:
 //
-//   Settings ▸   the visor's own layout and look, and Activation ▸ for
-//                the temple gesture — all live, with every value in the
+//   Visor ▸      Adjust ▸ (the frame the menu and HUD fit in, with
+//                every HUD slot drawn while you are in there), HUD ▸,
+//                Targeting ▸ (the aim rings drawn while you are in
+//                there), the menu's own look, and Activation ▸ for the
+//                temple gesture — all live, with every value in the
 //                sidecar while you are in there.
 //   Exit VR      in a headset only.
 //
@@ -20,6 +23,8 @@ import { registerMenuPage, findMenuItem } from './menu-crossbar.js';
 var DEG = function (value) { return value + '°'; };
 var CM = function (value) { return value + 'cm'; };
 var SEC = function (value) { return (Math.round(value * 100) / 100) + 's'; };
+var PCT = function (value) { return Math.round(value * 100) + '%'; };
+var METRES = function (value) { return value.toFixed(1) + 'm'; };
 
 // Menu units (cm, seconds) to the system's (metres, ms).
 var ACTIVATION = {
@@ -29,13 +34,17 @@ var ACTIVATION = {
   'visor-open-ms': function (v) { return { openMs: v * 1000 }; },
   'visor-close-ms': function (v) { return { closeMs: v * 1000 }; },
 };
-var LAYOUT = {
-  'visor-position': 'position', 'visor-lift': 'lift', 'visor-width': 'width',
-  'visor-height': 'height', 'visor-curve': 'curve', 'visor-crumbs': 'crumbs',
+var LAYOUT = { 'visor-crumbs': 'crumbs' };
+// The frame (common/visor-frame.js), held by the HUD system.
+var FRAME = {
+  'visor-frame-width': 'width', 'visor-frame-height': 'height', 'visor-frame-lift': 'lift',
+  'visor-frame-bend': 'bend', 'visor-frame-bend-y': 'bendY', 'visor-frame-distance': 'distance',
 };
+var RINGS = { 'visor-ring-inner': 0, 'visor-ring-middle': 1, 'visor-ring-outer': 2 };
 
 function sceneEl() { return document.querySelector('a-scene'); }
 function visor() { var scene = sceneEl(); return scene && scene.systems['visor-menu']; }
+function hud() { var scene = sceneEl(); return scene && scene.systems['visor-hud']; }
 function inXR() {
   var scene = sceneEl();
   var mode = scene && scene.systems['control-mode'];
@@ -56,16 +65,61 @@ function settingsItem() {
     // tuned layout goes out as one screenshot.
     info: visorSummary,
     items: [
-      // Where the selected row sits, in degrees from straight ahead.
-      { kind: 'number', id: 'visor-position', label: 'Position', value: 8, min: 0, max: 30, step: 1, format: DEG },
-      // Up (+) or down (-) from eye level.
-      { kind: 'number', id: 'visor-lift', label: 'Lift', value: -2, min: -20, max: 20, step: 1, format: DEG },
-      // How wide, which is also how big the text is.
-      { kind: 'number', id: 'visor-width', label: 'Width', value: 30, min: 16, max: 50, step: 1, format: DEG },
-      // Top row to bottom row.
-      { kind: 'number', id: 'visor-height', label: 'Height', value: 34, min: 20, max: 90, step: 2, format: DEG },
-      // How much further in the selected row reaches.
-      { kind: 'number', id: 'visor-curve', label: 'Curve', value: 10, min: 0, max: 25, step: 0.5, format: DEG },
+      // The one rectangle the menu and the HUD fit in. While you are in
+      // here every HUD slot is drawn as a grey box, and the menu's place
+      // on both sides, so you can see what you are fitting.
+      {
+        kind: 'submenu', id: 'visor-adjust', label: 'Adjust', info: visorSummary, frame: true,
+        items: [
+          { kind: 'number', id: 'visor-frame-width', label: 'Width', value: 72, min: 30, max: 100, step: 2, format: DEG },
+          { kind: 'number', id: 'visor-frame-height', label: 'Height', value: 42, min: 20, max: 80, step: 2, format: DEG },
+          // Up (+) or down (-) from looking straight ahead.
+          { kind: 'number', id: 'visor-frame-lift', label: 'Eye level', value: -2, min: -20, max: 20, step: 1, format: DEG },
+          // Flat (0%) to wrapped round your head (100%).
+          { kind: 'number', id: 'visor-frame-bend', label: 'Bend', value: 0.8, min: 0, max: 1, step: 0.05, format: PCT },
+          { kind: 'number', id: 'visor-frame-bend-y', label: 'Bend vertical', value: 0, min: 0, max: 1, step: 0.05, format: PCT },
+          { kind: 'number', id: 'visor-frame-distance', label: 'Distance', value: 1.8, min: 0.8, max: 4, step: 0.1, format: METRES },
+          // Every game shares one calibration unless this one has its own.
+          {
+            kind: 'select', id: 'visor-frame-scope', label: 'Saved for', value: 'shared',
+            options: [{ value: 'shared', label: 'All games' }, { value: 'game', label: 'This game' }],
+          },
+          { kind: 'action', id: 'visor-frame-reset', label: 'Reset' },
+        ],
+      },
+      {
+        kind: 'submenu', id: 'visor-hud', label: 'HUD', info: visorSummary,
+        items: [
+          { kind: 'toggle', id: 'visor-hud-on', label: 'Show HUD', value: true },
+          { kind: 'number', id: 'visor-hud-opacity', label: 'Opacity', value: 0.9, min: 0.1, max: 1, step: 0.05, format: PCT },
+          // Readouts that have not changed for a few seconds dim, and
+          // light up again when they do.
+          { kind: 'toggle', id: 'visor-hud-fade', label: 'Dim when idle', value: true },
+        ],
+      },
+      // What you are aiming at. The three rings are drawn while you are in
+      // here; the rest of the time the brackets on targets stand for them.
+      {
+        kind: 'submenu', id: 'visor-targeting', label: 'Targeting', info: visorSummary, rings: true,
+        items: [
+          {
+            kind: 'select', id: 'visor-target-mode', label: 'Brackets', value: 'asked',
+            options: [{ value: 'off', label: 'Off' }, { value: 'asked', label: 'When asked' }, { value: 'always', label: 'Always' }],
+          },
+          // How many other targets get a faint bracket besides the locked one.
+          { kind: 'number', id: 'visor-target-others', label: 'Others', value: 5, min: 0, max: 10, step: 1 },
+          {
+            kind: 'select', id: 'visor-target-shape', label: 'Shape', value: 'square',
+            options: [
+              { value: 'square', label: '[ ]' }, { value: 'angle', label: '< >' },
+              { value: 'triangle', label: 'Triangle' }, { value: 'quad', label: 'Corners' },
+            ],
+          },
+          { kind: 'number', id: 'visor-ring-inner', label: 'Inner ring', value: 3, min: 0.5, max: 30, step: 0.5, format: DEG },
+          { kind: 'number', id: 'visor-ring-middle', label: 'Middle ring', value: 7, min: 0.5, max: 30, step: 0.5, format: DEG },
+          { kind: 'number', id: 'visor-ring-outer', label: 'Outer ring', value: 14, min: 0.5, max: 30, step: 0.5, format: DEG },
+        ],
+      },
       // Where a submenu's title goes: under the menu title, or up its
       // inner or outer edge.
       {
@@ -108,11 +162,19 @@ function syncSettings(page) {
   var s = system.settings;
   var a = system.activation;
   var set = function (id, value) { var item = findMenuItem(page.items, id); if (item) item.value = value; };
-  set('visor-position', s.position);
-  set('visor-lift', s.lift);
-  set('visor-width', s.width);
-  set('visor-height', s.height);
-  set('visor-curve', s.curve);
+  var display = hud();
+  if (display) {
+    for (var id in FRAME) set(id, display.frame[FRAME[id]]);
+    set('visor-frame-scope', display.scope);
+    var p = display.prefs;
+    set('visor-hud-on', p.hud);
+    set('visor-hud-opacity', p.opacity);
+    set('visor-hud-fade', p.idleFade);
+    set('visor-target-mode', p.targeting);
+    set('visor-target-others', p.others);
+    set('visor-target-shape', p.bracket);
+    for (var ring in RINGS) set(ring, p.rings[RINGS[ring]]);
+  }
   set('visor-crumbs', s.crumbs);
   set('visor-draw', system.drawMode);
   set('visor-scrim', system.scrim > 0 ? 'on' : 'off');
@@ -121,6 +183,32 @@ function syncSettings(page) {
   set('visor-zone-forward', Math.round(a.forward * 100));
   set('visor-open-ms', Math.round(a.openMs / 100) / 10);
   set('visor-close-ms', Math.round(a.closeMs / 50) * 0.05);
+}
+
+// Every visor page registered, so a change that moves several values at
+// once (switching scope, Reset) can show them all.
+var pages = [];
+function resync() {
+  pages.forEach(syncSettings);
+  var system = visor();
+  if (system && system.component) system.component.render();
+}
+
+// A HUD preference from a row: `save: false` while it is being scrolled.
+function applyPreference(display, id, value, save) {
+  var options = { save: save };
+  if (id === 'visor-hud-on') display.setPreferences({ hud: value }, options);
+  else if (id === 'visor-hud-opacity') display.setPreferences({ opacity: value }, options);
+  else if (id === 'visor-hud-fade') display.setPreferences({ idleFade: value }, options);
+  else if (id === 'visor-target-mode') display.setPreferences({ targeting: value }, options);
+  else if (id === 'visor-target-others') display.setPreferences({ others: value }, options);
+  else if (id === 'visor-target-shape') display.setPreferences({ bracket: value }, options);
+  else if (id in RINGS) {
+    var rings = display.prefs.rings.slice();
+    rings[RINGS[id]] = value;
+    display.setPreferences({ rings: rings }, options);
+  } else return false;
+  return true;
 }
 
 var wired = false;
@@ -134,6 +222,12 @@ function wireHandlers() {
     if (!system) return;
     var id = evt.detail.id;
     var value = evt.detail.value;
+    var display = hud();
+    if (display) {
+      if (FRAME[id]) { var frame = {}; frame[FRAME[id]] = value; display.setFrame(frame); }
+      if (id === 'visor-frame-scope') { display.setScope(value); resync(); }
+      if (applyPreference(display, id, value, true)) system.refreshInfo();
+    }
     if (LAYOUT[id]) {
       var change = {};
       change[LAYOUT[id]] = value;
@@ -150,6 +244,15 @@ function wireHandlers() {
     var system = visor();
     if (!system) return;
     if (ACTIVATION[evt.detail.id]) { system.setActivation(ACTIVATION[evt.detail.id](evt.detail.value)); return; }
+    var display = hud();
+    if (display && FRAME[evt.detail.id]) {
+      var frame = {};
+      frame[FRAME[evt.detail.id]] = evt.detail.value;
+      display.setFrame(frame, { save: false });
+      system.refreshInfo();
+      return;
+    }
+    if (display && applyPreference(display, evt.detail.id, evt.detail.value, false)) { system.refreshInfo(); return; }
     var key = LAYOUT[evt.detail.id];
     if (!key) return;
     var change = {};
@@ -159,6 +262,7 @@ function wireHandlers() {
   document.addEventListener('menu-action', function (evt) {
     var scene = sceneEl();
     if (evt.detail.id === 'visor-exit' && scene && scene.is('vr-mode')) scene.exitVR();
+    if (evt.detail.id === 'visor-frame-reset' && hud()) { hud().resetFrame(); resync(); }
   });
   // Exit VR comes and goes with the headset, under an open menu too.
   var refresh = function () {
@@ -188,5 +292,6 @@ export function registerVisorPage(name, page) {
       if (typeof page.onOpen === 'function') page.onOpen.call(full, component);
     },
   };
+  pages.push(full);
   return registerMenuPage(name, full);
 }
