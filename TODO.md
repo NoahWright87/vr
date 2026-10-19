@@ -193,11 +193,27 @@ Deliberately not done yet:
 
 ## The visor HUD
 
-The visor is growing a HUD: one calibrated rectangle in your view (width,
-height, bend, eye level, distance) that the visor menu and a set of HUD
-slots are laid out inside, plus shared gaze targeting with brackets. The
-first pass adjusts the rectangle from rows in `Visor ▸ Adjust`. Decided on
-and deferred:
+The visor has a HUD now (`common/visor-hud.js`, `common/visor-frame.js`,
+`common/aim-targeting.js`; see DESIGN.md's *The visor HUD*), shown off in
+the menus showcase. Decided on and deferred:
+
+- **Rebuild Pistols at Dawn's HUD on it.** This is the next step, and
+  the reason the HUD exists: Pistols' HUD is words in the middle of the
+  screen (`#player-hud`'s `#hud-text` score line and `#vice-text`, plus
+  `#performance-text`), toggled by the watch's `HUD` row through
+  `PLAYER_HUD_VISIBLE` (`core.js`, `world-menu.js`). The plan: score and
+  shots to a top corner (the Frontier style's bounty is the model), the
+  vice meter (`items-vices.js`) to the bottom bar as an icon meter, each
+  hand's gun to its own bottom corner with revolver pips (`drawAmmo`
+  already does six-shooters), the place name from `TOWN_LOCATIONS` to the
+  top bar on arrival, and the watch's `HUD` row to `Visor ▸ HUD`. Aiming:
+  `findLookTarget` (`core.js`), used by the overhand throw, the bow and
+  thrown knives, should become `aim-targeting`'s gaze lock — mark targets
+  and bottles with `aim-target`, `request()` brackets while a throwable is
+  held or the bow is drawn, and replace each caller's own target pick
+  with `getLock()` / `assistThrow`. The desktop `#reticle-cursor`
+  (`reticle-fallback`) stays as the click raycaster but could draw in the
+  HUD's reticle slot. `performance-text` belongs in the debug submenu.
 
 - **Adjust the visor by grabbing it.** The row-based adjustment works but
   is indirect. What we want instead: an `Adjust Visor…` row that puts a
@@ -206,27 +222,49 @@ and deferred:
   to your head moves away when you reach for it. Handles on its sides set
   width, top/bottom set height, and a third set of handles (corner pegs,
   probably) sets bend. The real grey slot boxes in your view follow live
-  as you drag, so you are adjusting the thing you see, not a number.
+  as you drag (they are `visor-hud`'s Adjust preview, `setPreview({ frame:
+  true })`), so you are adjusting the thing you see, not a number.
   Grabbing uses the same `semantic-hand` grab as everything else; off a
   headset the existing rows stay the way to do it.
 
-- **Wright Sans for 3D text.** Noah's heading font ships in
-  `@noahwright/design` (`src/styles/fonts/WrightSans-*.woff2`, MIT) and HUD
-  canvases can use it directly through `@font-face`. `a-text` (menus,
-  in-world labels) cannot: A-Frame's text renders from a pre-baked MSDF
-  atlas (`.json` + `.png`, like `vendor/aframe-1.6.0/fonts/Roboto-msdf.*`).
-  The conversion is woff2 → TTF (fontTools) → `msdf-bmfont-xml`, baking
-  only the characters we need; check the result in under `vendor/fonts/`.
-  Use it for titles only — a display face falls apart at small VR sizes.
+- **A real first-run calibration.** Today the first headset session with
+  nothing saved flashes the slots and a hint pointing at `Visor ▸ Adjust`
+  for twelve seconds (`maybeFirstRun`), then saves the defaults so it does
+  not nag. The idea floated was a game opening on the adjustment, like a
+  brightness screen; that wants the grab-to-adjust model above, since
+  asking a new player to find a menu at their temple first is backwards.
 
-- **Gun aim cones (GTA-style auto-aim).** `common/aim-cone.js` scores
-  targets in a cone from any origin; the HUD's gaze targeting is one cone
-  from the head. Hand it a barrel's pose instead and you get auto-aim with
-  brackets showing what the gun would hit if fired now. Each source picks
-  its own bracket colour (shotgun red, pistol blue; a headshot point red;
-  armour grey), which the bracket renderer already takes per source. Not
-  done because no gun in any game auto-aims yet; Pistols' guns aim with
-  real sights.
+- **B612 and Wright Sans in the menus.** Both are baked as MSDF atlases
+  (`vendor/fonts/*-msdf.json`, `negate: false`), and the HUD's canvases
+  already use them. Switching `crossbar-menu`'s labels from A-Frame's
+  Roboto to B612 (and its titles to Wright Sans) changes every menu in
+  every game and the width maths that fits labels to rows, so it wants
+  its own pass and a look in the headset. The atlases bake printable
+  ASCII plus `°·×–—…’‘“”•←→↑↓`; anything else needs a re-bake (see
+  `vendor/fonts/README.md`).
+
+- **Hints from interaction-hints in the reticle slot.** The HUD has a
+  hint line above and below the reticle (`hud.setHint`), and the showcase
+  props use it. `interaction-hints` still shows its own in-world cards in
+  XR and a 2D corner pill on desktop. Feeding its resolved candidate
+  (`desktopCandidate`, and the XR equivalent) into `setHint` would make
+  the reticle the one place prompts appear; deciding whether the
+  in-world cards then go is the open question.
+
+- **Gun aim cones in the games.** `aim-targeting.addSource(id, { object3D:
+  barrel, color })` gives any gun GTA-style auto-aim with its own bracket
+  colour; the showcase blaster does exactly this. No game gun uses it
+  yet — Pistols' guns aim with real sights, which is the point of them —
+  so it waits for a game that wants assisted aim (dual-wielding, say, a
+  shotgun bracketed red and a pistol blue). A target with several aim
+  points (a head in red, armour in grey) would be child entities, each
+  with its own `aim-target` (`offset`, `color`) — `aim-target` is one per
+  entity — which should work today but has not been tried.
+
+- **The HUD has no screen-space mode.** The visor menu's `Draw: Screen`
+  row paints it onto the display; the HUD is always in stereo at the
+  frame's distance. Screen mode was worse for the menu (eye strain at
+  zero disparity), so this is probably right, but it was not tried.
 
 ## Liquids
 
