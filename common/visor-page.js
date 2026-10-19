@@ -72,10 +72,6 @@ function settingsItem() {
         kind: 'select', id: 'visor-crumbs', label: 'Titles', value: 'title',
         options: [{ value: 'title', label: 'Top' }, { value: 'inside', label: 'Inner' }, { value: 'outside', label: 'Outer' }],
       },
-      {
-        kind: 'select', id: 'visor-eyes', label: 'Eyes', value: 'both',
-        options: [{ value: 'both', label: 'Both' }, { value: 'inboard', label: 'One' }],
-      },
       // World: a real object drawn over everything, so both eyes converge
       // where it actually is. Screen: painted onto the display.
       {
@@ -118,7 +114,6 @@ function syncSettings(page) {
   set('visor-height', s.height);
   set('visor-curve', s.curve);
   set('visor-crumbs', s.crumbs);
-  set('visor-eyes', system.eyesMode);
   set('visor-draw', system.drawMode);
   set('visor-scrim', system.scrim > 0 ? 'on' : 'off');
   set('visor-zone-radius', Math.round(a.radius * 100));
@@ -145,7 +140,6 @@ function wireHandlers() {
       system.setLayout(change);
     }
     if (id === 'visor-draw') system.setDraw(value);
-    if (id === 'visor-eyes') system.setEyes(value);
     if (id === 'visor-scrim') system.setScrim(value === 'on' ? 0.7 : 0);
     if (ACTIVATION[id]) system.setActivation(ACTIVATION[id](value));
   });

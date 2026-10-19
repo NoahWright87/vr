@@ -7,8 +7,8 @@
 // is geometry, materials and event plumbing.
 //
 // One renderer, several surfaces. A world panel is flat and roomy; a
-// watch face is flat and cramped; the visor is curved, anchored to one
-// side and drawn for one eye. Those are schema values on the same
+// watch face is flat and cramped; the visor is curved and anchored to
+// one side of your head. Those are schema values on the same
 // component, not three implementations — the only thing that changes
 // per surface is how many rows fit, how far the focused row bulges
 // outboard, and which way the text is aligned.
@@ -297,13 +297,6 @@ if (typeof AFRAME !== 'undefined') {
     return side === 'left' ? 'right' : 'left';
   }
 
-  function eyeLayerFor(eye, side) {
-    var resolved = eye === 'inboard' ? side : eye;
-    if (resolved === 'left') return 1;
-    if (resolved === 'right') return 2;
-    return 0;
-  }
-
   // A soft one-sided wash. Painted rather than a flat plane so the
   // inboard edge fades out instead of cutting across your view — the
   // same "generate the texture at runtime" approach the floor
@@ -366,12 +359,6 @@ if (typeof AFRAME !== 'undefined') {
       // fades out toward view centre instead of ending on a hard line.
       // Text over open sky needs it; text on a panel does not.
       scrim: { default: 0 },
-      // Which eye draws this menu in XR. three.js gives the left eye
-      // layer 1 and the right eye layer 2, so a single-eye menu leaves
-      // the other eye a completely clear view of the world. Off a
-      // headset there is one camera on layer 0, so this only applies
-      // while presenting and is undone on exit.
-      eye: { default: 'both', oneOf: ['both', 'left', 'right', 'inboard'] },
       // Which way "outboard" points, for the curve and the breadcrumb
       // rail. A left-hand visor menu is anchored on the left.
       side: { default: 'left', oneOf: ['left', 'right'] },
@@ -552,16 +539,6 @@ if (typeof AFRAME !== 'undefined') {
       this.build();
       if (this.data.open) this.menu.open();
       this.render();
-
-      // Per-eye rendering is a layer assignment, and layers only mean
-      // anything once WebXR's two cameras exist. Off a headset there is
-      // one camera on layer 0, so a panel left on an eye layer would not
-      // be drawn at all — which is why leaving XR has to put it back,
-      // unconditionally and whatever `eye` currently says.
-      this.applyEyeLayer = this.applyEyeLayer.bind(this);
-      this.el.sceneEl.addEventListener('enter-vr', this.applyEyeLayer);
-      this.el.sceneEl.addEventListener('exit-vr', this.applyEyeLayer);
-      this.applyEyeLayer();
     },
 
     setScrim: function (opacity) {
@@ -569,36 +546,6 @@ if (typeof AFRAME !== 'undefined') {
       if (!this.scrimEl) return;
       this.scrimEl.object3D.visible = opacity > 0;
       if (opacity > 0) this.scrimEl.setAttribute('material', 'opacity', opacity);
-    },
-
-    // ---------- one eye, or both ----------
-
-    setEye: function (eye) {
-      if (this.data.eye === eye) return;
-      this.el.setAttribute('crossbar-menu', 'eye', eye);
-      this.applyEyeLayer();
-    },
-
-    // Re-applied from render() as well as on the XR transitions, because
-    // a label's mesh does not exist until its font has loaded: a panel
-    // that went one-eyed before then would have kept some of its parts
-    // on layer 0, showing half a menu to the other eye.
-    applyEyeLayer: function () {
-      var layer = this.el.sceneEl.is('vr-mode') ? eyeLayerFor(this.data.eye, this.data.side) : 0;
-      if (layer === this.eyeLayer) return;
-      this.eyeLayer = layer;
-      this.el.object3D.traverse(function (object) { object.layers.set(layer); });
-    },
-
-    // Cheap enough to run per render, and it catches parts built late.
-    // The guard above only skips the traverse when the layer has not
-    // changed, so this still has to reach new objects — hence the
-    // separate pass rather than an early return.
-    syncEyeLayer: function () {
-      var layer = this.eyeLayer || 0;
-      this.el.object3D.traverse(function (object) {
-        if (object.layers.mask !== (1 << layer)) object.layers.set(layer);
-      });
     },
 
     // ---------- construction ----------
@@ -1097,8 +1044,8 @@ if (typeof AFRAME !== 'undefined') {
     // follow, along their inboard edge. It fills from the bottom up while
     // your hand and the menu disagree; when it is full the menu appears
     // in its place, or leaves. It lives inside the panel so it inherits
-    // everything the panel already does: which side, which eye, drawn
-    // over the world or painted on the screen.
+    // everything the panel already does: which side, drawn over the
+    // world or painted on the screen.
     buildArc: function () {
       var arc = document.createElement('a-entity');
       var group = new THREE.Group();
@@ -1180,7 +1127,6 @@ if (typeof AFRAME !== 'undefined') {
       var open = this.menu.isOpen;
       this.applyOverlay();
       this.applyScreenSpace();
-      this.syncEyeLayer();
 
       // Closed does not have to mean gone. A panel set to collapse keeps
       // its backing and title so it still reads as a thing in the room,
@@ -1572,8 +1518,6 @@ if (typeof AFRAME !== 'undefined') {
       this.setEngagedHand(null);
       this.el.sceneEl.removeEventListener('input-family-changed', this.onFamilyChanged);
       this.el.removeEventListener('object3dset', this.onObject3DSet);
-      this.el.sceneEl.removeEventListener('enter-vr', this.applyEyeLayer);
-      this.el.sceneEl.removeEventListener('exit-vr', this.applyEyeLayer);
     },
   });
 

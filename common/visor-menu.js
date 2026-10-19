@@ -4,8 +4,8 @@
 // One crossbar menu, locked to your head the way a helmet display
 // would be, that appears beside whichever temple you reach for. It is
 // the same `crossbar-menu` as the watch and the wall panels, laid out
-// as floating text with a curve, inboard alignment and (optionally) a
-// single eye; every one of those is adjustable from inside it.
+// as floating text with a curve and inboard alignment; every one of
+// those is adjustable from inside it.
 //
 // It OPENS differently on each device, for the same reason the watch
 // does:
@@ -109,9 +109,6 @@ if (typeof AFRAME !== 'undefined') {
       // actually is. 'screen' paints it onto the display instead:
       // identical in both eyes, no depth, no parallax, fixed size.
       draw: { default: 'world', oneOf: ['world', 'screen'] },
-      // 'both' draws to both eyes; 'inboard' draws it to the eye on the
-      // side it opened on. Composes with `draw`.
-      eyes: { default: 'both', oneOf: ['both', 'inboard'] },
       // Layout, in degrees of your view, all live-adjustable from the
       // visor's own menu. See placeFor.
       //   position — how far from straight ahead the selected row sits
@@ -148,7 +145,6 @@ if (typeof AFRAME !== 'undefined') {
       // does not merge a property into it the way it would on an entity —
       // it replaces the whole DOM attribute with the property name.
       this.drawMode = this.data.draw;
-      this.eyesMode = this.data.eyes;
       this.settings = {
         position: this.data.position, lift: this.data.lift, width: this.data.width,
         height: this.data.height, curve: this.data.curve, crumbs: this.data.crumbs,
@@ -168,9 +164,9 @@ if (typeof AFRAME !== 'undefined') {
       this.sceneEl.addEventListener('loaded', function () {
         self.build();
       });
-      // Entering and leaving a headset both change what the eye setting
-      // means — there are two cameras or there is one — so the whole
-      // surface is re-applied at each transition rather than assumed.
+      // Entering and leaving a headset changes what screen-space drawing
+      // means — two eye cameras or one — so the surface is re-applied at
+      // each transition rather than assumed.
       this.onXrChange = function () { self.applySurface(); };
       this.sceneEl.addEventListener('enter-vr', this.onXrChange);
       this.sceneEl.addEventListener('exit-vr', this.onXrChange);
@@ -223,7 +219,6 @@ if (typeof AFRAME !== 'undefined') {
         // cut through by the nearest doorway. 'screen' paints it onto the
         // display instead; see setDraw.
         overlay: this.drawMode,
-        eye: this.eyesMode,
       });
       panel.setAttribute('crossbar-menu-registration', '');
       cameraEl.appendChild(panel);
@@ -303,8 +298,6 @@ if (typeof AFRAME !== 'undefined') {
         screenAnchor: { x: sign * Math.tan(centre * rad), y: Math.tan(s.lift * rad) },
         screenWidth: Math.tan((inboard + s.width) * rad) - Math.tan(inboard * rad),
       });
-      // The eye a one-eyed panel draws to follows the side it is on.
-      component.applyEyeLayer();
 
       var c = centre * rad;
       var l = s.lift * rad;
@@ -330,9 +323,8 @@ if (typeof AFRAME !== 'undefined') {
     //
     // Shown only while you are inside a submenu that asks for it (page
     // data: `zones: true`), on the side of your view opposite the menu so
-    // it does not cover it. Both eyes and drawn over the world, so a
-    // headset screenshot catches it whatever the Eyes and Draw settings
-    // are. The temple spheres and your hands, live: the spheres sit beside
+    // it does not cover it. Drawn over the world in stereo, so a headset
+    // screenshot catches it whatever the Draw setting is. The temple spheres and your hands, live: the spheres sit beside
     // and behind your eyes, so you could never see them directly even if
     // your head were not inside one; this draws them as two small maps
     // instead, from above and from behind, with each hand's dot lit while
@@ -436,8 +428,7 @@ if (typeof AFRAME !== 'undefined') {
         'Position ' + deg(s.position) + '  Lift ' + deg(s.lift),
         'Width ' + deg(s.width) + '  Height ' + deg(s.height),
         'Curve ' + deg(s.curve) + '  Titles ' + titles[s.crumbs],
-        'Eyes ' + (this.eyesMode === 'inboard' ? 'One' : 'Both') + '  Draw ' + (this.drawMode === 'screen' ? 'Screen' : 'World'),
-        'Scrim ' + (this.scrim > 0 ? 'On' : 'Off'),
+        'Draw ' + (this.drawMode === 'screen' ? 'Screen' : 'World') + '  Scrim ' + (this.scrim > 0 ? 'On' : 'Off'),
         '',
         'ACTIVATION',
         'Radius ' + cm(a.radius) + '  Side ' + cm(a.side),
@@ -543,13 +534,6 @@ if (typeof AFRAME !== 'undefined') {
       this.refreshInfo();
     },
 
-    // Which eye. One panel now, so this is one decision.
-    setEyes: function (mode) {
-      this.eyesMode = mode;
-      this.applySurface();
-      this.refreshInfo();
-    },
-
     setScrim: function (opacity) {
       this.scrim = opacity;
       if (this.component) this.component.setScrim(opacity);
@@ -561,7 +545,6 @@ if (typeof AFRAME !== 'undefined') {
       if (!component) return;
       // The panel IS a component, so this one does merge properly.
       this.panel.setAttribute('crossbar-menu', 'overlay', this.drawMode);
-      component.setEye(this.eyesMode);
       component.render();
     },
 

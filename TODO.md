@@ -114,20 +114,6 @@ Deliberately not done yet:
   (`#station-boxes`'s local space) and convert on receipt; remote aims
   and heads have the same issue and would want a shared anchor instead.
 
-- **The one-eye test, now runnable.** The visor ships defaulting to
-  BOTH eyes on purpose: per-eye rendering is a `layers.set(1|2)` call
-  that only means anything once WebXR's two cameras exist, and
-  defaulting to it risked a menu that is invisible on first try. `Eyes:
-  Both / One` and `Scrim: On / Off` are rows in the visor's own
-  `Settings`, so the variants are menu selections rather than a
-  rebuild. The answer decides how dark the backing can be and whether
-  one eye becomes the default — and arrives in a sidecar screenshot.
-  One thing to watch for: the settings summary used to float on its own
-  in both eyes; now it is the visor's sidecar, so it follows the visor's
-  own `Eyes` and `Draw` settings. With `Eyes: One` it is in one eye only,
-  and a headset screenshot of the other eye will not show it. If that
-  bites, give the sidecar its own `eye` override (both, always).
-
 - **Text overflow options.** Long labels currently shrink to fit and
   then ellipsize. Agreed but not built: wrapping to a second line
   within the row's space, and a marquee that scrolls a too-long label
@@ -204,6 +190,43 @@ Deliberately not done yet:
   outer rows are faded on purpose and the change touches every
   vertical placement in `layout()`; worth doing if the outer rows read
   as too small in a headset.
+
+## The visor HUD
+
+The visor is growing a HUD: one calibrated rectangle in your view (width,
+height, bend, eye level, distance) that the visor menu and a set of HUD
+slots are laid out inside, plus shared gaze targeting with brackets. The
+first pass adjusts the rectangle from rows in `Visor ▸ Adjust`. Decided on
+and deferred:
+
+- **Adjust the visor by grabbing it.** The row-based adjustment works but
+  is indirect. What we want instead: an `Adjust Visor…` row that puts a
+  small model of the visor rectangle in the room in front of you, at
+  arm's length — world-locked, not head-locked, because something locked
+  to your head moves away when you reach for it. Handles on its sides set
+  width, top/bottom set height, and a third set of handles (corner pegs,
+  probably) sets bend. The real grey slot boxes in your view follow live
+  as you drag, so you are adjusting the thing you see, not a number.
+  Grabbing uses the same `semantic-hand` grab as everything else; off a
+  headset the existing rows stay the way to do it.
+
+- **Wright Sans for 3D text.** Noah's heading font ships in
+  `@noahwright/design` (`src/styles/fonts/WrightSans-*.woff2`, MIT) and HUD
+  canvases can use it directly through `@font-face`. `a-text` (menus,
+  in-world labels) cannot: A-Frame's text renders from a pre-baked MSDF
+  atlas (`.json` + `.png`, like `vendor/aframe-1.6.0/fonts/Roboto-msdf.*`).
+  The conversion is woff2 → TTF (fontTools) → `msdf-bmfont-xml`, baking
+  only the characters we need; check the result in under `vendor/fonts/`.
+  Use it for titles only — a display face falls apart at small VR sizes.
+
+- **Gun aim cones (GTA-style auto-aim).** `common/aim-cone.js` scores
+  targets in a cone from any origin; the HUD's gaze targeting is one cone
+  from the head. Hand it a barrel's pose instead and you get auto-aim with
+  brackets showing what the gun would hit if fired now. Each source picks
+  its own bracket colour (shotgun red, pistol blue; a headshot point red;
+  armour grey), which the bracket renderer already takes per source. Not
+  done because no gun in any game auto-aims yet; Pistols' guns aim with
+  real sights.
 
 ## Liquids
 
