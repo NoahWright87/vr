@@ -18,8 +18,10 @@ tracks below look independent of each other.
   after a couple of seconds unless patted out or doused.
 - **3–4 players**, including free-for-all and the Winner / Coolest
   podiums with style in multiplayer.
-- **The voice engine.** Animal Crossing-style text-driven gibberish
-  with per-character presets and seeds, saying the player's name. Plus
-  an announcer that reads duel titles and counts paces.
+- **Voices in the game.** Hook the voice engine from `phase01-z`
+  (through its public entry only, see `export-later/README.md`) into
+  characters and an announcer that reads duel titles, counts paces and
+  says the player's name. Speech bubbles reveal text as it's spoken.
+  Character presets are Pistols data, tuned in the Voice Lab.
 - **Procedural bounties**, if the cast settings from 03-A turn out to
   produce interesting characters on their own.

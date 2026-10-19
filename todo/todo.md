@@ -93,7 +93,7 @@ them. See `deck.todo.md`.
 | Players | 2–4. Room codes only. Bring your own voice chat. |
 | Unlocks | The host's unlocks apply to the room. Anything unlocked while playing together unlocks for everyone present. |
 | Money | Shown as `$`. Plenty of it. Rotating shop. Expensive silly items and town upgrades give you something to save toward. |
-| Voices | Animal Crossing-style gibberish generated from text with per-character presets, plus recorded lines for key moments. See `cast.todo.md`. |
+| Voices | Animal Crossing-style gibberish generated from text with per-character presets, plus recorded lines for key moments. See `cast.todo.md`. Built as a standalone package in `export-later/packages/voice/` with a non-VR Voice Lab page (`phase01-z`). |
 
 ## Topic files
 
@@ -108,7 +108,9 @@ them. See `deck.todo.md`.
 ## Phases
 
 Files named `phaseNN-a`, `phaseNN-b`, ... can be worked on **at the
-same time** by separate sessions. Each one lists what it may touch and
+same time** by separate sessions. A **`-z`** track is standalone:
+nothing depends on it, it depends on nothing, and it can start any
+time, whatever phase the rest of the work is in. Each one lists what it may touch and
 what it must leave alone. A phase starts once the phase before it is
 merged. Phases 01–03 are detailed. Phase 04 onward is deliberately
 sketchy and should be rewritten once the earlier phases have been
@@ -117,9 +119,10 @@ played.
 | Phase | Tracks (parallel) | Outcome |
 |---|---|---|
 | 01 | A: wardrobe slots · B: duel framework · C: player profile & save | The foundations, each testable alone |
+| 01-Z | Standalone: voice engine + Voice Lab page | Character voices you can tune in a normal browser, no headset |
 | 02 | A: training duel series · B: style v0 · C: clothier v0 | A complete single-player loop: train, earn, dress up |
 | 03 | A: first AI duelist · B: two-player network duel | Real opponents, both AI and human |
-| 04 | Sketch | Wanted-poster campaign, wardrobe rule options, Boot Hill, shrapnel and burning clothes, 3–4 players, voice engine |
+| 04 | Sketch | Wanted-poster campaign, wardrobe rule options, Boot Hill, shrapnel and burning clothes, 3–4 players, voices in the game |
 | 05+ | Sketch | The deck and Roll the Duel, zany places, moving platforms, co-op shootouts, town upgrades, polish |
 
 Every phase follows the repo's testing rule (CLAUDE.md): drive the

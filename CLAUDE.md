@@ -26,6 +26,13 @@ number (`phase01-a`, `phase01-b`, ...) can run in parallel. If you're
 picking up a phase, read `todo/todo.md` and the topic files it links
 first.
 
+**`export-later/` holds code that's going to leave this repo.** Each
+`export-later/packages/<name>/` is a self-contained package built here
+for convenience and headed for its own repo and npm package. It
+imports nothing from outside its own folder, and the rest of the repo
+uses only its public entry, never its internals. Read
+`export-later/README.md` before touching anything in there.
+
 ## Testing without a headset
 
 Run `npm install`, then `npm run dev` for source development. Use

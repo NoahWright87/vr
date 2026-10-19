@@ -67,9 +67,16 @@ planning time (check what's current):
 Use stock voices or ones you have rights to, check commercial terms if
 this ever goes public, and don't imitate real people.
 
-## When
+## Where and when
 
-The voice engine is a system, not polish, and it doesn't depend on
-anything else. Proposed as a parallel track in phase 04, when the
-first cast needs it. Recording lines and picking sounds is polish
-(phase 05+).
+- **The engine and a non-VR Voice Lab page:** `phase01-z.todo.md`. A
+  standalone track that can be built any time, so voices can be tuned
+  from a laptop without a headset. It lives in
+  `export-later/packages/voice/` because it's headed for its own
+  repo and package (`export-later/README.md`).
+- **Hooking it into the game** (characters and the announcer speak,
+  speech bubbles, the player's name): phase 04. The game shows plain
+  text until then.
+- **Recording the game's own sound bank and catchphrases:** polish
+  (phase 05+). Those recordings are Pistols at Dawn assets, not part
+  of the package.
