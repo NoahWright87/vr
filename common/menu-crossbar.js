@@ -21,7 +21,7 @@
 // select something by aiming slightly wrong.
 // ============================================================
 
-import { createMenu, findMenuItem } from './menu-model.js';
+import { createMenu, findMenuItem, truncateLabel, marqueeText } from './menu-model.js';
 
 export { findMenuItem };
 
@@ -366,10 +366,9 @@ if (typeof AFRAME !== 'undefined') {
     return align === 'right' ? width / 2 - inset : -width / 2 + inset;
   }
 
-  function truncate(text, maxChars) {
-    if (!maxChars || text.length <= maxChars) return text;
-    return text.slice(0, Math.max(1, maxChars - 1)) + '…';
-  }
+  // Cut with "..." (menu-model.js truncateLabel), not the ellipsis
+  // character: Roboto has no glyph for it, so the cut showed as nothing.
+  var truncate = truncateLabel;
 
   // ============================================================
   // COMPONENT: crossbar-menu
@@ -1292,7 +1291,16 @@ if (typeof AFRAME !== 'undefined') {
           0
         );
 
-        var label = truncate(model.label, data.maxChars);
+        // The focused row scrolls a label that does not fit (see
+        // menu-model.js marqueeText; tick keeps it moving); the rest are
+        // cut with "...".
+        var marquee = offset === 0 && !inChrome && model.label.length > data.maxChars;
+        if (marquee && (!this.marquee || this.marquee.label !== model.label)) {
+          this.marquee = { label: model.label, since: frameTime, slot: slot, shown: '' };
+        }
+        if (offset === 0 && !marquee) this.marquee = null;
+        var label = marquee ? marqueeText(model.label, data.maxChars, frameTime - this.marquee.since) : truncate(model.label, data.maxChars);
+        if (marquee) this.marquee.shown = label;
         slot.textEl.setAttribute('text', {
           value: label,
           opacity: opacity,
@@ -1514,6 +1522,7 @@ if (typeof AFRAME !== 'undefined') {
 
     tick: function (time) {
       this.tickFlash(time);
+      this.tickMarquee(time);
       if (!this.crumbs.length) return;
       for (var c = 0; c < this.crumbs.length; c++) {
         var chars = this.crumbs[c].chars;
@@ -1533,6 +1542,17 @@ if (typeof AFRAME !== 'undefined') {
           this.setCharOpacity(charEl, anim.o0 + (anim.o1 - anim.o0) * eased);
         }
       }
+    },
+
+    // The focused row's long label, one step along. Only touches the text
+    // when what it shows changes (every MARQUEE_STEP_MS while moving).
+    tickMarquee: function (time) {
+      var marquee = this.marquee;
+      if (!marquee || !this.menu.isOpen) return;
+      var text = marqueeText(marquee.label, this.data.maxChars, time - marquee.since);
+      if (text === marquee.shown) return;
+      marquee.shown = text;
+      marquee.slot.textEl.setAttribute('text', 'value', text);
     },
 
     // ---------- pointing ----------

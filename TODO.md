@@ -114,11 +114,11 @@ Deliberately not done yet:
   (`#station-boxes`'s local space) and convert on receipt; remote aims
   and heads have the same issue and would want a shared anchor instead.
 
-- **Text overflow options.** Long labels currently shrink to fit and
-  then ellipsize. Agreed but not built: wrapping to a second line
-  within the row's space, and a marquee that scrolls a too-long label
-  back and forth — on the focused row only, since text drifting in the
-  periphery is both noise and a comfort problem.
+- **Wrapping long labels to a second line.** A label longer than its
+  row is now cut with `...` and, on the focused row only, scrolls end to
+  end and back (`marqueeText` in `common/menu-model.js`). Wrapping onto a
+  second line within the row's space was the other option discussed and
+  is not built.
 
 - **A multi-slot item kind, for room codes.** Four letters is four
   independent slots, where "inward" should move to the next slot rather

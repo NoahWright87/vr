@@ -221,6 +221,62 @@ function levelRowAt(level, index) {
 // THE MENU
 // ============================================================
 
+// ---------- long labels ----------
+//
+// A label longer than a row has room for is cut with "..." — three plain
+// dots rather than the single ellipsis character, which A-Frame's default
+// font does not have, so the cut used to show as nothing at all. The
+// focused row scrolls instead, like a marquee: a pause at the start, one
+// character at a time to the end (with "..." on whichever side is cut),
+// a pause there, back to the start, and round again. Only the focused
+// row moves; text drifting in the periphery is noise, and a comfort
+// problem in a headset.
+export var ELLIPSIS = '...';
+export var MARQUEE_STEP_MS = 160;
+export var MARQUEE_PAUSE_MS = 1200;
+
+export function truncateLabel(text, width) {
+  text = String(text == null ? '' : text);
+  if (!width || text.length <= width) return text;
+  return text.slice(0, Math.max(1, width - ELLIPSIS.length)) + ELLIPSIS;
+}
+
+// The label as seen through a `width`-character window starting at
+// character `start`, with "..." standing in for whatever is cut off on
+// either side.
+export function labelWindow(text, width, start) {
+  var dots = ELLIPSIS.length;
+  var before = start > 0 ? ELLIPSIS : '';
+  var room = width - before.length;
+  if (start + room >= text.length) return before + text.slice(start);
+  return before + text.slice(start, start + room - dots) + ELLIPSIS;
+}
+
+// How far the window can travel: the start at which the end of the
+// label shows, behind a leading "...".
+export function marqueeLength(text, width) {
+  if (!width || text.length <= width) return 0;
+  return text.length - (width - ELLIPSIS.length);
+}
+
+// What the focused row shows `elapsed` ms after it was focused.
+export function marqueeText(text, width, elapsed, options) {
+  text = String(text == null ? '' : text);
+  var steps = marqueeLength(text, width);
+  if (!steps) return text;
+  var stepMs = (options && options.stepMs) || MARQUEE_STEP_MS;
+  var pauseMs = (options && options.pauseMs) || MARQUEE_PAUSE_MS;
+  var travel = steps * stepMs;
+  var cycle = 2 * (pauseMs + travel);
+  var t = Math.max(0, elapsed) % cycle;
+  var start;
+  if (t < pauseMs) start = 0;
+  else if (t < pauseMs + travel) start = Math.floor((t - pauseMs) / stepMs) + 1;
+  else if (t < 2 * pauseMs + travel) start = steps;
+  else start = steps - Math.floor((t - 2 * pauseMs - travel) / stepMs) - 1;
+  return labelWindow(text, width, Math.max(0, Math.min(steps, start)));
+}
+
 export function createMenu(page, options) {
   return new MenuModel(page, options);
 }

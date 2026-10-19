@@ -650,6 +650,12 @@
               ] },
             ],
           },
+          // Longer than the row: cut with "..." at rest, and scrolled end
+          // to end while it is the focused row.
+          {
+            kind: 'info', id: 'showcase-long-label', label: 'This label is much too long to fit on its row',
+            info: ['LONG LABELS', 'Cut with ... when not', 'focused. Focused, they', 'scroll to the end,', 'pause, scroll back,', 'pause, and go again.'],
+          },
           // Nothing to press: its text is in the sidecar while it is
           // selected. A row's own info, as opposed to a submenu's.
           {

@@ -648,3 +648,37 @@ test('the close button has no info of its own', () => {
   menu.back();
   assert.equal(menu.getInfo().text, 'Page');
 });
+
+test('a long label is cut with three plain dots, and never when it fits', async () => {
+  const { truncateLabel } = await import('../common/menu-model.js');
+  assert.equal(truncateLabel('Short', 14), 'Short');
+  assert.equal(truncateLabel('Really long message', 14), 'Really long...');
+  assert.equal(truncateLabel('Really long message', 14).length, 14);
+});
+
+test('the focused row scrolls to the end, pauses, scrolls back, pauses', async () => {
+  const { marqueeText, marqueeLength, MARQUEE_STEP_MS: step, MARQUEE_PAUSE_MS: pause } = await import('../common/menu-model.js');
+  const text = 'Really long message';
+  const width = 14;
+  const steps = marqueeLength(text, width);
+  // Paused at the start.
+  assert.equal(marqueeText(text, width, 0), 'Really long...');
+  assert.equal(marqueeText(text, width, pause - 1), 'Really long...');
+  // One character in: cut on both sides.
+  assert.equal(marqueeText(text, width, pause), '...eally lo...');
+  // At the end, cut only at the front, and held there.
+  const end = pause + steps * step;
+  assert.equal(marqueeText(text, width, end), '...ong message');
+  assert.equal(marqueeText(text, width, end + pause - 1), '...ong message');
+  assert.ok(marqueeText(text, width, end).endsWith('message'));
+  // On the way back.
+  assert.equal(marqueeText(text, width, end + pause), marqueeText(text, width, end - 2 * step));
+  // Back at the start, and round again.
+  const cycle = 2 * (pause + steps * step);
+  assert.equal(marqueeText(text, width, cycle - 1), 'Really long...');
+  assert.equal(marqueeText(text, width, cycle), 'Really long...');
+  // Every frame stays within the row.
+  for (let t = 0; t < cycle; t += 37) assert.ok(marqueeText(text, width, t).length <= width, `at ${t}`);
+  // A label that fits never moves.
+  assert.equal(marqueeText('Fits', width, 5000), 'Fits');
+});
