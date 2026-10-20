@@ -12,6 +12,7 @@ vh.pull('melee', worldPoint, weight);          // this frame: drift there (budge
 vh.pull('guard', worldPoint, weight, 'snap');  // this frame: get there now
 vh.perform('counter', pointOrFn, ms, { pose }); // a move borrows the hand for ms
 vh.busy()                                      // a move has it
+vh.freeze(ms)                                  // an impact: hold exactly here for ms
 vh.orient(quaternion, priority);               // this frame: turn the glove (a held gun)
 vh.setPose('fist', priority);                  // this frame: show this pose (highest priority wins)
 vh.position, vh.previous                       // THREE.Vector3: this frame and last, for swept hits
@@ -28,7 +29,10 @@ straight back, whether you're moving or not.
 
 1. It reads the tracked hand's world position.
 2. **Moves** (`perform`) still running re-request a snap pull to their
-   point (or function's point) and their pose (priority 5).
+   point (or function's point) and their pose (priority 5). A move may
+   carry its own `speed` (a jumping fist: 9 m/s). Every move gets at
+   least one frame, however slow the frame. **Frozen** (an impact): the
+   hand stays exactly where it was for the freeze, then returns.
 3. **Requests** made since the last tick (`pull`) are averaged by
    weight into a desired offset. Requests last one frame.
 4. The offset moves toward the desired offset:

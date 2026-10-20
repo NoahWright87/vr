@@ -9,7 +9,7 @@
 // actuator APIs). Hand tracking has no haptics, so nothing may depend
 // on them — they only ever add to what's seen and heard.
 //
-// Sounds (shot, boom, click, thump, clang, shatter, block, parry,
+// Sounds (shot, boom, click, thump, smack, slap, clang, shatter, block, parry,
 // whoosh) are synthesized with Web Audio, the way Pistols at Dawn does
 // it: no assets. A voice cap keeps autofire from spawning hundreds of
 // nodes, and positional sounds go through a PannerNode whose listener
@@ -25,6 +25,9 @@ export var HAPTIC_PATTERNS = {
   shot: [[0.3, 22]],
   'hit-light': [[0.45, 30]],
   'hit-heavy': [[1, 55], [0, 25], [0.5, 40]],
+  // A punch that really landed: a hard hit and a rumbling tail.
+  'hit-crunch': [[1, 70], [0, 18], [0.8, 45], [0.35, 70]],
+  slap: [[0.9, 22], [0, 15], [0.4, 30]],
   block: [[0.75, 45]],
   parry: [[1, 30], [0, 35], [1, 45]],
   kill: [[0.6, 40], [0, 30], [0.9, 80]],
@@ -186,6 +189,16 @@ var SOUNDS = {
   },
   click: function (c, out, t) {
     return tone(c, out, t, 'square', 2400, 1800, 0.12, 0.02);
+  },
+  // A heavy punch: a deep thump with a crack on top.
+  smack: function (c, out, t) {
+    noiseBurst(c, out, t, 'bandpass', 2200, 0.9, 0.7, 0.04);
+    noiseBurst(c, out, t, 'lowpass', 500, 0.7, 0.7, 0.09);
+    return tone(c, out, t, 'sine', 120, 38, 1, 0.2);
+  },
+  slap: function (c, out, t) {
+    noiseBurst(c, out, t, 'highpass', 1800, 0.6, 0.9, 0.05);
+    return noiseBurst(c, out, t, 'bandpass', 3500, 1.5, 0.5, 0.03);
   },
   whoosh: function (c, out, t) {
     return noiseBurst(c, out, t, 'bandpass', 600, 0.6, 0.35, 0.18);

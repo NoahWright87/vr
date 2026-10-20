@@ -137,6 +137,7 @@ AFRAME.registerComponent('gun', {
     this.tmp = new THREE.Vector3();
     this.basis = new THREE.Matrix4();
     this.holdQuat = new THREE.Quaternion();
+    this.whip = 0;
     this.kick = 0;
     this.kickVel = 0;
     this.looseMs = 0;
@@ -277,6 +278,11 @@ AFRAME.registerComponent('gun', {
     var turned = turnToward(this.gunDir, want, 1500 * DEG * dtMs / 1000);
     this.gunDir.set(turned.x, turned.y, turned.z);
 
+    // Punching with it: the gun flips so the butt leads (a pistol-whip),
+    // and comes back round after.
+    var whipping = this.punching(side);
+    this.whip += ((whipping ? 1 : 0) - this.whip) * Math.min(1, dtMs / (whipping ? 40 : 120));
+
     this.kickVel += (-this.kick * 260 - this.kickVel * 22) * dtMs / 1000;
     this.kick += this.kickVel * dtMs / 1000;
     this.place();
@@ -285,7 +291,7 @@ AFRAME.registerComponent('gun', {
     var fire = tune.values.fire;
     var autoOn = fire !== 'trigger';
     var aligned = this.pick && angleBetween(this.gunDir, this.tmp.copy(this.pick.aimPoint).sub(this.pos).normalize()) < 4 * DEG;
-    var wantAuto = autoOn && sense.state[side].presented && aligned;
+    var wantAuto = autoOn && sense.state[side].presented && aligned && this.whip < 0.2;
     if (fire === 'auto') releaseTrigger(this.fc); // the trigger is ignored in pure autofire
     var r = heldShots(this.fc, this.weapon, dtMs, wantAuto, time, this.infinite());
     for (var i = 0; i < r.fired; i++) this.shoot(false);
@@ -293,7 +299,17 @@ AFRAME.registerComponent('gun', {
     if (this.pick) this.el.sceneEl.systems['combat-targeting'].claim(this.pick.el, side);
   },
 
-  // Upright, barrel along gunDir, with the recoil kick.
+  // Is this hand mid-punch (common/melee.js), or just landed one?
+  punching: function (side) {
+    var mh = this.meleeHands || (this.meleeHands = this.el.sceneEl.querySelector('[melee-hands]'));
+    var m = mh && mh.components['melee-hands'];
+    var h = m && m.hands[side];
+    if (!h) return false;
+    return Boolean(h.strike) || this.el.sceneEl.time - (h.hitAt || -1e9) < 150;
+  },
+
+  // Upright, barrel along gunDir, with the recoil kick (and flipped
+  // butt-first while punching).
   place: function () {
     var o = this.el.object3D;
     var z = this.tmp.copy(this.gunDir).negate();
@@ -307,6 +323,8 @@ AFRAME.registerComponent('gun', {
     // Drawn at the hand's scale (smaller off a headset, like the glove).
     var vh = this.holder && this.holder.hands.virtual(this.holder.side);
     o.scale.setScalar(vh ? vh.el.object3D.scale.x : 1);
+    // Butt-first: barrel tipped up and back, grip leading.
+    if (this.whip > 0.01) o.rotateX(this.whip * 1.75);
     // The hand holding it turns with it (so it swings onto a target too).
     if (vh) vh.orient(this.holdQuat.copy(o.quaternion), 2);
     o.rotateX(this.kick * 0.5);

@@ -25,13 +25,28 @@ From Punch Pop. Keep these true:
 - **How much pull is right?** Comfort ▸ Hand gain and Hand max cap it.
   Watch the `comfort` readout's wanted/got numbers for punches that felt
   like misses.
+- **Does the jump read as you?** A fist leaping up to 60 cm is the
+  point (your character doesn't miss), but it shouldn't feel like the
+  hand is a puppet. Tune Jump reach and Jump speed. The ghost hand
+  shows where your real hand is.
+- **Impact freeze** at 70 ms: long enough to feel weight, short enough
+  not to feel like lag? Is the hand freezing in VR uncomfortable?
+- **Slaps vs swats:** the same sideways swipe is a swat (a counter)
+  when a punch is coming, and a slap when it isn't. Does that split
+  feel right?
 - **Lean** at 10 cm: does a dummy stepping into the punch look like
   it's reacting, or like it's cheating?
 
 ## Not built yet
 
-- **Hooks and hammers.** Only forward and up axes exist. A hook is a
-  lateral arc. Its extension doesn't grow much along any one body axis,
+- **Style-specific moves**, the way counters work (`counters.todo.md`):
+  the user wants lots of them, chosen by how you move (squat for a leg
+  sweep, jump for a kick, spin for a roundhouse). Attacks you start
+  should come from the same kind of move registry, not more special
+  cases in `melee.js`. Strike styles (`strike-style.js`) are the first
+  step: name what happened, let the target sell it.
+- **Hooks and hammers.** Only forward and up axes exist (plus the slap
+  check). A hook is a lateral arc. Its extension doesn't grow much along any one body axis,
   so it may need a different signal (angular speed around the torso).
   Get real recordings first (`intent.todo.md`).
 - **Lunge.** Optional rig travel toward the target, paid from real head

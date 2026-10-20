@@ -52,11 +52,13 @@ created per event.
 
 - `haptic(handEl, name, strength)` plays a named pattern through
   `common/haptics.js`. The patterns are `shot`, `hit-light`,
-  `hit-heavy`, `block`, `parry`, `kill`, `threat` and `hurt`, each a
+  `hit-heavy`, `hit-crunch` (a punch that really landed), `slap`,
+  `block`, `parry`, `kill`, `threat` and `hurt`, each a
   list of `[intensity, ms]` pulses, where intensity 0 is a gap. Never
   required: hand tracking has none.
 - `sound(name, position?)` plays a Web Audio synthesized sound: `shot`,
-  `boom` (shotgun), `click` (dry fire), `thump`, `clang`, `shatter`,
+  `boom` (shotgun), `click` (dry fire), `thump`, `smack` (a heavy
+  punch), `slap`, `clang`, `shatter`,
   `block`, `parry` and `whoosh`. There are
   no assets. A position goes through an equal-power `PannerNode`, and a
   scene system keeps the listener on the camera. The voice cap is 24,

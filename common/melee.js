@@ -19,8 +19,16 @@
 //   sell     the target reacts (it owns its own sound and wobble);
 //            hit-stop freezes it, never you; haptics on the hand.
 //
-// If the assist can't close the gap, the punch honestly whiffs — unless
-// Tuning > Melee > Assist is Cheat, which lands it anyway, for comparison.
+// If the pull can't close the gap, the fist *jumps*: when the arm is
+// out and the punch would have missed, the virtual fist leaps the rest
+// of the way (up to Jump reach) and connects hard. You might be
+// play-punching; your character doesn't miss. (Assist: Pull for an
+// honest whiff instead; Cheat lands it with no fist motion at all.)
+//
+// Every hit is named (common/strike-style.js: butt, uppercut, slap,
+// body, jab) and sold: the fist and the target freeze for a moment
+// (Impact freeze — the target through the action clock, never you),
+// the controller rumbles, and the target acts out the style.
 //
 //   <a-entity melee-hands="rig: #rig; left: #left-virtual; right: #right-virtual"></a-entity>
 // ============================================================
@@ -32,6 +40,7 @@ import './action-clock.js';
 import { createStrikeDetector, updateStrikes, committedAxis, strikeForce } from './intent.js';
 import { sweptSphereZone, zoneSurfaceToward, distance } from './collide.js';
 import { haptic } from './action-feedback.js';
+import { strikeStyle } from './strike-style.js';
 import { defineTunables } from './tunables.js';
 import { registerReadout, logAction } from './debug-hud.js';
 
@@ -39,11 +48,21 @@ var THREE = AFRAME.THREE;
 var FIST_RADIUS = 0.05;
 var FOLLOW_THROUGH_MS = 160; // after full extension, contact still counts this long
 var SIDES = ['left', 'right'];
+// Damage by style: a gun butt or an uppercut hurts more; a slap is
+// mostly humiliation.
+var STYLE_DAMAGE = { butt: 1.3, uppercut: 1.2, jab: 1, body: 1, slap: 0.5 };
 
 var tune = defineTunables('melee', 'Melee', [
-  { key: 'assist', label: 'Assist', kind: 'select', value: 'pull', options: [
-    { value: 'off', label: 'Off' }, { value: 'pull', label: 'Pull' }, { value: 'cheat', label: 'Cheat' },
-  ], info: 'Off: your fist goes where your hand goes.\nPull: the target leans in and your fist is pulled to it, within the comfort budget.\nCheat: a committed punch at a target in range always lands.' },
+  { key: 'assist', label: 'Assist', kind: 'select', value: 'jump', options: [
+    { value: 'off', label: 'Off' }, { value: 'pull', label: 'Pull' }, { value: 'jump', label: 'Jump' }, { value: 'cheat', label: 'Cheat' },
+  ], info: 'Off: your fist goes where your hand goes.\nPull: the target leans in and your fist is pulled to it, within the comfort budget.\nJump: Pull, and a punch that would miss has the fist leap out to connect.\nCheat: a committed punch at a target in range always lands, no fist motion.' },
+  { key: 'jumpReach', label: 'Jump reach', value: 0.6, min: 0.1, max: 1, step: 0.05, unit: 'm',
+    info: 'How far past your real fist a punch may leap to connect.' },
+  { key: 'jumpSpeed', label: 'Jump speed', value: 9, min: 2, max: 20, step: 0.5, unit: 'm/s' },
+  { key: 'slapSpeed', label: 'Slap', value: 2, min: 0.8, max: 5, step: 0.1, unit: 'm/s',
+    info: 'A hand swiping sideways in front of you at least this fast, with someone in reach, slaps them (it jumps to connect too). They spin round, dizzy.' },
+  { key: 'freeze', label: 'Impact freeze', value: 70, min: 0, max: 200, step: 10, unit: 'ms',
+    info: 'On a solid hit your fist and the enemy hold still this long. You never freeze.' },
   { key: 'lean', label: 'Lean', value: 0.1, min: 0, max: 30, step: 1, unit: 'cm', scale: 100,
     info: 'How far a target leans into an incoming punch. Costs no comfort.' },
   { key: 'damage', label: 'Damage', value: 1, min: 0.25, max: 5, step: 0.25 },
@@ -178,11 +197,15 @@ AFRAME.registerComponent('melee-hands', {
     var vh = this.virtual(side);
     if (!vh || !vh.initialized) return;
     var hand = this.hands[side];
+    if (!hand.strike) this.slapCheck(side, sense, time);
     var strike = hand.strike;
     this.contact(side, sense, time);
+    // Arm out, nothing touched, someone there: the fist jumps the gap.
+    if (strike && strike.landT !== undefined && !strike.landed && !strike.jumpUntil && tune.values.assist === 'jump') this.jump(side, strike, time);
     // Contact first, then retire a strike whose follow-through ran out,
     // so a fist arriving on the last frame of it still counts.
-    if (strike && strike.landT !== undefined && (strike.landed || time - strike.landT > FOLLOW_THROUGH_MS)) {
+    var through = strike && strike.jumpUntil ? Math.max(FOLLOW_THROUGH_MS, strike.jumpUntil - strike.landT) : FOLLOW_THROUGH_MS;
+    if (strike && strike.landT !== undefined && (strike.landed || time - strike.landT > through)) {
       this.finish(side, sense);
       strike = null;
     }
@@ -201,6 +224,58 @@ AFRAME.registerComponent('melee-hands', {
         vh.pull('melee', { x: surface.x + into.x, y: surface.y + into.y, z: surface.z + into.z }, 1);
       }
     }
+  },
+
+  // A slap: the strike detector only knows forward and up, so a fast
+  // sideways swipe in front of you, with someone in reach, becomes a
+  // strike of its own — already at the end of its motion, so it jumps
+  // to connect if it has to.
+  slapCheck: function (side, sense, time) {
+    var hand = this.hands[side];
+    var vh = this.virtual(side);
+    if (tune.values.assist === 'off' || !vh || vh.busy() || time < (hand.slapReady || 0)) return;
+    var st = sense.state[side];
+    var e = st.extension;
+    if (!st.tracked || e.forward < 0.15 || e.up < -0.35) return;
+    var right = sense.state.rightward, fwd = sense.state.facing;
+    var v = st.relativeVelocity, sp = st.relativeSpeed;
+    var hx = v.x * sp, hz = v.z * sp;
+    var hs = Math.sqrt(hx * hx + hz * hz);
+    if (hs < tune.values.slapSpeed) return;
+    if (Math.abs(hx * right.x + hz * right.z) / hs < 0.7) return;
+    var aim = sense.aimRayWorld(side);
+    if (!aim) return;
+    var dir = sense.directionToWorld(fwd, new THREE.Vector3());
+    var pick = this.targeting().resolve('strike', { origin: aim.origin, direction: dir, by: side, current: hand.last });
+    if (!pick || !pick.target.alive) return;
+    var zone = this.zoneFor(pick.target, vh.position);
+    if (distance(zoneSurfaceToward(zone, vh.position), vh.position) > tune.values.jumpReach + 0.1) return;
+    hand.slapReady = time + 450;
+    hand.strike = { event: { hand: side, axis: 'slap', speed: hs, travel: 0.3, headTravel: 0 }, pick: pick, landed: false, startT: time, landT: time };
+  },
+
+  // The punch would miss: if its target is within Jump reach of the
+  // virtual fist, the fist leaps there (a fast snap move) and the
+  // ordinary contact sweep lands it.
+  jump: function (side, strike, time) {
+    var pick = strike.pick;
+    var vh = this.virtual(side);
+    if (!pick || !vh || !pick.target.alive || vh.busy()) return;
+    var zone = this.zoneFor(pick.target, vh.position);
+    var surface = zoneSurfaceToward(zone, vh.position);
+    if (distance(surface, vh.position) > tune.values.jumpReach) return;
+    var self = this;
+    var ms = 60 + 1000 * tune.values.jumpReach / tune.values.jumpSpeed;
+    strike.jumpUntil = time + ms;
+    strike.jumped = true;
+    vh.perform('jump', function () {
+      // Through the surface a little, so the sweep crosses it.
+      var z = self.zoneFor(pick.target, vh.trackedPosition);
+      var p = zoneSurfaceToward(z, vh.trackedPosition);
+      var into = new THREE.Vector3(p.x - vh.trackedPosition.x, p.y - vh.trackedPosition.y, p.z - vh.trackedPosition.z);
+      var l = into.length() || 1;
+      return { x: p.x + into.x / l * 0.06, y: p.y + into.y / l * 0.06, z: p.z + into.z / l * 0.06 };
+    }, ms, { pose: 'fist', speed: tune.values.jumpSpeed });
   },
 
   // Contact: sweep the virtual fist's motion this frame against every
@@ -234,37 +309,60 @@ AFRAME.registerComponent('melee-hands', {
     hand.cooldowns.set(first.target.el, time + 250);
     var e = strike ? strike.event : { speed: speed, travel: 0, headTravel: 0, axis: 'graze' };
     if (strike) strike.landed = true;
-    this.hit(side, first.target, first.zone, first.point, e, false);
+    this.hit(side, first.target, first.zone, first.point, e, false, strike && strike.jumped);
   },
 
-  hit: function (side, target, zone, point, e, forced) {
+  hit: function (side, target, zone, point, e, forced, jumped) {
     var hand = this.hands[side];
     var sense = this.sense();
-    var vel = sense.directionToWorld(sense.state[side].relativeVelocity, this.dir);
-    if (vel.lengthSq() < 1e-6) vel.set(0, 0, -1);
+    var vel = sense.directionToWorld(sense.state[side].relativeVelocity, this.dir).multiplyScalar(sense.state[side].relativeSpeed);
+    // The hit's direction is the way the fist you see was going: a fist
+    // that jumped to connect was going at them, wherever your hand is.
+    var vh0 = this.virtual(side);
+    var dir = vh0 ? vh0.position.clone().sub(vh0.previous) : vel.clone();
+    if (dir.lengthSq() < 1e-8) dir.copy(vel);
+    if (dir.lengthSq() < 1e-8) dir.set(0, 0, -1);
+    dir.normalize();
     var committed = e.axis !== 'graze';
+    var vh = this.virtual(side);
     // A graze is speed only (Punch Pop's rule: it shouldn't hit as hard
     // as a committed strike).
     var force = committed ? strikeForce(e) : Math.min(1, (e.speed || 0) / 5);
+    // A fist that jumped to connect connects hard.
+    if (jumped) force = Math.max(force, 0.85);
     // A counter: the target is open (just parried), so it hits harder.
     var counter = committed && (target.openUntil || 0) > this.el.sceneEl.time;
     if (counter) force *= 1.5;
+
+    // What kind of hit, for the target to act out.
+    var center = target.el.object3D.getWorldPosition(new THREE.Vector3());
+    var torso = target.worldZones().filter(function (z) { return z.name === 'torso'; })[0];
+    var style = strikeStyle({
+      axis: e.axis, holdingGun: Boolean(vh && vh.holding), velocity: vel,
+      toTarget: { x: center.x - (vh ? vh.trackedPosition.x : point.x), z: center.z - (vh ? vh.trackedPosition.z : point.z) },
+      pointY: point.y, zone: zone && zone.name, chestY: torso ? (torso.a.y + torso.b.y) / 2 : undefined,
+    });
+    var damage = force * tune.values.damage * (STYLE_DAMAGE[style] || 1);
     var result = target.applyHit({
-      zone: zone, point: point, direction: { x: vel.x, y: vel.y, z: vel.z },
-      force: force, damage: force * tune.values.damage, source: 'strike', by: side,
+      zone: zone, point: point, direction: { x: dir.x, y: dir.y, z: dir.z },
+      force: force, damage: damage, source: 'strike', by: side, style: style, jumped: Boolean(jumped),
     });
     if (!result) return;
-    var vh = this.virtual(side);
     var handEl = vh && vh.data.tracked; // haptics go to the real controller
     if (result.blocked) {
       haptic(handEl, 'block');
       hand.lastText = 'blocked by ' + result.zone;
     } else {
-      haptic(handEl, committed && force > 0.9 ? 'hit-heavy' : 'hit-light');
+      var solid = committed || style === 'slap';
+      haptic(handEl, style === 'slap' ? 'slap' : (jumped || force > 0.75 || style === 'uppercut' || style === 'butt') ? 'hit-crunch' : committed ? 'hit-heavy' : 'hit-light');
+      // The impact: fist and enemy hold for a beat. Never you.
+      var freeze = tune.values.freeze * (solid ? 1 : 0.5) * (0.7 + 0.3 * Math.min(1.5, force));
       var clock = this.el.sceneEl.systems['action-clock'];
-      if (clock && committed) clock.hitStop(target.el);
+      if (clock && freeze > 0) clock.hitStop(target.el, freeze);
+      if (vh && freeze > 0) vh.freeze(freeze);
       hand.last = target.el;
-      hand.lastText = (forced ? 'CHEAT ' : '') + (counter ? 'COUNTER ' : '') + (committed ? e.axis : 'graze') + ' ' + result.zone + ' ' + force.toFixed(2) +
+      hand.hitAt = this.el.sceneEl.time;
+      hand.lastText = (forced ? 'CHEAT ' : '') + (counter ? 'COUNTER ' : '') + (jumped ? 'JUMPED ' : '') + style + ' ' + result.zone + ' ' + force.toFixed(2) +
         (vh ? ' (assist ' + (vh.offsetLength() * 100).toFixed(1) + 'cm)' : '');
     }
     logAction(side.charAt(0).toUpperCase() + ' ' + hand.lastText + ' on ' + (target.el.id || 'target'));

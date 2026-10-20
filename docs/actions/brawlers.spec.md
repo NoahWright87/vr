@@ -34,9 +34,28 @@ line of robots at the dummies station.
     (`parryShove` for a plain parry), staggered, hit-stopped 100 ms, and
     opened for `openMs` (blue body, priority 1, so the next punch picks
     it and hits 1.5× harder).
-- **Being hit.** The body flashes white and is knocked back along the
-  hit (`force × 1.3 × knock`, divided by the kind's weight). It rocks on
-  a spring about its feet. At zero health it falls over backwards (the
+- **Being hit.** It's built in two halves: legs on a pedestal, and an
+  upper half (torso, head, arms) on a waist pivot. Arms and the
+  head/torso zones live in the upper half. Every hit flashes it white,
+  knocks it along the hit (`force × push × knock`, divided by the
+  kind's weight), and **rocks it away from where the hit came from**
+  in its own frame: back for a hit from the front, sideways for one
+  from the side, the upper half whipping more than the feet. A head
+  shot snaps the head back. Then the hit's **style**
+  (`strike-style.js`, from melee) sells it:
+  - **uppercut**: off its feet (up to about 2.6 m/s up, less for
+    heavy kinds) and bent back; pushed 2×.
+  - **body**: doubled over at the waist for 750 ms ("oof"), then
+    stumbles back; pushed 1.5×.
+  - **slap**: spun round the way the hand went (a turn or two,
+    winding down), then **dizzy** for 2.2 s: a woozy wobble, stars
+    round its head, slow to face you; pushed 0.5×.
+  - **butt** (gun): clang; pushed 1.7×.
+  - **jumped** fist: pushed 1.2× more, bigger sparks.
+
+  Sounds: `smack` for a heavy or jumped hit, `slap`, `clang` for guns
+  and butts, otherwise `thump`. While doubled over, dizzy or off its
+  feet it can't start a punch. At zero health it falls over backwards (the
   zones go with it, and it can't be targeted) and stands back up after
   `resetMs` (3 s) at full health. Team `enemy`, so guns and throws hit
   it too. Zones: head ×1.5, torso, legs ×0.6.
@@ -90,8 +109,8 @@ At the scene root. It spawns `count` robots (`mix`: `mixed` or one kind)
 - **Dummies line** (right station, behind the peg dummies): a bag on a
   0.8 m rail, a quick jabber on a rail that swings, a boxer that swings
   within 1.1 m, and a brute that only takes punches.
-- **Debug ▸ HUD ▸ Brawl** shows how many are up, knockdowns, pile-ups
-  and who is engaged. The action log shows "parried X — shoved into
+- **Debug ▸ HUD ▸ Brawl** shows how many are up, knockdowns, pile-ups,
+  who is engaged, and hits by style. The action log shows "parried X — shoved into
   Y", "X crashed into Y (n m/s)" and "X is down".
 
 ## Tested

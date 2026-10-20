@@ -59,6 +59,7 @@ function geometry() {
     shared = {
       box: new THREE.BoxGeometry(1, 1, 1),
       dark: new THREE.MeshLambertMaterial({ color: '#2b2f36', flatShading: true }),
+      star: new THREE.MeshBasicMaterial({ color: '#ffe066' }),
     };
   }
   return shared;
@@ -84,14 +85,19 @@ segment.z = new THREE.Vector3(0, 0, 1);
 segment.v = new THREE.Vector3();
 
 var registry = [];
-var stats = { hits: 0, knockdowns: 0, impacts: 0 };
+var stats = { hits: 0, knockdowns: 0, impacts: 0, styles: { jab: 0, uppercut: 0, body: 0, slap: 0, butt: 0 } };
+function styleLine() {
+  var st = stats.styles;
+  return 'hits: jab ' + st.jab + '  uppercut ' + st.uppercut + '  body ' + st.body + '  slap ' + st.slap + '  butt ' + st.butt;
+}
+
 registerReadout('brawl', 'Brawl', function () {
   var ring = registry.filter(function (b) { return b.ring(); });
-  if (!ring.length) return 'brawl off (B)  ' + registry.length + ' on the dummies line';
+  if (!ring.length) return 'brawl off (B)  ' + registry.length + ' on the dummies line\n' + styleLine();
   var up = ring.filter(function (b) { return b.target.alive; }).length;
   var busy = ring.filter(function (b) { return b.engaged; }).map(function (b) { return b.el.id; });
   return up + '/' + ring.length + ' up  knockdowns ' + stats.knockdowns + '  pile-ups ' + stats.impacts +
-    '\nengaged: ' + (busy.join(', ') || 'none');
+    '\nengaged: ' + (busy.join(', ') || 'none') + '\n' + styleLine();
 });
 
 // ============================================================
@@ -116,11 +122,15 @@ AFRAME.registerComponent('brawler', {
     var s = k.size;
     this.L1 = 0.36 * s;
     this.L2 = 0.37 * s;
-    this.stretch = 1; // a punch telescopes the arm a little, Rock 'Em Sock 'Em style
     this.goal = null; // { x, z } set by the ring
     this.vel = new THREE.Vector3(); // its own walking
     this.knock = new THREE.Vector3(); // knocked about
-    this.tilt = 0; this.tiltVel = 0; this.restTilt = 0;
+    this.tilt = 0; this.tiltVel = 0; this.restTilt = 0; // the whole body, about the feet (falling)
+    this.roll = 0; this.rollVel = 0; // side to side, about the feet
+    this.bend = 0; this.bendVel = 0; // the upper half, about the waist
+    this.air = 0; this.airVel = 0; // knocked off its feet
+    this.spinVel = 0; // slapped round
+    this.doubledUntil = 0; this.dizzyUntil = 0;
     this.state = 'up'; // up | down
     this.stateMs = 0;
     this.phase = 'guard'; // guard | windup | active | recovery
@@ -148,16 +158,23 @@ AFRAME.registerComponent('brawler', {
     this.fistBase = new THREE.Color(k.color).multiplyScalar(0.6);
     this.fistMat = new THREE.MeshLambertMaterial({ color: this.fistBase.clone(), flatShading: true });
     var dark = geometry().dark;
-    // The body pivots at the feet, so it falls over backwards.
+    // The body pivots at the feet, so it falls over backwards; the upper
+    // half (torso, head, arms) pivots at the waist, so it can double
+    // over or snap back. Upper-half parts are placed relative to the
+    // waist.
     this.body = new THREE.Group();
     this.el.object3D.add(this.body);
     part(this.body, dark, 0.42 * s, 0.12, 0.36 * s, 0, 0.06, 0); // pedestal
     part(this.body, this.bodyMat, 0.34 * s, 0.7 * s, 0.24 * s, 0, 0.12 + 0.35 * s, 0); // legs
-    var torsoY = 0.12 + 0.7 * s + 0.25 * s;
-    part(this.body, this.bodyMat, 0.5 * s, 0.5 * s, 0.3 * s, 0, torsoY, 0); // torso
+    var waistY = this.waistY = 0.12 + 0.7 * s;
+    this.upper = new THREE.Group();
+    this.upper.position.y = waistY;
+    this.body.add(this.upper);
+    var torsoY = 0.25 * s; // from the waist
+    part(this.upper, this.bodyMat, 0.5 * s, 0.5 * s, 0.3 * s, 0, torsoY, 0); // torso
     var headY = torsoY + 0.25 * s + 0.15 * s;
-    part(this.body, this.bodyMat, 0.26 * s, 0.24 * s, 0.26 * s, 0, headY, 0); // head
-    part(this.body, dark, 0.2 * s, 0.05 * s, 0.02, 0, headY + 0.02 * s, 0.135 * s); // eye slot
+    part(this.upper, this.bodyMat, 0.26 * s, 0.24 * s, 0.26 * s, 0, headY, 0); // head
+    part(this.upper, dark, 0.2 * s, 0.05 * s, 0.02, 0, headY + 0.02 * s, 0.135 * s); // eye slot
     this.shoulderY = torsoY + 0.17 * s;
     this.headY = headY;
     this.torsoY = torsoY;
@@ -166,22 +183,34 @@ AFRAME.registerComponent('brawler', {
         side: sd,
         shoulder: new THREE.Vector3(sd * 0.31 * s, this.shoulderY, 0),
         fist: new THREE.Vector3(sd * 0.13 * s, this.shoulderY + 0.13 * s, 0.3 * s),
-        upper: part(this.body, this.bodyMat, 0.09, 0.09, 0.3),
-        fore: part(this.body, this.bodyMat, 0.085, 0.085, 0.3),
-        hand: part(this.body, this.fistMat, 0.13 * s, 0.13 * s, 0.13 * s, 0, 0, 0),
-        elbow: part(this.body, dark, 0.1, 0.1, 0.1, 0, 0, 0),
+        upper: part(this.upper, this.bodyMat, 0.09, 0.09, 0.3),
+        fore: part(this.upper, this.bodyMat, 0.085, 0.085, 0.3),
+        hand: part(this.upper, this.fistMat, 0.13 * s, 0.13 * s, 0.13 * s, 0, 0, 0),
+        elbow: part(this.upper, dark, 0.1, 0.1, 0.1, 0, 0, 0),
       };
     }, this);
+    // Dizzy: stars circling the head.
+    this.stars = new THREE.Group();
+    this.stars.position.y = headY + 0.22 * s;
+    this.stars.visible = false;
+    this.upper.add(this.stars);
+    for (var st = 0; st < 3; st++) {
+      var a = st * Math.PI * 2 / 3;
+      part(this.stars, geometry().star, 0.05, 0.05, 0.05, Math.cos(a) * 0.17 * s, 0, Math.sin(a) * 0.17 * s).rotation.set(0.6, 0.6, 0);
+    }
 
     var health = this.data.health || k.health;
     this.el.setAttribute('combat-target', { health: health, aimZone: 'torso', team: 'enemy' });
     this.target = this.el.components['combat-target'];
-    this.target.setZones([
-      { name: 'head', type: 'sphere', a: { x: 0, y: headY, z: 0 }, r: 0.16 * s, damage: 1.5 },
-      { name: 'torso', type: 'capsule', a: { x: 0, y: torsoY - 0.12 * s, z: 0 }, b: { x: 0, y: torsoY + 0.12 * s, z: 0 }, r: 0.24 * s, damage: 1 },
+    // Head and torso ride the upper half (`upper`: in waist space); the
+    // legs the body.
+    this.zonesLocal = [
+      { name: 'head', type: 'sphere', a: { x: 0, y: headY, z: 0 }, b: { x: 0, y: headY, z: 0 }, r: 0.16 * s, damage: 1.5, upper: true },
+      { name: 'torso', type: 'capsule', a: { x: 0, y: torsoY - 0.12 * s, z: 0 }, b: { x: 0, y: torsoY + 0.12 * s, z: 0 }, r: 0.24 * s, damage: 1, upper: true },
       { name: 'legs', type: 'capsule', a: { x: 0, y: 0.25, z: 0 }, b: { x: 0, y: 0.75 * s, z: 0 }, r: 0.17 * s, damage: 0.6 },
-    ]);
-    this.zonesLocal = this.target.zones.map(function (z) { return { name: z.name, type: z.type, a: z.a, b: z.b, r: z.r, damage: z.damage }; });
+    ];
+    this.upperM = new THREE.Matrix4();
+    this.updateZones();
 
     this.onHit = this.onHit.bind(this);
     this.el.addEventListener('action-hit', this.onHit);
@@ -198,7 +227,12 @@ AFRAME.registerComponent('brawler', {
   attacks: function () { return this.el.sceneEl.systems['combat-attacks']; },
   isOpen: function () { return this.el.sceneEl.time < (this.target.openUntil || 0); },
   busy: function () { return this.phase !== 'guard'; },
-  canAttack: function () { return this.kind.punches && this.state === 'up' && this.phase === 'guard' && !this.isOpen() && this.knock.lengthSq() < 0.25; },
+  // Not while open, reeling, doubled over, dizzy or off its feet.
+  stunned: function () {
+    var t = this.el.sceneEl.time;
+    return t < this.doubledUntil || t < this.dizzyUntil || this.air > 0.01;
+  },
+  canAttack: function () { return this.kind.punches && this.state === 'up' && this.phase === 'guard' && !this.isOpen() && !this.stunned() && this.knock.lengthSq() < 0.25; },
 
   setColor: function (c) {
     if (this.colorNow === c) return;
@@ -223,21 +257,65 @@ AFRAME.registerComponent('brawler', {
     this.knock.z += (v.z / l) * speed / this.kind.weight;
   },
 
+  // Sold by the hit's direction and style (common/strike-style.js):
+  // every hit rocks it away from where it came from; an uppercut lifts
+  // it off its feet; a body shot doubles it over, then it stumbles back;
+  // a slap spins it round and leaves it dizzy; a gun butt clangs.
   onHit: function (evt) {
     var hit = evt.detail;
     var fx = this.el.sceneEl.systems['action-effects'];
     var d = hit.direction || { x: 0, y: 0, z: -1 };
+    var f = hit.force || 1;
+    var style = hit.style || (hit.source === 'strike' ? 'jab' : hit.source);
+    var time = this.el.sceneEl.time;
     if (hit.point) {
-      if (hit.source !== 'impact') sound(hit.source === 'gun' ? 'clang' : 'thump', hit.point);
-      if (fx) fx.sparks(hit.point, { x: -d.x, y: -d.y + 0.3, z: -d.z }, { count: 10, color: '#ffd27a', speed: 2.2 });
+      if (hit.source !== 'impact') {
+        sound(hit.source === 'gun' || style === 'butt' ? 'clang' : style === 'slap' ? 'slap' : (hit.jumped || f > 0.6) ? 'smack' : 'thump', hit.point);
+      }
+      if (fx) {
+        var heavy = hit.jumped || style === 'uppercut' || style === 'butt';
+        fx.sparks(hit.point, { x: -d.x, y: -d.y + 0.3, z: -d.z }, { count: heavy ? 22 : 10, color: style === 'slap' ? '#ffffff' : '#ffd27a', speed: heavy ? 3.2 : 2.2 });
+      }
     }
     stats.hits++;
+    if (stats.styles[style] !== undefined) stats.styles[style]++;
     this.flashMs = 80;
     this.setColor('#ffffff');
     var ring = this.ring();
     var knockScale = ring ? ring.data.knock : 1;
-    if (hit.source !== 'impact') this.shove(d.x, d.z, (hit.force || 1) * 1.3 * knockScale);
-    this.tiltVel -= (hit.force || 1) * 2.5;
+    var w = this.kind.weight;
+
+    // Rock away from the hit, in its own frame (+z faces you).
+    var dl = this.tmp2.set(d.x, 0, d.z);
+    dl.applyQuaternion(this.el.object3D.getWorldQuaternion(this.q).invert());
+    this.tiltVel += dl.z * f * 3 / w;
+    this.rollVel -= dl.x * f * 3 / w;
+    this.bendVel += dl.z * f * 4 / w; // the upper half whips more than the feet
+    if (hit.zone === 'head') this.bendVel -= f * 3 / w; // a shot to the face snaps the head back
+
+    var push = 1.3;
+    if (style === 'uppercut') {
+      // Off its feet, up and away.
+      // About a hand's height for a boxer; less for a brute.
+      this.airVel = Math.max(this.airVel, Math.min(2.6, (1.1 + 0.9 * Math.min(f, 1.5)) / Math.sqrt(w)));
+      this.tiltVel -= 4 * f / w;
+      this.bendVel -= 6 * f / w;
+      push = 2;
+    } else if (style === 'body') {
+      // Ow, the gut: folds over for a moment, then stumbles back.
+      this.doubledUntil = time + 750;
+      this.bendVel += 7 * f / w;
+      push = 1.5;
+    } else if (style === 'slap') {
+      // Spun round, dizzy. Which way: the way the hand was going across it.
+      this.spinVel += (dl.x >= 0 ? 1 : -1) * (9 + 7 * f) / w;
+      this.dizzyUntil = time + 2200;
+      push = 0.5;
+    } else if (style === 'butt') {
+      push = 1.7;
+    }
+    if (hit.jumped) push *= 1.2;
+    if (hit.source !== 'impact') this.shove(d.x, d.z, f * push * knockScale);
     // Hit while winding up: the punch is interrupted.
     if (this.phase === 'windup') this.toRecovery();
     if (hit.killed) this.fall();
@@ -257,6 +335,8 @@ AFRAME.registerComponent('brawler', {
   standUp: function () {
     this.state = 'up';
     this.restTilt = 0;
+    this.doubledUntil = this.dizzyUntil = 0;
+    this.spinVel = 0;
     this.target.revive();
     this.target.openUntil = 0;
   },
@@ -388,20 +468,45 @@ AFRAME.registerComponent('brawler', {
     o.position.z += (this.vel.z + this.knock.z) * dt;
     this.knock.multiplyScalar(Math.exp(-dt * 3.5));
 
-    // Face the player (it turns its body).
-    if (cam && this.state === 'up') {
+    // Slapped round: spinning, winding down.
+    o.rotation.y += this.spinVel * dt;
+    this.spinVel *= Math.exp(-dt * 2.2);
+    var dizzy = time < this.dizzyUntil;
+
+    // Face the player (it turns its body) — slowly while dizzy, not
+    // while still spinning.
+    if (cam && this.state === 'up' && Math.abs(this.spinVel) < 2) {
       var yaw = Math.atan2(this.camLocal.x - o.position.x, this.camLocal.z - o.position.z);
       var diff = yaw - o.rotation.y;
       while (diff > Math.PI) diff -= 2 * Math.PI;
       while (diff < -Math.PI) diff += 2 * Math.PI;
-      o.rotation.y += diff * Math.min(1, dt * 6);
+      o.rotation.y += diff * Math.min(1, dt * (dizzy ? 1.2 : 6));
     }
 
-    // Rock and fall on a spring about the feet.
+    // Rock and fall on springs about the feet; bend at the waist.
     this.tiltVel += (-(this.tilt - this.restTilt) * (this.state === 'down' ? 50 : 110) - this.tiltVel * 9) * dt;
     this.tilt += this.tiltVel * dt;
     if (this.tilt < -1.5) { this.tilt = -1.5; this.tiltVel = 0; }
-    this.body.rotation.x = this.tilt;
+    this.rollVel += (-this.roll * 90 - this.rollVel * 8) * dt;
+    this.roll += this.rollVel * dt;
+    this.roll = Math.max(-0.6, Math.min(0.6, this.roll));
+    var restBend = this.state === 'up' && time < this.doubledUntil ? 0.75 : 0;
+    this.bendVel += (-(this.bend - restBend) * 70 - this.bendVel * 8) * dt;
+    this.bend += this.bendVel * dt;
+    this.bend = Math.max(-0.7, Math.min(1, this.bend));
+    // Off its feet: up, and down again with a little bounce.
+    if (this.air > 0 || this.airVel > 0) {
+      this.airVel -= 9.8 * dt;
+      this.air += this.airVel * dt;
+      if (this.air <= 0) { this.air = 0; this.airVel = this.airVel < -1.5 ? -this.airVel * 0.25 : 0; }
+    }
+    this.body.rotation.set(this.tilt, 0, this.roll);
+    this.body.position.y = this.air;
+    this.upper.rotation.x = this.bend;
+    // Dizzy: a woozy wobble and stars.
+    this.upper.rotation.z = dizzy && this.state === 'up' ? Math.sin(time / 160) * 0.16 : 0;
+    this.stars.visible = dizzy && this.state === 'up';
+    if (this.stars.visible) this.stars.rotation.y = time / 180;
 
     this.updatePunch(dtMs);
     this.updateArms(dt);
@@ -436,7 +541,6 @@ AFRAME.registerComponent('brawler', {
     this.phaseMs += dtMs;
     var o = this.el.object3D;
     o.updateMatrixWorld();
-    this.body.updateMatrixWorld();
     var arm = this.arm();
     if (this.phase === 'windup') {
       var t = Math.min(1, this.phaseMs / k.windupMs);
@@ -449,7 +553,7 @@ AFRAME.registerComponent('brawler', {
         this.phaseMs = 0;
         this.attack.phase = 'active';
         // The punch line locks now: step out of it to dodge.
-        this.windFrom.copy(arm.fist).applyMatrix4(this.body.matrixWorld);
+        this.windFrom.copy(arm.fist).applyMatrix4(this.upper.matrixWorld);
       }
     } else if (this.phase === 'active') {
       var p = Math.min(1, this.phaseMs / k.activeMs);
@@ -467,9 +571,10 @@ AFRAME.registerComponent('brawler', {
     this.body.position.z = this.lunge;
   },
 
+  // Arms live in the upper half's (waist) space.
   updateArms: function (dt) {
-    this.body.updateMatrixWorld();
-    this.inv.copy(this.body.matrixWorld).invert();
+    this.el.object3D.updateMatrixWorld();
+    this.inv.copy(this.upper.matrixWorld).invert();
     var s = this.kind.size;
     for (var i = 0; i < 2; i++) {
       var arm = this.arms[i];
@@ -503,21 +608,25 @@ AFRAME.registerComponent('brawler', {
       arm.elbow.position.set(r.elbow.x, r.elbow.y, r.elbow.z);
       arm.hand.position.set(r.fist.x, r.fist.y, r.fist.z);
       if (punching) {
-        this.shoulderW.copy(arm.shoulder).applyMatrix4(this.body.matrixWorld);
-        this.fistW.copy(r.fist).applyMatrix4(this.body.matrixWorld);
+        this.shoulderW.copy(arm.shoulder).applyMatrix4(this.upper.matrixWorld);
+        this.fistW.copy(r.fist).applyMatrix4(this.upper.matrixWorld);
       }
     }
   },
 
-  // Zones follow the body (lunge and fall).
+  // Zones follow the body (lunge, fall, rock, lift) and the head and
+  // torso the upper half too (bend, wobble).
   updateZones: function () {
-    var m = this.body.matrix;
-    this.body.updateMatrix();
-    var v = this.tmp;
-    var key = this.tilt.toFixed(3) + this.lunge.toFixed(3);
+    var key = [this.tilt, this.roll, this.lunge, this.air, this.bend, this.upper.rotation.z].map(function (n) { return n.toFixed(3); }).join();
     if (key === this.zoneKey) return;
     this.zoneKey = key;
+    this.body.updateMatrix();
+    this.upper.updateMatrix();
+    var mb = this.body.matrix;
+    var mu = this.upperM.multiplyMatrices(this.body.matrix, this.upper.matrix);
+    var v = this.tmp;
     this.target.setZones(this.zonesLocal.map(function (z) {
+      var m = z.upper ? mu : mb;
       var a = v.set(z.a.x, z.a.y, z.a.z).applyMatrix4(m);
       var A = { x: a.x, y: a.y, z: a.z };
       var b = v.set(z.b.x, z.b.y, z.b.z).applyMatrix4(m);

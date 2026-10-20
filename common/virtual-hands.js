@@ -21,7 +21,8 @@
 //   var vh = el.components['virtual-hand'];
 //   vh.pull('melee', worldPoint, 1);          // this frame: drift there (budget)
 //   vh.pull('guard', worldPoint, 4, 'snap');  // this frame: get there now
-//   vh.perform('counter', pointOrFn, 220, { pose: 'fist' }); // snap for a while
+//   vh.perform('counter', pointOrFn, 220, { pose: 'fist', speed }); // snap for a while
+//   vh.freeze(70);                            // hold still where it is (an impact)
 //   vh.setPose('fist', 2);                    // this frame: show a fist
 //   vh.orient(quaternion, 1);                 // this frame: turn the glove (a held gun)
 //   vh.position / vh.previous                 // THREE.Vector3s, for swept hits
@@ -137,6 +138,8 @@ AFRAME.registerComponent('virtual-hand', {
     this.poseRequest = null;
     this.orientRequest = null;
     this.handQuat = new THREE.Quaternion();
+    this.frozenUntil = 0;
+    this.frozenAt = new THREE.Vector3();
     this.wristQuat = new THREE.Quaternion();
     this.pose = null;
     this.initialized = false;
@@ -169,7 +172,15 @@ AFRAME.registerComponent('virtual-hand', {
   // opts: { pose, weight }.
   perform: function (source, to, ms, opts) {
     var o = opts || {};
-    this.performing.push({ source: source, to: to, until: this.el.sceneEl.time + ms, pose: o.pose, w: o.weight || 10 });
+    this.performing.push({ source: source, to: to, until: this.el.sceneEl.time + ms, pose: o.pose, w: o.weight || 10, speed: o.speed || 0 });
+  },
+
+  // An impact: the hand holds exactly where it is for `ms` (the enemy
+  // freezes too, through the action clock), then carries on — back to
+  // your real hand at Return speed.
+  freeze: function (ms) {
+    this.frozenUntil = this.el.sceneEl.time + ms;
+    this.frozenAt.copy(this.position);
   },
 
   busy: function () { return this.performing.length > 0; },
@@ -239,12 +250,16 @@ AFRAME.registerComponent('virtual-hand', {
     this.hideInputVisuals();
 
     // Moves borrowing the hand ask every frame until they're done.
+    var snapSpeed = tune.values.snap;
     for (var m = this.performing.length - 1; m >= 0; m--) {
       var perf = this.performing[m];
-      if (time >= perf.until) { this.performing.splice(m, 1); continue; }
+      // Done — but every move gets at least one frame, however slow.
+      if (time >= perf.until && perf.applied) { this.performing.splice(m, 1); continue; }
+      perf.applied = true;
       var at = typeof perf.to === 'function' ? perf.to() : perf.to;
       if (at) this.pull(perf.source, at, perf.w, 'snap');
       if (perf.pose) this.setPose(perf.pose, 5);
+      snapSpeed = Math.max(snapSpeed, perf.speed);
     }
 
     // Requests made since the last tick.
@@ -263,7 +278,10 @@ AFRAME.registerComponent('virtual-hand', {
     var hadRequests = this.pending.length > 0;
     this.pending.length = 0;
 
-    if (!hadRequests && !this.inView()) {
+    if (time < this.frozenUntil) {
+      // Frozen on an impact: exactly where it hit.
+      this.offset = { x: this.frozenAt.x - this.trackedPosition.x, y: this.frozenAt.y - this.trackedPosition.y, z: this.frozenAt.z - this.trackedPosition.z };
+    } else if (!hadRequests && !this.inView()) {
       // Nobody can see it: put it back for free.
       this.offset.x = this.offset.y = this.offset.z = 0;
     } else {
@@ -273,7 +291,7 @@ AFRAME.registerComponent('virtual-hand', {
       if (snap) {
         // A block or counter: there now.
         var before = this.offset;
-        this.offset = moveToward(this.offset, desired, tune.values.snap * dt, tune.values.snapMax);
+        this.offset = moveToward(this.offset, desired, snapSpeed * dt, tune.values.snapMax);
         recordAssist(label, dist3(before, desired), dist3(before, this.offset));
       } else if (growing && this.offsetLength() < budgetSettings().handMax) {
         // A punch drifting onto its target: paid for by real motion.

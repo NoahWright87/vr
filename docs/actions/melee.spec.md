@@ -67,24 +67,60 @@ travel (from where it armed), headTravel, direction (rig-local unit) }`.
    Without a committed strike, contact still counts as a **graze** if
    the hand is moving at least `Graze` speed; a graze is speed-only
    force (Punch Pop's rule).
-4. **Follow-through.** `land` doesn't end the strike: contact still
-   counts for 160 ms afterwards, because full extension (90%) comes
-   before the fist reaches something a little further out. After that
-   it's a **whiff**, logged with the target it was meant for, unless
-   Assist is **Cheat**, which applies the hit anyway.
-5. **Hit.** `applyHit({ zone, point, direction (hand velocity), force,
-   damage: force × Damage, source: 'strike', by })`.
+4. **Follow-through, and the jump.** `land` doesn't end the strike:
+   contact still counts for 160 ms afterwards, because full extension
+   (90%) comes before the fist reaches something a little further out.
+   With Assist **Jump** (the default), a strike that has landed without
+   touching anything, whose target's surface is within `Jump reach`
+   (60 cm) of the virtual fist, **jumps**. The fist snaps there at
+   `Jump speed` (9 m/s), 6 cm through the surface, through
+   `virtual-hand.perform`. The ordinary contact sweep then lands it,
+   with force at least 0.85 ("JUMPED" in the log). Past jump reach it's
+   a **whiff**, logged with the target it was meant for, unless Assist
+   is **Cheat**, which applies the hit with no fist motion at all.
+5. **Slaps.** The strike detector only knows forward and up, so
+   `slapCheck` adds one: a hand out in front (extension forward over
+   0.15, not low) swiping sideways (70% of its horizontal motion across
+   your facing) at `Slap` speed (2 m/s), with a `strike` target whose
+   surface is within jump reach + 10 cm. It becomes a strike with axis
+   `slap` that has already landed, so it jumps to connect. 450 ms per
+   hand between slaps.
+6. **Hit.** The style is named by `common/strike-style.js` (pure,
+   tested), checked in this order:
+   - `butt`: the hand holds a gun;
+   - `uppercut`;
+   - `slap`;
+   - `body`: below the torso zone's centre, or the legs;
+   - `jab`.
+
+   Then `applyHit({ zone, point, direction, force, damage, source:
+   'strike', by, style, jumped })`. **direction** is the way the
+   virtual fist moved this frame, so a jumped fist hits *toward* them.
+   **damage** is force × `Damage` × style: butt 1.3, uppercut 1.2,
+   slap 0.5, others 1.
    - A **blocked** hit (an obstacle zone) gets a `block` haptic.
-   - Anything else gets `hit-heavy` (force > 0.9) or `hit-light`, and
-     **hit-stop on the target only**.
-   - The target owns its sound and wobble.
-   - The log line includes the assist distance.
+   - Anything else gets `hit-crunch` (jumped, force over 0.75,
+     uppercut, butt), `slap`, `hit-heavy` (committed) or `hit-light`.
+   - **The impact freeze:** the fist (`vh.freeze`) and the target
+     (`action-clock.hitStop`) both hold for `Impact freeze` (70 ms,
+     scaled 0.7–1.15× by force, halved for a graze). You never freeze.
+   - The target acts out the style (`brawlers.spec.md`); it owns its
+     sound.
+   - The log line names the style ("R JUMPED jab torso 1.47 (assist
+     28.3cm)").
+7. **Gun butt.** While a hand holding a gun is mid-strike (and 150 ms
+   after a hit), the gun flips butt-first (barrel tipped up 100°) and
+   the glove turns with it. Autofire holds off while it's flipped.
 
 ## Tuning ▸ Melee
 
 | Row | Default | Meaning |
 |---|---|---|
-| `Assist` | Pull | Off / Pull / Cheat |
+| `Assist` | Jump | Off / Pull / Jump / Cheat |
+| `Jump reach` | 60 cm | how far a fist may leap to connect |
+| `Jump speed` | 9 m/s | |
+| `Slap` | 2 m/s | sideways swipe speed for a slap |
+| `Impact freeze` | 70 ms | fist and target hold on a hit |
 | `Lean` | 10 cm | how far a target leans in |
 | `Damage` | | damage scale |
 | `Graze` | 2 m/s | speed for a graze to hit |
