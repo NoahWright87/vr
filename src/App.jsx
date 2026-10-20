@@ -74,6 +74,16 @@ export function App() {
             stationary elevators change the world behind closed doors.
           </Card>
           <Card
+            title="Expanding Rooms"
+            subtitle="Impossible rooms + redirected walking"
+            href="/games/expanding-rooms/"
+            interactive
+            footer={<Text tone="muted">Draw, generate, explore →</Text>}
+          >
+            Draw your boundary, grow rooms in a larger virtual footprint, and
+            tune movement gain and steering from your watch or visor.
+          </Card>
+          <Card
             title="Boundary Lab"
             href="/games/boundaries/"
             interactive

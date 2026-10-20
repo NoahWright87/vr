@@ -4,6 +4,20 @@ Things deliberately deferred, with enough context to pick them up cold.
 Ideas that aren't committed to yet live in DESIGN.md or in conversation;
 this is only for work that has been decided on and postponed.
 
+## Expanding Rooms
+
+- **Follow up with an accelerated 2D walker harness after the first headset trial.**
+  Reuse `games/expanding-rooms/walking.ts`, Original growth, collision and stationary
+  elevator logic. Model physical position separately from virtual position, and
+  gaze separately from travel direction. Door discovery should use an occluded
+  view cone and memory, with scanning, hesitation and backtracking profiles.
+  Sweep boundary shapes (including narrow and concave floors), seeds, world scale,
+  and movement settings. Keep fixed simulated frame intervals when running faster
+  than real time; benchmark throughput before promising 10× overnight runs.
+  Report completion, boundary excursions, wall blocks, stalls and recovery counts,
+  with replayable failures and held-out seeds. Simulation cannot establish comfort
+  or tracking/rendering quality; compare it with real headset feedback.
+
 ## 3D Model Toybox
 
 - **Explore two-hand skeletal posing after the rigid-toy workflow is tested.**
