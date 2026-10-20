@@ -4,6 +4,11 @@ Things deliberately deferred, with enough context to pick them up cold.
 Ideas that aren't committed to yet live in DESIGN.md or in conversation;
 this is only for work that has been decided on and postponed.
 
+Action primitives (autofire, melee, defense, throwing, targeting, the
+comfort budget) have their own plan in `docs/actions/` — one
+`*.todo.md` per system, with `docs/actions/README.md` as the index and
+build order.
+
 ## 3D Model Toybox
 
 - **Explore two-hand skeletal posing after the rigid-toy workflow is tested.**

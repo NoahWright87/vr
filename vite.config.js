@@ -59,6 +59,7 @@ export default defineConfig({
         modelViewer: resolve(root, 'games/model-viewer/index.html'),
         pistolsAtDawn: resolve(root, 'games/pistols-at-dawn/index.html'),
         menuShowcase: resolve(root, 'primitives/menus/index.html'),
+        actionLab: resolve(root, 'primitives/actions/index.html'),
       },
     },
   },
