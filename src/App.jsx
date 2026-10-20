@@ -17,6 +17,27 @@ export function App() {
       <Container padding="lg">
         <CardGrid gap="lg" minCardWidth="340px">
           <Card
+            title="Magic Hands"
+            subtitle="Hand tracking"
+            href="/games/magic-hands/"
+            interactive
+            footer={<Text tone="muted">Cast a spell →</Text>}
+          >
+            Your hands are the magic. Punch with boulder fists, throw fireballs,
+            catch objects with a yank, spread open portals, raise skeleton minions,
+            and cast lightning, farsight, and shields.
+          </Card>
+          <Card
+            title="3D Model Toybox"
+            subtitle="Open the chest. Make a scene."
+            href="/games/model-viewer/"
+            interactive
+            footer={<Text tone="muted">Open toybox →</Text>}
+          >
+            Rummage through 228 Kenney models and a set of originals. Preview
+            toys, take out a handful, then grab, arrange, and toss them in VR.
+          </Card>
+          <Card
             title="Pistols at Dawn"
             subtitle="The flagship"
             href="/games/pistols-at-dawn/"
@@ -44,12 +65,40 @@ export function App() {
             Point, shoot, pop. A quick warm-up for getting used to VR controls.
           </Card>
           <Card
+            title="Impossible Spaces"
+            href="/games/impossible-spaces/"
+            interactive
+            footer={<Text tone="muted">Explore →</Text>}
+          >
+            Walk a maze larger than your real room. Colored spaces overlap, and
+            stationary elevators change the world behind closed doors.
+          </Card>
+          <Card
             title="Boundary Lab"
             href="/games/boundaries/"
             interactive
             footer={<Text tone="muted">Open lab →</Text>}
           >
-            Read the headset boundary, test controller haptics, and grab a cube with tactile reach feedback.
+            Walk or paint a floor boundary, then generate rooms in that same VR session. Also includes controller haptics tests.
+          </Card>
+          <Card
+            title="Impossible Spaces · 2D"
+            subtitle="Phone & laptop playground"
+            href="/games/impossible-spaces/playground/"
+            interactive
+            footer={<Text tone="muted">Draw & generate →</Text>}
+          >
+            Extend a square on a metre grid, generate inside your full boundary,
+            and explore overlapping rooms without a headset.
+          </Card>
+          <Card
+            title="Expansive Spaces"
+            href="/games/expansive-spaces/"
+            interactive
+            footer={<Text tone="muted">Explore →</Text>}
+          >
+            Compare virtual room sizes with your play space and a live boundary map.
+            A lab for making small spaces feel bigger.
           </Card>
         </CardGrid>
       </Container>

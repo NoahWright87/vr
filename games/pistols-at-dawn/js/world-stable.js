@@ -31,6 +31,9 @@
       var STABLE_WOOD_COLOR = '#7a5a3a';
       var STABLE_FLOOR_COLOR = '#8a7355'; // dirt-and-straw patch, distinct from the grass around it
       var STABLE_FLOOR_MARGIN = 2.5;
+      var STABLE_WOOD_TEXTURE = 'assets/textures/western-wood-planks-v1.png';
+      var STABLE_FLOOR_TEXTURE = 'assets/textures/stable-dirt-straw-v1.png';
+      var STABLE_ROOF_TEXTURE = 'assets/textures/weathered-roof-shingles-v1.png';
 
       var STABLE_ROOF_COLOR = '#4a3f38';
       var STABLE_ROOF_PITCH_DEG = 25; // shallower than the barn's — a plain shed roof, not a statement piece
@@ -71,6 +74,7 @@
           floor.setAttribute('height', STABLE_STALL_DEPTH + STABLE_FLOOR_MARGIN * 2);
           floor.setAttribute('position', { x: 0, y: 0.002, z: (STABLE_FRONT_Z + STABLE_BACK_Z) / 2 });
           floor.setAttribute('color', STABLE_FLOOR_COLOR);
+          floor.setAttribute('material', { src: STABLE_FLOOR_TEXTURE, repeat: '7 5', color: '#ffffff', shader: 'flat' });
           this.el.appendChild(floor);
         },
 
@@ -93,6 +97,7 @@
           back.setAttribute('depth', 0.15);
           back.setAttribute('position', { x: 0, y: STABLE_BACK_WALL_HEIGHT / 2, z: -halfDepth });
           back.setAttribute('color', STABLE_WOOD_COLOR);
+          back.setAttribute('material', { src: STABLE_WOOD_TEXTURE, repeat: '5 2', color: '#ffffff', shader: 'flat' });
           building.appendChild(back);
 
           // Dividers: one more than the stall count, since two stalls
@@ -109,6 +114,7 @@
               z: 0,
             });
             divider.setAttribute('color', STABLE_WOOD_COLOR);
+            divider.setAttribute('material', { src: STABLE_WOOD_TEXTURE, repeat: '1 2', color: '#ffffff', shader: 'flat' });
             building.appendChild(divider);
           }
 
@@ -118,6 +124,8 @@
             wallHeight: STABLE_BACK_WALL_HEIGHT,
             pitchDeg: STABLE_ROOF_PITCH_DEG,
             color: STABLE_ROOF_COLOR,
+            texture: STABLE_ROOF_TEXTURE,
+            textureRepeat: '5 2',
             thickness: STABLE_ROOF_THICKNESS,
             overhang: STABLE_ROOF_OVERHANG,
           });

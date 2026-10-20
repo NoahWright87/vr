@@ -348,6 +348,9 @@ if (typeof AFRAME !== 'undefined') {
   AFRAME.registerComponent('crossbar-menu', {
     schema: {
       page: { type: 'string' },
+      // Set before text entities initialize: changing fonts during loading can
+      // race A-Frame's shared glyph texture cache.
+      font: { type: 'string', default: 'roboto' },
       title: { type: 'string', default: '' },
       windowSize: { default: 5 },
       wrap: { default: true },
@@ -430,6 +433,9 @@ if (typeof AFRAME !== 'undefined') {
       // fit across it — which together set its text size.
       sidecarWidth: { default: 0.8 },
       sidecarChars: { default: 26 },
+      // Optional space above the text for a non-interactive model/image.
+      // Applications own the content; the shared renderer owns its layout.
+      sidecarContentHeight: { default: 0 },
       // 'top' hangs it from the title, which suits a panel; 'center' puts
       // its middle level with the selected row, for a menu so tall its
       // title is at the edge of your view.
@@ -636,6 +642,7 @@ if (typeof AFRAME !== 'undefined') {
       }
 
       var title = document.createElement('a-text');
+      title.setAttribute('font', data.font);
       title.setAttribute('value', (this.data.title || this.menu.getTitle() || '').toUpperCase());
       title.setAttribute('color', data.accent);
       // 'wrap-count', not 'wrapCount': a-text maps attributes by their
@@ -658,6 +665,7 @@ if (typeof AFRAME !== 'undefined') {
         close.classList.add('menu-target');
         close.setAttribute('material', 'color: ' + data.accent + '; shader: flat; opacity: 0; transparent: true; depthWrite: false');
         var closeGlyph = document.createElement('a-text');
+        closeGlyph.setAttribute('font', data.font);
         closeGlyph.setAttribute('value', 'X');
         closeGlyph.setAttribute('align', 'center');
         closeGlyph.setAttribute('color', data.accent);
@@ -691,6 +699,7 @@ if (typeof AFRAME !== 'undefined') {
         row.addEventListener('click', this.onRowClick);
 
         var text = document.createElement('a-text');
+        text.setAttribute('font', data.font);
         text.setAttribute('color', data.color);
         row.appendChild(text);
 
@@ -699,6 +708,7 @@ if (typeof AFRAME !== 'undefined') {
         // width and wrap as a row label, so it is the size of one
         // character of body text rather than its own arbitrary scale.
         var chevron = document.createElement('a-text');
+        chevron.setAttribute('font', data.font);
         chevron.setAttribute('color', data.accent);
         chevron.setAttribute('align', 'center');
         chevron.setAttribute('wrap-count', data.maxChars);
@@ -730,6 +740,7 @@ if (typeof AFRAME !== 'undefined') {
         var chars = [];
         for (var ci = 0; ci < CRUMB_MAX_CHARS; ci++) {
           var charEl = document.createElement('a-text');
+          charEl.setAttribute('font', data.font);
           charEl.setAttribute('value', '');
           charEl.setAttribute('align', 'center');
           charEl.setAttribute('color', data.accent);
@@ -777,6 +788,7 @@ if (typeof AFRAME !== 'undefined') {
       // them. "No sense of I'm using this right now" was the whole
       // complaint; a border alone did not carry it.
       var footer = document.createElement('a-text');
+      footer.setAttribute('font', data.font);
       footer.setAttribute('value', '');
       footer.setAttribute('color', data.accent);
       footer.setAttribute('wrap-count', 46);
@@ -927,6 +939,7 @@ if (typeof AFRAME !== 'undefined') {
       edge.setAttribute('material', 'color: ' + data.accent + '; shader: flat; transparent: true; opacity: 0.6; depthWrite: false');
       card.appendChild(edge);
       var text = document.createElement('a-text');
+      text.setAttribute('font', data.font);
       text.setAttribute('color', data.color);
       text.setAttribute('align', 'left');
       text.setAttribute('anchor', 'left');
@@ -938,6 +951,10 @@ if (typeof AFRAME !== 'undefined') {
       this.sidecarPlateEl = plate;
       this.sidecarEdgeEl = edge;
       this.sidecarTextEl = text;
+      var content = document.createElement('a-entity');
+      content.classList.add('crossbar-sidecar-content');
+      card.appendChild(content);
+      this.sidecarContentEl = content;
       this.sidecarText = null;
       // The text's mesh is rebuilt asynchronously the first time (the
       // font loads after build), and its size is what the plate is fitted
@@ -982,7 +999,9 @@ if (typeof AFRAME !== 'undefined') {
         width: sw - 2 * pad,
         wrapCount: data.sidecarChars,
       });
-      this.sidecarTextEl.object3D.position.set(-sw / 2 + pad, -pad, 0.003);
+      var contentHeight = Math.max(0, data.sidecarContentHeight);
+      this.sidecarContentEl.object3D.position.set(0, -pad - contentHeight / 2, 0.12);
+      this.sidecarTextEl.object3D.position.set(-sw / 2 + pad, -pad - contentHeight, 0.003);
       this.fitSidecar();
     },
 
@@ -1000,7 +1019,7 @@ if (typeof AFRAME !== 'undefined') {
         var box = mesh.geometry.boundingBox;
         if (box && isFinite(box.max.y - box.min.y)) height = (box.max.y - box.min.y) * Math.abs(mesh.scale.y);
       }
-      var total = height + 2 * m.pad;
+      var total = height + 2 * m.pad + Math.max(0, this.data.sidecarContentHeight);
       if (this.data.sidecarAlign === 'center') this.sidecarEl.object3D.position.y = total / 2;
       this.sidecarPlateEl.setAttribute('width', m.width);
       this.sidecarPlateEl.setAttribute('height', total);

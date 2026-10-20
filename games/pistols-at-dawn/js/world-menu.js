@@ -59,15 +59,18 @@
       this.galleryHost = null;
       this.activeGalleryEl = null;
       this.onCommit = this.onCommit.bind(this);
+      this.onAction = this.onAction.bind(this);
       this.onAreaLoaded = this.onAreaLoaded.bind(this);
       this.onAreaUnloading = this.onAreaUnloading.bind(this);
       this.el.addEventListener('menu-commit', this.onCommit);
+      this.el.addEventListener('menu-action', this.onAction);
       this.el.addEventListener('area-loaded', this.onAreaLoaded);
       this.el.addEventListener('area-unloading', this.onAreaUnloading);
     },
 
     remove: function () {
       this.el.removeEventListener('menu-commit', this.onCommit);
+      this.el.removeEventListener('menu-action', this.onAction);
       this.el.removeEventListener('area-loaded', this.onAreaLoaded);
       this.el.removeEventListener('area-unloading', this.onAreaUnloading);
     },
@@ -102,11 +105,22 @@
       if (performanceEl) performanceEl.setAttribute('performance-monitor', 'enabled', this.performanceVisible);
     },
 
+    onAction: function (evt) {
+      var cycle = this.el.components['day-night-cycle'];
+      if (evt.detail.id === 'pistols-wait-hour' && cycle) cycle.waitOneHour();
+    },
+
     // The watch's rows (js/menu-pages.js), by id. A toggle commits the
     // state it now shows, so these set rather than flip.
     onCommit: function (evt) {
       var id = evt.detail.id;
       var value = evt.detail.value;
+      var cycle = this.el.components['day-night-cycle'];
+      var weather = this.el.components['weather-clouds'];
+      if (id === 'pistols-shadow-mode') { if (cycle) cycle.setShadowMode(value); return; }
+      if (id === 'pistols-sun-shadows') { if (cycle) cycle.setShadow('sun', Boolean(value)); return; }
+      if (id === 'pistols-moon-shadows') { if (cycle) cycle.setShadow('moon', Boolean(value)); return; }
+      if (id === 'pistols-cloud-quality') { if (weather) weather.setQuality(value); return; }
       if (id === 'pistols-hud') { this.setHudVisible(value); return; }
       if (id === 'pistols-performance') { this.setPerformanceVisible(value); return; }
       if (id === 'pistols-targets-paused') {

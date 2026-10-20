@@ -9,6 +9,17 @@ comfort budget) have their own plan in `docs/actions/` — one
 `*.todo.md` per system, with `docs/actions/README.md` as the index and
 build order.
 
+## 3D Model Toybox
+
+- **Explore two-hand skeletal posing after the rigid-toy workflow is tested.**
+  The first hand should hold the complete toy; a second hand could manipulate
+  an individual limb/bone. The Toybox currently loads complete GLBs (preserving
+  any rigs) and uses shared simple-grabbable for one rigid object per hand.
+  Imported rigs are not necessarily IK rigs or even consistently named. A later
+  pass needs bone picking, per-rig joint limits and a clean handoff between
+  whole-object and bone grabs, without assuming every character has a skeleton.
+  The current static original person/skeleton cannot support this without a rig.
+
 ## Desktop semantic hands
 
 - **Carry the shared hand-intent path through every practical VR mechanic.**
@@ -266,6 +277,15 @@ the split should be shaped once more code moves into a shared library):
   in `dist` (its current exports point at uncommitted `dist` files), while a
   local workspace/link would need the design build running as the two
   repositories are developed together.
+
+## Rendering quality tiers
+
+- **Add a high-graphics weather-shadow option.** The Quest-friendly default
+  renders one soft ground decal for only the six largest active cloud groups.
+  A future high tier can raise that cap or use per-cloud alpha-tested shadow
+  casters so roofs and walls receive more detailed moving shadows. Keep the
+  current batched path as the low/default tier: it is deliberately one draw
+  call and avoids multiplying the real-time shadow-map workload.
 
 ## Weapons not built yet
 
