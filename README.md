@@ -58,6 +58,13 @@ See **[DESIGN.md](DESIGN.md)** for the design philosophy these prototypes are bu
 
 ## Prototypes
 
+The home page's **Dev Tools** section groups the existing
+[2D playground](games/impossible-spaces/playground/) with the new
+[Walking Simulator](games/expanding-rooms/simulator/). The simulator runs
+seeded walkers through Original growth layouts using the VR movement code,
+with accelerated sweeps, outcome summaries and replay. See its
+[overnight runner instructions](games/expanding-rooms/simulator/README.md).
+
 - **[Expanding Rooms](games/expanding-rooms/index.html)** — draw a physical
   boundary, grow rooms in an enlarged virtual footprint, and adjust gain,
   steering, recovery and debug options through both watch and visor.

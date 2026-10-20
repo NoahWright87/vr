@@ -92,16 +92,6 @@ export function App() {
             Walk or paint a floor boundary, then generate rooms in that same VR session. Also includes controller haptics tests.
           </Card>
           <Card
-            title="Impossible Spaces · 2D"
-            subtitle="Phone & laptop playground"
-            href="/games/impossible-spaces/playground/"
-            interactive
-            footer={<Text tone="muted">Draw & generate →</Text>}
-          >
-            Extend a square on a metre grid, generate inside your full boundary,
-            and explore overlapping rooms without a headset.
-          </Card>
-          <Card
             title="Expansive Spaces"
             href="/games/expansive-spaces/"
             interactive
@@ -113,7 +103,31 @@ export function App() {
         </CardGrid>
       </Container>
 
-      <Container padding="lg" alignItems="center">
+      <Container padding="lg" id="dev-tools">
+        <Heading level={2}>Dev Tools</Heading>
+        <Text tone="muted">Inspect layouts and test walking behavior without a headset.</Text>
+        <CardGrid gap="lg" minCardWidth="340px">
+          <Card
+            title="Walking Simulator"
+            subtitle="Seeded walkers · accelerated batches"
+            href="/games/expanding-rooms/simulator/"
+            interactive
+            footer={<Text tone="muted">Run an experiment →</Text>}
+          >
+            Watch simulated players look for doors, compare guidance settings
+            across physical boundaries, and replay the runs that get stuck.
+          </Card>
+          <Card
+            title="Impossible Spaces · 2D"
+            subtitle="Phone & laptop playground"
+            href="/games/impossible-spaces/playground/"
+            interactive
+            footer={<Text tone="muted">Draw & generate →</Text>}
+          >
+            Paint a floor boundary, generate rooms, and inspect overlapping
+            layouts by hand.
+          </Card>
+        </CardGrid>
         <Text align="center" tone="muted">
           Also here: a{' '}
           <Link href="/primitives/menus/">showcase of the interaction building blocks</Link>{' '}

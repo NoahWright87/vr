@@ -44,8 +44,9 @@ only the virtual world receives the inverse locomotion transform.
 
 Desktop WASD is a **geometry preview**, not a fake headset locomotion test. Tab
 opens the watch; backtick opens the visor. The original 2D playground remains
-available separately. An accelerated agent-based simulator is follow-up work;
-`walking.ts` is renderer-independent so it can share the VR movement path.
+available separately. The [Walking Simulator](simulator/) uses `walking.ts`
+for accelerated seeded batches, independent gaze/travel, reports and replay.
+Both 2D tools are in the home page's **Dev Tools** section.
 
 This prototype does not guarantee that steering can make every generated route
 fit every physical boundary. Room-floor overlap is a heuristic, not a route

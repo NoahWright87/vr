@@ -54,6 +54,7 @@ export default defineConfig({
         boundaries: resolve(root, 'games/boundaries/index.html'),
         expansiveSpaces: resolve(root, 'games/expansive-spaces/index.html'),
         expandingRooms: resolve(root, 'games/expanding-rooms/index.html'),
+        walkingSimulator: resolve(root, 'games/expanding-rooms/simulator/index.html'),
         impossibleSpaces: resolve(root, 'games/impossible-spaces/index.html'),
         impossiblePlayground: resolve(root, 'games/impossible-spaces/playground/index.html'),
         magicHands: resolve(root, 'games/magic-hands/index.html'),
