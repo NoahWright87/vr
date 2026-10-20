@@ -91,6 +91,15 @@ export function App() {
             Extend a square on a metre grid, generate inside your full boundary,
             and explore overlapping rooms without a headset.
           </Card>
+          <Card
+            title="Expansive Spaces"
+            href="/games/expansive-spaces/"
+            interactive
+            footer={<Text tone="muted">Explore →</Text>}
+          >
+            Compare virtual room sizes with your play space and a live boundary map.
+            A lab for making small spaces feel bigger.
+          </Card>
         </CardGrid>
       </Container>
 

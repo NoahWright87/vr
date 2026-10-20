@@ -346,6 +346,9 @@ if (typeof AFRAME !== 'undefined') {
   AFRAME.registerComponent('crossbar-menu', {
     schema: {
       page: { type: 'string' },
+      // Set before text entities initialize: changing fonts during loading can
+      // race A-Frame's shared glyph texture cache.
+      font: { type: 'string', default: 'roboto' },
       title: { type: 'string', default: '' },
       windowSize: { default: 5 },
       wrap: { default: true },
@@ -637,6 +640,7 @@ if (typeof AFRAME !== 'undefined') {
       }
 
       var title = document.createElement('a-text');
+      title.setAttribute('font', data.font);
       title.setAttribute('value', (this.data.title || this.menu.getTitle() || '').toUpperCase());
       title.setAttribute('color', data.accent);
       // 'wrap-count', not 'wrapCount': a-text maps attributes by their
@@ -659,6 +663,7 @@ if (typeof AFRAME !== 'undefined') {
         close.classList.add('menu-target');
         close.setAttribute('material', 'color: ' + data.accent + '; shader: flat; opacity: 0; transparent: true; depthWrite: false');
         var closeGlyph = document.createElement('a-text');
+        closeGlyph.setAttribute('font', data.font);
         closeGlyph.setAttribute('value', 'X');
         closeGlyph.setAttribute('align', 'center');
         closeGlyph.setAttribute('color', data.accent);
@@ -692,6 +697,7 @@ if (typeof AFRAME !== 'undefined') {
         row.addEventListener('click', this.onRowClick);
 
         var text = document.createElement('a-text');
+        text.setAttribute('font', data.font);
         text.setAttribute('color', data.color);
         row.appendChild(text);
 
@@ -700,6 +706,7 @@ if (typeof AFRAME !== 'undefined') {
         // width and wrap as a row label, so it is the size of one
         // character of body text rather than its own arbitrary scale.
         var chevron = document.createElement('a-text');
+        chevron.setAttribute('font', data.font);
         chevron.setAttribute('color', data.accent);
         chevron.setAttribute('align', 'center');
         chevron.setAttribute('wrap-count', data.maxChars);
@@ -731,6 +738,7 @@ if (typeof AFRAME !== 'undefined') {
         var chars = [];
         for (var ci = 0; ci < CRUMB_MAX_CHARS; ci++) {
           var charEl = document.createElement('a-text');
+          charEl.setAttribute('font', data.font);
           charEl.setAttribute('value', '');
           charEl.setAttribute('align', 'center');
           charEl.setAttribute('color', data.accent);
@@ -778,6 +786,7 @@ if (typeof AFRAME !== 'undefined') {
       // them. "No sense of I'm using this right now" was the whole
       // complaint; a border alone did not carry it.
       var footer = document.createElement('a-text');
+      footer.setAttribute('font', data.font);
       footer.setAttribute('value', '');
       footer.setAttribute('color', data.accent);
       footer.setAttribute('wrap-count', 46);
@@ -928,6 +937,7 @@ if (typeof AFRAME !== 'undefined') {
       edge.setAttribute('material', 'color: ' + data.accent + '; shader: flat; transparent: true; opacity: 0.6; depthWrite: false');
       card.appendChild(edge);
       var text = document.createElement('a-text');
+      text.setAttribute('font', data.font);
       text.setAttribute('color', data.color);
       text.setAttribute('align', 'left');
       text.setAttribute('anchor', 'left');
