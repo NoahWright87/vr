@@ -19,8 +19,9 @@ An attacker registers an attack and moves it each frame:
 var attack = sceneEl.systems['combat-attacks'].begin({
   el, kind: 'thrust', phase: 'telegraph', base, tip, radius: 0.05, damage: 1,
 });
-attack.aim = point;        // where it's going (for the magnetic guard)
-attack.late = true;        // late in the telegraph: the guard may start pulling
+attack.aim = point;        // where it's going (for the guard and counters)
+attack.late = true;        // late in the telegraph (informational)
+attack.soon = true;        // its last moments: counters and the guard start
 attack.phase = 'active';   // only active attacks resolve
 attack.progress = 0..1;    // through the active window (parries need it early)
 attack.onResolve = function (outcome, detail) { ... };
@@ -40,6 +41,8 @@ updates in place. The strike volume is the capsule base→tip.
 2. **parry**: that hand is also moving at least `parrySpeed`
    (1.6 m/s), **back along the attack toward the attacker** (cosine
    over 0.3), in the first `parryWindow` (60%) of the active window.
+   For punches this is now mostly a fallback. Counters (below) decide
+   first, before contact.
 3. **hit**: the tip within the player's head sphere (camera, 13 cm) or
    torso capsule (the motion-sense torso point down 45 cm, 17 cm
    radius).
@@ -56,14 +59,31 @@ updates in place. The strike volume is the capsule base→tip.
 
 Every outcome goes to the `defense` readout.
 
-## The magnetic guard
+## Counters, then the guard
 
-While an attack is late in its telegraph or active, any virtual hand
-within `guardReach` (35 cm) of its line (`guardBase || base` → `aim`)
-is pulled onto the nearest point of it, with weight 4 so it beats
-melee's pull (1). The pull is granted by the comfort budget, so **a
-still hand isn't pulled**: you have to move toward the attack. The hand
-also shows an open palm (pose priority 3).
+From when the attacker sets `soon` (brawlers: 65% through the
+wind-up; the sparring dummy: 80%) and through the first
+`parryWindow` of the drive, every frame, for each punch (not
+bullets):
+
+1. **Counters** (`common/counters.js`, `counters.spec.md`): each hand
+   not already busy with a move, whose **real** position is within
+   Counter ▸ Reach (50 cm) of the punch's line, is offered to every
+   registered counter. The best score plays: it borrows the hand and
+   the attack resolves as `parry` with `r.move` and `r.reaction`. The
+   log says `COUNTER SWAT …`.
+2. **The guard**, if no counter played: one hand (the nearest whose
+   real position qualifies) snaps onto the punch's line, stopping
+   25 cm short of its aim so the block meets it in front of your face.
+   A hand **held up in front of you** (motion-sense extension: up over
+   −0.05, forward over 0.1, so about chest height or above) qualifies
+   from `guardUp` (70 cm). Any other hand qualifies from `guardReach`
+   (35 cm). It's a **snap** pull (weight 4, open palm): it goes fast
+   whether you're moving or not, and comes straight back once the
+   punch is resolved. If you're nearly there it barely moves; if
+   you're way off it slides over.
+
+Slow bullets get the guard but not the counters.
 
 ## Slow bullets
 
@@ -121,7 +141,8 @@ leave it alone.
 
 Tuning ▸ Sparring (lab): `Attacks` (on/off), `Every`, `Warning`,
 `Strike`, `Reach`, `Aims at`. Tuning ▸ Defense: `Block`, `Parry`,
-`Parry win`, `Guard`, `Bullets`.
+`Parry win`, `Guard`, `Guard up`, `Bullets`. Tuning ▸ Counters has
+the counters' own settings.
 
 ## Shooters
 
@@ -140,4 +161,4 @@ chest toward your head (±5 cm), with a `shot` sound. Tuning ▸ Range ▸
 
 ## Also attacking
 
-The brawler robots (`brawlers.spec.md`) throw their punches through the same `combat-attacks` contract, so block, parry, the magnetic guard and dodging all work on them. A parried robot is also shoved back, into the robot queued behind it.
+The brawler robots (`brawlers.spec.md`) throw their punches through the same `combat-attacks` contract, so the guard, counters and dodging all work on them. A countered robot acts out the counter's reaction, bent into the robot queued behind it when one is roughly that way.

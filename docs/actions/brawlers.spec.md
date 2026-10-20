@@ -25,10 +25,15 @@ line of robots at the dummies station.
     may stretch up to 30% to reach. Step out of the line to dodge.
   - *recovery*: 450 ms, then back to guard. Hitting it during the windup
     interrupts the punch.
+  - `attack.soon` turns on 65% through the wind-up: from then on your
+    hands may counter it or guard against it (`counters.spec.md`,
+    `defense.spec.md`).
   - Outcomes: **hit** hurts you (`player-hurt`). **Block** shoves it back
-    0.9 m/s. **Parry** shoves it back hard (`parryShove`), hit-stops it
-    100 ms, and opens it for 1.5 s (blue body, priority 1, so the next
-    punch picks it).
+    0.9 m/s. A **counter** (or a contact parry) acts out the counter's
+    reaction: shoved along `push` (or straight back) at its `speed`
+    (`parryShove` for a plain parry), staggered, hit-stopped 100 ms, and
+    opened for `openMs` (blue body, priority 1, so the next punch picks
+    it and hits 1.5× harder).
 - **Being hit.** The body flashes white and is knocked back along the
   hit (`force × 1.3 × knock`, divided by the kind's weight). It rocks on
   a spring about its feet. At zero health it falls over backwards (the
@@ -72,7 +77,7 @@ At the scene root. It spawns `count` robots (`mix`: `mixed` or one kind)
   another faster than 1.2 m/s, 70% of its momentum passes on, and both
   take `impact × impactDamage` (source `impact`). That's enough to knock
   a quick one down.
-- **Parry aim.** A parry's shove bends onto a standing robot within
+- **Parry aim.** A counter's (or parry's) shove bends onto a standing robot within
   `shoveCone` (60°) of straight back and within 2.4 m, and it's hard
   enough to reach. The robot behind is usually the queued one. This is
   a world-side cheat, so the pile-up you meant actually happens.

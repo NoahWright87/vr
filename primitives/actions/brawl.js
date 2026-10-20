@@ -4,14 +4,22 @@
 // Off by default. Turn it on (B on desktop, or the visor's Brawl row)
 // and a ring of Rock 'Em Sock 'Em robots walks in from all sides and
 // surrounds you wherever you stand: a couple at a time step in to
-// punch while the rest circle. Punch them, block, parry one (it's
-// shoved back hard — into whoever's behind it, and both get hurt).
+// punch while the rest circle. Punch them; hold a hand up and it snaps
+// onto their punch to block; swat a punch sideways or drive into it to
+// counter (common/counters.js) — they're shoved, often into whoever's
+// behind them, and both get hurt.
 // Knocked down, they pop back up a few seconds later.
 //
 // The kinds: red boxers, yellow quick jabbers, purple brutes (slow, hit
 // hard, take a lot), blue blockers (never swing — moving punching
 // bags). Tuning > Brawl sets how many, which, and how hard they press.
 // The dummies station also has a line of them on their own, on rails.
+//
+// Off a headset: B starts the brawl. Z / X swat an incoming punch to
+// your left / right (the right / left hand sweeps across your face — a
+// real hand motion, so the counter code reads it like a headset's);
+// a click jab into a punch meets it head-on. Hands at rest are up in a
+// guard, so they block on their own.
 // ============================================================
 
 import '../../common/brawlers.js';
@@ -60,10 +68,39 @@ if (scene.hasLoaded) apply(tune.values); else scene.addEventListener('loaded', f
 function setOn(on) { tune.set('on', Boolean(on)); }
 
 document.addEventListener('keydown', function (evt) {
-  if (evt.code !== 'KeyB' || evt.repeat) return;
-  if (scene.is('vr-mode')) return;
-  setOn(!tune.values.on);
+  if (evt.repeat || scene.is('vr-mode')) return;
+  if (evt.code === 'KeyB') setOn(!tune.values.on);
+  if (evt.code === 'KeyZ') swat('left');
+  if (evt.code === 'KeyX') swat('right');
 });
+
+// A point in front of the camera (yaw only), as the throw input does.
+function frame(offset) {
+  var THREE = AFRAME.THREE;
+  var cam = document.querySelector('#lab-camera').object3D;
+  var pos = cam.getWorldPosition(new THREE.Vector3());
+  var e = new THREE.Euler().setFromQuaternion(cam.getWorldQuaternion(new THREE.Quaternion()), 'YXZ');
+  var yaw = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), e.y);
+  return { position: offset.clone().applyQuaternion(yaw).add(pos), quaternion: yaw };
+}
+
+// Sweep a hand across your face: to your left with the right hand, to
+// your right with the left.
+function swat(toward) {
+  var handEl = document.querySelector(toward === 'left' ? '#right-hand' : '#left-hand');
+  var hand = handEl && handEl.components['semantic-hand'];
+  if (!hand) return;
+  var THREE = AFRAME.THREE;
+  var s = toward === 'left' ? 1 : -1;
+  var from = frame(new THREE.Vector3(s * 0.28, -0.12, -0.32));
+  var to = frame(new THREE.Vector3(-s * 0.18, -0.1, -0.36));
+  hand.cancelMotion();
+  hand.runWorldMotion([
+    { position: from.position, quaternion: from.quaternion, pose: 'Open', duration: 90 },
+    { position: to.position, quaternion: to.quaternion, pose: 'Open', duration: 130 },
+    { position: to.position, quaternion: to.quaternion, pose: 'Open', duration: 120 },
+  ], { action: 'swat', source: 'desktop' });
+}
 
 addLabRows(function () {
   return [{ kind: 'toggle', id: 'brawl-on', label: scene.is('vr-mode') ? 'Brawl' : 'Brawl (B)', value: tune.values.on }];
@@ -73,4 +110,4 @@ document.addEventListener('menu-commit', function (evt) {
   if (evt.detail.id === 'brawl-on') setOn(evt.detail.value);
 });
 
-export { setOn };
+export { setOn, swat };

@@ -3,13 +3,14 @@
 //
 // An attacker dummy that thrusts at your head or body on a schedule.
 // Its arm draws back and flashes red, a faint line shows where it's
-// going, then it drives. Put a hand roughly in the way to block (the
-// magnetic guard pulls a moving hand onto the line); move a hand fast
-// *into* it early to parry, which staggers it and opens it — the arm
-// glows blue — for a harder counter-punch. Or step out of the line.
+// going, then it drives. Hold a hand up near it and the hand snaps onto
+// the line to block; swat it sideways or drive a hand into it to
+// counter (common/counters.js), which staggers it and opens it — the
+// arm glows blue — for a harder counter-punch. Or step out of the line.
 //
-// Tuning > Sparring sets its rhythm; Tuning > Defense the block, parry
-// and guard rules; Debug > HUD > Defense and Player keep score.
+// Tuning > Sparring sets its rhythm; Tuning > Defense the block and
+// guard rules; Tuning > Counters the moves; Debug > HUD > Defense and
+// Player keep score.
 // ============================================================
 
 import '../../common/dummies.js';

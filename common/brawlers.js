@@ -275,7 +275,7 @@ AFRAME.registerComponent('brawler', {
       radius: 0.075 * this.kind.size, damage: this.kind.damage,
     });
     var self = this;
-    this.attack.onResolve = function (outcome) { self.onResolve(outcome); };
+    this.attack.onResolve = function (outcome, r) { self.onResolve(outcome, r); };
     this.attack.aim = this.aim;
     return arm;
   },
@@ -294,17 +294,23 @@ AFRAME.registerComponent('brawler', {
     this.attacksDone++;
   },
 
-  onResolve: function (outcome) {
+  // r.reaction (from a counter, common/counters.js) says how to react:
+  // { label, push (world x/z, or null for away from you), speed, openMs,
+  //   intoFriend, stagger }. A plain parry is knocked back the same way.
+  onResolve: function (outcome, r) {
     var o = this.el.object3D.getWorldPosition(this.tmp);
     this.el.sceneEl.camera.getWorldPosition(this.camPos);
     var ax = o.x - this.camPos.x, az = o.z - this.camPos.z; // away from you
     var ring = this.ring();
     var shove = ring ? ring.data.parryShove : 3.2;
     if (outcome === 'parry') {
-      // Shoved back hard and opened for a counter. If a friend is
-      // roughly behind it, the shove bends to send it into them — cheat
-      // on the world side, so the pile-up you meant happens.
-      var into = ring && ring.aimShove(this, ax, az);
+      var re = (r && r.reaction) || {};
+      if (re.push) { ax = re.push.x; az = re.push.z; }
+      if (re.speed !== undefined) shove = re.speed;
+      // Shoved hard and opened for a counter. If a friend is roughly
+      // that way, the shove bends to send it into them — cheat on the
+      // world side, so the pile-up you meant happens.
+      var into = re.intoFriend !== false && ring && ring.aimShove(this, ax, az);
       if (into) {
         ax = into.x; az = into.z;
         // Hard enough to get there (the knock wears off at 3.5/s) and
@@ -312,11 +318,11 @@ AFRAME.registerComponent('brawler', {
         shove = Math.max(shove, (into.gap * 3.5 + 1.8) * this.kind.weight);
       }
       this.shove(ax, az, shove);
-      this.tiltVel -= 3;
-      this.target.openUntil = this.el.sceneEl.time + 1500;
+      this.tiltVel -= re.stagger || 3;
+      this.target.openUntil = this.el.sceneEl.time + (re.openMs === undefined ? 1500 : re.openMs);
       var clock = this.el.sceneEl.systems['action-clock'];
       if (clock) clock.hitStop(this.el, 100);
-      logAction('parried ' + (this.el.id || 'brawler') + ' — shoved ' + (into ? 'into ' + into.bot.el.id : 'back'));
+      logAction((this.el.id || 'brawler') + ' ' + (re.label || 'parried') + (into ? ' into ' + into.bot.el.id : ''));
     } else if (outcome === 'block') {
       this.shove(ax, az, 0.9);
     }
@@ -436,6 +442,7 @@ AFRAME.registerComponent('brawler', {
       var t = Math.min(1, this.phaseMs / k.windupMs);
       this.aimPoint(this.aim);
       this.attack.late = t > 0.5;
+      this.attack.soon = t > 0.65; // its last moments: counters and the guard
       if (Math.floor(this.phaseMs / 90) % 2) this.setFists(GLOW); else this.fistMat.color.copy(this.fistBase);
       if (t >= 1) {
         this.phase = 'active';

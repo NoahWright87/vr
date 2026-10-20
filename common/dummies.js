@@ -834,6 +834,7 @@ AFRAME.registerComponent('attacker-dummy', {
       this.target.threat = 0.7;
       this.attack.aim = this.aim;
       this.attack.late = k > 0.5;
+      this.attack.soon = k > 0.8; // its last moments: counters and the guard
       if (k >= 1) {
         this.phase = 'active';
         this.phaseMs = 0;

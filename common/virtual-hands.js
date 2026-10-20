@@ -4,25 +4,32 @@
 //
 // The tracked hand (controller, hand tracking, or desktop's simulated
 // hand) is the input and the truth. The virtual hand is drawn and
-// collides; usually it sits exactly on the tracked one, but assists may
-// pull it away — toward the target a punch was meant for, or the attack
-// a guard was meant for — by however much the comfort budget grants
-// (common/comfort-budget.js). A translucent ghost of the tracked hand
-// shows while the two differ, so you always know where your real hand
-// is.
+// collides. It *is* your hand — where the controller is, turned the way
+// the controller is turned — except for a moment while it's helping you
+// do something good, and then it comes straight back. A translucent
+// ghost of the tracked hand shows while the two differ.
+//
+// Two kinds of help:
+//   budget  a punch's fist drifting onto its target: paid for by real
+//           hand motion (common/comfort-budget.js), at most handMax.
+//   snap    a block or a counter: the hand goes there fast whether you're
+//           moving or not — your character's reflexes, not yours.
+// Either way, when nothing is asking any more it returns at Return
+// speed, moving or not.
 //
 //   <a-entity virtual-hand="side: right; rig: #rig; tracked: #right-hand"></a-entity>
 //   var vh = el.components['virtual-hand'];
-//   vh.pull('melee', worldPoint, 1);   // this frame: I'd like the hand there
-//   vh.setPose('fist', 2);             // this frame: show a fist
-//   vh.position / vh.previous          // THREE.Vector3s, for swept hits
+//   vh.pull('melee', worldPoint, 1);          // this frame: drift there (budget)
+//   vh.pull('guard', worldPoint, 4, 'snap');  // this frame: get there now
+//   vh.perform('counter', pointOrFn, 220, { pose: 'fist' }); // snap for a while
+//   vh.setPose('fist', 2);                    // this frame: show a fist
+//   vh.orient(quaternion, 1);                 // this frame: turn the glove (a held gun)
+//   vh.position / vh.previous                 // THREE.Vector3s, for swept hits
 //
 // Pose is output, not input: nothing reads hand poses, so the game is
 // free to show a fist while a punch extends, an open palm while
-// guarding, a grip around a gun.
-//
-// The glove points along the shoulder→hand line (like the guns), so it
-// never depends on wrist rotation either.
+// guarding, a grip around a gun. Rotation is shown, never read: what
+// you do is still decided by where your hands go.
 // ============================================================
 
 import './motion-sense.js';
@@ -36,7 +43,36 @@ var tune = defineTunables('hands', 'Hands', [
     { value: 'offset', label: 'When apart' }, { value: 'always', label: 'Always' }, { value: 'never', label: 'Never' },
   ], info: 'A see-through copy of your real hand, so you can see how far an assist has moved the one you hit with.' },
   { key: 'glove', label: 'Glove', kind: 'toggle', value: true, info: 'Off shows the raw input hands instead of the virtual ones.' },
+  { key: 'wrist', label: 'Turn with', kind: 'select', value: 'controller', options: [
+    { value: 'controller', label: 'Controller' }, { value: 'arm', label: 'Arm' },
+  ], info: 'Controller: the glove turns the way your controller does. Arm: it points along shoulder to hand (for hand tracking, if the wrist is jittery).' },
+  { key: 'tilt', label: 'Wrist tilt', value: 38, min: -20, max: 70, step: 2, unit: '°',
+    info: 'How far below the controller\'s length your knuckles point. Headset controllers only.' },
+  { key: 'roll', label: 'Wrist roll', value: 90, min: -90, max: 180, step: 15, unit: '°',
+    info: 'Turns the glove about its length so it sits the way you hold a controller: 90° is a vertical fist, thumb up. Headset controllers only.' },
+  { key: 'snap', label: 'Snap speed', value: 6, min: 1, max: 15, step: 0.5, unit: 'm/s',
+    info: 'How fast a block or counter takes your hand to the punch.' },
+  { key: 'snapMax', label: 'Snap reach', value: 0.8, min: 0.1, max: 1.5, step: 0.05, unit: 'm',
+    info: 'The furthest a block or counter may take your hand from the real one.' },
+  { key: 'back', label: 'Return', value: 3, min: 0.5, max: 10, step: 0.5, unit: 'm/s',
+    info: 'How fast a hand comes back to your real hand once nothing needs it — moving or not.' },
 ]);
+
+var DEG = Math.PI / 180;
+var Z_AXIS = new THREE.Vector3(0, 0, 1);
+var X_AXIS = new THREE.Vector3(1, 0, 0);
+var FORWARD = new THREE.Vector3(0, 0, -1);
+
+// Move `from` toward `to` by at most `step`, capped at `max` long.
+function moveToward(from, to, step, max) {
+  var dx = to.x - from.x, dy = to.y - from.y, dz = to.z - from.z;
+  var d = Math.sqrt(dx * dx + dy * dy + dz * dz);
+  var k = d > step ? step / d : 1;
+  var out = { x: from.x + dx * k, y: from.y + dy * k, z: from.z + dz * k };
+  var l = Math.sqrt(out.x * out.x + out.y * out.y + out.z * out.z);
+  if (max !== undefined && l > max) { out.x *= max / l; out.y *= max / l; out.z *= max / l; }
+  return out;
+}
 
 var GLOVE = '#d8c3a5';
 var GHOST = '#9fd3ff';
@@ -69,6 +105,9 @@ function buildGlove(parent, color, side, ghost) {
   return parts;
 }
 
+function len3(v) { return Math.sqrt(v.x * v.x + v.y * v.y + v.z * v.z); }
+function dist3(a, b) { return Math.sqrt((a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y) + (a.z - b.z) * (a.z - b.z)); }
+
 function applyPose(parts, name) {
   var f = (POSES[name] || POSES.open).fingers;
   parts.fingers.setAttribute('geometry', { width: f.w, height: f.h, depth: f.d });
@@ -94,7 +133,11 @@ AFRAME.registerComponent('virtual-hand', {
     this.camDir = new THREE.Vector3();
     this.camQuat = new THREE.Quaternion();
     this.pending = [];
+    this.performing = [];
     this.poseRequest = null;
+    this.orientRequest = null;
+    this.handQuat = new THREE.Quaternion();
+    this.wristQuat = new THREE.Quaternion();
     this.pose = null;
     this.initialized = false;
 
@@ -116,8 +159,24 @@ AFRAME.registerComponent('virtual-hand', {
 
   // Assists call these every frame they want something; requests last
   // one frame.
-  pull: function (source, worldPoint, weight) {
-    this.pending.push({ source: source, x: worldPoint.x, y: worldPoint.y, z: worldPoint.z, w: weight === undefined ? 1 : weight });
+  // mode: 'budget' (default; paid for by real motion) or 'snap'.
+  pull: function (source, worldPoint, weight, mode) {
+    this.pending.push({ source: source, x: worldPoint.x, y: worldPoint.y, z: worldPoint.z, w: weight === undefined ? 1 : weight, snap: mode === 'snap' });
+  },
+
+  // A move borrowing the hand: snap to `to` (a point, or a function
+  // returning one each frame) for `ms`, then let it come back.
+  // opts: { pose, weight }.
+  perform: function (source, to, ms, opts) {
+    var o = opts || {};
+    this.performing.push({ source: source, to: to, until: this.el.sceneEl.time + ms, pose: o.pose, w: o.weight || 10 });
+  },
+
+  busy: function () { return this.performing.length > 0; },
+
+  orient: function (quaternion, priority) {
+    var p = priority || 0;
+    if (!this.orientRequest || p >= this.orientRequest.priority) this.orientRequest = { q: quaternion, priority: p };
   },
 
   setPose: function (name, priority) {
@@ -179,15 +238,26 @@ AFRAME.registerComponent('virtual-hand', {
     tracked.object3D.getWorldPosition(this.trackedPosition);
     this.hideInputVisuals();
 
+    // Moves borrowing the hand ask every frame until they're done.
+    for (var m = this.performing.length - 1; m >= 0; m--) {
+      var perf = this.performing[m];
+      if (time >= perf.until) { this.performing.splice(m, 1); continue; }
+      var at = typeof perf.to === 'function' ? perf.to() : perf.to;
+      if (at) this.pull(perf.source, at, perf.w, 'snap');
+      if (perf.pose) this.setPose(perf.pose, 5);
+    }
+
     // Requests made since the last tick.
     var desired = { x: 0, y: 0, z: 0 };
     var total = 0;
+    var snap = false;
     for (var i = 0; i < this.pending.length; i++) {
       var r = this.pending[i];
       desired.x += (r.x - this.trackedPosition.x) * r.w;
       desired.y += (r.y - this.trackedPosition.y) * r.w;
       desired.z += (r.z - this.trackedPosition.z) * r.w;
       total += r.w;
+      if (r.snap) snap = true;
     }
     if (total > 0) { desired.x /= total; desired.y /= total; desired.z /= total; }
     var hadRequests = this.pending.length > 0;
@@ -197,19 +267,48 @@ AFRAME.registerComponent('virtual-hand', {
       // Nobody can see it: put it back for free.
       this.offset.x = this.offset.y = this.offset.z = 0;
     } else {
-      var travel = sense.state[side].speed * dtMs / 1000;
-      var step = stepHandOffset(this.offset, desired, travel, sense.state.energy, budgetSettings());
-      this.offset = step.offset;
-      if (step.wanted > 0.002) recordAssist('hand ' + side.charAt(0).toUpperCase(), step.wanted, step.granted);
+      var dt = dtMs / 1000;
+      var label = 'hand ' + side.charAt(0).toUpperCase();
+      var growing = hadRequests && len3(desired) > this.offsetLength() + 1e-6;
+      if (snap) {
+        // A block or counter: there now.
+        var before = this.offset;
+        this.offset = moveToward(this.offset, desired, tune.values.snap * dt, tune.values.snapMax);
+        recordAssist(label, dist3(before, desired), dist3(before, this.offset));
+      } else if (growing && this.offsetLength() < budgetSettings().handMax) {
+        // A punch drifting onto its target: paid for by real motion.
+        var travel = sense.state[side].speed * dtMs / 1000;
+        var step = stepHandOffset(this.offset, desired, travel, sense.state.energy, budgetSettings());
+        this.offset = step.offset;
+        if (step.wanted > 0.002) recordAssist(label, step.wanted, step.granted);
+      } else {
+        // Coming back (or closer to where it's asked): always, quickly.
+        this.offset = moveToward(this.offset, desired, tune.values.back * dt);
+      }
     }
 
     this.previous.copy(this.initialized ? this.position : this.trackedPosition);
     this.position.set(this.trackedPosition.x + this.offset.x, this.trackedPosition.y + this.offset.y, this.trackedPosition.z + this.offset.z);
     this.initialized = true;
 
-    var aim = sense.aimRayWorld(side);
-    if (aim) this.dir.copy(aim.direction);
-    this.quat.setFromUnitVectors(new THREE.Vector3(0, 0, -1), this.dir);
+    // Turned the way your hand is (the ghost always is), unless
+    // something holding it (a gun) says otherwise.
+    var hq = this.handQuat;
+    if (tune.values.wrist === 'controller') {
+      tracked.object3D.getWorldQuaternion(hq);
+      // A real controller is held below its length, and on its side.
+      if (this.el.sceneEl.is('vr-mode') && tracked.components['tracked-controls']) {
+        var sideSign = side === 'left' ? -1 : 1;
+        hq.multiply(this.wristQuat.setFromAxisAngle(X_AXIS, -tune.values.tilt * DEG));
+        hq.multiply(this.wristQuat.setFromAxisAngle(Z_AXIS, sideSign * tune.values.roll * DEG));
+      }
+    } else {
+      var aim = sense.aimRayWorld(side);
+      if (aim) this.dir.copy(aim.direction);
+      hq.setFromUnitVectors(FORWARD, this.dir);
+    }
+    this.quat.copy(this.orientRequest ? this.orientRequest.q : hq);
+    this.orientRequest = null;
 
     var o = this.el.object3D;
     o.position.copy(this.position);
@@ -226,7 +325,7 @@ AFRAME.registerComponent('virtual-hand', {
     var apart = this.offsetLength() > 0.01;
     this.ghostEl.object3D.visible = tune.values.glove && (ghost === 'always' || (ghost === 'offset' && apart));
     this.ghostEl.object3D.position.copy(this.trackedPosition);
-    this.ghostEl.object3D.quaternion.copy(this.quat);
+    this.ghostEl.object3D.quaternion.copy(this.handQuat);
 
     this.setPoseNow(this.poseRequest ? this.poseRequest.name : 'open');
     this.poseRequest = null;

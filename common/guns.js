@@ -136,6 +136,7 @@ AFRAME.registerComponent('gun', {
     this.muzzle = new THREE.Vector3();
     this.tmp = new THREE.Vector3();
     this.basis = new THREE.Matrix4();
+    this.holdQuat = new THREE.Quaternion();
     this.kick = 0;
     this.kickVel = 0;
     this.looseMs = 0;
@@ -306,6 +307,8 @@ AFRAME.registerComponent('gun', {
     // Drawn at the hand's scale (smaller off a headset, like the glove).
     var vh = this.holder && this.holder.hands.virtual(this.holder.side);
     o.scale.setScalar(vh ? vh.el.object3D.scale.x : 1);
+    // The hand holding it turns with it (so it swings onto a target too).
+    if (vh) vh.orient(this.holdQuat.copy(o.quaternion), 2);
     o.rotateX(this.kick * 0.5);
     o.translateZ(this.kick * 0.06);
   },

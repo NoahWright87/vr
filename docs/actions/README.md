@@ -110,6 +110,7 @@ to tune it, and tests.
 | 10 | Throwing | `throwing.todo.md` | Extraction from Pistols, generalized. **Built** (`throwing.spec.md`). |
 | 11 | Feedback | `feedback.todo.md` | Parts of it (effect pools, the clock) are needed from step 4 onward; hit-stop and bullet time come here. **Clock, pools, haptics, sound built** (`feedback.spec.md`). |
 | 12 | Brawlers | `brawlers.todo.md` | A group fight: robots that surround you and take turns swinging. Built on melee and defense. **Built** (`brawlers.spec.md`). |
+| 13 | Counters | `counters.todo.md` | Arkham-style moves chosen by how you move as a punch comes in. Two built: swat and meet (`counters.spec.md`). Meant to grow into many. |
 | — | Physics | `physics.todo.md` | Long-term needs and options. No library yet. |
 
 All of it is demonstrated in one showcase, `primitives/actions/`, the

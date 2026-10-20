@@ -14,11 +14,21 @@
 //   hit      the tip reached your head or torso
 //   (dodge)  the active window ended with none of those
 //
-// And it helps: during the telegraph and active phases, a virtual hand
-// within guardReach of the attack's line is pulled onto it (the
-// magnetic guard), by what the comfort budget grants — so you only
-// have to move a hand roughly toward an attack to block it. A still
-// hand earns no pull: you have to react.
+// And it helps, in the punch's last moments (the attacker sets
+// `attack.soon` near the end of its telegraph) and through its drive:
+//
+//   counters  a hand near the punch, moving the right way, plays a move
+//             (common/counters.js: swat it aside, meet it head-on, and
+//             whatever's added there) — resolved as a 'parry' with
+//             r.move and r.reaction for the attacker to act out.
+//   guard     otherwise one hand snaps onto the punch's line to block
+//             it: a hand held up in front of you (a guard) from up to
+//             Guard up away, any other hand from Guard away. It snaps
+//             whether you're moving or not — the character's reflexes —
+//             and comes straight back after.
+//
+// A hand's real position decides all of this; the virtual hand is
+// what gets moved and what touches the punch.
 //
 // Slow bullets are attacks too, and combat-targets (team 'enemy', high
 // threat) so autofire shoots them down. A hand that meets one deflects
@@ -36,12 +46,14 @@ import './combat-targeting.js';
 import './action-clock.js';
 import './action-effects.js';
 import './player-hurt.js';
+import { chooseCounter, counterSettings } from './counters.js';
 
 export var DEFAULT_DEFENSE = {
   blockRadius: 0.1, // m between a hand's centre and the strike volume
   parrySpeed: 1.6, // m/s, hand moving into the attack
   parryWindow: 0.6, // fraction of the active window a parry can happen in
-  guardReach: 0.35, // m: hands this close to an attack's line are pulled onto it
+  guardReach: 0.35, // m: any hand this close to an attack's line snaps onto it
+  guardUp: 0.7, // m: a hand held up in a guard snaps from this far
 };
 
 function sub(a, b) { return { x: a.x - b.x, y: a.y - b.y, z: a.z - b.z }; }
@@ -100,13 +112,15 @@ var tune = defineTunables('defense', 'Defense', [
     info: 'How fast a hand must move into an attack to parry it (stagger and open the attacker).' },
   { key: 'parryWindow', label: 'Parry win', value: DEFAULT_DEFENSE.parryWindow, min: 10, max: 100, step: 10, unit: '%', scale: 100 },
   { key: 'guardReach', label: 'Guard', value: DEFAULT_DEFENSE.guardReach, min: 0, max: 80, step: 5, unit: 'cm', scale: 100,
-    info: 'Hands this close to an incoming attack are pulled onto it (within the comfort budget). 0 turns the magnetic guard off.' },
+    info: 'Any hand this close to an incoming punch snaps onto it to block. 0 turns the guard off.' },
+  { key: 'guardUp', label: 'Guard up', value: DEFAULT_DEFENSE.guardUp, min: 0, max: 120, step: 5, unit: 'cm', scale: 100,
+    info: 'A hand held up in front of you (a guard) snaps onto a punch from this far away.' },
   { key: 'bulletSpeed', label: 'Bullets', value: 7, min: 2, max: 30, step: 1, unit: 'm/s' },
 ]);
 
 var stats = { block: 0, parry: 0, hit: 0, dodge: 0, deflect: 0, last: '' };
 registerReadout('defense', 'Defense', function () {
-  return 'blocks ' + stats.block + ' parries ' + stats.parry + ' deflects ' + stats.deflect +
+  return 'blocks ' + stats.block + ' parries ' + stats.parry + ' (swat ' + (stats.swat || 0) + ' meet ' + (stats.meet || 0) + ') deflects ' + stats.deflect +
     ' hits ' + stats.hit + ' dodges ' + stats.dodge + (stats.last ? '\nlast: ' + stats.last : '');
 });
 
@@ -163,9 +177,82 @@ if (typeof AFRAME !== 'undefined' && !AFRAME.systems['combat-attacks']) {
         var side = vh.data.side;
         var vel = sense ? sense.directionToWorld(sense.state[side].relativeVelocity, new THREE.Vector3()) : new THREE.Vector3();
         var speed = sense ? sense.state[side].relativeSpeed : 0;
-        out.push({ side: side, vh: vh, position: vh.position, velocity: vel.multiplyScalar(speed), speed: speed });
+        var e = sense ? sense.state[side].extension : null;
+        out.push({
+          side: side, vh: vh, position: vh.position, real: vh.trackedPosition,
+          velocity: vel.multiplyScalar(speed), speed: speed,
+          // Held up in front of you: about chest height or above, forward.
+          up: Boolean(e && e.up > -0.05 && e.forward > 0.1),
+        });
       }
+      for (var j = 0; j < out.length; j++) out[j].other = out[1 - j] || null;
       return out;
+    },
+
+    // A hand near a punch, moving the right way: a counter. Returns true
+    // if one played.
+    counter: function (a, hands, sense, time) {
+      var cs = counterSettings();
+      var line = this.line(a);
+      if (!line) return false;
+      var best = null;
+      for (var h = 0; h < hands.length; h++) {
+        var hand = hands[h];
+        if (hand.vh.busy()) continue;
+        var dist = distance(hand.real, closestOnSegment(hand.real, line.base, line.aim).point);
+        if (dist > cs.reach) continue;
+        // Where on their arm (shoulder to fist, as it is now) the hand would catch it.
+        var grab = closestOnSegment(hand.real, a.base, a.tip).point;
+        var ctx = { hand: hand, other: hand.other, attack: a, line: line, distance: dist, grab: grab, time: time, body: this.bodyMotion(sense) };
+        var pick = chooseCounter(ctx, cs);
+        if (pick && (!best || pick.found.score > best.pick.found.score)) best = { pick: pick, ctx: ctx };
+      }
+      if (!best) return false;
+      var reaction = best.pick.counter.perform(best.ctx, best.pick.found, cs);
+      this.resolve(a, { outcome: 'parry', move: best.pick.counter.id, reaction: reaction, hand: best.ctx.hand, point: { x: a.tip.x, y: a.tip.y, z: a.tip.z } });
+      return true;
+    },
+
+    // The guard: the best-placed hand snaps onto the punch's line, a
+    // little in front of you, to block it.
+    guard: function (a, hands, s) {
+      var line = this.line(a);
+      if (!line) return;
+      var best = null;
+      for (var h = 0; h < hands.length; h++) {
+        var hand = hands[h];
+        if (hand.vh.busy()) continue;
+        var on = closestOnSegment(hand.real, line.base, line.aim);
+        var d = distance(hand.real, on.point);
+        if (d > (hand.up ? Math.max(s.guardUp, s.guardReach) : s.guardReach) || on.t <= 0.02) continue;
+        if (!best || d < best.d) best = { d: d, hand: hand, t: on.t };
+      }
+      if (!best) return;
+      // Meet it in front of your face, not at it.
+      var stop = Math.max(0.05, 1 - 0.25 / Math.max(line.length, 0.3));
+      var t = Math.min(best.t, stop);
+      var p = { x: line.base.x + (line.aim.x - line.base.x) * t, y: line.base.y + (line.aim.y - line.base.y) * t, z: line.base.z + (line.aim.z - line.base.z) * t };
+      // Weighted over melee's pull (1): with something coming at you,
+      // meeting it matters more than finishing your punch.
+      best.hand.vh.pull('guard', p, 4, 'snap');
+      best.hand.vh.setPose('open', 3);
+    },
+
+    // The punch's line: from its base (shoulder) to where it's aimed.
+    line: function (a) {
+      if (!a.aim) return null;
+      var base = a.guardBase || a.base;
+      var dx = a.aim.x - base.x, dy = a.aim.y - base.y, dz = a.aim.z - base.z;
+      var l = Math.sqrt(dx * dx + dy * dy + dz * dz);
+      if (l < 1e-4) return null;
+      var fl = Math.sqrt(dx * dx + dz * dz) || 1;
+      return { base: base, aim: a.aim, length: l, dir: { x: dx / l, y: dy / l, z: dz / l }, flat: { x: dx / fl, y: 0, z: dz / fl } };
+    },
+
+    bodyMotion: function (sense) {
+      if (!sense) return {};
+      var st = sense.state;
+      return { yawRate: st.yawRate, headVelocity: sense.directionToWorld(st.head.velocity, new THREE.Vector3()), headHeight: st.head.position.y };
     },
 
     tick: function (time, dt) {
@@ -177,20 +264,16 @@ if (typeof AFRAME !== 'undefined' && !AFRAME.systems['combat-attacks']) {
 
       for (var i = this.attacks.length - 1; i >= 0; i--) {
         var a = this.attacks[i];
-        // The magnetic guard: late in the telegraph and through the
-        // active window, hands near the attack's line are pulled onto it.
-        if (s.guardReach > 0 && (a.phase === 'active' || (a.phase === 'telegraph' && a.late)) && a.aim) {
-          for (var h = 0; h < hands.length; h++) {
-            var p = guardPoint(a.guardBase || a.base, a.aim, hands[h].position, s.guardReach);
-            if (p) {
-              // Weighted over melee's pull (1): with something coming at
-              // you, meeting it matters more than finishing your punch.
-              hands[h].vh.pull('guard', p, 4);
-              hands[h].vh.setPose('open', 3);
-            }
-          }
+        if (a.resolved) continue;
+        // Its last moments and its drive: counter it, or guard it.
+        var coming = a.phase === 'active' || (a.phase === 'telegraph' && a.soon);
+        if (coming) {
+          // Bullets get the guard (deflect, parry back) but not the moves.
+          var early = a.phase !== 'active' || a.progress === undefined || a.progress <= s.parryWindow;
+          if (a.kind !== 'bullet' && early && this.counter(a, hands, sense, time)) continue;
+          if (s.guardReach > 0 || s.guardUp > 0) this.guard(a, hands, s);
         }
-        if (a.phase !== 'active' || a.resolved) continue;
+        if (a.phase !== 'active') continue;
         var r = resolveContact(a, hands, body, s);
         if (r.outcome) this.resolve(a, r);
       }
@@ -209,7 +292,9 @@ if (typeof AFRAME !== 'undefined' && !AFRAME.systems['combat-attacks']) {
         haptic(handEl, r.outcome);
         var fx = this.el.systems['action-effects'];
         if (fx) fx.sparks(r.point, { x: 0, y: 1, z: 0 }, { count: r.outcome === 'parry' ? 16 : 8, color: r.outcome === 'parry' ? '#9fe6ff' : '#ffd27a' });
-        stats.last = (r.outcome === 'parry' ? 'PARRIED ' : 'blocked ') + who + ' (' + r.hand.side + ' hand, ' + r.hand.speed.toFixed(1) + ' m/s)';
+        if (r.move) stats[r.move] = (stats[r.move] || 0) + 1;
+        stats.last = (r.move ? 'COUNTER ' + r.move.toUpperCase() + ' ' : r.outcome === 'parry' ? 'PARRIED ' : 'blocked ') + who +
+          ' (' + r.hand.side + ' hand, ' + r.hand.speed.toFixed(1) + ' m/s)';
       }
       logAction(stats.last);
       if (a.onResolve) a.onResolve(r.outcome, r);

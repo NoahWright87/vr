@@ -49,4 +49,10 @@ a punch felt like it missed.
 
 ## Callers
 
-`virtual-hand` (hand drift and return) is the only caller so far.
+`virtual-hand` is the only caller so far, and only for a punch's
+fist drifting onto its target. Since the hands rework, a block or a
+counter **snaps** (it isn't budgeted), and a hand **returns** at a
+fixed speed whether or not you move. The budget no longer covers the
+return or the reflex moves. A hand that stayed off when you held still
+read as floating away, and the user wants blocks and counters to look
+like your character's reflexes, not yours.
