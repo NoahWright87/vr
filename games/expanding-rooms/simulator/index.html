@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Walking Simulator · Dev Tools</title>
+  <link rel="stylesheet" href="./style.css">
+  <script type="module" src="./main.ts"></script>
+</head>
+<body>
+  <header><div><a href="../../../">← All activities</a><h1>Walking Simulator <small>Dev Tools</small></h1></div>
+    <nav><a href="../../impossible-spaces/playground/">2D playground</a><a href="../">Try in VR ↗</a></nav></header>
+  <main>
+    <aside>
+      <h2>Batch settings</h2>
+      <p>Original growth + the VR walking code. Seeded walkers scan for doors; physical and virtual movement stay separate.</p>
+      <form id="settings">
+        <fieldset><legend>Physical boundaries</legend><div id="shapes"></div><small>Oblong is 4.7 × 2.1 m. Other presets vary dimensions and rotation by seed, preserving concave corners.</small></fieldset>
+        <fieldset><legend>Walker profiles</legend><div id="profiles"></div><small>Behavior hypotheses, not measured human models.</small></fieldset>
+        <label>World scales <input id="scales" value="1.25" required aria-describedby="list-help"></label>
+        <label>Maximum movement gains <input id="gains" value="1.2" required></label>
+        <small id="list-help">Comma-separated values, 1–2. Each combination uses the same seeds.</small>
+        <div class="pair"><label>First seed<input id="startSeed" type="number" min="0" max="999999" value="42"></label><label>Seeds per combination<input id="seeds" type="number" min="1" max="10000" value="1"></label></div>
+        <div class="pair"><label>Seconds per episode<input id="seconds" type="number" min="10" max="600" value="180"></label><label>Target pieces<input id="pieces" type="number" min="2" max="100" value="12"></label></div>
+        <label class="check"><input id="boundaryStop" type="checkbox" checked>Stop at 20 cm physical clearance</label>
+        <small>Counts a required reset as a failure. Uncheck to probe actual boundary crossings. Never automatically re-anchors.</small>
+        <details><summary>Movement & guidance settings</summary><div id="effects"></div></details>
+        <div class="buttons"><button type="submit" id="run">Run batch</button><button type="button" id="sweep">Example sweep</button></div>
+      </form>
+      <div class="buttons"><button id="export">Export report / config</button><label class="file">Load report or JSONL<input id="load" type="file" accept=".json,.jsonl,application/json"></label></div>
+      <details><summary>Overnight runs</summary><p>Use “As fast as possible” here while this tab stays active. Browsers may throttle background tabs. For unattended runs, export a config and use the headless runner documented in the repository. It saves each completed episode to JSONL.</p><p>Keep the computer awake. Neither mode measures VR comfort, headset tracking, or rendering performance.</p></details>
+    </aside>
+    <section class="workspace">
+      <div class="toolbar"><label>Execution speed<select id="rate"><option value="1">1×</option><option value="10" selected>10× target</option><option value="0">As fast as possible</option></select></label><button id="pause" disabled>Pause</button><button id="stop" disabled>Stop</button><label class="check"><input id="allRooms" type="checkbox">Show hidden rooms (observer only)</label></div>
+      <p id="status" role="status">Ready. Run one episode, then try a sweep.</p>
+      <div class="views"><figure><figcaption>Physical floor <span>Orange boundary · blue head · white body heading</span></figcaption><canvas id="physical" width="600" height="430"></canvas></figure><figure><figcaption>Virtual view <span>Visible rooms · yellow gaze cone · green exit marker</span></figcaption><canvas id="virtual" width="600" height="430"></canvas></figure></div>
+      <p id="telemetry">No episode yet.</p>
+      <div id="replay" hidden><label>Replay time <input id="scrub" type="range" min="0" max="0" value="0"></label><button id="play">Play replay</button><span id="replayTime"></span></div>
+      <h2>Results by condition</h2>
+      <p>Completion includes all attempted episodes in the denominator. Failure reasons stay separate; a high overlap score alone is not success.</p>
+      <div class="table"><table><thead><tr><th>Boundary / walker / scale / gain</th><th>Completed</th><th>Outcomes</th><th>Mean physical / virtual m</th><th>Closest edge</th></tr></thead><tbody id="summary"></tbody></table></div>
+      <h2>Episodes <small>Latest 100 shown · export includes all completed results</small></h2>
+      <div class="table"><table><thead><tr><th>Seed</th><th>Condition</th><th>Result</th><th>Time</th><th>Inspect</th></tr></thead><tbody id="results"></tbody></table></div>
+      <p id="detail">Select Replay on an episode to regenerate its exact seed and inspect the path at 10 snapshots per simulated second.</p>
+    </section>
+  </main>
+</body>
+</html>

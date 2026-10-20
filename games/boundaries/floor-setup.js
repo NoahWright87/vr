@@ -115,7 +115,10 @@ AFRAME.registerComponent('boundary-floor-lab', {
     if(old.locomotion)rig.setAttribute('locomotion-demo',old.locomotion);
     this.passthrough=null;
   },
-  closeWatches: function () {this.watches().forEach(w=>w.projectedMenu?.close());},
+  closeWatches: function () {
+    this.watches().forEach(w=>w.projectedMenu?.close());
+    this.el.systems['visor-menu']?.component?.menu.close();
+  },
   select: function (id) {
     if(id==='calibration-start'){this.start();return;}
     if(id==='calibration-cancel') {
@@ -135,7 +138,8 @@ AFRAME.registerComponent('boundary-floor-lab', {
       if(result.error){this.status=result.error+' Choose Continue editing.';this.redraw();return;}
       this.pending={points:result.points,revision:this.boundary.revision};this.phase='review';
       this.status='Save this boundary? Review the yellow outline, then choose Yes, save boundary.';
-      this.redraw();this.watches().forEach(w=>{if(w.crossbarComponent?.menu.isOpen)this.focusCalibration(w.crossbarComponent);});return;
+      this.redraw();this.watches().forEach(w=>{if(w.crossbarComponent?.menu.isOpen)this.focusCalibration(w.crossbarComponent);});
+      const visor=this.el.systems['visor-menu']?.component;if(visor?.menu.isOpen)this.focusCalibration(visor);return;
     }
     if(id==='calibration-confirm') {
       if(!this.pending||!this.boundary)return;
@@ -151,7 +155,7 @@ AFRAME.registerComponent('boundary-floor-lab', {
     }
     if(id==='save-diagnostics')this.downloadReport();
   },
-  menuVisible: function () {return this.watches().some(w=>w.projectedMenu?.active||w.projectedMenu?.visible);},
+  menuVisible: function () {return this.watches().some(w=>w.projectedMenu?.active||w.projectedMenu?.visible)||!!this.el.systems['visor-menu']?.component?.menu.isOpen;},
   pauseDrawing: function () {
     this.walk?.endStrokes();this.pressed?.clear();this.paintCursors?.forEach(cursor=>{cursor.group.visible=false;});
   },

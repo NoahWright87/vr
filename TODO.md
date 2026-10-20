@@ -4,6 +4,17 @@ Things deliberately deferred, with enough context to pick them up cold.
 Ideas that aren't committed to yet live in DESIGN.md or in conversation;
 this is only for work that has been decided on and postponed.
 
+## Expanding Rooms
+
+- **Calibrate the simulated walker against headset feedback.** The first
+  [Walking Simulator](games/expanding-rooms/simulator/README.md) now shares the
+  VR movement code, runs seeded batches and replays failures. Its three profiles
+  are hypotheses, and its local motor planner knows current-room geometry.
+  Compare observed hesitations, scanning, speed and doorway approaches with real
+  headset trials before interpreting completion percentages as predictive.
+  Keep exploration and held-out seed ranges separate. Comfort and tracking
+  quality remain hardware tests.
+
 ## 3D Model Toybox
 
 - **Explore two-hand skeletal posing after the rigid-toy workflow is tested.**

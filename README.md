@@ -31,6 +31,18 @@ The header and favicon share `assets/noah-vr.svg`: the developer site's original
 
 ## Development
 
+### Watch and visor are universal menus
+
+Treat the shared watch and visor like **Esc in a desktop game**: players and
+developers should know how to reach a menu in every activity. Both surfaces
+should expose the same activity settings and actions through the existing
+primitives. They are debugging and experimentation tools as well as gameplay UI.
+Keep common actions easy to find, and tuck runtime tuning, debug stats, and
+extra experiments into submenus. Include regeneration and recovery where
+relevant, so a stuck player can still reach useful controls. Clearly distinguish
+live settings from those applied on the next explicit generation. See
+[AGENTS.md](AGENTS.md) for the contributor rule.
+
 ```sh
 npm install
 npm run dev
@@ -45,6 +57,18 @@ A-Frame itself is vendored into `/vendor` rather than loaded from the `aframe.io
 See **[DESIGN.md](DESIGN.md)** for the design philosophy these prototypes are built on — shared systems over features, so that unplanned combinations happen — plus the patterns that produce it, the rules learned the hard way, and measured performance notes.
 
 ## Prototypes
+
+The home page's **Dev Tools** section groups the existing
+[2D playground](games/impossible-spaces/playground/) with the new
+[Walking Simulator](games/expanding-rooms/simulator/). The simulator runs
+seeded walkers through Original growth layouts using the VR movement code,
+with accelerated sweeps, outcome summaries and replay. See its
+[overnight runner instructions](games/expanding-rooms/simulator/README.md).
+
+- **[Expanding Rooms](games/expanding-rooms/index.html)** — draw a physical
+  boundary, grow rooms in an enlarged virtual footprint, and adjust gain,
+  steering, recovery and debug options through both watch and visor.
+  See its [headset instructions](games/expanding-rooms/README.md).
 
 - **[Impossible Spaces](games/impossible-spaces/index.html)** — walk overlapping colored rooms inside your headset boundary, with stationary elevator swaps. See its [testing notes](games/impossible-spaces/README.md).
 - **[Impossible Spaces · 2D playground](games/impossible-spaces/playground/index.html)** — paint an expanded floor on a metre grid, confirm the polygon, generate with either VR generator, and explore/inspect the result on phone or laptop. Export a boundary and seed for reproducible follow-up work. See the [handoff](games/impossible-spaces/HANDOFF.md).
