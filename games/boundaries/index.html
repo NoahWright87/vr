@@ -13,7 +13,9 @@
     <script type="module" src="../../common/watch-menu.js"></script>
     <script type="module" src="../../common/menu-crossbar.js"></script>
     <script type="module" src="../../common/visor-menu.js"></script>
-    <script type="module" src="../../common/play-space.js"></script>
+    <script type="module" src="../../common/headset-boundary.js"></script>
+    <script type="module" src="./floor-setup.js"></script>
+    <script type="module" src="./level-preview.ts"></script>
     <script type="module" src="../../common/locomotion.js"></script>
     <script type="module" src="../../common/desktop-controls.js"></script>
 
@@ -46,6 +48,7 @@
         boundary and controller-haptics tests, and the visor (`) for its settings.
       </span>
       <a href="../../index.html">All prototypes</a>
+      <div id="lab-diagnostics" role="status">Cyan: headset boundary. Amber: fitted rectangle. Green: your saved boundary.</div>
     </div>
 
     <!-- The shared watch component projects this template from either
@@ -65,13 +68,14 @@
     <script type="module">
       import { registerMenuPage } from '../../common/menu-crossbar.js';
       import { registerVisorPage } from '../../common/visor-page.js';
+      import { generationMenu } from '../impossible-spaces/generation-menu.js';
 
       var LEVELS = { low: 0.2, medium: 0.6, high: 1.0 };
       var hapticsStatus = 'Choose a controller and level.';
 
       function boundaryInfo () {
         var scene = document.querySelector('a-scene');
-        var space = scene && scene.systems['play-space'];
+        var space = document.querySelector('#boundary-rig')?.components['headset-boundary'];
         if (!space) return '';
         return ['HEADSET BOUNDARY', space.status, space.detail];
       }
@@ -89,8 +93,13 @@
       registerMenuPage('boundary-watch', {
         // The clock: hand-with-watch writes the time into the title.
         title: '',
+        onOpen: component => sceneEl.components['boundary-floor-lab']?.focusCalibration(component),
         items: [
+          generationMenu(),
           { kind: 'info', id: 'boundary-status', label: 'Boundary', info: boundaryInfo },
+          { kind: 'submenu', id: 'boundary-calibration', label: 'Calibrate boundary', info: () => sceneEl.components['boundary-floor-lab']?.describe() || '', items: () => sceneEl.components['boundary-floor-lab']?.menuItems() || [] },
+          { kind: 'action', id: 'return-to-lab', label: 'Return to Lab', info: 'Hide the generated rooms and return to boundary diagnostics. Your saved boundary stays ready for generation.' },
+          { kind: 'action', id: 'save-diagnostics', label: 'Save diagnostics', info: () => sceneEl.components['boundary-floor-lab']?.reportStatus || '' },
           {
             // One wrist menu can test either controller, so a grab or
             // hand-tracking problem can be told apart from a haptics one.
@@ -136,8 +145,8 @@
         else hapticsStatus = name + ': browser ' + result.status;
         redrawWatches();
       });
-      // The boundary's status changes as the headset reports it.
-      sceneEl.addEventListener('play-space-status', redrawWatches);
+      // Refresh diagnostics on the watch as sampling progresses.
+      sceneEl.addEventListener('headset-boundary-frame', redrawWatches);
     </script>
 
     <script>
@@ -168,58 +177,27 @@
         else el.addEventListener('loaded', apply, { once: true });
       }
 
-      // WebXR exposes a real room-scale boundary through a bounded-floor
-      // reference space. Reading it — the request, the per-frame pose from
-      // that space into A-Frame's, the points moved into scene space — is
-      // the shared play-space system (common/play-space.js), and drawing
-      // it is the shared play-space-outline component on this rig; the
-      // menus showcase uses both to stand things against your real walls.
-      // The API may return an irregular polygon, so a made-up rectangle
-      // would be less useful for checking alignment with the physical
-      // guardian. This component only puts the system's words on the
-      // watch and in front of you.
-      AFRAME.registerComponent('headset-boundary', {
-        init: function () {
-          this.space = this.el.sceneEl.systems['play-space'];
-          this.onStatus = this.renderStatus.bind(this);
-          this.el.sceneEl.addEventListener('play-space-status', this.onStatus);
-          var self = this;
-          this.el.sceneEl.addEventListener('loaded', function () {
-            applyCheckerTexture(document.querySelector('#boundary-floor'), '#263550', '#1c2940', 15, 15);
-            self.renderStatus();
-          });
-        },
-
-        renderStatus: function () {
-          var space = this.space;
-          if (!space) return;
-          document.querySelectorAll('.boundary-status').forEach(function (el) {
-            el.setAttribute('text', 'value', space.status);
-          });
-          document.querySelectorAll('.boundary-detail').forEach(function (el) {
-            el.setAttribute('text', 'value', space.detail);
-          });
-        },
-
-        remove: function () {
-          this.el.sceneEl.removeEventListener('play-space-status', this.onStatus);
-        },
+      // The shared headset-boundary reader draws the reported polygon and
+      // fitted rectangle. The checkerboard only makes movement visible.
+      document.addEventListener('DOMContentLoaded', function () {
+        var scene=document.querySelector('a-scene');
+        function texture(){applyCheckerTexture(document.querySelector('#boundary-floor'), '#263550', '#1c2940', 15, 15);}
+        if(scene.hasLoaded)texture();else scene.addEventListener('loaded',texture,{once:true});
       });
     </script>
 
 
 
-    <a-scene background="color: #08101f" keyboard-shortcuts="enterVR: false" visor-menu="page: visor">
-      <a-plane id="boundary-floor" rotation="-90 0 0" width="30" height="30" color="#263550"></a-plane>
-      <a-sky color="#08101f"></a-sky>
+    <a-scene boundary-floor-lab webxr="referenceSpaceType: local-floor; optionalFeatures: bounded-floor" xr-mode-ui="enterAREnabled: false" background="color: #08101f" keyboard-shortcuts="enterVR: false" visor-menu="page: visor">
+      <a-plane data-calibration-opaque id="boundary-floor" rotation="-90 0 0" width="30" height="30" color="#263550"></a-plane>
+      <a-sky data-calibration-opaque color="#08101f"></a-sky>
 
       <!-- One rig keeps headset, controllers, and desktop fallback transforms
            together. The two visual hand entities mirror the controller poses
            in XR; semantic-hand supplies the equivalent desktop hands. -->
       <a-entity
         id="boundary-rig"
-        headset-boundary
-        play-space-outline
+        headset-boundary="showFit: true; diagnostics: true"
         locomotion-demo="speed: 1.5"
         semantic-look-controls="camera: #boundary-camera"
         gamepad-input="leftHand: #left-hand; rightHand: #right-hand"
@@ -228,7 +206,7 @@
       >
         <a-camera id="boundary-camera" wasd-controls="enabled: false" look-controls="pointerLockEnabled: true">
           <a-text
-            class="boundary-status"
+            data-calibration-opaque class="boundary-status"
             value="Enter VR to detect boundary"
             align="center"
             color="#e0f2fe"
@@ -236,13 +214,14 @@
             position="0 0.25 -2.2"
           ></a-text>
           <a-text
-            class="boundary-detail"
+            data-calibration-opaque class="boundary-detail"
             value="A checkerboard floor makes physical movement readable."
             align="center"
             color="#aab8d2"
             width="1.2"
             position="0 0.03 -2.2"
           ></a-text>
+          <a-text class="calibration-status" value="Watch > Calibrate boundary" align="center" width="1.5" wrap-count="48" color="#f0abfc" position="0 -0.3 -2.2"></a-text>
         </a-camera>
 
         <!-- Attribute order is intentional: hand-with-watch creates the
@@ -257,8 +236,8 @@
       <!-- The cube is intentionally a plain shared simple-grabbable: in VR,
            enter the glowing hint radius and squeeze Grip; on desktop, look at
            it and press F. Its radius is also the proximity-haptic threshold. -->
-      <a-cylinder radius="0.32" height="0.56" position="0 0.28 -0.65" color="#263b59"></a-cylinder>
-      <a-box id="boundary-grab-cube" width="0.24" height="0.24" depth="0.24" color="#e58b3a" position="0 0.68 -0.65"
+      <a-cylinder data-calibration-opaque radius="0.32" height="0.56" position="0 0.28 -0.65" color="#263b59"></a-cylinder>
+      <a-box data-calibration-opaque id="boundary-grab-cube" width="0.24" height="0.24" depth="0.24" color="#e58b3a" position="0 0.68 -0.65"
         simple-grabbable="heldPosition: 0 0 -0.08; floorY: 0.13"
         hint-zone="action: grab; radius: 0.3; maxReach: 1; gazeThreshold: 0.93; priority: 10; desktopKey: F; desktopLabel: Grab; xrKey: GRIP; xrLabel: Grab; hintOffset: 0 0.28 0"
       ></a-box>

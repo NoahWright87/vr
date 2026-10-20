@@ -62,6 +62,7 @@ var VALID_MEMORY = ['none', 'temporary', 'permanent'];
 // Numbers are built from an integer step index rather than by
 // repeatedly adding `step` to a float, so 0.1 increments don't drift
 // into 0.30000000000000004 after thirty presses.
+// max: Infinity allows an uncapped setting while still rendering only a window.
 function stepCount(item) {
   var span = item.max - item.min;
   if (!(span > 0) || !(item.step > 0)) return 0;

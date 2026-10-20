@@ -60,6 +60,9 @@ function prunedSystemTick() {
 function pruneSystem(system) {
   if (!system || system.__visibilityPruned) return;
   system.__visibilityPruned = true;
+  // registerCollider reassigns tick to detectCollisions whenever a new
+  // button is created (including option popups). Patch both entry points.
+  system.detectCollisions = prunedSystemTick;
   // An own property on the instance, not the prototype: A-Frame copies
   // the definition onto each system instance, so patching the class
   // after the scene exists would change nothing.

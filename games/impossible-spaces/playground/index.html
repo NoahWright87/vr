@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Impossible Spaces · 2D playground</title>
+  <link rel="icon" href="../../../assets/noah-vr.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="./style.css"><script type="module" src="./main.ts"></script>
+</head>
+<body>
+  <header><div><a class="back" href="../../../">← All prototypes</a><h1>Impossible Spaces <span>2D playground</span></h1></div><nav aria-label="Files and VR"><button id="export">Export</button><label class="file-button">Load<input id="import" type="file" accept=".json,application/json"></label><a href="../../boundaries/">Open VR lab ↗</a></nav></header>
+  <main>
+    <section class="map-panel" aria-label="Boundary and generated floor">
+      <div class="map-heading"><div><span class="eyebrow" id="phase-label">01 / DRAW YOUR AREA</span><h2 id="map-title">Start small. Make room.</h2></div><div id="area" class="metric">— m²</div></div>
+      <div class="toolbar" aria-label="Map tools"><div id="edit-tools" class="segments"><button data-tool="paint" aria-pressed="true">Paint</button><button data-tool="pan" aria-pressed="false">Pan</button></div><div class="zoom"><button id="zoom-out" aria-label="Zoom out">−</button><button id="fit">Fit</button><button id="zoom-in" aria-label="Zoom in">+</button></div></div>
+      <div class="canvas-wrap"><canvas id="map" tabindex="0" aria-label="Interactive floor map. In drawing mode hold and drag to paint. In exploration mode tap to walk or use arrow keys."></canvas><div class="map-legend"><span><i class="paint"></i> Painted floor</span><span><i class="outline"></i> Confirmed outline</span><span>Grid: 1 metre</span></div></div>
+      <div id="drawing-actions" class="action-bar"><button id="undo">Undo</button><button id="reset">Reset square</button><button id="review" class="primary">Set boundary →</button></div>
+      <div id="review-actions" class="action-bar" hidden><p>Yellow is the final polygon. Use it?</p><button id="keep-editing">Keep editing</button><button id="confirm" class="primary">Use boundary ✓</button></div>
+      <div id="walk-controls" class="walk-controls" hidden><div class="dpad" aria-label="Walking controls"><button data-move="up" aria-label="Walk up">↑</button><button data-move="left" aria-label="Walk left">←</button><button data-move="down" aria-label="Walk down">↓</button><button data-move="right" aria-label="Walk right">→</button></div><div id="ride-controls"><button id="ride-prev" disabled>Previous</button><button id="ride-next" disabled>Ride elevator</button></div></div>
+      <p id="status" role="status">Hold and drag to paint more floor. Close a loop to fill it, or brush across gaps.</p>
+    </section>
+    <aside>
+      <section class="card" id="setup-card"><span class="eyebrow">YOUR FLOOR, YOUR SHAPE</span><h2>A square is just the start.</h2><p id="instructions">Tap to paint a spot, or hold and drag to paint more floor. Close a loop to fill its interior, or brush directly across gaps.</p><p class="muted">The filled 3 × 3 m starter stays part of your area. Painting only adds; Undo removes your last edit.</p><p id="storage-note" class="muted">Edits save on this device. Export a copy to share or move to another device.</p></section>
+      <section class="card settings"><span class="eyebrow">02 / GENERATE</span><h2>Build some impossible spaces.</h2><form id="settings">
+        <label>Generation style<select name="style" id="style"><option value="rooms-first">Rooms first</option><option value="growth">Original growth</option></select></label>
+        <div class="field-pair"><label id="target-label"><span id="target-title">Target rooms</span><input id="target" type="number" min="2" step="1" value="8"></label><label>Seed<input name="seed" id="seed" type="number" min="0" max="999999" step="1" value="42"></label></div>
+        <details><summary>Size &amp; connection settings</summary><div data-style="rooms-first"><label>Maximum rooms per layer<input name="roomsPerLayer" type="number" min="1" step="1" value="3"></label><label>Room size<select name="roomSize"><option value="1.2">1.2 m</option><option value="1.6">1.6 m</option><option value="2">2 m</option></select></label><label>Connections<select name="connectionMode"><option value="halls">Prefer hallways</option><option value="doors">Compact doorways</option><option value="mixed">Mixed</option></select></label></div><div data-style="growth" hidden><div class="field-pair"><label>Min room area %<input name="minSize" type="number" min="1" max="50" value="3"></label><label>Max room area %<input name="maxSize" type="number" min="1" max="50" value="15"></label></div><label>Branch chance<select name="branches"><option value="0">0%</option><option value="0.15">15%</option><option selected value="0.3">30%</option><option value="0.5">50%</option><option value="0.75">75%</option></select></label></div><div class="field-pair"><label>Hall / door width<select name="width"><option value="0.8">0.8 m</option><option value="1">1 m</option><option value="1.2">1.2 m</option></select></label><label>Boundary inset<select name="margin"><option value="0.1">0.1 m</option><option value="0.15">0.15 m</option><option value="0.25">0.25 m</option><option value="0.4">0.4 m</option></select></label></div></details>
+        <button id="generate" class="primary wide" disabled>Generate level</button><button id="new-seed" type="button" class="wide" disabled>New seed &amp; generate</button>
+      </form><p id="generation-note" class="muted">Set and confirm your boundary first. Rooms first targets connected rooms; extra elevator layers reuse the same floor.</p><p id="counts" class="counts"></p><p id="warning" class="warning" role="status"></p></section>
+      <section class="card" id="explore-card" hidden><span class="eyebrow">03 / EXPLORE</span><h2 id="piece-title">Your rooms are ready.</h2><p>Tap the map to walk toward a spot, or use WASD, arrows or the buttons below it. Walls block movement; follow doorways.</p><label>View<select id="view"><option value="walk">Walk through</option><option value="inspect">Inspect overlapping layout</option></select></label><label id="layer-label" hidden>Physical layer<select id="layer"></select></label><label>Jump to piece (2D only)<select id="piece"></select></label><button id="edit-boundary" class="wide">Edit boundary</button><p class="muted">Elevators change the outside only after closing. The player stays in place. Inspection shows full pieces that are hidden during normal walking.</p></section>
+      <button id="edit-ready" class="wide" hidden>Edit boundary</button>
+    </aside>
+  </main>
+  <footer>Shared with VR: floor painting, full-polygon placement, both generators, visibility and collision. <a href="../">Standalone VR prototype ↗</a></footer>
+</body>
+</html>

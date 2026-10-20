@@ -682,3 +682,13 @@ test('the focused row scrolls to the end, pauses, scrolls back, pauses', async (
   // A label that fits never moves.
   assert.equal(marqueeText('Fits', width, 5000), 'Fits');
 });
+
+test('uncapped numbers window and commit large counts without wrapping or materializing rows', () => {
+  const item={kind:'number',id:'rooms',label:'Rooms',value:8,min:2,max:Infinity,step:1};
+  const menu=createMenu({title:'Generation',items:[item]});menu.open();menu.activate();
+  menu.moveFocus(99992);assert.equal(menu.focusedRow().value,100000);
+  assert.deepEqual(menu.getWindow().map(row=>row.value),[99998,99999,100000,100001,100002]);
+  menu.back();assert.equal(item.value,100000);menu.activate();assert.equal(menu.focusedRow().value,100000);
+  menu.moveFocus(-200000);assert.equal(menu.focusedRow().value,2);
+  assert.deepEqual(menu.getWindow().map(row=>row.value),[2,3,4]);
+});

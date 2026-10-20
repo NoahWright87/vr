@@ -91,6 +91,7 @@ if (typeof AFRAME !== 'undefined') {
       // to, the same way the watch is one menu you can raise with either
       // wrist — so it is yours whichever hand you prefer.
       page: { type: 'string', default: '' },
+      font: { type: 'string', default: 'roboto' },
       // Older two-page markup; the first one given is used.
       leftPage: { type: 'string', default: '' },
       rightPage: { type: 'string', default: '' },
@@ -180,6 +181,7 @@ if (typeof AFRAME !== 'undefined') {
       panel.setAttribute('id', 'visor-menu');
       panel.setAttribute('crossbar-menu', {
         page: page,
+        font: this.data.font,
         side: this.panelSide,
         align: 'inboard',
         // Floating text: no backing, no wash behind it, no frame. The
