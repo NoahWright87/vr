@@ -506,9 +506,8 @@ if (typeof AFRAME !== 'undefined') {
 
     buildHints: function () {
       var draw = function (ctx, box) {
-        var hint = box.state.hint;
-        if (!hint) return;
-        drawKeyHint(ctx, hint.key, hint.text, box.w / 2, box.h / 2, 58);
+        if (!box.state.key && !box.state.text) return;
+        drawKeyHint(ctx, box.state.key, box.state.text, box.w / 2, box.h / 2, 58);
       };
       this.hintWidgets = {
         above: this.add('above', { id: 'hud-hint-above', draw: draw, fade: false, internal: true, ppd: 34 }),
@@ -525,7 +524,10 @@ if (typeof AFRAME !== 'undefined') {
       }
       for (var slot in this.hintWidgets) {
         var hint = best[slot];
-        this.hintWidgets[slot].set({ hint: hint ? { key: hint.key, text: hint.text } : null });
+        // Plain values, not an object: set() compares by identity, and a
+        // fresh object every call redrew (and re-uploaded) the hint every
+        // frame a game kept it set.
+        this.hintWidgets[slot].set({ key: hint ? hint.key : '', text: hint ? hint.text : '' });
       }
     },
 
@@ -566,6 +568,12 @@ if (typeof AFRAME !== 'undefined') {
       else delete this.ringRequests[key];
     },
 
+    // The slots are grey boxes with their names on (widgets, so they bend
+    // and size like the real thing). Everything large — the frame's edge,
+    // the menu's place on each side, the aim rings — is thin lines: as
+    // full-size transparent textures they covered most of the view, and
+    // filling that much of a Quest's display with blended pixels is what
+    // made the Adjust menu crawl.
     buildPreview: function () {
       var self = this;
       this.previewWidgets = SLOT_NAMES.map(function (slot) {
@@ -577,64 +585,92 @@ if (typeof AFRAME !== 'undefined') {
         widget.previewOnly = true;
         return widget;
       });
-      ['left', 'right'].forEach(function (side) {
-        var widget = self.add('reticle', {
-          id: 'hud-preview-menu-' + side, internal: true, fade: false, ppd: 8, renderOrder: PREVIEW_ORDER,
-          state: { label: 'MENU', dashed: true },
-          draw: drawPreviewBox,
-        });
-        widget.previewOnly = true;
-        widget.menuSide = side;
-        // Not part of the reticle cluster: it belongs at frame depth.
-        self.root.add(widget.mesh);
-        self.previewWidgets.push(widget);
-      });
-      var edge = this.add('reticle', {
-        id: 'hud-preview-edge', internal: true, fade: false, ppd: 6, renderOrder: PREVIEW_ORDER,
-        draw: drawFrameEdge,
-      });
-      edge.previewOnly = true;
-      edge.frameEdge = true;
-      this.root.add(edge.mesh);
-      this.previewWidgets.push(edge);
+      var line = function (color, opacity) {
+        return new THREE.LineBasicMaterial({ color: color, transparent: true, opacity: opacity, depthTest: false, depthWrite: false });
+      };
+      this.previewLines = new THREE.Group();
+      this.previewLines.name = 'visor-hud-preview-lines';
+      this.previewLines.visible = false;
+      this.edgeMaterial = line('#e8f0ff', 0.6);
+      this.menuMaterial = line('#7fe3ff', 0.8);
+      this.root.add(this.previewLines);
+      this.ringLines = new THREE.Group();
+      this.ringLines.name = 'visor-hud-rings';
+      this.ringLines.visible = false;
+      this.ringMaterials = [line('#ffc24a', 0.95), line('#eef6ff', 0.85), line('#eef6ff', 0.85)];
+      this.centre.add(this.ringLines);
+    },
 
-      this.ringsWidget = this.add('reticle', {
-        id: 'hud-rings', internal: true, fade: false, ppd: 18, renderOrder: PREVIEW_ORDER,
-        draw: drawRings,
-      });
-      this.ringsWidget.previewOnly = true;
+    // A rectangle's outline on the sheet, bent with it.
+    outline: function (rect, frame, material) {
+      var points = [];
+      var steps = 24;
+      var p = {};
+      var corners = [
+        [rect.x - rect.w / 2, rect.y + rect.h / 2], [rect.x + rect.w / 2, rect.y + rect.h / 2],
+        [rect.x + rect.w / 2, rect.y - rect.h / 2], [rect.x - rect.w / 2, rect.y - rect.h / 2],
+      ];
+      for (var c = 0; c < 4; c++) {
+        var a = corners[c];
+        var b = corners[(c + 1) % 4];
+        for (var k = 0; k < steps; k++) {
+          var t = k / steps;
+          sheetToCamera(a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, frame, p);
+          points.push(new THREE.Vector3(p.x, p.y, p.z));
+        }
+      }
+      var loop = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(points), material);
+      loop.renderOrder = PREVIEW_ORDER;
+      loop.frustumCulled = false;
+      return loop;
+    },
+
+    clearGroup: function (group) {
+      while (group.children.length) {
+        var child = group.children.pop();
+        child.geometry.dispose();
+      }
     },
 
     placePreview: function () {
       var frame = this.layoutFrame;
       var layout = this.layout;
       if (!frame || !this.previewWidgets) return;
+      this.previewWidgets.forEach(function (widget) { widget.place(layout.slots[widget.slot], frame); });
+      // The menu runs from its selected row's inner end out to the
+      // frame's edge (visor-frame.js menuLayout).
       var menu = menuLayout(frame);
       var inner = sheetOffsetForAngle(menu.position, frame, false);
-      var outer = sheetOffsetForAngle(menu.position + menu.width, frame, false);
       var half = sheetOffsetForAngle(menu.height / 2, frame, true);
-      this.previewWidgets.forEach(function (widget) {
-        if (widget.frameEdge) {
-          widget.place({ x: 0, y: 0, w: layout.halfW * 2, h: layout.halfH * 2 }, frame);
-        } else if (widget.menuSide) {
-          var sign = widget.menuSide === 'left' ? -1 : 1;
-          widget.place({ x: sign * (inner + outer) / 2, y: 0, w: outer - inner, h: half * 2 }, frame);
-        } else {
-          widget.place(layout.slots[widget.slot], frame);
-        }
+      var group = this.previewLines;
+      this.clearGroup(group);
+      group.add(this.outline({ x: 0, y: 0, w: layout.halfW * 2, h: layout.halfH * 2 }, frame, this.edgeMaterial));
+      var self = this;
+      [-1, 1].forEach(function (sign) {
+        group.add(self.outline({ x: sign * (inner + layout.halfW) / 2, y: 0, w: layout.halfW - inner, h: half * 2 }, frame, self.menuMaterial));
       });
     },
 
-    // The rings, sized in degrees, in one square widget at the centre.
+    // The rings, sized in degrees, as circles at the centre.
     placeRings: function () {
       var frame = this.layoutFrame;
-      if (!frame || !this.ringsWidget) return;
-      var rings = this.prefs.rings;
-      var radius = sheetOffsetForAngle(rings[2], frame, false) * 1.08;
-      this.ringsWidget.place({ x: 0, y: 0, w: radius * 2, h: radius * 2 }, frame);
-      var radii = rings.map(function (deg) { return sheetOffsetForAngle(deg, frame, false) / radius; });
-      this.ringsWidget.set({ radii: radii.join(), degrees: rings.join() });
-      this.ringsWidget.dirty = true;
+      if (!frame || !this.ringLines) return;
+      this.clearGroup(this.ringLines);
+      var self = this;
+      var p = {};
+      this.prefs.rings.forEach(function (deg, i) {
+        var r = sheetOffsetForAngle(deg, frame, false);
+        var points = [];
+        for (var k = 0; k < 64; k++) {
+          var a = k / 64 * Math.PI * 2;
+          sheetToCamera(Math.cos(a) * r, Math.sin(a) * r, frame, p);
+          points.push(new THREE.Vector3(p.x, p.y, p.z));
+        }
+        var loop = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(points), self.ringMaterials[i]);
+        loop.renderOrder = PREVIEW_ORDER;
+        loop.frustumCulled = false;
+        self.ringLines.add(loop);
+      });
     },
 
     // ---------- focus ----------
@@ -654,7 +690,13 @@ if (typeof AFRAME !== 'undefined') {
       var camera = this.sceneEl.camera;
       // Lay out again whenever the view changes shape (a window resize, a
       // phone turned) — cheap to notice, so noticed here.
-      var key = (camera && camera.aspect) + ':' + (camera && camera.fov) + ':' + inXR(this.sceneEl);
+      // Not in a headset, though: there three.js rewrites the camera's
+      // fov from the XR projection every frame, and the frame does not
+      // depend on it, so watching it re-laid the whole HUD (and the visor
+      // menu with it) every frame. Rounded off a headset for the same
+      // reason.
+      var key = inXR(this.sceneEl) ? 'xr'
+        : (camera ? camera.aspect.toFixed(3) + ':' + camera.fov.toFixed(1) : '');
       if (key !== this.viewKey) {
         this.viewKey = key;
         this.relayout();
@@ -672,11 +714,13 @@ if (typeof AFRAME !== 'undefined') {
       var menuSide = this.menuSide;
       var showFrame = this.previewOn.frame || this.firstRunUntil > time;
       var showRings = this.previewOn.rings || Object.keys(this.ringRequests).length > 0;
+      if (this.previewLines) this.previewLines.visible = showFrame;
+      if (this.ringLines) this.ringLines.visible = showRings;
       for (var i = 0; i < this.widgets.length; i++) {
         var widget = this.widgets[i];
         var target;
         if (widget.previewOnly) {
-          target = widget === this.ringsWidget ? (showRings ? 1 : 0) : (showFrame ? 1 : 0);
+          target = showFrame ? 1 : 0;
         } else if (!widget.visible) {
           target = 0;
         } else if (widget.internal) {
@@ -707,43 +751,14 @@ if (typeof AFRAME !== 'undefined') {
     var h = box.h;
     var inset = 3;
     roundRect(ctx, inset, inset, w - inset * 2, h - inset * 2, 8);
-    ctx.fillStyle = box.state.dashed ? 'rgba(127, 227, 255, 0.10)' : 'rgba(160, 172, 190, 0.32)';
+    ctx.fillStyle = 'rgba(160, 172, 190, 0.32)';
     ctx.fill();
     ctx.lineWidth = 3;
-    if (box.state.dashed) ctx.setLineDash([10, 8]);
-    ctx.strokeStyle = box.state.dashed ? 'rgba(127, 227, 255, 0.8)' : 'rgba(232, 240, 255, 0.75)';
+    ctx.strokeStyle = 'rgba(232, 240, 255, 0.75)';
     ctx.stroke();
-    ctx.setLineDash([]);
     var size = Math.min(1.3 * box.perDegree, w / Math.max(4, box.state.label.length) * 1.4);
-    // The menu's box is tall and mostly empty: label it at the top.
-    var y = box.state.dashed ? size * 1.4 : h / 2;
-    drawText(ctx, box.state.label, w / 2, y, { size: size, align: 'center', color: 'rgba(240, 246, 255, 0.9)' });
+    drawText(ctx, box.state.label, w / 2, h / 2, { size: size, align: 'center', color: 'rgba(240, 246, 255, 0.9)' });
   }
 
-  function drawFrameEdge(ctx, box) {
-    ctx.lineWidth = 2.5;
-    ctx.setLineDash([6, 6]);
-    ctx.strokeStyle = 'rgba(232, 240, 255, 0.55)';
-    ctx.strokeRect(1.5, 1.5, box.w - 3, box.h - 3);
-  }
 
-  function drawRings(ctx, box) {
-    if (!box.state.radii) return;
-    var radii = box.state.radii.split(',').map(Number);
-    var degrees = box.state.degrees.split(',');
-    var cx = box.w / 2;
-    var cy = box.h / 2;
-    var half = box.h / 2;
-    radii.forEach(function (r, i) {
-      ctx.beginPath();
-      ctx.arc(cx, cy, r * half, 0, Math.PI * 2);
-      ctx.lineWidth = 2.6;
-      ctx.strokeStyle = HUD_COLORS.outline;
-      ctx.stroke();
-      ctx.lineWidth = 1.2;
-      ctx.strokeStyle = i === 0 ? HUD_COLORS.warn : 'rgba(238, 246, 255, 0.85)';
-      ctx.stroke();
-      drawText(ctx, degrees[i] + '°', cx + r * half * 0.72, cy - r * half * 0.72, { size: 1.1 * box.perDegree, align: 'center' });
-    });
-  }
 }
