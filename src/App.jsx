@@ -6,7 +6,6 @@ import { SiteHeader, SiteFooter } from './SiteChrome.jsx';
 const GROUPS = [
   {
     title: 'Games',
-    blurb: 'The ones that are turning into real games.',
     cards: [
       {
         title: 'Pistols at Dawn',
@@ -26,7 +25,6 @@ const GROUPS = [
   },
   {
     title: 'Proofs of concept',
-    blurb: 'Single ideas, tried out to see if they hold up.',
     cards: [
       {
         title: 'Impossible Spaces',
@@ -63,7 +61,6 @@ const GROUPS = [
   },
   {
     title: 'Building blocks',
-    blurb: 'The shared pieces the games are made from, each with a room to try it in.',
     cards: [
       {
         title: 'Menus & HUD',
@@ -101,9 +98,6 @@ export function App() {
   return (
     <Layout header={<SiteHeader />} footer={<SiteFooter />}>
       <Container padding="xl" alignItems="center" itemSpacing="sm">
-        <Heading level={1} align="center" gradient eyebrow="Meta Quest 2 · WebXR">
-          Strap in and play
-        </Heading>
         <Text align="center" tone="muted" balance>
           Experimental WebXR games built for the Quest 2 browser. No app store, no
           install — open a link and go.
@@ -112,10 +106,13 @@ export function App() {
 
       {GROUPS.map((group) => (
         <Container key={group.title} padding="lg" itemSpacing="md">
-          <Heading level={2} underline>
-            {group.title}
-          </Heading>
-          <Text tone="muted">{group.blurb}</Text>
+          {/* Styled as the page's title would be: centred, Wright Sans, the
+              brand gradient, at h1 size (site.css) while staying an h2. */}
+          <div className="site-section-heading">
+            <Heading level={2} align="center" gradient>
+              {group.title}
+            </Heading>
+          </div>
           <CardGrid gap="lg" minCardWidth="340px">
             {group.cards.map((card) => (
               <Card

@@ -14,6 +14,8 @@ html { -webkit-font-smoothing: antialiased; }
 .nw-card__title { color: var(--secondary); font-family: var(--font-family-heading); }
 .site-navigation { display: flex; gap: 1rem; align-items: center; }
 .site-navigation a { font-size: 0.875rem; }
+.site-section-heading { width: 100%; }
+.site-section-heading h2 { font-size: 2em; margin: 0; }
 @media (min-width: 1024px) {
   .nw-container--gutters { box-shadow: none !important; }
 }
