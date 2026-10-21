@@ -638,6 +638,15 @@ if (typeof AFRAME !== 'undefined') {
       // anything to restyle, and build sets each face as it goes.
       if (!this.rows || oldData.font === undefined) return;
       if (oldData.font !== this.data.font || oldData.titleFont !== this.data.titleFont) this.applyFonts();
+      if (oldData.title !== this.data.title && this.titleEl) {
+        this.titleEl.setAttribute('value', (this.data.title || this.menu.getTitle() || '').toUpperCase());
+      }
+    },
+
+    // A new title, live: a menu whose page changes what it is about (the
+    // showcase's tour menu becomes each demo's menu) says so.
+    setTitle: function (title) {
+      this.el.setAttribute('crossbar-menu', 'title', title || '');
     },
 
     setScrim: function (opacity) {

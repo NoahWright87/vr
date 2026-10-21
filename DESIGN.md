@@ -543,8 +543,8 @@ or it is in the way.
 
 **Where things go.** One calibrated rectangle — the frame — holds the
 HUD and the visor menu. Its slots are suggestions with conventions, not
-rules; games will break them when they have a reason (the showcase's
-Driver HUD puts a speedometer where a hand would go, because it is a
+rules; games will break them when they have a reason (the menus tour's
+Racing HUD puts a speedometer where a hand would go, because it is a
 car):
 
 | Slot | Usually |

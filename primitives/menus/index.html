@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>Showcase | Noah's VR projects</title>
+    <title>Menus &amp; HUD | Noah's VR projects</title>
     <link rel="icon" href="../../assets/noah-vr.svg" type="image/svg+xml" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
 
@@ -35,58 +35,36 @@
   </head>
   <body>
     <!-- ==============================================================
-         Every menu this project has, in one room, all on the shared
-         crossbar menu system (common/menu-model.js + menu-crossbar.js):
+         MENUS & HUD — a guided tour of the menu system and the visor HUD.
 
-           ahead      a static panel standing in the room
-           right      a wall screen — poke TAP and a panel grows out of it
-           left       a pedestal button — press it and a panel floats up
-           behind     a platform of boxes to grab, spawn and reset
-           your wrist the watch (raise it, or Tab)
-           your head  the visor (hand beside your temple, or backtick),
-                      and its HUD: pick a style from the visor's
-                      HUD style row (hud-demo.js)
-           corners    the HUD's props: a bench beside the boxes (a
-                      blaster, a grenade, a potion), spikes by the
-                      pedestal, and targets out past the room's edge
+         One menu in front of you picks a demo (tour.js). Each demo puts
+         its HUD on the visor and a small scene behind you — turn round,
+         or set Facing to Back — with props that use menus the way a game
+         would: a gun case, a toolbox, a chest, a wanted board, a lamp. You
+         grab them to open their menus. Nothing needs walking to, and the
+         thumbsticks do not move you.
 
-         The four stations stand against the sides of your real room:
-         the headset's boundary when it reports one (common/play-space.js,
-         the same reading the boundary lab draws), and a 3 x 3 m square
-         around where you start when it does not.
+           ahead       the tour menu
+           behind      the active demo's scene (demo-*.js, #set-<id>)
+           your wrist  the watch: hand, hints
+           your head   the visor: Facing, Menu font, and the visor's own
+                       settings (Adjust, HUD, Targeting)
     ============================================================== -->
     <div id="overlay">
-      <span>Showcase — every menu, one room. Ahead: static panel (walk up, E). Right: wall screen. Left: pedestal. Behind: boxes (F to grab) and the HUD prop bench (click fires/drinks, T throws). Tab: watch. `: visor (HUD style, Visor ▸ Adjust). Keyboard: WASD/mouse, C crouch. <a href="../../index.html">All prototypes</a></span>
+      <span>Menus &amp; HUD — pick a demo from the menu ahead (click it, or press E). Its scene is behind you: drag to look round, or set Facing to Back. F grabs, click fires or drinks, T throws, hold click to drive. Tab: watch. `: visor. <a href="../../index.html">All prototypes</a></span>
     </div>
 
-    <!-- keyboard-shortcuts' enterVR binds "F" to toggle desktop VR
-         fullscreen by default (A-Frame core, not something defined in
-         this repo) — it collides with desktop-controls' own "F" for
-         grab. Disabling just that half leaves Escape still exiting VR
-         normally. -->
-    <!-- The visor menu is head-locked rather than placed, so it is
-         configured on the scene rather than positioned in markup: the
-         system builds it as a child of the camera. Backtick opens it off
-         a headset (Tab is the watch); in XR, hold an empty hand beside
-         your head until the arc fills. -->
-    <!-- play-space-outline draws the room the stations are fitted to:
-         your real boundary in a headset that reports one, and a faint
-         3 x 3 m square everywhere else. -->
     <a-scene
       keyboard-shortcuts="enterVR: false"
       visor-menu="page: visor"
-      play-space-outline="showDefault: true"
-      hud-demo
+      menu-tour
     >
       <a-light id="ambient-light" type="ambient" color="#fff" intensity="0.7"></a-light>
       <a-light id="sun-light" type="directional" position="2 3 2" intensity="0.7"></a-light>
       <a-sky id="showcase-sky" color="#0d1526"></a-sky>
-      <a-plane id="floor" rotation="-90 0 0" width="20" height="20" color="#445" position="0 0 0"></a-plane>
-      <!-- Gaze reticle so the panels are usable from desktop/phone with
-           no headset. Disabled the moment a real controller connects —
-           with real hands present it was possible to have the gaze
-           reticle hovering one row while a controller laser hovered
-           another. -->
+      <a-plane id="floor" rotation="-90 0 0" width="30" height="30" color="#445" position="0 0 0"></a-plane>
+      <a-entity id="basics-stars" star-field></a-entity>
+
       <a-entity
         id="rig"
         position="0 0 0"
@@ -106,18 +84,13 @@
           ></a-entity>
         </a-camera>
 
-        <!-- Two entities per hand, deliberately decoupled — same pattern
-             Pistols at Dawn uses: hand-controls' rendered mesh applies its
-             own corrective rotation that does NOT match "-Z is where
-             you're pointing", so pointing lives on hand-with-watch's
-             fingertip (a child of its corrective wrapper), and the
-             visible, animated hand is a separate hand-controls entity. -->
+        <!-- Pointing lives on hand-with-watch's fingertip; the visible,
+             animated hand is a separate hand-controls entity. -->
         <a-entity id="left-hand" position="-0.2 1.35 -0.4"
           hand-with-watch="hand: left"
           semantic-hand="hand: left; maxReach: 1.0"
         ></a-entity>
         <a-entity id="tracked-hand-visual-left" control-mode-visibility="modes: xr" hand-controls="hand: left; handModelStyle: lowPoly"></a-entity>
-
         <a-entity id="right-hand" position="0.2 1.35 -0.4"
           hand-with-watch="hand: right"
           semantic-hand="hand: right; maxReach: 1.0"
@@ -125,24 +98,9 @@
         <a-entity id="tracked-hand-visual-right" control-mode-visibility="modes: xr" hand-controls="hand: right; handModelStyle: lowPoly"></a-entity>
       </a-entity>
 
-      <!-- Multiplayer: every OTHER connected peer's aim, broadcast a few
-           times a second and drawn with A-Frame's built-in "line"
-           component, plus a small sphere at their head. One pair of
-           entities per remote peer, created and removed on the fly by the
-           multiplayer script at the bottom of this file, so nothing is
-           declared here. World space, not a child of #rig, since these
-           are where OTHER people's cameras are pointing. -->
-
-      <!-- ============================================================
-           THE WATCH. The panel each wrist projects when you raise it
-           (or poke its face, or press Tab): one crossbar menu built from
-           the "watch" page registered below. hand-with-watch finds this
-           template by id; projected-menu still decides when it is up.
-      ============================================================ -->
+      <!-- The watch: hand-with-watch finds this template by id. -->
       <template id="watch-crossbar-template">
         <a-entity class="watch-crossbar-panel" visible="false">
-          <!-- Raised a little within the panel so its title (the clock)
-               sits at the top of the face. -->
           <a-entity class="watch-crossbar"
             position="0 0.17 0"
             crossbar-menu="page: watch; width: 1.2; rowHeight: 0.2; maxChars: 20; open: false; closeBehavior: hide; memory: none; hint: false; stickRange: 0.35; crumbs: title; breadcrumbDepth: 1; plateOpacity: 0.94; exitKey: Tab; exitButton: WATCH; sidecarWidth: 1; sidecarChars: 22"
@@ -152,801 +110,287 @@
       </template>
 
       <!-- ============================================================
-           AHEAD — THE STATIC PANEL. A menu that simply stands in the
-           room. Walk up for the E prompt (or, in a headset, reach an
-           empty hand toward it — not pointing — and that hand's stick
-           drives it). The reach is short on purpose: in a room-sized
-           layout the panel is a metre from where you stand, and a longer
-           one let a hand resting at your side take the stick you walk
-           with. A fixture: no close button, and back at the top does
-           nothing, so it cannot be lost.
+           AHEAD — THE TOUR MENU. Titles in Wright Sans, rows in B612.
+           In reach of a hand (its stick drives it), pointable, and E
+           off a headset.
       ============================================================ -->
-      <a-entity id="station-static" play-space-station="side: front">
-        <a-entity id="showcase-panel"
-          position="0 1.32 0"
-          crossbar-menu="page: showcase; windowSize: 5; width: 1.1; rowHeight: 0.17; stickRange: 0.5; closable: false; hintLabel: Showcase menu"
-          crossbar-menu-registration
-        ></a-entity>
-        <a-text class="station-caption"
-          value="STATIC PANEL&#10;Walk up and press E (W/S move, D in, A back)&#10;VR: empty hand near it, then the stick"
-          align="center" color="#7fe3ff" width="1.1" wrap-count="44" position="0 0.52 0"
-        ></a-text>
-        <!-- Either side of it, the same kind of panel in the other faces
-             a menu can be set in (crossbar-menu's font / titleFont): B612
-             throughout on the left, Wright Sans titles over B612 rows on
-             the right. Each has Font rows that restyle that panel alone. -->
-        <a-entity id="font-panel-b612"
-          position="-1.05 1.32 0.28" rotation="0 28 0"
-          crossbar-menu="page: font-b612; windowSize: 5; width: 0.8; rowHeight: 0.13; maxChars: 18; stickRange: 0.5; closable: false; font: b612; titleFont: b612; hintLabel: B612 menu"
-          crossbar-menu-registration
-        ></a-entity>
-        <a-entity id="font-panel-wright"
-          position="1.05 1.32 0.28" rotation="0 -28 0"
-          crossbar-menu="page: font-wright; windowSize: 5; width: 0.8; rowHeight: 0.13; maxChars: 18; stickRange: 0.5; closable: false; font: b612; titleFont: wright; hintLabel: Wright Sans menu"
-          crossbar-menu-registration
-        ></a-entity>
-      </a-entity>
-
-      <!-- ============================================================
-           RIGHT — THE WALL SCREEN. A world-fixed trigger in
-           projected-menu's "poke" mode: poke TAP (or walk up and press E)
-           and a panel grows out of the wall, flush against it, hiding
-           the button it came from. Walk far enough away and it closes.
-      ============================================================ -->
-      <template id="wall-crossbar-template">
-        <a-entity class="wall-crossbar-panel" visible="false">
-          <a-entity
-            crossbar-menu="page: wall; width: 1; rowHeight: 0.16; maxChars: 20; open: false; closeBehavior: hide; memory: temporary; hint: false; stickRange: 0.6; plateOpacity: 0.9"
-            crossbar-menu-registration
-          ></a-entity>
-        </a-entity>
-      </template>
-
-      <a-entity id="station-wall" play-space-station="side: right">
-        <a-entity id="wall-slab" position="0 1.4 0">
-          <a-box class="aim-occluder" width="1.4" height="1.8" depth="0.1" color="#2b2f38" position="0 0 -0.05"></a-box>
-          <!-- radialAnchor approaches to a set distance from the trigger
-               (widened if the panel would not fit the viewer's field of
-               view — see getFramedInteractionDistance in
-               interaction-hints.js). Local +Z is the wall's front, which
-               play-space-station turns to face the middle of the room. -->
-          <a-entity id="wall-screen-trigger"
-            geometry="primitive: plane; width: 0.4; height: 0.28"
-            material="color: #16324a; side: double"
-            position="0 0 0.004"
-            mounted-interaction="radialAnchor: true; interactionDistance: 0.74; previewStandoff: 0.12"
-            hint-zone="action: mounted; radius: 0.34; maxReach: 1.0; gazeThreshold: 0.88; priority: 20; desktopKey: E; desktopLabel: Open menu; xrKey: POKE; xrLabel: Open menu; hintOffset: 0 0.32 0.13; hintOffsetSpace: target; hintLockX: true; hintLockY: true; hintLockZ: true; hintScale: 0.68; highlightOpacity: 0.24; highlightScale: 1.045"
-            projected-menu="template: #wall-crossbar-template; mode: poke; pokeScale: 1.2; offset: 0 0 0.012; closeDistance: 3.2"
-            projected-crossbar="hideTrigger: true"
-          >
-            <a-text value="TAP" align="center" color="#7fd" width="4" position="0 0 0.002"></a-text>
-          </a-entity>
-        </a-entity>
-        <a-text class="station-caption"
-          value="WALL SCREEN&#10;Poke TAP, or walk up and press E"
-          align="center" color="#7fe3ff" width="1.1" wrap-count="44" position="0 0.3 0.02"
-        ></a-text>
-      </a-entity>
-
-      <!-- ============================================================
-           LEFT — THE PEDESTAL BUTTON. Also world-fixed, but in
-           projected-menu's "laser" mode: press the button and the panel
-           floats up above it and turns to face you, for pointing (or the
-           stick, or the keys) rather than poking.
-      ============================================================ -->
-      <template id="pedestal-crossbar-template">
-        <a-entity class="pedestal-crossbar-panel" visible="false">
-          <a-entity
-            crossbar-menu="page: pedestal; width: 1; rowHeight: 0.16; maxChars: 20; open: false; closeBehavior: hide; memory: temporary; hint: false; stickRange: 0.6; plateOpacity: 0.9"
-            crossbar-menu-registration
-          ></a-entity>
-        </a-entity>
-      </template>
-
-      <a-entity id="station-pedestal" play-space-station="side: left">
-        <a-entity id="pedestal">
-          <a-cylinder class="aim-occluder" radius="0.15" height="0.9" position="0 0.45 0" color="#555"></a-cylinder>
-          <a-entity id="pedestal-button"
-            geometry="primitive: cylinder; radius: 0.08; height: 0.04"
-            material="color: #b33"
-            position="0 0.92 0"
-            mounted-interaction="radialAnchor: true; interactionDistance: 0.72; normal: 0 1 0; previewStandoff: 0.12"
-            hint-zone="action: mounted; radius: 0.34; maxReach: 1.0; gazeThreshold: 0.9; priority: 20; desktopKey: E; desktopLabel: Open menu; xrKey: POKE; xrLabel: Open menu; hintOffset: 0 0.3 0; hintScale: 0.68; highlightOpacity: 0.24; highlightScale: 1.06"
-            projected-menu="template: #pedestal-crossbar-template; mode: laser; laserScale: 1.1; offset: 0 0.85 0; closeDistance: 2.2"
-            projected-crossbar
-          ></a-entity>
-        </a-entity>
-        <a-text class="station-caption"
-          value="PEDESTAL&#10;Poke the button, or walk up and press E"
-          align="center" color="#7fe3ff" width="1.1" wrap-count="44" position="0 0.3 0.3"
-        ></a-text>
-      </a-entity>
-
-      <!-- ============================================================
-           BEHIND — THE BOX PLATFORM. The shared grab/drop state machine
-           (simple-grabbable), not Pistols' holster/throw/catch graph.
-           The boxes are children of the scene so they can be picked up;
-           play-space-anchor keeps their resting places on the platform
-           wherever the platform ends up. Spawn and Reset are on the
-           static panel and the wall screen.
-      ============================================================ -->
-      <a-entity id="station-boxes" play-space-station="side: back">
-        <a-box id="box-test-stand" class="aim-occluder" width="1.2" height="0.62" depth="0.8" color="#353b48" position="0 0.31 0"></a-box>
-        <a-text class="station-caption"
-          value="BOXES&#10;Reach in and grip, or look and press F"
-          align="center" color="#7fe3ff" width="1.1" wrap-count="44" position="0 0.75 0.42"
-        ></a-text>
-      </a-entity>
-      <a-box id="showcase-grab-box"
-        class="showcase-grab-box"
-        width="0.26" height="0.26" depth="0.26"
-        color="#d78b42"
-        play-space-anchor="station: #station-boxes; offset: -0.15 0.77 0"
-        simple-grabbable="heldPosition: 0 0 -0.08; floorY: 0.13"
-        hint-zone="action: grab; radius: 0.34; maxReach: 1.0; gazeThreshold: 0.93; priority: 10; desktopKey: F; desktopLabel: Grab; xrKey: GRIP; xrLabel: Grab; hintOffset: 0 0.32 0"
-        data-hud-item="box"
-      ></a-box>
-
-      <!-- ============================================================
-           THE HUD'S PROPS (hud-demo.js). Just enough to make each HUD
-           readout move for a real reason. A bench beside the boxes holds
-           a blaster (ammo, auto-aim brackets), a grenade (gaze brackets
-           and throw assist) and a potion (health, mana, whisky or fuel,
-           by style); spikes by the pedestal hurt; targets stand on posts
-           out past the room's edge. Kenney models (CC0).
-      ============================================================ -->
-      <a-box id="demo-bench" class="aim-occluder" width="0.7" height="0.62" depth="0.45" color="#3b3348"
-        play-space-anchor="station: #station-boxes; offset: 1.02 0.31 0"
-      ></a-box>
-      <a-text value="HUD PROPS&#10;Grab one, then look at your visor" align="center" color="#7fe3ff" width="0.9" wrap-count="30"
-        play-space-anchor="station: #station-boxes; offset: 1.02 0.78 0.24"
-      ></a-text>
-
-      <a-entity id="demo-blaster" data-hud-item="blaster"
-        play-space-anchor="station: #station-boxes; offset: 0.86 0.68 0"
-        simple-grabbable="heldPosition: 0 0 0; floorY: 0; throwEnabled: true; halfExtents: 0.04 0.06 0.17"
-        hint-zone="action: grab; radius: 0.3; maxReach: 1.0; gazeThreshold: 0.93; priority: 11; desktopKey: F; desktopLabel: Grab blaster; xrKey: GRIP; xrLabel: Grab; hintOffset: 0 0.22 0"
-        demo-blaster
-      >
-        <!-- The model's barrel points +Z and its grip sits toward -Z, so
-             it is turned round and shifted until the grip is at the
-             hand and the barrel points down the hand's -Z. -->
-        <a-entity gltf-model="../../assets/models/kenney/blaster-kit/blaster-a.glb"
-          rotation="0 180 0" scale="0.4 0.4 0.4" position="0 0.06 -0.054"></a-entity>
-        <a-entity class="demo-muzzle" position="0 0.075 -0.2"></a-entity>
-      </a-entity>
-
-      <a-entity id="demo-grenade" data-hud-item="grenade"
-        play-space-anchor="station: #station-boxes; offset: 1.08 0.68 0.1"
-        simple-grabbable="heldPosition: 0 0 -0.04; floorY: 0; throwEnabled: true; halfExtents: 0.035 0.06 0.035"
-        hint-zone="action: grab; radius: 0.26; maxReach: 1.0; gazeThreshold: 0.93; priority: 11; desktopKey: F; desktopLabel: Grab grenade; xrKey: GRIP; xrLabel: Grab; hintOffset: 0 0.2 0"
-        demo-throwable
-      >
-        <a-entity gltf-model="../../assets/models/kenney/blaster-kit/grenade-a.glb" scale="0.5 0.5 0.5" position="0 -0.06 0"></a-entity>
-      </a-entity>
-
-      <a-entity id="demo-potion" data-hud-item="potion"
-        play-space-anchor="station: #station-boxes; offset: 1.24 0.69 -0.08"
-        simple-grabbable="heldPosition: 0 0 -0.05; floorY: 0; throwEnabled: true; halfExtents: 0.06 0.07 0.06"
-        hint-zone="action: grab; radius: 0.26; maxReach: 1.0; gazeThreshold: 0.93; priority: 11; desktopKey: F; desktopLabel: Grab potion; xrKey: GRIP; xrLabel: Grab; hintOffset: 0 0.22 0"
-        demo-potion
-      >
-        <a-entity gltf-model="../../assets/models/kenney/mini-dungeon/potion.glb" scale="0.35 0.35 0.35" position="0 -0.07 0"></a-entity>
-      </a-entity>
-
-      <a-entity id="demo-spikes"
-        gltf-model="../../assets/models/kenney/mini-dungeon/trap.glb"
-        play-space-anchor="station: #station-pedestal; offset: 0.95 0 0.55"
+      <a-entity id="tour-panel"
+        position="0 1.32 -0.85"
+        crossbar-menu="page: tour; windowSize: 7; width: 1.0; rowHeight: 0.13; rowSpacing: 0.13; maxChars: 22; stickRange: 0.6; closable: false; font: b612; titleFont: wright; hintLabel: Tour menu; sidecarChars: 24"
+        crossbar-menu-registration
       ></a-entity>
 
-      <a-entity class="demo-targets">
-        <a-entity demo-target aim-target="offset: 0 1.4 0; radius: 0.5">
-          <a-cylinder class="demo-target-post" radius="0.04" height="1.4" color="#5b4a3a"></a-cylinder>
-          <a-entity class="demo-target-face" gltf-model="../../assets/models/kenney/blaster-kit/target-large.glb" rotation="0 90 0" scale="3 3 3"></a-entity>
+      <!-- The prop menus: each opens above the prop that owns it. -->
+      <template id="tpl-gun-case">
+        <a-entity visible="false"><a-entity crossbar-menu="page: gun-case; width: 0.9; rowHeight: 0.13; maxChars: 18; open: false; closeBehavior: hide; memory: temporary; hint: false; stickRange: 0.6; plateOpacity: 0.9; font: b612; titleFont: wright" crossbar-menu-registration></a-entity></a-entity>
+      </template>
+      <template id="tpl-toolbox">
+        <a-entity visible="false"><a-entity crossbar-menu="page: toolbox; width: 0.9; rowHeight: 0.13; maxChars: 18; open: false; closeBehavior: hide; memory: temporary; hint: false; stickRange: 0.6; plateOpacity: 0.9; font: b612; titleFont: wright" crossbar-menu-registration></a-entity></a-entity>
+      </template>
+      <template id="tpl-chest">
+        <a-entity visible="false"><a-entity crossbar-menu="page: chest; width: 0.9; rowHeight: 0.13; maxChars: 18; open: false; closeBehavior: hide; memory: temporary; hint: false; stickRange: 0.6; plateOpacity: 0.9; font: b612; titleFont: wright" crossbar-menu-registration></a-entity></a-entity>
+      </template>
+      <template id="tpl-wanted">
+        <a-entity visible="false"><a-entity crossbar-menu="page: wanted; width: 0.9; rowHeight: 0.13; maxChars: 20; open: false; closeBehavior: hide; memory: temporary; hint: false; stickRange: 0.6; plateOpacity: 0.9; font: b612; titleFont: wright" crossbar-menu-registration></a-entity></a-entity>
+      </template>
+      <template id="tpl-lamp">
+        <a-entity visible="false"><a-entity crossbar-menu="page: lamp; width: 0.9; rowHeight: 0.13; maxChars: 18; open: false; closeBehavior: hide; memory: temporary; hint: false; stickRange: 0.6; plateOpacity: 0.9; font: b612; titleFont: wright" crossbar-menu-registration></a-entity></a-entity>
+      </template>
+
+      <!-- ============================================================
+           BEHIND — ONE SCENE PER DEMO, shown only while it is the one
+           picked. Each is within reach of where you stand: a table just
+           behind you, and a prop with a menu on your right as you face
+           it. Kenney models (CC0).
+      ============================================================ -->
+
+      <!-- BASICS: a lamp on a side table. -->
+      <a-entity id="set-basics">
+        <a-box width="0.5" height="0.7" depth="0.4" color="#4a3a2c" position="0 0.35 0.62"></a-box>
+        <a-entity id="basics-lamp" position="0 0.71 0.62"
+          geometry="primitive: cylinder; radius: 0.09; height: 0.04" material="color: #2b2b30"
+          hint-zone="action: grab; radius: 0.32; maxReach: 1.0; gazeThreshold: 0.88; priority: 20; desktopKey: F; desktopLabel: Open lamp menu; xrKey: GRIP; xrLabel: Open; hintOffset: 0 0.6 0"
+          projected-menu="template: #tpl-lamp; mode: laser; laserScale: 0.6; offset: 0 0.75 0; closeDistance: 3"
+          projected-crossbar
+          grab-to-open
+        >
+          <a-cylinder radius="0.012" height="0.36" position="0 0.2 0" color="#2b2b30"></a-cylinder>
+          <a-cone radius-bottom="0.14" radius-top="0.07" height="0.14" position="0 0.42 0" color="#e8d9b8" material="side: double"></a-cone>
+          <a-sphere id="basics-bulb" radius="0.04" position="0 0.38 0" material="color: #ffd59a; emissive: #ffd59a"></a-sphere>
+          <a-entity id="basics-lamp-light" position="0 0.36 0" light="type: point; color: #ffd59a; intensity: 1.2; distance: 3; decay: 1.5"></a-entity>
         </a-entity>
-        <a-entity demo-target aim-target="offset: 0 1.8 0; radius: 0.5">
-          <a-cylinder class="demo-target-post" radius="0.04" height="1.8" color="#5b4a3a"></a-cylinder>
-          <a-entity class="demo-target-face" gltf-model="../../assets/models/kenney/blaster-kit/target-large.glb" rotation="0 90 0" scale="3 3 3"></a-entity>
+      </a-entity>
+
+      <!-- SHOOTER: a range, a table, a gun case. -->
+      <a-entity id="set-shooter">
+        <a-box width="1.0" height="0.76" depth="0.45" color="#3c3f47" position="0 0.38 0.62"></a-box>
+        <a-entity id="shooter-gun" data-tour-item="gun" position="0.18 0.84 0.58" rotation="0 180 0"
+          simple-grabbable="heldPosition: 0 0 0; floorY: 0; throwEnabled: true; halfExtents: 0.04 0.06 0.17"
+          hint-zone="action: grab; radius: 0.28; maxReach: 1.0; gazeThreshold: 0.9; priority: 12; desktopKey: F; desktopLabel: Grab gun; xrKey: GRIP; xrLabel: Grab; hintScale: 0.5; hintOffset: 0 0.22 0"
+          tour-gun
+        >
+          <a-entity class="tour-gun-model" scale="0.4 0.4 0.4"></a-entity>
+          <a-entity class="shooter-scope" position="0 0.11 -0.04" rotation="0 180 0" scale="0.4 0.4 0.4"></a-entity>
+          <a-entity class="shooter-silencer" gltf-model="../../assets/models/kenney/blaster-kit/silencer-small.glb" position="0 0.075 -0.22" rotation="0 180 0" scale="0.4 0.4 0.4"></a-entity>
+          <a-entity class="tour-muzzle" position="0 0.075 -0.2"></a-entity>
         </a-entity>
-        <a-entity demo-target aim-target="offset: 0 2.4 0; radius: 0.5">
-          <a-cylinder class="demo-target-post" radius="0.04" height="2.4" color="#5b4a3a"></a-cylinder>
-          <a-entity class="demo-target-face" gltf-model="../../assets/models/kenney/blaster-kit/target-large.glb" rotation="0 90 0" scale="3 3 3"></a-entity>
+        <a-entity class="shooter-grenade" data-tour-item="grenade" position="-0.12 0.82 0.55"
+          simple-grabbable="heldPosition: 0 0 -0.04; floorY: 0; throwEnabled: true; halfExtents: 0.035 0.06 0.035"
+          hint-zone="action: grab; radius: 0.22; maxReach: 1.0; gazeThreshold: 0.9; priority: 11; desktopKey: F; desktopLabel: Grab grenade; xrKey: GRIP; xrLabel: Grab; hintScale: 0.5; hintOffset: 0 0.18 0"
+          tour-throwable
+        ><a-entity gltf-model="../../assets/models/kenney/blaster-kit/grenade-a.glb" scale="0.5 0.5 0.5" position="0 -0.06 0"></a-entity></a-entity>
+        <a-entity class="shooter-grenade" data-tour-item="grenade" position="-0.24 0.82 0.6"
+          simple-grabbable="heldPosition: 0 0 -0.04; floorY: 0; throwEnabled: true; halfExtents: 0.035 0.06 0.035"
+          hint-zone="action: grab; radius: 0.22; maxReach: 1.0; gazeThreshold: 0.9; priority: 11; desktopKey: F; desktopLabel: Grab grenade; xrKey: GRIP; xrLabel: Grab; hintScale: 0.5; hintOffset: 0 0.18 0"
+          tour-throwable
+        ><a-entity gltf-model="../../assets/models/kenney/blaster-kit/grenade-a.glb" scale="0.5 0.5 0.5" position="0 -0.06 0"></a-entity></a-entity>
+        <a-entity class="shooter-grenade" data-tour-item="grenade" position="-0.36 0.82 0.55"
+          simple-grabbable="heldPosition: 0 0 -0.04; floorY: 0; throwEnabled: true; halfExtents: 0.035 0.06 0.035"
+          hint-zone="action: grab; radius: 0.22; maxReach: 1.0; gazeThreshold: 0.9; priority: 11; desktopKey: F; desktopLabel: Grab grenade; xrKey: GRIP; xrLabel: Grab; hintScale: 0.5; hintOffset: 0 0.18 0"
+          tour-throwable
+        ><a-entity gltf-model="../../assets/models/kenney/blaster-kit/grenade-a.glb" scale="0.5 0.5 0.5" position="0 -0.06 0"></a-entity></a-entity>
+        <!-- The gun case, on a stand to your right as you face the range. -->
+        <a-box width="0.3" height="0.7" depth="0.3" color="#2c2f36" position="-0.62 0.35 0.42"></a-box>
+        <a-entity id="shooter-case" position="-0.62 0.78 0.42"
+          geometry="primitive: box; width: 0.42; height: 0.16; depth: 0.26" material="visible: false"
+          hint-zone="action: grab; radius: 0.34; maxReach: 1.0; gazeThreshold: 0.88; priority: 20; desktopKey: F; desktopLabel: Open gun case; xrKey: GRIP; xrLabel: Open; hintOffset: 0 0.3 0"
+          projected-menu="template: #tpl-gun-case; mode: laser; laserScale: 0.6; offset: 0 0.55 0; closeDistance: 3"
+          projected-crossbar
+          grab-to-open
+        ><a-entity gltf-model="../../assets/models/kenney/blaster-kit/crate-wide.glb" scale="0.5 0.5 0.5" position="0 -0.08 0"></a-entity></a-entity>
+        <!-- The range. -->
+        <a-entity tour-target aim-target="offset: 0 1.4 0; radius: 0.5" position="-1.6 0 4.5" rotation="0 160 0">
+          <a-cylinder radius="0.04" height="1.4" position="0 0.7 0" color="#5b4a3a"></a-cylinder>
+          <a-entity class="tour-face" gltf-model="../../assets/models/kenney/blaster-kit/target-large.glb" position="0 1.4 0" rotation="0 90 0" scale="3 3 3"></a-entity>
         </a-entity>
-        <a-entity demo-target aim-target="offset: 0 1.2 0; radius: 0.32">
-          <a-cylinder class="demo-target-post" radius="0.04" height="1.2" color="#5b4a3a"></a-cylinder>
-          <a-entity class="demo-target-face" gltf-model="../../assets/models/kenney/blaster-kit/target-small.glb" rotation="0 90 0" scale="3 3 3"></a-entity>
+        <a-entity tour-target aim-target="offset: 0 1.7 0; radius: 0.5" position="0.4 0 6" rotation="0 180 0">
+          <a-cylinder radius="0.04" height="1.7" position="0 0.85 0" color="#5b4a3a"></a-cylinder>
+          <a-entity class="tour-face" gltf-model="../../assets/models/kenney/blaster-kit/target-large.glb" position="0 1.7 0" rotation="0 90 0" scale="3 3 3"></a-entity>
         </a-entity>
-        <a-entity demo-target aim-target="offset: 0 1.6 0; radius: 0.5">
-          <a-cylinder class="demo-target-post" radius="0.04" height="1.6" color="#5b4a3a"></a-cylinder>
-          <a-entity class="demo-target-face" gltf-model="../../assets/models/kenney/blaster-kit/target-large.glb" rotation="0 90 0" scale="3 3 3"></a-entity>
+        <a-entity tour-target aim-target="offset: 0 1.2 0; radius: 0.32" position="2 0 5" rotation="0 200 0">
+          <a-cylinder radius="0.04" height="1.2" position="0 0.6 0" color="#5b4a3a"></a-cylinder>
+          <a-entity class="tour-face" gltf-model="../../assets/models/kenney/blaster-kit/target-small.glb" position="0 1.2 0" rotation="0 90 0" scale="3 3 3"></a-entity>
         </a-entity>
-        <a-entity demo-target aim-target="offset: 0 1.1 0; radius: 0.32">
-          <a-cylinder class="demo-target-post" radius="0.04" height="1.1" color="#5b4a3a"></a-cylinder>
-          <a-entity class="demo-target-face" gltf-model="../../assets/models/kenney/blaster-kit/target-small.glb" rotation="0 90 0" scale="3 3 3"></a-entity>
+        <a-entity tour-target aim-target="offset: 0 2.2 0; radius: 0.5" position="-0.8 0 9" rotation="0 175 0">
+          <a-cylinder radius="0.04" height="2.2" position="0 1.1 0" color="#5b4a3a"></a-cylinder>
+          <a-entity class="tour-face" gltf-model="../../assets/models/kenney/blaster-kit/target-large.glb" position="0 2.2 0" rotation="0 90 0" scale="3 3 3"></a-entity>
         </a-entity>
+        <a-entity tour-target aim-target="offset: 0 1.5 0; radius: 0.32" position="1.6 0 8" rotation="0 190 0">
+          <a-cylinder radius="0.04" height="1.5" position="0 0.75 0" color="#5b4a3a"></a-cylinder>
+          <a-entity class="tour-face" gltf-model="../../assets/models/kenney/blaster-kit/target-small.glb" position="0 1.5 0" rotation="0 90 0" scale="3 3 3"></a-entity>
+        </a-entity>
+      </a-entity>
+
+      <!-- RACING: a track on a table, a remote, a toolbox. -->
+      <a-entity id="set-racing">
+        <a-box width="1.5" height="0.7" depth="1.05" color="#2f4a3a" position="0 0.35 1.05"></a-box>
+        <a-entity id="racing-track" position="0 0.701 1.05" rotation="0 90 0">
+          <a-entity id="racing-car">
+            <a-box class="racing-paint" width="0.05" height="0.022" depth="0.1" position="0 0.018 0" color="#e8443a"></a-box>
+            <a-box class="racing-paint" width="0.036" height="0.018" depth="0.04" position="0 0.036 0.008" color="#e8443a"></a-box>
+            <a-box width="0.034" height="0.012" depth="0.002" position="0 0.034 -0.012" color="#8fb8d8"></a-box>
+            <a-cylinder radius="0.011" height="0.008" rotation="0 0 90" position="0.027 0.011 0.03" color="#151515"></a-cylinder>
+            <a-cylinder radius="0.011" height="0.008" rotation="0 0 90" position="-0.027 0.011 0.03" color="#151515"></a-cylinder>
+            <a-cylinder radius="0.011" height="0.008" rotation="0 0 90" position="0.027 0.011 -0.03" color="#151515"></a-cylinder>
+            <a-cylinder radius="0.011" height="0.008" rotation="0 0 90" position="-0.027 0.011 -0.03" color="#151515"></a-cylinder>
+          </a-entity>
+        </a-entity>
+        <a-entity id="racing-remote" data-tour-item="remote" position="0.32 0.74 0.58"
+          simple-grabbable="heldPosition: 0 0 -0.04; floorY: 0; throwEnabled: true; halfExtents: 0.04 0.02 0.06"
+          hint-zone="action: grab; radius: 0.24; maxReach: 1.0; gazeThreshold: 0.9; priority: 12; desktopKey: F; desktopLabel: Grab remote; xrKey: GRIP; xrLabel: Grab; hintScale: 0.5; hintOffset: 0 0.16 0"
+        >
+          <a-box width="0.08" height="0.03" depth="0.12" color="#d8d8de"></a-box>
+          <a-cylinder radius="0.004" height="0.12" position="0.025 0.07 -0.04" color="#222"></a-cylinder>
+          <a-cylinder radius="0.012" height="0.012" position="0 0.02 0.02" color="#e8443a"></a-cylinder>
+        </a-entity>
+        <a-box width="0.3" height="0.7" depth="0.3" color="#2c2f36" position="-0.62 0.35 0.42"></a-box>
+        <a-entity id="racing-toolbox" position="-0.62 0.78 0.42"
+          geometry="primitive: box; width: 0.36; height: 0.16; depth: 0.2" material="color: #c4362c"
+          hint-zone="action: grab; radius: 0.34; maxReach: 1.0; gazeThreshold: 0.88; priority: 20; desktopKey: F; desktopLabel: Open toolbox; xrKey: GRIP; xrLabel: Open; hintOffset: 0 0.3 0"
+          projected-menu="template: #tpl-toolbox; mode: laser; laserScale: 0.6; offset: 0 0.55 0; closeDistance: 3"
+          projected-crossbar
+          grab-to-open
+        >
+          <a-box width="0.2" height="0.02" depth="0.03" position="0 0.11 0" color="#333"></a-box>
+          <a-box width="0.02" height="0.05" depth="0.03" position="0.09 0.09 0" color="#333"></a-box>
+          <a-box width="0.02" height="0.05" depth="0.03" position="-0.09 0.09 0" color="#333"></a-box>
+        </a-entity>
+      </a-entity>
+
+      <!-- FANTASY: a stone table, a wand, potions, a chest, an orc. -->
+      <a-entity id="set-fantasy">
+        <a-box width="1.0" height="0.76" depth="0.45" color="#5d5a55" position="0 0.38 0.62"></a-box>
+        <a-entity id="fantasy-wand" data-tour-item="wand" position="0.2 0.8 0.58" rotation="90 0 0"
+          simple-grabbable="heldPosition: 0 0 -0.02; heldRotation: 0 0 0; floorY: 0; throwEnabled: true; halfExtents: 0.02 0.02 0.16"
+          hint-zone="action: grab; radius: 0.24; maxReach: 1.0; gazeThreshold: 0.9; priority: 12; desktopKey: F; desktopLabel: Grab wand; xrKey: GRIP; xrLabel: Grab; hintScale: 0.5; hintOffset: 0 0.18 0"
+          tour-gun="color: #b98cff; tracer: #b98cff"
+        >
+          <a-cylinder radius="0.008" height="0.3" rotation="90 0 0" position="0 0 -0.12" color="#6b4a2e"></a-cylinder>
+          <a-sphere class="fantasy-wand-tip" radius="0.018" position="0 0 -0.28" material="color: #b98cff; emissive: #b98cff"></a-sphere>
+          <a-entity class="tour-muzzle" position="0 0 -0.3"></a-entity>
+        </a-entity>
+        <a-entity class="fantasy-potion" data-tour-item="potion" position="-0.1 0.79 0.56"
+          simple-grabbable="heldPosition: 0 0 -0.05; floorY: 0; throwEnabled: true; halfExtents: 0.05 0.06 0.05"
+          hint-zone="action: grab; radius: 0.22; maxReach: 1.0; gazeThreshold: 0.9; priority: 11; desktopKey: F; desktopLabel: Grab potion; xrKey: GRIP; xrLabel: Grab; hintScale: 0.5; hintOffset: 0 0.18 0"
+          tour-drink
+        ><a-entity gltf-model="../../assets/models/kenney/mini-dungeon/potion.glb" scale="0.3 0.3 0.3" position="0 -0.03 0"></a-entity></a-entity>
+        <a-entity class="fantasy-potion" data-tour-item="potion" position="-0.22 0.79 0.62"
+          simple-grabbable="heldPosition: 0 0 -0.05; floorY: 0; throwEnabled: true; halfExtents: 0.05 0.06 0.05"
+          hint-zone="action: grab; radius: 0.22; maxReach: 1.0; gazeThreshold: 0.9; priority: 11; desktopKey: F; desktopLabel: Grab potion; xrKey: GRIP; xrLabel: Grab; hintScale: 0.5; hintOffset: 0 0.18 0"
+          tour-drink
+        ><a-entity gltf-model="../../assets/models/kenney/mini-dungeon/potion.glb" scale="0.3 0.3 0.3" position="0 -0.03 0"></a-entity></a-entity>
+        <a-entity class="fantasy-potion" data-tour-item="potion" position="-0.34 0.79 0.56"
+          simple-grabbable="heldPosition: 0 0 -0.05; floorY: 0; throwEnabled: true; halfExtents: 0.05 0.06 0.05"
+          hint-zone="action: grab; radius: 0.22; maxReach: 1.0; gazeThreshold: 0.9; priority: 11; desktopKey: F; desktopLabel: Grab potion; xrKey: GRIP; xrLabel: Grab; hintScale: 0.5; hintOffset: 0 0.18 0"
+          tour-drink
+        ><a-entity gltf-model="../../assets/models/kenney/mini-dungeon/potion.glb" scale="0.3 0.3 0.3" position="0 -0.03 0"></a-entity></a-entity>
+        <a-entity id="fantasy-shield" data-tour-item="shield" position="0.4 0.86 0.66" rotation="-70 180 0"
+          simple-grabbable="heldPosition: 0 0 -0.02; floorY: 0; throwEnabled: true; halfExtents: 0.15 0.15 0.03"
+          hint-zone="action: grab; radius: 0.26; maxReach: 1.0; gazeThreshold: 0.9; priority: 11; desktopKey: F; desktopLabel: Grab shield; xrKey: GRIP; xrLabel: Grab; hintScale: 0.5; hintOffset: 0 0.2 0"
+        ><a-entity class="fantasy-shield-model" scale="0.4 0.4 0.4"></a-entity></a-entity>
+        <!-- The chest: the armoury, on your right. -->
+        <a-entity id="fantasy-chest" position="-0.62 0.5 0.42"
+          geometry="primitive: box; width: 0.42; height: 0.3; depth: 0.3" material="visible: false"
+          hint-zone="action: grab; radius: 0.36; maxReach: 1.0; gazeThreshold: 0.88; priority: 20; desktopKey: F; desktopLabel: Open chest; xrKey: GRIP; xrLabel: Open; hintOffset: 0 0.35 0"
+          projected-menu="template: #tpl-chest; mode: laser; laserScale: 0.6; offset: 0 0.8 0; closeDistance: 3"
+          projected-crossbar
+          grab-to-open
+        >
+          <a-box width="0.34" height="0.36" depth="0.34" color="#4a4642" position="0 -0.32 0"></a-box>
+          <a-entity gltf-model="../../assets/models/kenney/mini-dungeon/chest.glb" scale="0.5 0.5 0.5" position="0 -0.14 0" rotation="0 180 0"></a-entity>
+        </a-entity>
+        <a-entity id="fantasy-orc" tour-target="name: Training orc" aim-target="offset: 0 0.9 0; radius: 0.45" position="0.3 0 3.6">
+          <a-entity class="tour-face" gltf-model="../../assets/models/kenney/mini-dungeon/character-orc.glb" rotation="0 180 0" scale="1.4 1.4 1.4"></a-entity>
+        </a-entity>
+      </a-entity>
+
+      <!-- FRONTIER: a saloon table, a fence of bottles, a wanted board. -->
+      <a-entity id="set-frontier">
+        <a-box width="1.0" height="0.76" depth="0.45" color="#6b4a2e" position="0 0.38 0.62"></a-box>
+        <a-entity id="frontier-revolver" data-tour-item="revolver" position="0.18 0.82 0.58" rotation="0 180 0"
+          simple-grabbable="heldPosition: 0 0 0; floorY: 0; throwEnabled: true; halfExtents: 0.04 0.06 0.13"
+          hint-zone="action: grab; radius: 0.26; maxReach: 1.0; gazeThreshold: 0.9; priority: 12; desktopKey: F; desktopLabel: Grab revolver; xrKey: GRIP; xrLabel: Grab; hintScale: 0.5; hintOffset: 0 0.2 0"
+          tour-gun="color: #ffc24a; tracer: #ffe0a0"
+        >
+          <a-entity gltf-model="../../assets/models/kenney/blaster-kit/blaster-h.glb" position="0 0.03 -0.1" scale="0.4 0.4 0.4"></a-entity>
+          <a-entity class="tour-muzzle" position="0 0.06 -0.23"></a-entity>
+        </a-entity>
+        <a-entity id="frontier-whisky" data-tour-item="whisky" position="-0.15 0.86 0.56"
+          simple-grabbable="heldPosition: 0 0 -0.05; floorY: 0; throwEnabled: true; halfExtents: 0.04 0.1 0.04"
+          hint-zone="action: grab; radius: 0.22; maxReach: 1.0; gazeThreshold: 0.9; priority: 11; desktopKey: F; desktopLabel: Grab whisky; xrKey: GRIP; xrLabel: Grab; hintScale: 0.5; hintOffset: 0 0.2 0"
+          tour-drink
+        >
+          <a-cylinder radius="0.035" height="0.14" color="#7a4a1a" material="opacity: 0.85; transparent: true"></a-cylinder>
+          <a-cylinder radius="0.012" height="0.06" position="0 0.1 0" color="#4d3010"></a-cylinder>
+          <a-plane width="0.05" height="0.05" position="0 0 0.036" color="#f0e0b0"></a-plane>
+        </a-entity>
+        <!-- The wanted board, on a post to your right. -->
+        <a-cylinder radius="0.03" height="1.1" position="-0.62 0.55 0.42" color="#5b4a3a"></a-cylinder>
+        <a-entity id="frontier-board" position="-0.62 1.2 0.42" rotation="0 160 0"
+          geometry="primitive: box; width: 0.5; height: 0.36; depth: 0.03" material="color: #7a5a3a"
+          hint-zone="action: grab; radius: 0.36; maxReach: 1.0; gazeThreshold: 0.88; priority: 20; desktopKey: F; desktopLabel: Read the board; xrKey: GRIP; xrLabel: Open; hintOffset: 0 0.3 0"
+          projected-menu="template: #tpl-wanted; mode: laser; laserScale: 0.6; offset: 0 0.5 0; closeDistance: 3"
+          projected-crossbar
+          grab-to-open
+        >
+          <a-plane width="0.13" height="0.18" position="-0.15 0 0.017" color="#e8d8a8"></a-plane>
+          <a-plane width="0.13" height="0.18" position="0 0.02 0.017" color="#e8d8a8"></a-plane>
+          <a-plane width="0.13" height="0.18" position="0.15 -0.01 0.017" color="#e8d8a8"></a-plane>
+          <a-text value="WANTED" align="center" color="#5a2a10" width="0.4" position="-0.15 0.06 0.02" font="/vendor/fonts/WrightSans-Bold-msdf.json" negate="false"></a-text>
+          <a-text value="WANTED" align="center" color="#5a2a10" width="0.4" position="0 0.08 0.02" font="/vendor/fonts/WrightSans-Bold-msdf.json" negate="false"></a-text>
+          <a-text value="WANTED" align="center" color="#5a2a10" width="0.4" position="0.15 0.05 0.02" font="/vendor/fonts/WrightSans-Bold-msdf.json" negate="false"></a-text>
+        </a-entity>
+        <!-- The fence and its bottles. -->
+        <a-box width="3" height="0.06" depth="0.06" position="0 0.9 4.2" color="#6b4a2e"></a-box>
+        <a-box width="3" height="0.06" depth="0.06" position="0 0.55 4.2" color="#6b4a2e"></a-box>
+        <a-box width="0.08" height="1" depth="0.08" position="-1.4 0.5 4.2" color="#5b3a1e"></a-box>
+        <a-box width="0.08" height="1" depth="0.08" position="1.4 0.5 4.2" color="#5b3a1e"></a-box>
+        <a-entity class="frontier-bottle" tour-target aim-target="offset: 0 0.08 0; radius: 0.08" position="-1.0 0.93 4.2"><a-cylinder radius="0.03" height="0.16" position="0 0.08 0" color="#3c7a3c" material="opacity: 0.8; transparent: true"></a-cylinder></a-entity>
+        <a-entity class="frontier-bottle" tour-target aim-target="offset: 0 0.08 0; radius: 0.08" position="-0.5 0.93 4.2"><a-cylinder radius="0.03" height="0.16" position="0 0.08 0" color="#6a3a1a" material="opacity: 0.8; transparent: true"></a-cylinder></a-entity>
+        <a-entity class="frontier-bottle" tour-target aim-target="offset: 0 0.08 0; radius: 0.08" position="0 0.93 4.2"><a-cylinder radius="0.03" height="0.16" position="0 0.08 0" color="#3c7a3c" material="opacity: 0.8; transparent: true"></a-cylinder></a-entity>
+        <a-entity class="frontier-bottle" tour-target aim-target="offset: 0 0.08 0; radius: 0.08" position="0.5 0.93 4.2"><a-cylinder radius="0.03" height="0.16" position="0 0.08 0" color="#6a3a1a" material="opacity: 0.8; transparent: true"></a-cylinder></a-entity>
+        <a-entity class="frontier-bottle" tour-target aim-target="offset: 0 0.08 0; radius: 0.08" position="1.0 0.93 4.2"><a-cylinder radius="0.03" height="0.16" position="0 0.08 0" color="#3c7a3c" material="opacity: 0.8; transparent: true"></a-cylinder></a-entity>
       </a-entity>
     </a-scene>
 
-    <script type="module">
-      // Every menu in the showcase, as data. The markup above only says
-      // where each surface is and how big; what is on it is here.
-      import { registerMenuPage, findMenuItem } from '../../common/menu-crossbar.js';
-      import { registerVisorPage } from '../../common/visor-page.js';
-      import { ROOM_CODE_CHARS } from '../../worker/src/signal-rooms.js';
-      import { HUD_STYLES, currentHudStyle } from './hud-demo.js';
-
-      var TOWNS = [
-        'Ghost Town', 'The Range', 'The Saloon', "Sheriff's Office",
-        'General Store', 'The Bank', 'The Pharmacy', 'Post Office',
-        'Boots & Suits', 'Shooting Gallery', 'The Farm', 'The Stable',
-      ];
-
-      var LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
-
-      // The visor: the showcase's own rows. registerVisorPage adds what
-      // every visor has after them — its settings and Exit VR — and
-      // handles those itself (common/visor-page.js).
-      var hudStyleRow = {
-        kind: 'select', id: 'hud-style', label: 'HUD style', value: currentHudStyle(), options: HUD_STYLES,
-        info: ['HUD STYLES', 'The same visor HUD as a', 'shooter, a fantasy RPG,', 'a western, a car, or', 'nearly nothing.', '', 'Props on the bench by', 'the boxes make each', 'readout move.'],
-      };
-      registerVisorPage('visor', {
-        title: 'VISOR',
-        onOpen: function () { hudStyleRow.value = currentHudStyle(); },
-        items: [
-          hudStyleRow,
-          { kind: 'action', id: 'hud-props-reset', label: 'Reset props' },
-          { kind: 'action', id: 'spawn-box', label: 'Spawn box' },
-          {
-            kind: 'submenu', id: 'visor-destinations', label: 'Destinations',
-            items: TOWNS.map(function (name, i) {
-              return { kind: 'action', id: 'visor-teleport-' + i, label: name };
-            }),
-          },
-        ],
-      });
-
-      // ------------------------------------------------------------
-      // The watch. What its rows change — locomotion, the player's
-      // preferences — is applied by id in applySetting below, which the
-      // static panel's matching rows share.
-      // ------------------------------------------------------------
-      var watchScene = document.querySelector('a-scene');
-      var watchRig = document.querySelector('#rig');
-
-      function inXR () {
-        var mode = watchScene.systems['control-mode'];
-        return Boolean(mode && mode.isMode('xr'));
-      }
-
-      // Headset-only rows (teleport, turning, comfort, haptics) are left
-      // out off a headset. The watch reopens at the top every time, so
-      // the list is rebuilt each time it opens.
-      function forThisMode (list) {
-        return function () {
-          return list.filter(function (entry) { return !entry.xrOnly || inXR(); });
-        };
-      }
-
-      var PERCENT = function (value) { return Math.round(value * 100) + '%'; };
-
-      var watchMove = {
-        kind: 'select', id: 'watch-move', label: 'Move', value: 'smooth',
-        options: forThisMode([
-          { value: 'smooth', label: 'Smooth' },
-          { value: 'teleport', label: 'Teleport', xrOnly: true },
-          { value: 'disabled', label: 'Off' },
-        ]),
-      };
-      var watchTurn = {
-        kind: 'select', id: 'watch-turn', label: 'Turn', value: 'snap', xrOnly: true,
-        options: [{ value: 'snap', label: 'Snap' }, { value: 'smooth', label: 'Smooth' }],
-      };
-      var watchVignette = { kind: 'toggle', id: 'watch-vignette', label: 'Vignette', value: true, xrOnly: true };
-      var watchDrift = {
-        kind: 'select', id: 'watch-drift', label: 'Drift', value: 'medium',
-        options: [
-          { value: 'off', label: 'Off' }, { value: 'low', label: 'Low' },
-          { value: 'medium', label: 'Medium' }, { value: 'high', label: 'High' },
-        ],
-      };
-      var watchStrength = { kind: 'number', id: 'watch-vignette-strength', label: 'Strength', value: 0.2, min: 0, max: 1, step: 0.1, format: PERCENT };
-      var watchInset = { kind: 'number', id: 'watch-vignette-inset', label: 'Inset', value: 0.8, min: 0.25, max: 1.2, step: 0.05 };
-      var watchRadius = { kind: 'number', id: 'watch-vignette-radius', label: 'Radius', value: 0.95, min: 0.4, max: 1.4, step: 0.05 };
-      var watchTeleportHand = {
-        kind: 'select', id: 'watch-teleport-hand', label: 'Teleport', value: 'left',
-        options: [{ value: 'left', label: 'Left hand' }, { value: 'right', label: 'Right hand' }],
-      };
-      var watchHandedness = {
-        kind: 'select', id: 'watch-handedness', label: 'Hand', value: 'right',
-        options: [{ value: 'right', label: 'Right' }, { value: 'left', label: 'Left' }],
-      };
-      var watchHints = {
-        kind: 'select', id: 'watch-hints', label: 'Hints', value: 'delayed',
-        options: [{ value: 'always', label: 'Always' }, { value: 'delayed', label: 'Delayed' }, { value: 'never', label: 'Never' }],
-      };
-
-      // Multiplayer. The room code is four letter rows you scroll, with
-      // the code itself in the row's label so you can see what you are
-      // about to join without going in.
-      var watchCodeLetters = [0, 1, 2, 3].map(function (index) {
-        return {
-          kind: 'select', id: 'watch-mp-code-' + index, label: 'Letter ' + (index + 1), value: ROOM_CODE_CHARS[0],
-          options: ROOM_CODE_CHARS.split('').map(function (char) { return { value: char, label: char }; }),
-        };
-      });
-      function watchRoomCode () {
-        return watchCodeLetters.map(function (item) { return item.value; }).join('');
-      }
-      var watchCode = { kind: 'submenu', id: 'watch-mp-code', label: 'Code: ' + watchRoomCode(), items: watchCodeLetters };
-      var watchIdle = [
-        { kind: 'action', id: 'mp-host', label: 'Host' },
-        watchCode,
-        { kind: 'action', id: 'mp-join', label: 'Join' },
-      ];
-
-      // Help for whatever you are holding, in the sidecar while the Help
-      // row is selected.
-      var WATCH_HELP = {
-        xr: ['IN A HEADSET', 'Raise wrist: open', 'Other hand\'s stick: scroll', 'Stick right: in, left: back', 'Trigger: pick', 'Or point (grip) and poke', 'Palm up: bigger menu'],
-        keyboard: ['ON A KEYBOARD', 'Tab: watch', 'W/S: scroll', 'D: in   A: back', 'Enter: pick, or click a row', '', 'WASD move   C crouch', 'E mounted   F grab'],
-        gamepad: ['ON A GAMEPAD', 'Y / Start: watch', 'Stick: scroll', 'A: pick   B: exit', 'X mounted   LB grab'],
-        touch: ['ON A PHONE', 'WATCH: open', 'Tap a row: scroll to it', 'Tap again: pick', 'Joystick + drag to look'],
-      };
-      function watchHelp () {
-        var router = watchScene.systems['input-router'];
-        var family = inXR() ? 'xr'
-          : (router && typeof router.getActiveFamily === 'function' ? router.getActiveFamily() : 'keyboard');
-        return WATCH_HELP[family] || WATCH_HELP.keyboard;
-      }
-
-      // The session, in the sidecar beside the Multiplayer row and while
-      // you are in it.
-      function watchSession () {
-        var session = watchPage.multiplayer;
-        if (!session.code) return ['NOT CONNECTED', 'Host a room, or set the', 'code and Join one.'];
-        return ['ROOM ' + session.code, '', 'PLAYERS'].concat(session.players.length
-          ? session.players.map(function (player) { return '  ' + player.peerId; })
-          : ['  (waiting)']);
-      }
-
-      var watchPage = registerMenuPage('watch', {
-        // The clock: hand-with-watch writes the time into the title.
-        title: '',
-        // Written by the multiplayer script below as a session starts,
-        // changes and ends; each watch then refreshes its open menu.
-        multiplayer: { code: '', players: [] },
-        items: forThisMode([
-          watchMove,
-          watchTurn,
-          watchVignette,
-          {
-            kind: 'submenu', id: 'watch-tuning', label: 'Tuning', xrOnly: true,
-            items: [watchDrift, watchStrength, watchInset, watchRadius, watchTeleportHand],
-          },
-          { kind: 'action', id: 'station-center', label: 'Station: Center' },
-          {
-            kind: 'submenu', id: 'watch-input', label: 'Input',
-            items: [
-              watchHandedness,
-              watchHints,
-              // Whether raising your wrist opens it, or only a poke does.
-              { kind: 'toggle', id: 'watch-automatic', label: 'Auto-open', value: true },
-            ],
-          },
-          { kind: 'action', id: 'haptics', label: 'Haptics test', xrOnly: true },
-          {
-            kind: 'info', id: 'about', label: 'About',
-            info: ['WEBXR PRIMITIVES', 'Shared hands, menus and', 'multiplayer for small', 'Quest prototypes.'],
-          },
-          {
-            kind: 'submenu', id: 'watch-multiplayer', label: 'Multiplayer', info: watchSession,
-            items: function () {
-              if (!watchPage.multiplayer.code) return watchIdle;
-              return [{ kind: 'action', id: 'mp-end', label: 'End session' }];
-            },
-          },
-          { kind: 'info', id: 'watch-help', label: 'Help', info: watchHelp },
-        ]),
-        // Read the live values in as the watch opens: any of them can have
-        // been changed by the static panel, the keyboard or the other
-        // hand's watch since this one was last up.
-        onOpen: function () {
-          var locomotion = watchRig && watchRig.components['locomotion-demo'];
-          if (locomotion) {
-            var data = locomotion.data;
-            watchMove.value = data.moveMode;
-            watchTurn.value = data.turnMode;
-            watchVignette.value = Boolean(data.comfortVignette);
-            watchDrift.value = data.driftMode;
-            watchStrength.value = data.vignetteStrength;
-            watchInset.value = data.vignetteInset;
-            watchRadius.value = data.vignetteRadius;
-            watchTeleportHand.value = locomotion.getTeleportHand();
-          }
-          var desktop = watchRig && watchRig.components['desktop-controls'];
-          if (desktop && desktop.preferences) {
-            watchHandedness.value = desktop.preferences.handedness;
-            watchHints.value = desktop.preferences.hintMode;
-          }
-        },
-      });
-
-      // The vignette numbers act as you scroll them, like every number.
-      var WATCH_VIGNETTE = {
-        'watch-vignette-strength': 'setVignetteStrength',
-        'watch-vignette-inset': 'setVignetteInset',
-        'watch-vignette-radius': 'setVignetteRadius',
-      };
-      function applyWatchValue (evt) {
-        var id = evt.detail.id;
-        var locomotion = watchRig && watchRig.components['locomotion-demo'];
-        if (WATCH_VIGNETTE[id] && locomotion) locomotion[WATCH_VIGNETTE[id]](evt.detail.value);
-        if (id && id.indexOf('watch-mp-code-') === 0) watchCode.label = 'Code: ' + watchRoomCode();
-      }
-      watchScene.addEventListener('menu-preview', applyWatchValue);
-      watchScene.addEventListener('menu-commit', applyWatchValue);
-
-      // ------------------------------------------------------------
-      // The static panel, ahead of you. The showcase's own controls, and
-      // one of every kind of row: actions, a toggle, a select, a number,
-      // submenus — two of them deliberately far longer than the panel,
-      // since "the list got taller than the player" is the failure this
-      // system exists to fix.
-      // ------------------------------------------------------------
-      registerMenuPage('showcase', {
-        title: 'SHOWCASE',
-        items: [
-          { kind: 'action', id: 'spawn-box', label: 'Spawn box' },
-          { kind: 'action', id: 'reset-boxes', label: 'Reset boxes' },
-          {
-            kind: 'submenu', id: 'showcase-go', label: 'Go to',
-            items: [
-              { kind: 'action', id: 'station-center', label: 'Middle' },
-              { kind: 'action', id: 'station-static', label: 'Static panel' },
-              { kind: 'action', id: 'station-wall', label: 'Wall screen' },
-              { kind: 'action', id: 'station-pedestal', label: 'Pedestal' },
-              { kind: 'action', id: 'station-boxes', label: 'Boxes' },
-            ],
-          },
-          {
-            kind: 'number', id: 'showcase-move-speed', label: 'Move speed',
-            value: 1, min: 0.5, max: 2.5, step: 0.1, suffix: 'x',
-          },
-          {
-            kind: 'select', id: 'showcase-turn', label: 'Turning', value: 'snap',
-            options: [
-              { value: 'snap', label: 'Snap' },
-              { value: 'smooth', label: 'Smooth' },
-              { value: 'disabled', label: 'Off' },
-            ],
-          },
-          { kind: 'toggle', id: 'showcase-vignette', label: 'Vignette', value: true },
-          {
-            // Twelve rows in a five-row window: the teleport page that
-            // used to be as tall as a person.
-            kind: 'submenu', id: 'destinations', label: 'Long list',
-            items: TOWNS.map(function (name, i) {
-              return { kind: 'action', id: 'town-' + i, label: name };
-            }),
-          },
-          {
-            // 26 rows navigated by holding the stick — the room-code idea.
-            kind: 'submenu', id: 'letter', label: 'Alphabet',
-            items: LETTERS.map(function (letter) {
-              return { kind: 'action', id: 'letter-' + letter, label: letter };
-            }),
-          },
-          {
-            kind: 'submenu', id: 'showcase-fonts', label: 'Font',
-            items: [
-              { kind: 'select', id: 'showcase-font', label: 'Font', value: 'roboto', options: [
-                { value: 'roboto', label: 'Roboto' }, { value: 'b612', label: 'B612' },
-                { value: 'b612-regular', label: 'B612 Regular' }, { value: 'wright', label: 'Wright Sans' },
-              ] },
-              { kind: 'select', id: 'showcase-title-font', label: 'Title font', value: '', options: [
-                { value: '', label: 'Same' }, { value: 'roboto', label: 'Roboto' }, { value: 'b612', label: 'B612' },
-                { value: 'b612-regular', label: 'B612 Regular' }, { value: 'wright', label: 'Wright Sans' },
-              ] },
-            ],
-          },
-          // Longer than the row: cut with "..." at rest, and scrolled end
-          // to end while it is the focused row.
-          {
-            kind: 'info', id: 'showcase-long-label', label: 'This label is much too long to fit on its row',
-            info: ['LONG LABELS', 'Cut with ... when not', 'focused. Focused, they', 'scroll to the end,', 'pause, scroll back,', 'pause, and go again.'],
-          },
-          // Nothing to press: its text is in the sidecar while it is
-          // selected. A row's own info, as opposed to a submenu's.
-          {
-            kind: 'info', id: 'showcase-about', label: 'About this room',
-            info: ['THE SHOWCASE', 'Ahead: this panel.', 'Right: wall screen.', 'Left: pedestal.', 'Behind: boxes.', '', 'Tab: watch   `: visor', 'Laid out against your', 'headset\'s boundary.'],
-          },
-        ],
-        // The static panel is open from the start, so this runs once; it
-        // reads whatever locomotion starts with rather than assuming it.
-        onOpen: function () {
-          var rig = document.querySelector('#rig');
-          var locomotion = rig && rig.components['locomotion-demo'];
-          if (!locomotion) return;
-          var page = this;
-          findMenuItem(page.items, 'showcase-turn').value = locomotion.data.turnMode;
-          findMenuItem(page.items, 'showcase-vignette').value = Boolean(locomotion.data.comfortVignette);
-          findMenuItem(page.items, 'showcase-move-speed').value = locomotion.data.speedMultiplier;
-        },
-      });
-
-      // ------------------------------------------------------------
-      // The font panels, either side of the static panel. Same rows in
-      // each, so the faces can be compared line for line; the two Font
-      // rows restyle whichever panel they are on (and the static panel
-      // has them too), which is all "a font per menu" takes.
-      // ------------------------------------------------------------
-      var FONT_OPTIONS = [
-        { value: 'roboto', label: 'Roboto' },
-        { value: 'b612', label: 'B612' },
-        { value: 'b612-regular', label: 'B612 Regular' },
-        { value: 'wright', label: 'Wright Sans' },
-      ];
-      var TITLE_FONT_OPTIONS = [{ value: '', label: 'Same' }].concat(FONT_OPTIONS);
-      // Which panel each page's font rows restyle.
-      var FONT_PANELS = { showcase: '#showcase-panel', 'font-b612': '#font-panel-b612', 'font-wright': '#font-panel-wright' };
-      function fontRows (page, body, title) {
-        return [
-          { kind: 'select', id: page + '-font', label: 'Font', value: body, options: FONT_OPTIONS },
-          { kind: 'select', id: page + '-title-font', label: 'Title font', value: title, options: TITLE_FONT_OPTIONS },
-        ];
-      }
-      function fontPage (page, title, body, titleFont, about) {
-        registerMenuPage(page, {
-          title: title,
-          items: fontRows(page, body, titleFont).concat([
-            { kind: 'info', id: page + '-about', label: 'About this face', info: about },
-            { kind: 'info', id: page + '-ammo', label: 'Ammo 06/12', info: ['Every figure the same', 'width in B612, so a', 'counter does not jitter.'] },
-            { kind: 'info', id: page + '-shapes', label: 'Il1 O0 rn m 5S 8B', info: ['The shapes that get', 'confused at a glance.'] },
-            { kind: 'info', id: page + '-hint', label: 'Pick up (hold X)', info: ['A control hint, as', 'the HUD shows them.'] },
-            {
-              kind: 'submenu', id: page + '-towns', label: 'Long list',
-              items: TOWNS.map(function (name, i) { return { kind: 'action', id: page + '-town-' + i, label: name }; }),
-            },
-          ]),
-        });
-      }
-      fontPage('font-b612', 'B612', 'b612', 'b612', ['B612', 'Commissioned by Airbus', 'for cockpit displays.', 'Open shapes, and every', 'figure the same width.', 'SIL Open Font License.']);
-      fontPage('font-wright', 'WRIGHT SANS', 'b612', 'wright', ['WRIGHT SANS', "Noah's own heading", 'face, from the design', 'package. Titles and big', 'moments; rows stay in', 'B612 for legibility.']);
-      function applyFontRow (evt) {
-        var id = evt.detail.id;
-        Object.keys(FONT_PANELS).forEach(function (page) {
-          var panel = document.querySelector(FONT_PANELS[page]);
-          var menu = panel && panel.components['crossbar-menu'];
-          if (!menu) return;
-          if (id === page + '-font') menu.setFont(evt.detail.value);
-          else if (id === page + '-title-font') menu.setFont(menu.data.font, evt.detail.value);
-        });
-      }
-      document.querySelector('a-scene').addEventListener('menu-preview', applyFontRow);
-      document.querySelector('a-scene').addEventListener('menu-commit', applyFontRow);
-
-      // ------------------------------------------------------------
-      // The wall screen, to your right. Rows that change the room you
-      // are standing in, so a press visibly does something.
-      // ------------------------------------------------------------
-      registerMenuPage('wall', {
-        title: 'WALL SCREEN',
-        items: [
-          {
-            kind: 'number', id: 'wall-brightness', label: 'Brightness',
-            value: 0.7, min: 0, max: 1.5, step: 0.1,
-            format: function (value) { return Math.round((value / 0.7) * 100) + '%'; },
-          },
-          { kind: 'toggle', id: 'wall-sun', label: 'Sunlight', value: true },
-          { kind: 'action', id: 'spawn-box', label: 'Spawn box' },
-          { kind: 'action', id: 'reset-boxes', label: 'Reset boxes' },
-          {
-            kind: 'info', id: 'wall-about', label: 'About this',
-            info: ['WALL SCREEN', 'Grown out of the TAP button:', 'poke it, or walk up and', 'press E. Walk away (or', 'press Esc) to close.'],
-          },
-        ],
-      });
-
-      // ------------------------------------------------------------
-      // The pedestal, to your left.
-      // ------------------------------------------------------------
-      var SKIES = [
-        { value: '#0d1526', label: 'Night' },
-        { value: '#3b2a4a', label: 'Dusk' },
-        { value: '#7aa6d6', label: 'Day' },
-        { value: '#2a1a12', label: 'Ember' },
-      ];
-      registerMenuPage('pedestal', {
-        title: 'PEDESTAL',
-        items: [
-          { kind: 'select', id: 'pedestal-sky', label: 'Sky', value: SKIES[0].value, options: SKIES },
-          {
-            kind: 'select', id: 'pedestal-floor', label: 'Floor', value: 'checker',
-            options: [{ value: 'checker', label: 'Checker' }, { value: 'plain', label: 'Plain' }],
-          },
-          { kind: 'action', id: 'station-center', label: 'Back to middle' },
-          {
-            kind: 'info', id: 'pedestal-about', label: 'About this',
-            info: ['PEDESTAL', 'Floats up and turns to', 'face you. Point (grip),', 'then trigger on a row,', 'or reach in and use', 'the stick.'],
-          },
-        ],
-      });
-    </script>
-
-
-
-    <script type="module" src="../../common/play-space.js"></script>
     <script type="module" src="../../common/visor-menu.js"></script>
     <script type="module" src="../../common/watch-menu.js"></script>
     <script type="module" src="../../common/menu-crossbar.js"></script>
     <script type="module" src="../../common/locomotion.js"></script>
     <script type="module" src="../../common/desktop-controls.js"></script>
+    <script type="module" src="./tour.js"></script>
     <script type="module">
       var sceneEl = document.querySelector('a-scene');
       var rigEl = document.querySelector('#rig');
 
-      // A plain colour floor gave no sense of scale or footing. A small
-      // checkerboard, generated on a throwaway canvas and tiled, is the
-      // quickest fix and ships no image.
-      var CHECKER = (function () {
-        var canvas = document.createElement('canvas');
-        canvas.width = canvas.height = 64;
-        var ctx = canvas.getContext('2d');
-        ctx.fillStyle = '#3a4358';
-        ctx.fillRect(0, 0, 64, 64);
-        ctx.fillStyle = '#2a3040';
-        ctx.fillRect(0, 0, 32, 32);
-        ctx.fillRect(32, 32, 32, 32);
-        return canvas.toDataURL();
-      })();
-      var floorEl = document.querySelector('#floor');
-      function setFloor (style) {
-        if (style === 'plain') {
-          floorEl.setAttribute('material', { src: '', color: '#3a4358' });
-        } else {
-          floorEl.setAttribute('material', { src: CHECKER, repeat: '20 20', color: '#ffffff' });
-        }
-      }
-      setFloor('checker');
+      // A small checkerboard floor, generated on a throwaway canvas.
+      var canvas = document.createElement('canvas');
+      canvas.width = canvas.height = 64;
+      var ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#3a4358';
+      ctx.fillRect(0, 0, 64, 64);
+      ctx.fillStyle = '#2a3040';
+      ctx.fillRect(0, 0, 32, 32);
+      ctx.fillRect(32, 32, 32, 32);
+      document.querySelector('#floor').setAttribute('material', { src: canvas.toDataURL(), repeat: '30 30', color: '#ffffff' });
 
-      if (rigEl && !rigEl.components['locomotion-demo']) rigEl.setAttribute('locomotion-demo', '');
-      function locomotion () { return rigEl && rigEl.components['locomotion-demo']; }
-
-      // ------------------------------------------------------------
-      // "Go to": a spot to stand at each station, a step back from it
-      // toward the middle of the room, recomputed whenever the room is.
-      // ------------------------------------------------------------
-      var STATION_SIDES = { static: 'front', wall: 'right', pedestal: 'left', boxes: 'back' };
-      var STAND_BACK = 0.75;
-      function updateStations () {
-        var space = sceneEl.systems['play-space'];
-        var loco = locomotion();
-        if (!space || !loco) return;
-        var layout = space.getLayout();
-        var c = layout.center;
-        var stations = { center: { x: c.x, y: 0, z: c.z } };
-        Object.keys(STATION_SIDES).forEach(function (key) {
-          var side = layout.sides[STATION_SIDES[key]];
-          var dx = c.x - side.x;
-          var dz = c.z - side.z;
-          var length = Math.hypot(dx, dz) || 1;
-          var step = Math.min(STAND_BACK, length);
-          stations[key] = { x: side.x + (dx / length) * step, y: 0, z: side.z + (dz / length) * step };
-        });
-        loco.setStationPositions(stations);
-      }
-      sceneEl.addEventListener('play-space-changed', updateStations);
-
-      // What a settings row changes, by row id. The watch and the static
-      // panel each have some of these; where both have one (turning, the
-      // vignette) they land in the same place.
-      function prefer (name) {
-        return function (value) {
-          var desktop = rigEl && rigEl.components['desktop-controls'];
-          if (desktop) desktop.setPreference(name, value);
-        };
-      }
-      function loco (method) {
-        return function (value) {
-          var l = locomotion();
-          if (l) l[method](value);
-        };
-      }
-      var SETTINGS = {
-        'watch-move': loco('setMoveMode'),
-        'watch-turn': loco('setTurnMode'),
-        'showcase-turn': loco('setTurnMode'),
-        'watch-vignette': loco('setVignette'),
-        'showcase-vignette': loco('setVignette'),
-        'watch-drift': loco('setStickDriftCompensation'),
-        'watch-teleport-hand': loco('setTeleportHand'),
-        'showcase-move-speed': loco('setSpeedMultiplier'),
-        'watch-handedness': prefer('handedness'),
-        'watch-hints': prefer('hintMode'),
-      };
-
-      // ------------------------------------------------------------
-      // The boxes. Each one's resting place is a spot on the platform
-      // (play-space-anchor), not a spot in the world, so they move with
-      // it. Index 0 is the box in the markup; spawned ones fill a grid.
-      // ------------------------------------------------------------
-      var BOX_LIMIT = 8;
-      function boxOffset (index) {
-        return {
-          x: -0.32 + (index % 3) * 0.28,
-          y: 0.77 + Math.floor(index / 6) * 0.28,
-          z: 0.14 - (Math.floor(index / 3) % 2) * 0.28,
-        };
-      }
-      function boxWorldPosition (index) {
-        var station = document.querySelector('#station-boxes').object3D;
-        var offset = boxOffset(index);
-        station.updateMatrixWorld(true);
-        var world = station.localToWorld(new AFRAME.THREE.Vector3(offset.x, offset.y, offset.z));
-        return { x: world.x, y: world.y, z: world.z };
-      }
-
-      function spawnShowcaseBox () {
-        var boxes = document.querySelectorAll('.showcase-grab-box');
-        if (boxes.length >= BOX_LIMIT) return;
-        var source = document.querySelector('#showcase-grab-box');
-        if (!source) return;
-        var clone = source.cloneNode(true);
-        var index = boxes.length;
-        var offset = boxOffset(index);
-        clone.removeAttribute('id');
-        clone.setAttribute('data-box-number', String(index + 1));
-        clone.setAttribute('play-space-anchor', 'station: #station-boxes; offset: ' + offset.x + ' ' + offset.y + ' ' + offset.z);
-        sceneEl.appendChild(clone);
-      }
-
-      function resetShowcaseBoxes () {
-        document.querySelectorAll('[simple-grabbable]').forEach(function (boxEl) {
-          var component = boxEl.components['simple-grabbable'];
-          if (component) component.resetToSpawn();
-        });
-      }
-
-      // Bridge for the multiplayer script (a separate module, so it does
-      // not share this scope): the purely local box actions, used offline
-      // and as the primitive the host applies locally too.
-      window.__showcaseOfflineBoxActions = {
-        spawn: spawnShowcaseBox,
-        reset: resetShowcaseBoxes,
-        position: boxWorldPosition,
-      };
-
-      // spawn-box / reset-boxes themselves are handled by the multiplayer
-      // script, which knows whether they have to go through a host.
-      // data-last-menu-selection: the id of the last row acted on or
-      // committed, for tests.
-      sceneEl.addEventListener('menu-action', function (evt) {
-        var id = evt.detail.id;
-        sceneEl.setAttribute('data-last-menu-selection', id);
-        var l = locomotion();
-        if (l && id.indexOf('station-') === 0) l.goToStation(id.slice('station-'.length));
-      });
-      sceneEl.addEventListener('menu-commit', function (evt) {
-        sceneEl.setAttribute('data-last-menu-selection', evt.detail.id);
-        if (SETTINGS[evt.detail.id]) SETTINGS[evt.detail.id](evt.detail.value);
+      // Stars: one cheap Points object, toggled by the Basics demo.
+      AFRAME.registerComponent('star-field', {
+        init: function () {
+          var THREE = AFRAME.THREE;
+          var positions = [];
+          for (var i = 0; i < 500; i++) {
+            var u = Math.random() * Math.PI * 2;
+            var v = (Math.random() * 0.45 + 0.05) * Math.PI;
+            positions.push(Math.cos(u) * Math.cos(v) * 60, Math.sin(v) * 60, Math.sin(u) * Math.cos(v) * 60);
+          }
+          var geometry = new THREE.BufferGeometry();
+          geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+          this.el.setObject3D('mesh', new THREE.Points(geometry, new THREE.PointsMaterial({ color: '#dfe8ff', size: 0.25, sizeAttenuation: true })));
+        },
       });
 
-      // ------------------------------------------------------------
-      // The wall screen and pedestal change the room itself. Numbers and
-      // selects preview while you scroll them, so these listen to both.
-      // ------------------------------------------------------------
-      function applyRoomValue (evt) {
-        var id = evt.detail.id;
-        var value = evt.detail.value;
-        if (id === 'wall-brightness') document.querySelector('#ambient-light').setAttribute('light', 'intensity', value);
-        else if (id === 'wall-sun') document.querySelector('#sun-light').setAttribute('visible', value);
-        else if (id === 'pedestal-sky') document.querySelector('#showcase-sky').setAttribute('color', value);
-        else if (id === 'pedestal-floor') setFloor(value);
-      }
-      sceneEl.addEventListener('menu-preview', applyRoomValue);
-      sceneEl.addEventListener('menu-commit', applyRoomValue);
+      if (rigEl && !rigEl.components['locomotion-demo']) rigEl.setAttribute('locomotion-demo', 'moveMode: disabled; turnMode: disabled');
 
       function setupDesktopPlayer () {
         if (!rigEl || rigEl.components['desktop-controls']) return;
@@ -956,13 +400,8 @@
           rightHand: document.querySelector('#right-hand'),
         });
       }
-
-      function onSceneLoaded () {
-        setupDesktopPlayer();
-        updateStations();
-      }
-      if (sceneEl.hasLoaded) onSceneLoaded();
-      else sceneEl.addEventListener('loaded', onSceneLoaded);
+      if (sceneEl.hasLoaded) setupDesktopPlayer();
+      else sceneEl.addEventListener('loaded', setupDesktopPlayer);
 
       function updateAllDisplays () {
         document.querySelectorAll('[hand-with-watch]').forEach(function (el) {
@@ -972,640 +411,6 @@
       }
       updateAllDisplays();
       setInterval(updateAllDisplays, 1000);
-    </script>
-
-    <script type="module">
-      import { createJoinConnection, createHostSession } from '../../common/multiplayer.js';
-      import { hostSessionViaRelay, joinViaRelay } from '../../common/signal-relay.js';
-      import { RELAY_URL } from '../../common/relay-config.js';
-      import { getMenuPage, findMenuItem } from '../../common/menu-crossbar.js';
-
-      var sceneEl = document.querySelector('a-scene');
-
-      // "connection" is the relay Join role's one connection, to the
-      // host. "hostSession" (many) is only used by the relay Host
-      // role, which supports multiple joiners at once — see
-      // createHostSession's comment in common/multiplayer.js for why
-      // that one needed a genuinely different shape.
-      var connection = null;
-      var hostSession = null;
-      var isHost = false;
-      var sendMessage = null; // whichever of the two the aim broadcast should use right now
-
-      // Host claims the first color for itself; each joiner gets the
-      // next one in line as it connects, assigned by the host rather
-      // than picked by each peer itself. Six is plenty for a POC —
-      // a genuinely large room would want smarter reuse instead of
-      // just wrapping around via modulo once these run out.
-      var PALETTE = ['#ff3b30', '#0a84ff', '#34c759', '#ffcc00', '#af52de', '#5ac8fa'];
-
-      var AIM_INTERVAL_MS = 100;
-      var BEAM_LENGTH = 6;
-      var aimTimer = null;
-      var cameraObj = document.getElementById('showcase-camera').object3D;
-
-      // --- Shared object sync (the showcase's grabbable box(es)) —
-      // relay path only (host session + relay join). The manual
-      // copy/paste fallback still only syncs aim/lasers, same as
-      // before; extending full object sync to a 1:1-only path used
-      // mainly for testing the raw handshake wasn't worth doing.
-      //
-      // boxHolders is HOST-ONLY: the authoritative "who holds what"
-      // (boxId -> 'host' or a joiner's peerId), used to serialize
-      // simultaneous grabs and validate that position/release
-      // messages actually come from whoever's really holding it.
-      // remoteHeldBoxes is kept by EVERY client (host included): "boxes
-      // I know someone ELSE holds right now," used purely to gate my
-      // own local interaction with them (see markBoxRemoteHeld).
-      var boxHolders = new Map();
-      var remoteHeldBoxes = new Set();
-      var spawnedBoxIds = [];
-      var heldBoxId = null; // the one box (if any) I'M currently holding
-      // True only while actually joined to a relay host — the thing
-      // that distinguishes "route box actions through the host" from
-      // "not connected, box actions just stay local like offline."
-      var boxSyncActive = false;
-
-      function parseMessage (data) {
-        try {
-          return JSON.parse(data);
-        } catch (err) {
-          return null;
-        }
-      }
-
-      function startAimBroadcast (sendFn) {
-        if (aimTimer) return;
-        var worldPos = new AFRAME.THREE.Vector3();
-        var worldQuat = new AFRAME.THREE.Quaternion();
-        var worldDir = new AFRAME.THREE.Vector3();
-        var boxWorldPos = new AFRAME.THREE.Vector3();
-        var boxWorldQuat = new AFRAME.THREE.Quaternion();
-        aimTimer = setInterval(function () {
-          cameraObj.getWorldPosition(worldPos);
-          cameraObj.getWorldQuaternion(worldQuat);
-          // NOT cameraObj.getWorldDirection() — on this AFRAME/three.js
-          // pairing it came back pointing behind the camera instead of
-          // in front (confirmed by a live multi-headset test: every
-          // laser pointed backwards). common/menus.js's projected-menu
-          // placement already solves "where is the camera facing" the
-          // same way real gameplay code in this repo does: rotate the
-          // camera's own local -Z by its world orientation.
-          worldDir.set(0, 0, -1).applyQuaternion(worldQuat);
-          sendFn(JSON.stringify({
-            type: 'aim',
-            origin: { x: worldPos.x, y: worldPos.y, z: worldPos.z },
-            direction: { x: worldDir.x, y: worldDir.y, z: worldDir.z },
-          }));
-
-          // Piggyback the box I'm holding (if any) on the same timer
-          // rather than a second interval — same cadence is plenty
-          // for a held prop, and getWorldPosition/Quaternion already
-          // account for it being re-parented onto my hand.
-          if (heldBoxId) {
-            var boxEl = document.getElementById(heldBoxId);
-            if (boxEl) {
-              boxEl.object3D.getWorldPosition(boxWorldPos);
-              boxEl.object3D.getWorldQuaternion(boxWorldQuat);
-              sendFn(JSON.stringify({
-                type: 'box-position',
-                boxId: heldBoxId,
-                position: { x: boxWorldPos.x, y: boxWorldPos.y, z: boxWorldPos.z },
-                quaternion: { x: boxWorldQuat.x, y: boxWorldQuat.y, z: boxWorldQuat.z, w: boxWorldQuat.w },
-              }));
-            }
-          }
-        }, AIM_INTERVAL_MS);
-      }
-
-      function stopAimBroadcast () {
-        clearInterval(aimTimer);
-        aimTimer = null;
-      }
-
-      // --- Box networking primitives — used by every role (host,
-      // joiner, and the host's own local application of its own
-      // decisions). Deliberately built as plain functions operating
-      // on the box's own existing simple-grabbable state machine
-      // (common/interaction-hints.js) rather than a parallel one:
-      // "remote held" is just forcing state to 'held' without ever
-      // calling the real grab() (which would try to attach it to a
-      // local hand), and "remote released" hands off to the box's
-      // own real falling physics, which every client already runs
-      // identically given the same starting point and constants.
-
-      // Where the host puts a new box: the same platform grid the offline
-      // spawn uses, wherever the platform stands in the host's room. Sent
-      // as world coordinates, so a joiner whose room is laid out
-      // differently sees it where the host's platform is (see TODO.md).
-      function boxSpawnPosition (index) {
-        return window.__showcaseOfflineBoxActions.position(index);
-      }
-
-      function wireBoxNetworking (boxEl) {
-        boxEl.addEventListener('simple-grabbed', function () { onLocalBoxGrabbed(boxEl.id); });
-        boxEl.addEventListener('simple-released', function () { onLocalBoxReleased(boxEl.id); });
-      }
-
-      function applyBoxSpawn (boxId, position) {
-        if (document.getElementById(boxId)) return; // already applied locally
-        var source = document.querySelector('#showcase-grab-box');
-        if (!source) return;
-        var clone = source.cloneNode(true);
-        clone.removeAttribute('id');
-        clone.removeAttribute('data-box-number');
-        // A networked box is placed where the host said, not anchored to
-        // this room's platform.
-        clone.removeAttribute('play-space-anchor');
-        clone.id = boxId;
-        clone.setAttribute('position', position);
-        document.querySelector('a-scene').appendChild(clone);
-        wireBoxNetworking(clone);
-      }
-
-      function markBoxRemoteHeld (boxId) {
-        var boxEl = document.getElementById(boxId);
-        if (!boxEl) return;
-        var grabbable = boxEl.components['simple-grabbable'];
-        if (grabbable) {
-          grabbable.state = 'held';
-          grabbable.fallVelocity = 0;
-          boxEl.setAttribute('data-grab-state', 'held');
-        }
-        var zone = boxEl.components['hint-zone'];
-        if (zone && zone.setLabels) zone.setLabels(null, null);
-        remoteHeldBoxes.add(boxId);
-      }
-
-      function applyRemoteBoxReleased (boxId, position) {
-        var boxEl = document.getElementById(boxId);
-        if (!boxEl) return;
-        var grabbable = boxEl.components['simple-grabbable'];
-        if (!grabbable) return;
-        boxEl.object3D.position.set(position.x, position.y, position.z);
-        grabbable.state = 'falling';
-        grabbable.fallVelocity = 0;
-        boxEl.setAttribute('data-grab-state', 'falling');
-        remoteHeldBoxes.delete(boxId);
-      }
-
-      function applyRemoteBoxPosition (boxId, position, quaternion) {
-        var boxEl = document.getElementById(boxId);
-        if (!boxEl) return;
-        boxEl.object3D.position.set(position.x, position.y, position.z);
-        if (quaternion) boxEl.object3D.quaternion.set(quaternion.x, quaternion.y, quaternion.z, quaternion.w);
-      }
-
-      function forceLocalBoxRelease (boxId) {
-        var boxEl = document.getElementById(boxId);
-        if (!boxEl) return;
-        var grabbable = boxEl.components['simple-grabbable'];
-        if (grabbable && grabbable.state === 'held') grabbable.release(grabbable.handEl);
-      }
-
-      // Someone (me!) really did grab a box locally — heldBoxId
-      // tracks it regardless of connection state (harmless if
-      // offline, since the aim timer that reads it never runs then).
-      // Gated on hostSession/boxSyncActive specifically, not
-      // isHost/sendMessage — those are also true for the manual
-      // copy/paste host, which has no hostSession and isn't part of
-      // box sync at all (see boxSyncActive's declaration above).
-      function onLocalBoxGrabbed (boxId) {
-        heldBoxId = boxId;
-        if (hostSession) { acceptBoxGrab(boxId, 'host'); return; }
-        if (boxSyncActive) connection.send(JSON.stringify({ type: 'box-grab-request', boxId: boxId }));
-      }
-
-      function onLocalBoxReleased (boxId) {
-        if (heldBoxId === boxId) heldBoxId = null;
-        if (hostSession) {
-          // Only actually announce it if I (the host) was the
-          // authoritative holder — this also fires harmlessly after
-          // forceLocalBoxRelease corrects a losing grab attempt,
-          // where boxHolders was never mine to begin with.
-          if (boxHolders.get(boxId) !== 'host') return;
-          boxHolders.delete(boxId);
-        } else if (!boxSyncActive) {
-          return;
-        }
-        var boxEl = document.getElementById(boxId);
-        if (!boxEl) return;
-        var pos = boxEl.object3D.position;
-        var payload = JSON.stringify({ type: 'box-released', boxId: boxId, position: { x: pos.x, y: pos.y, z: pos.z } });
-        if (hostSession) hostSession.broadcast(payload);
-        else connection.send(payload);
-      }
-
-      // Host-only: the single place that decides who gets a box,
-      // whether the grab came from the host's own hand or a joiner's
-      // request. Ties (or a joiner reaching for something the host
-      // already secretly won a race for) resolve to whoever this
-      // function heard from first.
-      function acceptBoxGrab (boxId, holderId) {
-        if (boxHolders.has(boxId)) {
-          if (holderId === 'host') forceLocalBoxRelease(boxId);
-          else hostSession.send(holderId, JSON.stringify({ type: 'box-grab-denied', boxId: boxId }));
-          return;
-        }
-        boxHolders.set(boxId, holderId);
-        if (holderId !== 'host') markBoxRemoteHeld(boxId);
-        hostSession.broadcast(JSON.stringify({ type: 'box-grabbed', boxId: boxId, holderId: holderId }), holderId === 'host' ? undefined : holderId);
-      }
-
-      function performHostBoxSpawn () {
-        if (spawnedBoxIds.length >= 7) return; // 1 static + 7 spawned = 8, matching the original single-player cap
-        var index = 1 + spawnedBoxIds.length;
-        var boxId = 'box-' + (spawnedBoxIds.length + 1);
-        var position = boxSpawnPosition(index);
-        spawnedBoxIds.push(boxId);
-        applyBoxSpawn(boxId, position);
-        if (hostSession) hostSession.broadcast(JSON.stringify({ type: 'box-spawn', boxId: boxId, position: position }));
-      }
-
-      function performHostBoxReset () {
-        window.__showcaseOfflineBoxActions.reset();
-        remoteHeldBoxes.clear();
-        boxHolders.clear();
-        if (hostSession) hostSession.broadcast(JSON.stringify({ type: 'box-reset-all' }));
-      }
-
-      // A departing joiner's held box(es) would otherwise stay
-      // "remote held" forever, since no box-released message is
-      // coming — release them back to the room, from wherever the
-      // host last saw them.
-      function releaseHeldBoxesFor (peerId) {
-        boxHolders.forEach(function (holderId, boxId) {
-          if (holderId !== peerId) return;
-          boxHolders.delete(boxId);
-          var boxEl = document.getElementById(boxId);
-          var pos = boxEl ? boxEl.object3D.position : { x: 0, y: 0, z: 0 };
-          var position = { x: pos.x, y: pos.y, z: pos.z };
-          applyRemoteBoxReleased(boxId, position);
-          hostSession.broadcast(JSON.stringify({ type: 'box-released', boxId: boxId, position: position }));
-        });
-      }
-
-      // Losing the connection entirely (not just one peer among
-      // several) leaves anything I thought was remote-held stuck in
-      // that state forever with no one left to un-stick it — free it
-      // all up locally instead.
-      function releaseAllRemoteHeldBoxesLocally () {
-        remoteHeldBoxes.forEach(function (boxId) {
-          var boxEl = document.getElementById(boxId);
-          var grabbable = boxEl && boxEl.components['simple-grabbable'];
-          if (grabbable) grabbable.resetToSpawn();
-        });
-        remoteHeldBoxes.clear();
-      }
-
-      // One laser + body sphere per OTHER connected peer, created on
-      // demand and torn down when that peer disconnects — there can
-      // be more than one now. peerId is whatever key the caller wants
-      // to use for that peer: the relay's own 'peer-N' ids on the
-      // host side, or the fixed strings 'host'/'manual-peer' on a
-      // joiner/manual peer's side, where there's only ever one
-      // "other" connection to represent.
-      var remotePeers = new Map(); // peerId -> { laserEl, bodyEl }
-
-      function getOrCreateRemotePeer (peerId) {
-        var existing = remotePeers.get(peerId);
-        if (existing) return existing;
-        var laserEl = document.createElement('a-entity');
-        laserEl.className = 'remote-peer-laser';
-        laserEl.setAttribute('line', 'start: 0 0 0; end: 0 0 0; color: #fff');
-        laserEl.setAttribute('visible', false);
-        var bodyEl = document.createElement('a-entity');
-        bodyEl.className = 'remote-peer-body';
-        bodyEl.setAttribute('geometry', 'primitive: sphere; radius: 0.12');
-        bodyEl.setAttribute('material', 'color: #fff');
-        bodyEl.setAttribute('visible', false);
-        sceneEl.appendChild(laserEl);
-        sceneEl.appendChild(bodyEl);
-        var entry = { laserEl: laserEl, bodyEl: bodyEl };
-        remotePeers.set(peerId, entry);
-        return entry;
-      }
-
-      function showRemotePeerAim (peerId, color, origin, direction) {
-        var entry = getOrCreateRemotePeer(peerId);
-        entry.laserEl.setAttribute('line', {
-          start: origin,
-          end: {
-            x: origin.x + direction.x * BEAM_LENGTH,
-            y: origin.y + direction.y * BEAM_LENGTH,
-            z: origin.z + direction.z * BEAM_LENGTH,
-          },
-          color: color,
-        });
-        entry.laserEl.setAttribute('visible', true);
-        entry.bodyEl.setAttribute('position', origin);
-        entry.bodyEl.setAttribute('material', 'color', color);
-        entry.bodyEl.setAttribute('visible', true);
-      }
-
-      function removeRemotePeer (peerId) {
-        var entry = remotePeers.get(peerId);
-        if (!entry) return;
-        entry.laserEl.parentNode.removeChild(entry.laserEl);
-        entry.bodyEl.parentNode.removeChild(entry.bodyEl);
-        remotePeers.delete(peerId);
-      }
-
-      function removeAllRemotePeers () {
-        Array.from(remotePeers.keys()).forEach(removeRemotePeer);
-      }
-
-      // --- Relay Join role (createJoinConnection) — a joiner still
-      // only ever has the one connection, to the host. What's new is
-      // it can now receive TWO kinds of aim update: 'aim' (the
-      // host's own, straight over the direct channel — rendered
-      // under the fixed key 'host') and 'peer-aim' (another joiner's,
-      // relayed and tagged by the host, rendered under that joiner's
-      // real peerId).
-      var joinHostColor = '#fff';
-
-      function joinOnOpen () {
-        boxSyncActive = true;
-        sendMessage = function (msg) { connection.send(msg); };
-        startAimBroadcast(sendMessage);
-      }
-
-      function joinOnMessage (data) {
-        var message = parseMessage(data);
-        if (!message) return;
-        if (message.type === 'welcome') {
-          joinHostColor = message.hostColor;
-        } else if (message.type === 'aim') {
-          showRemotePeerAim('host', joinHostColor, message.origin, message.direction);
-        } else if (message.type === 'peer-aim') {
-          showRemotePeerAim(message.peerId, message.color, message.origin, message.direction);
-        } else if (message.type === 'box-grabbed') {
-          markBoxRemoteHeld(message.boxId);
-        } else if (message.type === 'box-grab-denied') {
-          forceLocalBoxRelease(message.boxId);
-        } else if (message.type === 'box-released') {
-          applyRemoteBoxReleased(message.boxId, message.position);
-        } else if (message.type === 'box-position') {
-          applyRemoteBoxPosition(message.boxId, message.position, message.quaternion);
-        } else if (message.type === 'box-spawn') {
-          applyBoxSpawn(message.boxId, message.position);
-        } else if (message.type === 'box-reset-all') {
-          window.__showcaseOfflineBoxActions.reset();
-          remoteHeldBoxes.clear();
-        } else if (message.type === 'roster') {
-          renderPlayerList(message.players);
-        } else if (message.type === 'session-ended') {
-          // The host clicking End closes our RTCPeerConnection too,
-          // but relying on that alone to notify us would mean
-          // waiting on WebRTC's own (slow, sometimes 15-30+ second)
-          // disconnect detection — send this explicitly over the
-          // still-open data channel first instead, right before the
-          // host closes it (see endMultiplayerSession).
-          if (connection && connection.pc) connection.pc.close();
-        }
-      }
-
-      function joinOnClose () {
-        boxSyncActive = false;
-        stopAimBroadcast();
-        removeAllRemotePeers();
-        releaseAllRemoteHeldBoxesLocally();
-        // Whatever caused this (the host ending the session, a
-        // network failure, or our own End button — see
-        // endMultiplayerSession), the joiner-side multiplayer UI
-        // resets the same way every time.
-        connection = null;
-        currentRoomCode = '';
-        renderPlayerList([]);
-        updateMultiplayerUi();
-      }
-
-      // --- Relay Host role (createHostSession) — the star: a
-      // separate RTCPeerConnection per joiner. Each joiner only ever
-      // talks directly to the host, so when one reports its own aim,
-      // the host both renders it locally AND re-broadcasts it to
-      // every OTHER joiner (tagged as 'peer-aim' with that joiner's
-      // id and assigned color) so they can see each other too.
-      var peerColors = new Map(); // peerId -> assigned color
-      var nextColorIndex = 1; // PALETTE[0] is reserved for the host itself
-      var connectedPeerCount = 0;
-      var currentRoomCode = '';
-
-      function hostOnPeerOpen (peerId) {
-        var color = PALETTE[nextColorIndex % PALETTE.length];
-        nextColorIndex++;
-        peerColors.set(peerId, color);
-        hostSession.send(peerId, JSON.stringify({ type: 'welcome', yourColor: color, hostColor: PALETTE[0] }));
-        connectedPeerCount++;
-        sendMessage = function (msg) { hostSession.broadcast(msg); };
-        startAimBroadcast(sendMessage);
-        broadcastRoster();
-      }
-
-      function hostOnPeerMessage (peerId, data) {
-        var message = parseMessage(data);
-        if (!message) return;
-        if (message.type === 'aim') {
-          var color = peerColors.get(peerId) || '#fff';
-          showRemotePeerAim(peerId, color, message.origin, message.direction);
-          hostSession.broadcast(JSON.stringify({
-            type: 'peer-aim',
-            peerId: peerId,
-            color: color,
-            origin: message.origin,
-            direction: message.direction,
-          }), peerId);
-        } else if (message.type === 'box-position') {
-          if (boxHolders.get(message.boxId) !== peerId) return; // stale/invalid - not the recorded holder
-          applyRemoteBoxPosition(message.boxId, message.position, message.quaternion);
-          hostSession.broadcast(data, peerId);
-        } else if (message.type === 'box-released') {
-          if (boxHolders.get(message.boxId) !== peerId) return;
-          boxHolders.delete(message.boxId);
-          applyRemoteBoxReleased(message.boxId, message.position);
-          hostSession.broadcast(data, peerId);
-        } else if (message.type === 'box-grab-request') {
-          acceptBoxGrab(message.boxId, peerId);
-        } else if (message.type === 'box-spawn-request') {
-          performHostBoxSpawn();
-        } else if (message.type === 'box-reset-request') {
-          performHostBoxReset();
-        }
-      }
-
-      function hostOnPeerClose (peerId) {
-        removeRemotePeer(peerId);
-        peerColors.delete(peerId);
-        releaseHeldBoxesFor(peerId);
-        connectedPeerCount = Math.max(0, connectedPeerCount - 1);
-        if (hostSession) broadcastRoster();
-      }
-
-      // --- Shared relay connection entry points, used by the in-VR
-      // watch menu's HOST/JOIN (see the Multiplayer watch page wiring
-      // further down).
-      var relayWs = null; // the signaling websocket for the current session, if any
-
-      function beginHostingViaRelay (relayUrl, callbacks) {
-        callbacks = callbacks || {};
-        isHost = true;
-        hostSession = createHostSession({ onPeerOpen: hostOnPeerOpen, onPeerMessage: hostOnPeerMessage, onPeerClose: hostOnPeerClose });
-        relayWs = hostSessionViaRelay(relayUrl, hostSession, {
-          onRoomCode: function (code) {
-            currentRoomCode = code;
-            updateMultiplayerUi();
-            renderPlayerList(currentRosterPlayers());
-            if (callbacks.onRoomCode) callbacks.onRoomCode(code);
-          },
-          onError: function (message) {
-            console.error('[multiplayer] host error:', message);
-            if (callbacks.onError) callbacks.onError(message);
-          },
-        });
-      }
-
-      function beginJoiningViaRelay (relayUrl, code, callbacks) {
-        callbacks = callbacks || {};
-        isHost = false;
-        hostSession = null;
-        boxHolders.clear();
-        peerColors.clear();
-        nextColorIndex = 1;
-        spawnedBoxIds = [];
-        connectedPeerCount = 0;
-        currentRoomCode = code;
-        connection = createJoinConnection({ onOpen: joinOnOpen, onMessage: joinOnMessage, onClose: joinOnClose });
-        updateMultiplayerUi();
-        relayWs = joinViaRelay(relayUrl, code, connection, {
-          onHandshakeComplete: function () {
-            if (callbacks.onHandshakeComplete) callbacks.onHandshakeComplete();
-          },
-          onError: function (message) {
-            console.error('[multiplayer] join error:', message);
-            if (callbacks.onError) callbacks.onError(message);
-          },
-        });
-      }
-
-      // Tears down whatever's currently connected (hosting or
-      // joined) and returns to idle. Cleans up synchronously rather
-      // than waiting on the async peer-close callbacks this also
-      // triggers — those still fire afterwards but land on
-      // already-empty state, which every one of them already
-      // tolerates as a no-op (same as a peer disconnecting into an
-      // empty room).
-      function endMultiplayerSession () {
-        if (relayWs) { relayWs.close(); relayWs = null; }
-        if (hostSession) {
-          // See joinOnMessage's 'session-ended' handling — sent
-          // ahead of close() so joiners hear about this immediately
-          // over the still-open data channel, rather than waiting on
-          // WebRTC's own (slow, unreliable) disconnect detection.
-          hostSession.broadcast(JSON.stringify({ type: 'session-ended' }));
-          hostSession.close();
-          hostSession = null;
-        } else if (connection && connection.pc) {
-          connection.pc.close();
-        }
-        connection = null;
-        isHost = false;
-        sendMessage = null;
-        stopAimBroadcast();
-        removeAllRemotePeers();
-        releaseAllRemoteHeldBoxesLocally();
-        boxHolders.clear();
-        peerColors.clear();
-        connectedPeerCount = 0;
-        currentRoomCode = '';
-        renderPlayerList([]);
-        updateMultiplayerUi();
-      }
-
-      // --- The watch's Multiplayer submenu: Host / Code / Join while
-      // idle, End and the room's players once connected. Both watches
-      // share one page, so the session is handed to the page and every
-      // watch re-reads it — Host turns into End under your finger rather
-      // than the next time you open the menu.
-      function refreshCrossbarWatches (players) {
-        var page = getMenuPage('watch');
-        if (!page || !page.multiplayer) return;
-        page.multiplayer.code = currentRoomCode;
-        if (players) page.multiplayer.players = players;
-        if (!currentRoomCode) page.multiplayer.players = [];
-        document.querySelectorAll('[hand-with-watch]').forEach(function (el) {
-          var comp = el.components['hand-with-watch'];
-          if (comp && comp.crossbarComponent) comp.crossbarComponent.menu.refresh();
-        });
-      }
-
-      // The four letter rows under Multiplayer > Code.
-      function crossbarRoomCode () {
-        var page = getMenuPage('watch');
-        if (!page) return '';
-        return [0, 1, 2, 3].map(function (index) {
-          var item = findMenuItem(page.items, 'watch-mp-code-' + index);
-          return item ? item.value : '';
-        }).join('');
-      }
-
-      function updateMultiplayerUi () {
-        refreshCrossbarWatches(null);
-      }
-
-      function renderPlayerList (players) {
-        refreshCrossbarWatches(players);
-      }
-
-      function currentRosterPlayers () {
-        var players = [{ peerId: 'host', color: PALETTE[0] }];
-        peerColors.forEach(function (color, peerId) { players.push({ peerId: peerId, color: color }); });
-        return players;
-      }
-
-      // Host-only: called whenever the peer set changes so every
-      // connected joiner (who otherwise only ever hears about peers
-      // incidentally, via aim traffic) can render the same list.
-      function broadcastRoster () {
-        var players = currentRosterPlayers();
-        hostSession.broadcast(JSON.stringify({ type: 'roster', players: players }));
-        renderPlayerList(players);
-      }
-
-      sceneEl.addEventListener('menu-action', function (evt) {
-        var value = evt.detail.id;
-        if (value === 'mp-host') {
-          beginHostingViaRelay(RELAY_URL, {});
-        } else if (value === 'mp-join') {
-          beginJoiningViaRelay(RELAY_URL, crossbarRoomCode(), {});
-        } else if (value === 'mp-end') {
-          endMultiplayerSession();
-        }
-      });
-
-      // The original static box needs the same grab/release wiring
-      // as anything spawned later.
-      var staticBoxEl = document.getElementById('showcase-grab-box');
-      if (staticBoxEl) wireBoxNetworking(staticBoxEl);
-
-      // spawn-box/reset-boxes now live here rather than the other
-      // <script> block, since only this one has the state needed to
-      // decide where an action goes — see window.__showcaseOfflineBoxActions's
-      // declaration for why.
-      var boxMenuSceneEl = document.querySelector('a-scene');
-      if (boxMenuSceneEl) {
-        boxMenuSceneEl.addEventListener('menu-action', function (evt) {
-          if (evt.detail.id === 'spawn-box') {
-            if (hostSession) performHostBoxSpawn();
-            else if (boxSyncActive) connection.send(JSON.stringify({ type: 'box-spawn-request' }));
-            else window.__showcaseOfflineBoxActions.spawn();
-          } else if (evt.detail.id === 'reset-boxes') {
-            if (hostSession) performHostBoxReset();
-            else if (boxSyncActive) connection.send(JSON.stringify({ type: 'box-reset-request' }));
-            else window.__showcaseOfflineBoxActions.reset();
-          }
-        });
-      }
-
     </script>
   </body>
 </html>

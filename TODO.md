@@ -23,8 +23,9 @@ build order.
 ## Desktop semantic hands
 
 - **Carry the shared hand-intent path through every practical VR mechanic.**
-  The Showcase now proves the first slice: desktop WASD/mouse input drives
-  simulated gameplay-facing hands for a watch, a mounted menu, and a simple
+  The menus tour and the multiplayer page prove the first slice: desktop
+  WASD/mouse input drives simulated gameplay-facing hands for a watch, a
+  mounted menu, grab-to-open props, guns and throwables, and a simple
   grab/drop box, while tracked controllers continue to drive those hands in
   XR. The larger objective is: **we eventually want all shared VR
   interactions to be usable — and therefore testable — on a normal laptop
@@ -35,11 +36,11 @@ build order.
 
 - **Migrate Pistols at Dawn onto the shared semantic hand/object contracts.**
   V1 deliberately did not lift its `hand-rig`/`holsterable` graph into the
-  Showcase: that graph also owns stacks, holsters, dangling, catches,
+  shared primitives: that graph also owns stacks, holsters, dangling, catches,
   throwing, support grips, vice wobble, recoil, and physics. Extract the
   useful state transitions behind a shared interface incrementally, then
   make Pistols consume that interface rather than maintaining a second input
-  path. Do not make the Showcase depend on Pistols' legacy globals.
+  path. Do not make the shared primitives depend on Pistols' legacy globals.
 
   **The foundation is confirmed working, with no changes needed to
   `hand-rig`/`holsterable`/`firearm` themselves** (verified with a headless
@@ -110,7 +111,7 @@ Deliberately not done yet:
   options, number ranges — and live-reload the panel, rather than
   positions, which the crossbar lays out itself.
 
-- **Multiplayer boxes and per-player rooms.** The showcase now fits its
+- **Multiplayer boxes and per-player rooms.** The multiplayer page fits its
   stations to each player's own boundary, but box spawns, releases and
   held-box positions still go over the network as world coordinates. Two
   players whose rooms differ see the host's box land where the host's
@@ -127,9 +128,9 @@ Deliberately not done yet:
 
 - **A multi-slot item kind, for room codes.** Four letters is four
   independent slots, where "inward" should move to the next slot rather
-  than drill deeper — the arcade high-score pattern. The 26-row
-  alphabet submenu in the showcase is the crude version, and exists to
-  find out whether hold-to-repeat scrolling is fast enough to live
+  than drill deeper — the arcade high-score pattern. The
+  watch's four scrolled letter rows are the crude version; the old
+  showcase's 26-row alphabet submenu existed to find out whether hold-to-repeat scrolling is fast enough to live
   with. Wrap-around already helps (Z is one step above A).
 
 - **A gamepad can't drive a menu off a headset.** `gamepad-input`
@@ -242,9 +243,9 @@ the menus showcase. Decided on and deferred:
 - **Pick the default menu face.** Every crossbar menu can now be set in
   any face (`crossbar-menu`'s `font` and `titleFont`: `roboto`, `b612`,
   `b612-regular`, `wright`, `sourcecodepro`, or an MSDF atlas URL; live,
-  via `setFont`), and the showcase has a B612 panel and a Wright Sans
-  panel either side of the static one to compare them. The default is
-  still A-Frame's Roboto everywhere; deciding whether B612 (with Wright
+  via `setFont`), and the menus tour sets everything in B612 with Wright
+  Sans titles, with a visor `Menu font` row to compare. Elsewhere the
+  default is still A-Frame's Roboto; deciding whether B612 (with Wright
   Sans titles?) becomes the default for the watch, the visor and every
   game's panels is the remaining call, best made in the headset. The
   atlases bake printable ASCII plus `°·×–—…’‘“”•←→↑↓‹›▸`; Wright Sans has
@@ -252,8 +253,8 @@ the menus showcase. Decided on and deferred:
   else needs a re-bake (see `vendor/fonts/README.md`).
 
 - **Hints from interaction-hints in the reticle slot.** The HUD has a
-  hint line above and below the reticle (`hud.setHint`), and the showcase
-  props use it. `interaction-hints` still shows its own in-world cards in
+  hint line above and below the reticle (`hud.setHint`), and the menus
+  tour's props use it. `interaction-hints` still shows its own in-world cards in
   XR and a 2D corner pill on desktop. Feeding its resolved candidate
   (`desktopCandidate`, and the XR equivalent) into `setHint` would make
   the reticle the one place prompts appear; deciding whether the
@@ -261,7 +262,7 @@ the menus showcase. Decided on and deferred:
 
 - **Gun aim cones in the games.** `aim-targeting.addSource(id, { object3D:
   barrel, color })` gives any gun GTA-style auto-aim with its own bracket
-  colour; the showcase blaster does exactly this. No game gun uses it
+  colour; the menus tour's guns and wand do exactly this. No game gun uses it
   yet — Pistols' guns aim with real sights, which is the point of them —
   so it waits for a game that wants assisted aim (dual-wielding, say, a
   shotgun bracketed red and a pistol blue). A target with several aim
@@ -405,7 +406,7 @@ Still deliberately deferred:
   misconfigured relay could be abused by a stranger to relay their own
   traffic — worth its own deliberate decision once STUN-only actually
   proves insufficient for real playtests, not added speculatively.
-- **The out-of-game showcase panel's manual copy/paste path and
+- **The out-of-game multiplayer panel's manual copy/paste path and
   free-text relay-address field** are deliberately left as-is (see
   README.md's "Multiplayer" section) — they're still useful for
   testing the connection code without a headset, but now have a
@@ -418,7 +419,7 @@ Still deliberately deferred:
 
 The in-VR Multiplayer page (watch menu → Multiplayer) covers HOST,
 JOIN, and END, with a room-code entry control and a live player list
-(peerId + assigned color, `primitives/menus/index.html`). Not built
+(peerId + assigned color, `primitives/multiplayer/index.html`). Not built
 yet:
 
 - **Kicking players.** Floated as a "maybe" — no kick action exists.

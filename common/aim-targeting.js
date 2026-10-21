@@ -153,7 +153,10 @@ if (typeof AFRAME !== 'undefined') {
     },
 
     allows: function (sourceId) {
-      if (!this.data.enabled || !this.el.object3D.visible) return false;
+      if (!this.data.enabled) return false;
+      // Visible all the way up: a target inside a hidden group (a demo
+      // that is not showing, a room you are not in) is not there.
+      for (var node = this.el.object3D; node; node = node.parent) if (!node.visible) return false;
       if (!this.data.sources) return true;
       return this.data.sources.split(',').map(function (s) { return s.trim(); }).indexOf(sourceId) !== -1;
     },

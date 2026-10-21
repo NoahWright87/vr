@@ -66,8 +66,15 @@ const GROUPS = [
         title: 'Menus & HUD',
         subtitle: 'Crossbar menus, watch, visor',
         href: '/primitives/menus/',
-        cta: 'Open showcase →',
-        body: 'Every menu in one room — panels, the wrist watch and the visor — plus the visor HUD in six styles, targeting brackets, and per-menu fonts.',
+        cta: 'Take the tour →',
+        body: 'A guided tour from where you stand: pick a shooter, racing, fantasy or frontier demo and its HUD, props that open menus, and a scene to try them in.',
+      },
+      {
+        title: 'Multiplayer',
+        subtitle: 'Peer-to-peer rooms',
+        href: '/primitives/multiplayer/',
+        cta: 'Host a room →',
+        body: 'Host or join by room code from the watch, then grab and throw shared boxes with everyone in the room.',
       },
       {
         title: 'Action Lab',

@@ -156,8 +156,12 @@ if (typeof AFRAME !== 'undefined') {
     this.ctx = this.canvas.getContext('2d');
     this.texture = new THREE.CanvasTexture(this.canvas);
     if (THREE.SRGBColorSpace) this.texture.colorSpace = THREE.SRGBColorSpace;
+    // A widget can show a texture it is handed instead of drawing — a
+    // render target, say, for a live camera feed in a corner of the visor.
+    // The HUD bends and fades it like any other and never disposes it.
+    this.external = options.texture || null;
     this.material = new THREE.MeshBasicMaterial({
-      map: this.texture, transparent: true, opacity: 0, depthTest: false, depthWrite: false,
+      map: this.external || this.texture, transparent: true, opacity: 0, depthTest: false, depthWrite: false,
     });
     this.mesh = new THREE.Mesh(new THREE.BufferGeometry(), this.material);
     this.mesh.renderOrder = options.renderOrder || WIDGET_ORDER;
@@ -223,6 +227,7 @@ if (typeof AFRAME !== 'undefined') {
     // size in your view whatever the widget's size: 1.2 * box.perDegree
     // is a comfortable minimum for something read at a glance.
     this.perDegree = 100 / angH;
+    if (this.external) { this.dirty = false; return; }
     var aspect = rect.w / rect.h;
     var pxH = Math.max(24, Math.min(512, Math.round(angH * this.ppd)));
     var pxW = Math.max(24, Math.min(2048, Math.round(pxH * aspect)));
@@ -241,6 +246,7 @@ if (typeof AFRAME !== 'undefined') {
   };
 
   Widget.prototype.draw = function (time) {
+    if (this.external) { this.dirty = false; return; }
     var canvas = this.canvas;
     var ctx = this.ctx;
     var scale = canvas.height / 100;
