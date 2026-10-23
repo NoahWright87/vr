@@ -18,6 +18,14 @@ by accident rather than on purpose, and add to it (with real context,
 not just a title) when you defer something rather than letting it
 evaporate.
 
+**`docs/actions/` is the plan for the action primitives** (autofire,
+melee, defense, throwing, targeting, comfort budget — the "feel like
+John Wick" direction). It uses paired files: `<topic>.spec.md` is what
+exists now, `<topic>.todo.md` is decided-on future work. Start with
+`docs/actions/README.md`, which holds the principles and build order;
+when you build a todo item, move its substance into the spec and delete
+it from the todo. The showcase for these is `primitives/actions/`.
+
 ## Testing without a headset
 
 Run `npm install`, then `npm run dev` for source development. Use

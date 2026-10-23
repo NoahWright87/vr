@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Action Lab | Noah's VR projects</title>
+    <link rel="icon" href="../../assets/noah-vr.svg" type="image/svg+xml" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <script>window.AFRAME_CDN_ROOT = '../../vendor/aframe-1.6.0/';</script>
+    <script src="../../vendor/aframe-1.6.0/aframe-v1.6.0.min.js"></script>
+    <style>
+      body { margin: 0; font-family: system-ui, sans-serif; }
+      #overlay {
+        position: absolute; top: 0; left: 0; right: 0; z-index: 1;
+        padding: 0.75rem 1rem; background: rgba(0, 0, 0, 0.55); color: white; font-size: 0.9rem;
+      }
+      #overlay a { color: #9ad; }
+    </style>
+  </head>
+  <body>
+    <!-- ==============================================================
+         ACTION LAB — the showcase for the action primitives
+         (docs/actions/), the way primitives/menus is for menus. One
+         station per primitive, stood against your real room by
+         play-space-station:
+
+           ahead   the range — a gallery of steel silhouettes past the
+                   front of your room, and a table of guns that restock
+           right   the dummies — wooden peg dummies to punch, and a
+                   line of robots behind them, some on rails
+           behind  sparring — a dummy that attacks you; block, parry,
+                   counter, or step aside
+           left    the motion lab — live readout of common/motion-sense.js
+           around  the brawl (off until B) — a ring of robots that
+                   surround you and take turns swinging
+
+         The plan for the rest (throwing lane, swarm) is in
+         docs/actions/README.md.
+
+         Off a headset: G / H grab or drop a gun with the right / left
+         hand (walk up to the table first), Space pulls the triggers,
+         T throws (a held gun, or a knife), Q holds both hands out (for
+         autofire), left click throws a jab, right click an uppercut,
+         Z / X swat an incoming punch to your left / right —
+         all by moving
+         the simulated hands, so motion-sense and everything after it
+         run the real path, not a shortcut. Backtick opens the visor.
+    ============================================================== -->
+    <div id="overlay">
+      <span>Action Lab — VR: grab a gun off the table ahead (grip), trigger to fire, fling it to throw. Desktop: WASD/mouse, G/H grab gun (R/L), Space fire, T throw, Q hands up, click jab, right click uppercut, B brawl, Z/X swat a punch, ` visor. <a href="../../index.html">All prototypes</a></span>
+    </div>
+
+    <a-scene visor-menu="page: visor" play-space-outline="showDefault: true">
+      <a-light type="ambient" color="#fff" intensity="0.7"></a-light>
+      <a-light type="directional" position="2 3 2" intensity="0.7"></a-light>
+      <a-sky color="#0d1526"></a-sky>
+      <a-plane id="floor" rotation="-90 0 0" width="20" height="20" color="#3a4358"></a-plane>
+
+      <!-- motion-sense reads the camera and both hands in this rig's own
+           space (your real room), so moving the rig never counts as you
+           moving. -->
+      <a-entity
+        id="rig"
+        locomotion-demo="speed: 1.5"
+        desktop-movement-input
+        desktop-action-input="primaryAction: jab; secondaryAction: uppercut; leftHand: #left-hand; rightHand: #right-hand; dominantHand: right; alternateHands: true; chargeMs: 900; minimumStrength: 0.35"
+        desktop-hand-presence="camera: #lab-camera; leftHand: #left-hand; rightHand: #right-hand; forward: 0.2; down: 0.13; spread: 0.2"
+        semantic-punch-controls="camera: #lab-camera; leftHand: #left-hand; rightHand: #right-hand"
+        semantic-look-controls="camera: #lab-camera"
+        gamepad-input="leftHand: #left-hand; rightHand: #right-hand; primaryAction: jab; secondaryAction: uppercut; interactAction: none; grabAction: none; watchAction: none; backAction: none; crouchAction: none"
+        touch-controls="leftHand: #left-hand; rightHand: #right-hand; primaryAction: jab; primaryLabel: JAB; secondaryAction: uppercut; secondaryLabel: UPPER; interactAction: none"
+        motion-sense="camera: #lab-camera; leftHand: #left-hand; rightHand: #right-hand"
+        desktop-throw-input="camera: #lab-camera; leftHand: #left-hand; rightHand: #right-hand"
+      >
+        <!-- Readouts (Visor > Debug > HUD) hang off this camera; the
+             debug-hud system adds them. -->
+        <a-camera id="lab-camera" wasd-controls="enabled: false" look-controls="pointerLockEnabled: true"></a-camera>
+
+        <!-- Small spheres as hands: green while a hand is "presented"
+             (held out), which is what an autofire gun will read as on. -->
+        <a-entity id="left-hand"
+          oculus-touch-controls="hand: left; model: false"
+          semantic-hand="hand: left; moveSpeed: 1.8; turnSpeed: 540; desktopScale: 0.32">
+          <a-sphere class="hand-marker" radius="0.05" color="#8aa0c8" shader="flat" control-mode-visibility="modes: xr"></a-sphere>
+        </a-entity>
+        <a-entity id="right-hand"
+          oculus-touch-controls="hand: right; model: false"
+          semantic-hand="hand: right; moveSpeed: 1.8; turnSpeed: 540; desktopScale: 0.32">
+          <a-sphere class="hand-marker" radius="0.05" color="#8aa0c8" shader="flat" control-mode-visibility="modes: xr"></a-sphere>
+        </a-entity>
+      </a-entity>
+
+      <!-- The hands you see and hit with: virtual hands that sit on the
+           tracked ones unless an assist pulls them away, by what the
+           comfort budget allows, with a ghost of the real hand while
+           they differ (common/virtual-hands.js). -->
+      <a-entity id="left-virtual" virtual-hand="side: left; rig: #rig; tracked: #left-hand"></a-entity>
+      <a-entity id="right-virtual" virtual-hand="side: right; rig: #rig; tracked: #right-hand"></a-entity>
+
+      <!-- Guns: picked up from the table at the range, held by the
+           virtual hands (common/guns.js). Grip to grab, trigger to fire,
+           let go fast to throw; aim assist always on. -->
+      <a-entity gun-hands="rig: #rig; left: #left-virtual; right: #right-virtual; camera: #lab-camera"></a-entity>
+
+      <!-- Punches: strikes from intent, contact by the virtual fists
+           (common/melee.js). -->
+      <a-entity melee-hands="rig: #rig; left: #left-virtual; right: #right-virtual"></a-entity>
+
+      <!-- Throws: hand up by your head, whip it forward
+           (common/throwing.js). Aimed at whatever you're looking at. -->
+      <a-entity throwing-hands="rig: #rig; left: #left-virtual; right: #right-virtual"></a-entity>
+
+      <!-- ============================================================
+           AHEAD — THE RANGE. The spawner lays silhouettes out in an arc
+           beyond the front of the room (its local -Z, away from the
+           middle). Tuning > Range rebuilds them.
+      ============================================================ -->
+      <a-entity id="station-range" play-space-station="side: front">
+        <!-- The table of guns, at the front edge of the room, between
+             you and the range. Each slot restocks 3 s after it empties. -->
+        <a-entity id="gun-table" gun-rack="slots: pistol, pistol, smg, smg, shotgun; spacing: 0.2" position="0 0 0.3"></a-entity>
+        <a-entity id="range-gallery" target-gallery></a-entity>
+        <a-entity id="range-targets" target-spawner="count: 0"></a-entity>
+      </a-entity>
+
+      <!-- ============================================================
+           RIGHT — THE DUMMIES. Wooden dummies to punch, facing the
+           middle of the room: two with pegs either side (the pegs block,
+           so punch down the middle between them) and a plain one in the
+           middle. The guns never shoot them (they're team 'dummy').
+      ============================================================ -->
+      <!-- Shifted toward the back of the room so the front one clears
+           the gun table in a small room. -->
+      <a-entity id="station-dummies" play-space-station="side: right">
+        <a-entity id="dummy-1" peg-dummy position="-0.9 0 0.25" rotation="0 20 0"></a-entity>
+        <a-entity id="dummy-2" peg-dummy="pegs: false" position="-0.25 0 0.35"></a-entity>
+        <a-entity id="dummy-3" peg-dummy position="0.4 0 0.25" rotation="0 -20 0"></a-entity>
+        <!-- Behind them, a line of robots (common/brawlers.js) on their
+             own: a punching bag and a quick jabber riding rails side to
+             side, a boxer that swings when you come within 1.1 m, and a
+             brute that just stands there and takes it. -->
+        <a-entity id="line-bag" brawler="kind: blocker; rail: 0.8; railSpeed: 0.5" position="0 0 -0.85"></a-entity>
+        <a-entity id="line-boxer" brawler="kind: boxer; engage: 1.1" position="-0.95 0 -0.6" rotation="0 20 0"></a-entity>
+        <a-entity id="line-quick" brawler="kind: quick; rail: 0.5; railSpeed: 0.8; engage: 1.0; intervalMs: 1400" position="0.9 0 -0.6" rotation="0 -20 0"></a-entity>
+        <a-entity id="line-brute" brawler="kind: brute" position="0 0 -1.7"></a-entity>
+      </a-entity>
+
+      <!-- ============================================================
+           BEHIND — SPARRING. An attacker dummy that thrusts at you on a
+           schedule: block it, parry it, counter it, or step aside
+           (primitives/actions/sparring.js).
+      ============================================================ -->
+      <a-entity id="station-sparring" play-space-station="side: back">
+        <!-- Back toward the wall, so it leaves you alone in the middle
+             of the room; step back toward it (within 1.1 m) to spar. -->
+        <a-entity id="sparrer" attacker-dummy="engage: 1.1" position="0 0 -0.3"></a-entity>
+      </a-entity>
+
+      <!-- ============================================================
+           LEFT — THE MOTION LAB. Bars for motion energy and each
+           hand's head-relative speed and forward extension, and the full
+           readout as text. Everything else in docs/actions/ reads these
+           numbers, so this is where they get tuned.
+      ============================================================ -->
+      <!-- ============================================================
+           ALL ROUND YOU — THE BRAWL. Off until you turn it on (B, or
+           the visor's Brawl row): a ring of robots that surrounds you
+           wherever you stand and takes turns swinging
+           (primitives/actions/brawl.js). At the scene root, since it
+           follows you rather than standing at a wall.
+      ============================================================ -->
+      <a-entity id="brawl-ring" brawl-ring="count: 0"></a-entity>
+
+      <a-entity id="station-motion" play-space-station="side: left">
+        <a-entity motion-lab="rig: #rig" position="0 1.45 0"></a-entity>
+        <a-text value="MOTION LAB&#10;Stand still: energy stays near zero. Punch: it jumps.&#10;Visor (hand at temple) > Tuning > Motion."
+          align="center" color="#7fe3ff" width="1.3" wrap-count="48" position="0 0.62 0"></a-text>
+      </a-entity>
+    </a-scene>
+
+    <script type="module" src="../../common/play-space.js"></script>
+    <script type="module" src="../../common/locomotion.js"></script>
+    <script type="module" src="../../common/semantic-punch.js"></script>
+    <script type="module" src="../../common/menu-crossbar.js"></script>
+    <script type="module" src="../../common/visor-menu.js"></script>
+    <script type="module" src="./motion-lab.js"></script>
+    <script type="module" src="./range.js"></script>
+    <script type="module" src="../../common/melee.js"></script>
+    <script type="module" src="./sparring.js"></script>
+    <script type="module" src="./brawl.js"></script>
+    <script type="module" src="../../common/throwing.js"></script>
+    <script type="module" src="./lab-page.js"></script>
+  </body>
+</html>

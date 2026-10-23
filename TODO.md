@@ -14,6 +14,10 @@ this is only for work that has been decided on and postponed.
   headset trials before interpreting completion percentages as predictive.
   Keep exploration and held-out seed ranges separate. Comfort and tracking
   quality remain hardware tests.
+Action primitives (autofire, melee, defense, throwing, targeting, the
+comfort budget) have their own plan in `docs/actions/` — one
+`*.todo.md` per system, with `docs/actions/README.md` as the index and
+build order.
 
 ## 3D Model Toybox
 
@@ -370,3 +374,4 @@ yet:
   restructuring anything.
 - **Player names.** The roster only has peerId + color right now —
   there's no name entry or display anywhere.
+
