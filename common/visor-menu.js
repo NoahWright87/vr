@@ -4,8 +4,8 @@
 // One crossbar menu, locked to your head the way a helmet display
 // would be, that appears beside whichever temple you reach for. It is
 // the same `crossbar-menu` as the watch and the wall panels, laid out
-// as floating text with a curve, inboard alignment and (optionally) a
-// single eye; every one of those is adjustable from inside it.
+// as floating text with a curve and inboard alignment; every one of
+// those is adjustable from inside it.
 //
 // It OPENS differently on each device, for the same reason the watch
 // does:
@@ -27,6 +27,10 @@
 // ============================================================
 
 import { overlayAll } from './menu-crossbar.js';
+// The visor's frame and HUD. Where this menu goes is the frame's call
+// (Visor ▸ Adjust), so every visor page gets the HUD system with it.
+import './visor-hud.js';
+import { MENU_ROW_EDGE, menuLayout, FRAME_DEFAULTS } from './visor-frame.js';
 
 if (typeof AFRAME !== 'undefined') {
   var THREE = AFRAME.THREE;
@@ -47,8 +51,8 @@ if (typeof AFRAME !== 'undefined') {
   var APPROACH_MARGIN = 0.08;
   // Where a row's highlight plate ends, as a fraction of the panel's
   // width from its centre (crossbar-menu draws plates 0.94 wide). The
-  // Position setting measures to here.
-  var ROW_EDGE = 0.47;
+  // frame's menu position measures to here.
+  var ROW_EDGE = MENU_ROW_EDGE;
   // How much faster the bar drains than it fills when your hand and the
   // menu agree again. Draining rather than snapping to zero is what
   // makes the gesture survive tracking noise: controllers beside your
@@ -104,28 +108,14 @@ if (typeof AFRAME !== 'undefined') {
       zoneRadius: { default: 0.15 },
       zoneSide: { default: 0.22 },
       zoneForward: { default: -0.06 },
-      distance: { default: 1.8 },
-      // 'world' keeps the panel a real object at `distance`, drawn over
+      // 'world' keeps the panel a real object at the frame's distance, drawn over
       // everything — stereo-correct, so both eyes converge where it
       // actually is. 'screen' paints it onto the display instead:
       // identical in both eyes, no depth, no parallax, fixed size.
       draw: { default: 'world', oneOf: ['world', 'screen'] },
-      // 'both' draws to both eyes; 'inboard' draws it to the eye on the
-      // side it opened on. Composes with `draw`.
-      eyes: { default: 'both', oneOf: ['both', 'inboard'] },
-      // Layout, in degrees of your view, all live-adjustable from the
-      // visor's own menu. See placeFor.
-      //   position — how far from straight ahead the selected row sits
-      //   lift     — how far above (+) or below (-) eye level it sits
-      //   width    — how wide the panel is, which sets the text size
-      //   height   — top row to bottom row
-      //   curve    — how much further inboard the selected row reaches
-      //              than the top and bottom ones
-      position: { default: 8 },
-      lift: { default: -2 },
-      width: { default: 30 },
-      height: { default: 34 },
-      curve: { default: 10 },
+      // Where the menu sits and how big it is come from the visor's frame
+      // (common/visor-frame.js menuLayout), set from Visor ▸ Adjust along
+      // with the HUD. Only where a submenu's title goes is the menu's own.
       crumbs: { default: 'title', oneOf: ['outside', 'inside', 'title'] },
       key: { type: 'string', default: 'Backquote' },
       hint: { default: true },
@@ -149,11 +139,7 @@ if (typeof AFRAME !== 'undefined') {
       // does not merge a property into it the way it would on an entity —
       // it replaces the whole DOM attribute with the property name.
       this.drawMode = this.data.draw;
-      this.eyesMode = this.data.eyes;
-      this.settings = {
-        position: this.data.position, lift: this.data.lift, width: this.data.width,
-        height: this.data.height, curve: this.data.curve, crumbs: this.data.crumbs,
-      };
+      this.settings = { crumbs: this.data.crumbs };
       this.activation = {
         radius: this.data.zoneRadius, side: this.data.zoneSide, forward: this.data.zoneForward,
         openMs: this.data.openMs, closeMs: this.data.closeMs,
@@ -169,12 +155,15 @@ if (typeof AFRAME !== 'undefined') {
       this.sceneEl.addEventListener('loaded', function () {
         self.build();
       });
-      // Entering and leaving a headset both change what the eye setting
-      // means — there are two cameras or there is one — so the whole
-      // surface is re-applied at each transition rather than assumed.
+      // Entering and leaving a headset changes what screen-space drawing
+      // means — two eye cameras or one — so the surface is re-applied at
+      // each transition rather than assumed.
       this.onXrChange = function () { self.applySurface(); };
       this.sceneEl.addEventListener('enter-vr', this.onXrChange);
       this.sceneEl.addEventListener('exit-vr', this.onXrChange);
+      // The frame was adjusted (or the window changed shape): move.
+      this.onFrameChanged = function () { self.placeFor(self.panelSide); };
+      this.sceneEl.addEventListener('visor-frame-changed', this.onFrameChanged);
     },
 
     build: function () {
@@ -225,7 +214,6 @@ if (typeof AFRAME !== 'undefined') {
         // cut through by the nearest doorway. 'screen' paints it onto the
         // display instead; see setDraw.
         overlay: this.drawMode,
-        eye: this.eyesMode,
       });
       panel.setAttribute('crossbar-menu-registration', '');
       cameraEl.appendChild(panel);
@@ -254,10 +242,11 @@ if (typeof AFRAME !== 'undefined') {
       else panel.addEventListener('loaded', ready, { once: true });
     },
 
-    // Put the one panel beside the given temple, sized and placed from
-    // the layout settings. Everything is in degrees of your view and
-    // converted at the focal distance, because "how far into my view" is
-    // the question the settings answer, not "how many metres".
+    // Put the one panel beside the given temple, sized and placed by the
+    // visor's frame (visor-frame.js menuLayout). Everything is in degrees
+    // of your view and converted at the frame's distance, because "how far
+    // into my view" is the question the frame answers, not "how many
+    // metres".
     //
     // The selected row's inboard end sits at `position` degrees from
     // straight ahead; the top and bottom rows sit `curve` degrees further
@@ -267,8 +256,10 @@ if (typeof AFRAME !== 'undefined') {
     placeFor: function (side) {
       var component = this.component;
       if (!component) return;
-      var d = this.data.distance;
-      var s = this.settings;
+      var hud = this.sceneEl.systems['visor-hud'];
+      var frame = hud ? hud.effectiveFrame() : FRAME_DEFAULTS;
+      var d = frame.distance;
+      var s = Object.assign(menuLayout(frame), this.settings);
       var rad = Math.PI / 180;
       var sign = side === 'left' ? -1 : 1;
       var half = (component.data.windowSize - 1) / 2;
@@ -305,8 +296,6 @@ if (typeof AFRAME !== 'undefined') {
         screenAnchor: { x: sign * Math.tan(centre * rad), y: Math.tan(s.lift * rad) },
         screenWidth: Math.tan((inboard + s.width) * rad) - Math.tan(inboard * rad),
       });
-      // The eye a one-eyed panel draws to follows the side it is on.
-      component.applyEyeLayer();
 
       var c = centre * rad;
       var l = s.lift * rad;
@@ -332,9 +321,8 @@ if (typeof AFRAME !== 'undefined') {
     //
     // Shown only while you are inside a submenu that asks for it (page
     // data: `zones: true`), on the side of your view opposite the menu so
-    // it does not cover it. Both eyes and drawn over the world, so a
-    // headset screenshot catches it whatever the Eyes and Draw settings
-    // are. The temple spheres and your hands, live: the spheres sit beside
+    // it does not cover it. Drawn over the world in stereo, so a headset
+    // screenshot catches it whatever the Draw setting is. The temple spheres and your hands, live: the spheres sit beside
     // and behind your eyes, so you could never see them directly even if
     // your head were not inside one; this draws them as two small maps
     // instead, from above and from behind, with each hand's dot lit while
@@ -417,6 +405,11 @@ if (typeof AFRAME !== 'undefined') {
     updateExtras: function () {
       if (!this.zonesEl || !this.component) return;
       var menu = this.component.menu;
+      // The HUD draws its own previews: every slot while you are in
+      // Adjust, the aim rings while you are in Targeting (page data
+      // `frame: true` / `rings: true` on those submenus).
+      var hud = this.sceneEl.systems['visor-hud'];
+      if (hud) hud.setPreview({ frame: menu.isOpen && menu.inside('frame'), rings: menu.isOpen && menu.inside('rings') });
       var zones = menu.isOpen && menu.inside('zones');
       if (zones && !this.zonesEl.object3D.visible) this.rebuildZones();
       this.zonesEl.object3D.visible = zones;
@@ -429,16 +422,15 @@ if (typeof AFRAME !== 'undefined') {
     describe: function () {
       var s = this.settings;
       var a = this.activation;
-      var deg = function (v) { return (Math.round(v * 10) / 10) + '°'; };
+      var hud = this.sceneEl.systems['visor-hud'];
       var cm = function (m) { return Math.round(m * 100) + ' cm'; };
       var sec = function (ms) { return (ms / 1000).toFixed(2) + ' s'; };
       var titles = { title: 'Top', inside: 'Inner', outside: 'Outer' };
       return [
-        'VISOR',
-        'Position ' + deg(s.position) + '  Lift ' + deg(s.lift),
-        'Width ' + deg(s.width) + '  Height ' + deg(s.height),
-        'Curve ' + deg(s.curve) + '  Titles ' + titles[s.crumbs],
-        'Eyes ' + (this.eyesMode === 'inboard' ? 'One' : 'Both') + '  Draw ' + (this.drawMode === 'screen' ? 'Screen' : 'World'),
+        hud ? hud.describe() : '',
+        '',
+        'MENU',
+        'Titles ' + titles[s.crumbs] + '  Draw ' + (this.drawMode === 'screen' ? 'Screen' : 'World'),
         'Scrim ' + (this.scrim > 0 ? 'On' : 'Off'),
         '',
         'ACTIVATION',
@@ -545,13 +537,6 @@ if (typeof AFRAME !== 'undefined') {
       this.refreshInfo();
     },
 
-    // Which eye. One panel now, so this is one decision.
-    setEyes: function (mode) {
-      this.eyesMode = mode;
-      this.applySurface();
-      this.refreshInfo();
-    },
-
     setScrim: function (opacity) {
       this.scrim = opacity;
       if (this.component) this.component.setScrim(opacity);
@@ -563,7 +548,6 @@ if (typeof AFRAME !== 'undefined') {
       if (!component) return;
       // The panel IS a component, so this one does merge properly.
       this.panel.setAttribute('crossbar-menu', 'overlay', this.drawMode);
-      component.setEye(this.eyesMode);
       component.render();
     },
 
@@ -603,6 +587,7 @@ if (typeof AFRAME !== 'undefined') {
       var component = this.component;
       if (!component) return false;
       component.menu.close();
+      this.updateExtras();
       var system = this.sceneEl.systems['menu-stick-control'];
       if (system) {
         system.unpinHand(component);
@@ -773,6 +758,7 @@ if (typeof AFRAME !== 'undefined') {
       window.removeEventListener('keydown', this.onKeyDown);
       this.sceneEl.removeEventListener('enter-vr', this.onXrChange);
       this.sceneEl.removeEventListener('exit-vr', this.onXrChange);
+      this.sceneEl.removeEventListener('visor-frame-changed', this.onFrameChanged);
     },
   });
 }

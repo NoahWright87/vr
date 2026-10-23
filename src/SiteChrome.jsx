@@ -44,7 +44,6 @@ export function SiteHeader() {
       right={
         <>
           <nav className="site-navigation" aria-label="Site navigation">
-            <Link href="/primitives/menus/" variant="subtle">Primitives ↗</Link>
             <Link href="/about/" variant="subtle">About</Link>
           </nav>
           <ToggleIcon
@@ -65,7 +64,7 @@ export function SiteFooter() {
     <Footer
       bottom={
         <Text align="center" tone="muted">
-          Built with A-Frame, for the Meta Quest 2 browser · ©{' '}
+          WebXR, tested for Meta Quest 2 · Built with A-Frame · ©{' '}
           {year} <Link href="/about/" variant="subtle">Noah Wright</Link>
         </Text>
       }
