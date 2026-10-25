@@ -48,7 +48,14 @@
 
 ## Open questions
 
-- Desktop/phone players joining (TODO.md "Desktop semantic hands"):
-  supported in PvP, or VR only?
 - Can players join mid-match, or wait in Boot Hill until the next
   round?
+
+## Non-VR players (decided: yes, eventually)
+
+Family members without a headset should be able to join from a laptop,
+phone or gamepad. Input comes from the shared semantic-hands work in
+`common/` (`platforms.todo.md`), so a non-VR player's ghost moves,
+aims and wears clothes like anyone else's and nothing on the network
+needs to know which kind of player it is. Don't build anything in
+phase 03-B that assumes every peer has tracked controllers.

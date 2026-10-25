@@ -19,8 +19,26 @@ phrased with wordplay, alliteration or rhyme:
   hour... Time of day is mostly already a dial (`world-day-night.js`).
 - **Places**: Main Street, the saloon, the desert, the bridge, the
   moon.
-- **Modifiers**: low gravity, snow, fog, everyone's drunk, moving
-  platforms.
+- **Modifiers**: lots of them, made to mix and match. A fight can
+  stack several. Some kinds:
+  - **visibility**: fog, dust storm, pitch dark with muzzle flashes
+    only
+  - **world**: low gravity, snow, moving platforms
+  - **the player**: everyone's drunk, blindfolded
+  - **zany rules**: *twirl to reload*, one bullet, guns swap hands
+    every shot, only trick shots count
+
+  A modifier is a small piece of data with an apply/remove pair, and
+  stacking is the normal case. A modifier that only works alone is a
+  dead end (`town.todo.md`).
+
+## Weapons in a fight
+
+Picking the weapon is part of the duel. The fight's weapon card
+**takes over from your own gear** for its duration: if it's catapults
+today, your customized gold-plated shotgun waits on the side and comes
+back afterwards (`economy.todo.md` "Your gear"). Some fights may let
+each player pick from a short list, or just bring their own.
 
 ## Cheap places
 
@@ -58,8 +76,8 @@ mostly data.
   objects (the revolving bar, DESIGN.md), so most of the system
   exists.
 - **Titles are generated from cards, then improved by hand.** A
-  generator that likes alliteration gives you combinations. Story
-  duels get handwritten titles.
+  generator that likes alliteration gives you combinations. Ladder
+  fights get handwritten titles.
 
 ## Not before phase 05
 

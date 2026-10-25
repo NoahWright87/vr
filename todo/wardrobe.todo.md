@@ -54,7 +54,7 @@ end up in weird combinations of other people's outfits.
 - **A loose costume item must not perish** (`perishable`) while a
   match is on. It's somebody's health bar.
 - **Rental costume.** Everyone always starts a match with every slot
-  filled. Players who haven't bought anything wear the free tourist
+  filled. Players who haven't bought anything wear the free
   rental, and buying only changes looks.
 
 ## Which slots

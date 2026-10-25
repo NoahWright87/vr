@@ -21,6 +21,15 @@ cardboard targets at the Range. This is the engine every later duel
    (targets for now), rules (rounds, false-start penalty), scoring.
    Weapon, time and place fields exist even if only one value is used
    now (`deck.todo.md`).
+   - **Modifiers:** a list of small apply/remove pieces of data,
+     stackable. Implement one or two cheap ones (time of day via
+     `world-day-night.js`, fog) just to prove the shape. The real
+     collection comes in phase 04.
+   - **Weapon takeover:** if a duel names its weapon, hand it out at
+     setup, set the player's carried guns aside, and give them back at
+     the end, including after an aborted duel. Leave the belt and
+     holsters themselves alone (01-A's territory). Set aside what's in
+     them through the normal slot calls.
 3. **Start signals that plug in.** Build at least: a "Draw!" shout
    after a random delay (text plus a sound placeholder), a starter
    pistol, a flag drop, and a coin toss that triggers on its `landed`

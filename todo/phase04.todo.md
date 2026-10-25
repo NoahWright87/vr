@@ -2,12 +2,20 @@
 
 Deliberately rough. **Rewrite this file once phases 01–03 have been
 played**, and split it into `phase04-a`, `-b`, ... at that point. The
-tracks below look independent of each other.
+groups below look independent of each other.
 
-- **The wanted-poster campaign.** The Sheriff's Office board gets real
-  posters: a first cast of 5–8 characters (`cast.todo.md`), each a
-  duel definition with a pun title, a quirk and a signature card
-  (`deck.todo.md`). Beaten posters get stamped. A final boss poster.
+- **The fight ladder.** The Sheriff's Office board becomes the ladder
+  (`dueling.todo.md`): a first run of 5–8 characters (`cast.todo.md`),
+  each a fight with a pun title, a quirk, card combinations and
+  modifiers, getting harder up the ladder. Not on a timer. Beaten
+  posters get stamped.
+- **Modifiers, for real.** A first batch that stacks: visibility (fog,
+  dark), world (low gravity), player (drunk), zany rules (twirl to
+  reload, one bullet). See `deck.todo.md`.
+- **The activity framework.** Pull the shared parts out of the duel
+  framework once a second competitive activity exists. Candidates are a
+  timed target course at the Range, or reworking darts onto it
+  (`activities.todo.md`).
 - **Wardrobe rule options.** Retrieve own / anyone's / hardcore /
   anything's a hat, chosen by the host per match.
 - **Boot Hill.** Stripped players go to a spectator perch with a lame
@@ -23,5 +31,8 @@ tracks below look independent of each other.
   characters and an announcer that reads duel titles, counts paces and
   says the player's name. Speech bubbles reveal text as it's spoken.
   Character presets are Pistols data, tuned in the Voice Lab.
-- **Procedural bounties**, if the cast settings from 03-A turn out to
-  produce interesting characters on their own.
+- **Gun customization v0** at a second date-rotating shop (probably the
+  General Store), once the "your gear" question in `economy.todo.md`
+  is settled.
+- **Procedural fights**, if the character settings from 03-A turn out
+  to produce interesting characters on their own.

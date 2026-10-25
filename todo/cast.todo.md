@@ -2,8 +2,8 @@
 
 ## Characters
 
-Challengers are ghost actors and tourists at the attraction, and each
-one is defined by a quirk. A character is data:
+No story (`todo.md`). Characters are just silly ghosts who want to
+fight you, each defined by a quirk. A character is data:
 
 - name and title (a pun), and their wanted poster
 - outfit (wardrobe items, see `wardrobe.todo.md`)
@@ -11,6 +11,8 @@ one is defined by a quirk. A character is data:
   nerve, quirk
 - signature card(s) they unlock (`deck.todo.md`)
 - voice preset (below)
+- look: a ghost with an expressive face (`aesthetic.todo.md`), and how
+  readily it shows each expression (a grump scowls a lot)
 
 Quirk examples:
 - the cheat who turns on eight
@@ -27,7 +29,7 @@ still open.
 
 If characters are data, a **seed** can make one: random name parts,
 outfit, duelist settings and a voice preset. Good for endless bounties
-and filler tourists in town. Story characters stay handwritten.
+and filler ghosts in town. Ladder characters stay handwritten.
 
 ## The voice engine: Animal Crossing style
 

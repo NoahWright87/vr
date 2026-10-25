@@ -65,6 +65,25 @@ modes). One AI character later **always** jumps the gun.
   picker: training sheets first, then wanted posters. When you beat a
   poster it gets stamped.
 
+## The fight ladder
+
+The single-player direction: a ladder of fights against AI duelists
+that **gets harder and harder** and **isn't on a timer**. You can
+climb as fast as you're good enough (unlike shop stock, which rotates
+by date, `economy.todo.md`). The WANTED board in the Sheriff's Office
+shows it. Each poster is a fight: a character (`cast.todo.md`), a
+combination of cards and modifiers (`deck.todo.md`), and a pun title.
+Beat it and it's stamped, you're paid, and its cards may unlock for
+your deck. The ladder is data, so new rungs and whole new ladders can
+be added indefinitely (`town.todo.md` "Extension points").
+
+## Weapons in a duel
+
+A duel definition names its weapon(s). If it does, it hands them out
+at setup and **takes over from your carried gear**, setting your own
+guns aside and returning them afterwards (`deck.todo.md` "Weapons in a
+fight"). A duel that doesn't name a weapon uses whatever you carry.
+
 ## AI duelists (phase 03-A onward)
 
 The fixed ritual of a duel means the AI doesn't need cover or flanking

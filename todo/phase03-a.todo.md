@@ -26,7 +26,7 @@ different people.
 4. **Round end.** Stripped = the round's lost. Results and payouts
    through the existing duel and profile path. Style still counts.
 5. **Entry point.** A temporary pedestal or board entry is fine. The
-   wanted-poster campaign is phase 04.
+   fight ladder is phase 04.
 
 ## Touches
 

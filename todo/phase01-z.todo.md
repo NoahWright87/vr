@@ -101,8 +101,9 @@ export-later/packages/voice/
 
 - `vite.config.js`: add the demo page to `build.rolldownOptions.input`
   (e.g. `voiceLab: resolve(root, 'export-later/packages/voice/demo/index.html')`).
-- A link to the Voice Lab from the site. The landing page links
-  primitives from `src/App.jsx` / `src/SiteChrome.jsx`.
+- A link to the Voice Lab from the site's Utilities section (phase
+  00-b). If that section doesn't exist yet, link it the way the menus
+  showcase is linked (`src/App.jsx`) and phase 00-b will move it.
 
 Nothing in `games/` or `common/` changes in this phase.
 

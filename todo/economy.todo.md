@@ -16,7 +16,7 @@ you're mostly waiting for it to show up in the shop.
   stock.
 - **Big-ticket silly items** (golden toilet tier) give you something to
   save toward once you've got everything else.
-- **Town upgrades as a money sink.** Fix up the attraction. Several
+- **Town upgrades as a money sink.** Fix up the town. Several
   buildings are empty shells today (Bank, Pharmacy, Post Office,
   General Store in `world-hub-interiors.js`), and paying to fix them
   up is progress you can see.
@@ -37,15 +37,34 @@ hit zones, so they're purely for looks:
 Everything is data: id, slot, price, how rare it is in the rotation,
 and its look.
 
-## Owned guns (open design problem)
+## Collecting, not time-gating progress
 
-Today a gun is a world object: wall racks restock and dropped guns
-eventually disappear (DESIGN.md "Stock and perishing"). A gold-plated
-gun *you own* is a new kind of thing. It has to come back to you
-instead of disappearing, and other players need to see the finish.
-Simplest version: a finish is a cosmetic setting on whatever gun you
-hold ("your guns look gold"), not an object you own. Decide when gun
-finishes are first built. Not before phase 02-C.
+- **Several shops can rotate their stock by date**: the clothier for
+  sure, probably the General Store for gun customizations, and maybe
+  more later. Each is a catalog plus a display, and adding one is data
+  (`town.todo.md` "Extension points").
+- **What you buy is yours for good.** It goes into your wardrobe (or
+  your gun customizations) as a collection, and you change into it any
+  time at the clothier or from the watch menu.
+- The date only gates *shopping*. The fight ladder and activity
+  progression aren't on a timer (`dueling.todo.md`,
+  `activities.todo.md`).
+
+## Your gear (gun customization)
+
+You customize the guns you carry around normally: finishes (gold
+plating, bedazzling), grips, engraving. Those are cosmetics you
+collect like clothes.
+
+Open design problem: today a gun is a world object. Wall racks restock
+and dropped guns eventually disappear (DESIGN.md "Stock and
+perishing"). The simplest fit is that a customization is a cosmetic
+setting applied to **your carried guns** (the ones in your own
+holsters), not a separate object you own. Then a lost gun doesn't lose
+you anything, and a new one from a rack becomes "yours" once
+holstered. Other players need to see it. Decide when customizations
+are first built. Duels can take over with their own weapons
+(`deck.todo.md` "Weapons in a fight").
 
 ## Open questions
 

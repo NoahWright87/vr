@@ -20,7 +20,11 @@ other half of the loop.
    `economy.todo.md`). Deterministic, so friends see the same stock.
 3. **Buying.** In the Boots & Suits interior (`world-hub-interiors.js`,
    `boots-suits-interior`): pick an item off the display, pay with
-   `profile.spend`, and it's added to what you own.
+   `profile.spend`, and it's added to what you own. Owned items are a
+   permanent collection, wearable any time.
+   Build the shop as "catalog + display rules" rather than as Boots &
+   Suits code, so a second date-rotating shop (gun customizations,
+   phase 04) is just data and a building.
 4. **Dressing.** The mirror in the shop (and a watch-menu Wardrobe
    page) changes your outfit through 01-A's deliberate outfit-change
    path. Saved to the profile. It loads on the next visit and at match
