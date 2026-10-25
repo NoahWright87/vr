@@ -7,8 +7,8 @@
 // is geometry, materials and event plumbing.
 //
 // One renderer, several surfaces. A world panel is flat and roomy; a
-// watch face is flat and cramped; the visor is curved, anchored to one
-// side and drawn for one eye. Those are schema values on the same
+// watch face is flat and cramped; the visor is curved and anchored to
+// one side of your head. Those are schema values on the same
 // component, not three implementations — the only thing that changes
 // per surface is how many rows fit, how far the focused row bulges
 // outboard, and which way the text is aligned.
@@ -21,7 +21,7 @@
 // select something by aiming slightly wrong.
 // ============================================================
 
-import { createMenu, findMenuItem } from './menu-model.js';
+import { createMenu, findMenuItem, truncateLabel, marqueeText } from './menu-model.js';
 
 export { findMenuItem };
 
@@ -196,6 +196,44 @@ export function overlayAll(el) {
   });
 }
 
+// The faces a menu can be set in (crossbar-menu's `font` and
+// `titleFont`). A-Frame text needs a pre-baked MSDF atlas rather than a
+// web font; ours are in vendor/fonts (see its README). Root-relative:
+// A-Frame finds each atlas's image by swapping .json for .png, so they
+// cannot go through the bundler's hashed file names — vendor/ is copied
+// to the build as it is. Anything else given is taken as an atlas URL.
+//
+//   roboto        A-Frame's own, the default
+//   b612          B612 Bold: made for cockpit displays, the most legible
+//   b612-regular  B612 at regular weight
+//   wright        Wright Sans: headings and titles, not body text
+//   sourcecodepro A-Frame's monospace (the watch's clock)
+//
+// `face` is the name inside each atlas, which is how a label checks that
+// the font it ended up with is the one it last asked for (see
+// setTextFont).
+export var MENU_FONTS = {
+  roboto: { font: 'roboto', negate: true, face: 'Roboto' },
+  b612: { font: '/vendor/fonts/B612-Bold-msdf.json', negate: false, face: 'B612-Bold' },
+  'b612-regular': { font: '/vendor/fonts/B612-Regular-msdf.json', negate: false, face: 'B612-Regular' },
+  // Wright Sans has no ‹ ›, so a row's chevron falls back to B612.
+  wright: { font: '/vendor/fonts/WrightSans-Bold-msdf.json', negate: false, face: 'WrightSans-Bold', chevrons: 'b612' },
+  sourcecodepro: { font: 'sourcecodepro', negate: true, face: 'Source Code Pro Semibold' },
+};
+
+// The face inside an atlas, by the font value a label was given; '' for
+// one we do not know (an arbitrary URL).
+function faceOf(font) {
+  for (var name in MENU_FONTS) if (MENU_FONTS[name].font === font) return MENU_FONTS[name].face;
+  return '';
+}
+
+function resolveFont(name) {
+  if (!name) return MENU_FONTS.roboto;
+  // The bundled atlases ship with an inverted field; ours do not.
+  return MENU_FONTS[name] || { font: name, negate: false };
+}
+
 if (typeof AFRAME !== 'undefined') {
   var THREE = AFRAME.THREE;
 
@@ -299,13 +337,6 @@ if (typeof AFRAME !== 'undefined') {
     return side === 'left' ? 'right' : 'left';
   }
 
-  function eyeLayerFor(eye, side) {
-    var resolved = eye === 'inboard' ? side : eye;
-    if (resolved === 'left') return 1;
-    if (resolved === 'right') return 2;
-    return 0;
-  }
-
   // A soft one-sided wash. Painted rather than a flat plane so the
   // inboard edge fades out instead of cutting across your view — the
   // same "generate the texture at runtime" approach the floor
@@ -337,10 +368,9 @@ if (typeof AFRAME !== 'undefined') {
     return align === 'right' ? width / 2 - inset : -width / 2 + inset;
   }
 
-  function truncate(text, maxChars) {
-    if (!maxChars || text.length <= maxChars) return text;
-    return text.slice(0, Math.max(1, maxChars - 1)) + '…';
-  }
+  // Cut with "..." (menu-model.js truncateLabel), not the ellipsis
+  // character: Roboto has no glyph for it, so the cut showed as nothing.
+  var truncate = truncateLabel;
 
   // ============================================================
   // COMPONENT: crossbar-menu
@@ -371,12 +401,6 @@ if (typeof AFRAME !== 'undefined') {
       // fades out toward view centre instead of ending on a hard line.
       // Text over open sky needs it; text on a panel does not.
       scrim: { default: 0 },
-      // Which eye draws this menu in XR. three.js gives the left eye
-      // layer 1 and the right eye layer 2, so a single-eye menu leaves
-      // the other eye a completely clear view of the world. Off a
-      // headset there is one camera on layer 0, so this only applies
-      // while presenting and is undone on exit.
-      eye: { default: 'both', oneOf: ['both', 'left', 'right', 'inboard'] },
       // Which way "outboard" points, for the curve and the breadcrumb
       // rail. A left-hand visor menu is anchored on the left.
       side: { default: 'left', oneOf: ['left', 'right'] },
@@ -486,6 +510,12 @@ if (typeof AFRAME !== 'undefined') {
       screenWidth: { default: 0.34 },
       color: { type: 'color', default: '#dff3ff' },
       accent: { type: 'color', default: '#7fe3ff' },
+      // The typeface: `font` for the rows, footer and sidecar, `titleFont`
+      // for the title and breadcrumbs ('' = the same as `font`). A name
+      // from MENU_FONTS (roboto, b612, b612-regular, wright) or an MSDF
+      // atlas URL. Live: changing either restyles the panel in place.
+      font: { default: 'roboto' },
+      titleFont: { default: '' },
     },
 
     init: function () {
@@ -557,16 +587,66 @@ if (typeof AFRAME !== 'undefined') {
       this.build();
       if (this.data.open) this.menu.open();
       this.render();
+    },
 
-      // Per-eye rendering is a layer assignment, and layers only mean
-      // anything once WebXR's two cameras exist. Off a headset there is
-      // one camera on layer 0, so a panel left on an eye layer would not
-      // be drawn at all — which is why leaving XR has to put it back,
-      // unconditionally and whatever `eye` currently says.
-      this.applyEyeLayer = this.applyEyeLayer.bind(this);
-      this.el.sceneEl.addEventListener('enter-vr', this.applyEyeLayer);
-      this.el.sceneEl.addEventListener('exit-vr', this.applyEyeLayer);
-      this.applyEyeLayer();
+    // ---------- typeface ----------
+
+    // Mark a text element as body, title or chevron, and set it in that
+    // face.
+    //
+    // A-Frame's text loads a font asynchronously and applies whichever
+    // load finishes last, not whichever was asked for last — so scrolling
+    // a Font row through three faces could leave a label in the second.
+    // Each label therefore checks the face it got against the font it
+    // currently asks for, and asks again if they differ (the load is
+    // cached by then).
+    setTextFont: function (el, role) {
+      el.dataset.fontRole = role;
+      var face = resolveFont(role === 'title' ? (this.data.titleFont || this.data.font) : this.data.font);
+      if (role === 'chevron' && face.chevrons) face = resolveFont(face.chevrons);
+      el.setAttribute('font', face.font);
+      el.setAttribute('negate', face.negate);
+      if (el.dataset.fontChecked) return;
+      el.dataset.fontChecked = 'true';
+      el.addEventListener('textfontset', function () {
+        var text = el.components.text;
+        var got = text && text.currentFont && text.currentFont.info && text.currentFont.info.face;
+        var want = text && faceOf(text.data.font);
+        if (want && got && got !== want) text.updateFont();
+      });
+    },
+
+    // Restyle every text element already built. Glyph widths differ by
+    // face, so the panel is laid out again once the new meshes exist.
+    applyFonts: function () {
+      var self = this;
+      this.el.querySelectorAll('[data-font-role]').forEach(function (el) {
+        self.setTextFont(el, el.dataset.fontRole);
+      });
+      if (this.menu) this.render();
+    },
+
+    // body and title: MENU_FONTS names or atlas URLs; title optional.
+    setFont: function (body, title) {
+      var change = { font: body || 'roboto' };
+      if (title !== undefined) change.titleFont = title || '';
+      this.el.setAttribute('crossbar-menu', change);
+    },
+
+    update: function (oldData) {
+      // Only a change after build; the first update runs before there is
+      // anything to restyle, and build sets each face as it goes.
+      if (!this.rows || oldData.font === undefined) return;
+      if (oldData.font !== this.data.font || oldData.titleFont !== this.data.titleFont) this.applyFonts();
+      if (oldData.title !== this.data.title && this.titleEl) {
+        this.titleEl.setAttribute('value', (this.data.title || this.menu.getTitle() || '').toUpperCase());
+      }
+    },
+
+    // A new title, live: a menu whose page changes what it is about (the
+    // showcase's tour menu becomes each demo's menu) says so.
+    setTitle: function (title) {
+      this.el.setAttribute('crossbar-menu', 'title', title || '');
     },
 
     setScrim: function (opacity) {
@@ -574,36 +654,6 @@ if (typeof AFRAME !== 'undefined') {
       if (!this.scrimEl) return;
       this.scrimEl.object3D.visible = opacity > 0;
       if (opacity > 0) this.scrimEl.setAttribute('material', 'opacity', opacity);
-    },
-
-    // ---------- one eye, or both ----------
-
-    setEye: function (eye) {
-      if (this.data.eye === eye) return;
-      this.el.setAttribute('crossbar-menu', 'eye', eye);
-      this.applyEyeLayer();
-    },
-
-    // Re-applied from render() as well as on the XR transitions, because
-    // a label's mesh does not exist until its font has loaded: a panel
-    // that went one-eyed before then would have kept some of its parts
-    // on layer 0, showing half a menu to the other eye.
-    applyEyeLayer: function () {
-      var layer = this.el.sceneEl.is('vr-mode') ? eyeLayerFor(this.data.eye, this.data.side) : 0;
-      if (layer === this.eyeLayer) return;
-      this.eyeLayer = layer;
-      this.el.object3D.traverse(function (object) { object.layers.set(layer); });
-    },
-
-    // Cheap enough to run per render, and it catches parts built late.
-    // The guard above only skips the traverse when the layer has not
-    // changed, so this still has to reach new objects — hence the
-    // separate pass rather than an early return.
-    syncEyeLayer: function () {
-      var layer = this.eyeLayer || 0;
-      this.el.object3D.traverse(function (object) {
-        if (object.layers.mask !== (1 << layer)) object.layers.set(layer);
-      });
     },
 
     // ---------- construction ----------
@@ -653,6 +703,7 @@ if (typeof AFRAME !== 'undefined') {
       // Row-sized: set apart by colour and capitals rather than by size,
       // which on a narrow surface would push it off the panel.
       title.setAttribute('wrap-count', data.maxChars);
+      this.setTextFont(title, 'title');
       content.appendChild(title);
       this.titleEl = title;
 
@@ -671,6 +722,7 @@ if (typeof AFRAME !== 'undefined') {
         closeGlyph.setAttribute('color', data.accent);
         closeGlyph.setAttribute('wrap-count', data.maxChars);
         closeGlyph.setAttribute('position', '0 0 0.004');
+        this.setTextFont(closeGlyph, 'body');
         close.appendChild(closeGlyph);
         close.addEventListener('click', this.onCloseClick);
         content.appendChild(close);
@@ -701,6 +753,7 @@ if (typeof AFRAME !== 'undefined') {
         var text = document.createElement('a-text');
         text.setAttribute('font', data.font);
         text.setAttribute('color', data.color);
+        this.setTextFont(text, 'body');
         row.appendChild(text);
 
         // Marks a row you can go deeper into. Sits on the inboard edge
@@ -713,6 +766,7 @@ if (typeof AFRAME !== 'undefined') {
         chevron.setAttribute('align', 'center');
         chevron.setAttribute('wrap-count', data.maxChars);
         chevron.object3D.visible = false;
+        this.setTextFont(chevron, 'chevron');
         row.appendChild(chevron);
 
         content.appendChild(row);
@@ -746,6 +800,7 @@ if (typeof AFRAME !== 'undefined') {
           charEl.setAttribute('color', data.accent);
           charEl.setAttribute('wrap-count', CRUMB_WRAP);
           charEl.object3D.visible = false;
+          this.setTextFont(charEl, 'title');
           crumb.appendChild(charEl);
           chars.push(charEl);
         }
@@ -793,6 +848,7 @@ if (typeof AFRAME !== 'undefined') {
       footer.setAttribute('color', data.accent);
       footer.setAttribute('wrap-count', 46);
       footer.object3D.visible = false;
+      this.setTextFont(footer, 'body');
       content.appendChild(footer);
       this.footerEl = footer;
 
@@ -944,6 +1000,7 @@ if (typeof AFRAME !== 'undefined') {
       text.setAttribute('align', 'left');
       text.setAttribute('anchor', 'left');
       text.setAttribute('baseline', 'top');
+      this.setTextFont(text, 'body');
       card.appendChild(text);
       card.object3D.visible = false;
       this.contentEl.appendChild(card);
@@ -1109,8 +1166,8 @@ if (typeof AFRAME !== 'undefined') {
     // follow, along their inboard edge. It fills from the bottom up while
     // your hand and the menu disagree; when it is full the menu appears
     // in its place, or leaves. It lives inside the panel so it inherits
-    // everything the panel already does: which side, which eye, drawn
-    // over the world or painted on the screen.
+    // everything the panel already does: which side, drawn over the
+    // world or painted on the screen.
     buildArc: function () {
       var arc = document.createElement('a-entity');
       var group = new THREE.Group();
@@ -1192,7 +1249,6 @@ if (typeof AFRAME !== 'undefined') {
       var open = this.menu.isOpen;
       this.applyOverlay();
       this.applyScreenSpace();
-      this.syncEyeLayer();
 
       // Closed does not have to mean gone. A panel set to collapse keeps
       // its backing and title so it still reads as a thing in the room,
@@ -1256,7 +1312,16 @@ if (typeof AFRAME !== 'undefined') {
           0
         );
 
-        var label = truncate(model.label, data.maxChars);
+        // The focused row scrolls a label that does not fit (see
+        // menu-model.js marqueeText; tick keeps it moving); the rest are
+        // cut with "...".
+        var marquee = offset === 0 && !inChrome && model.label.length > data.maxChars;
+        if (marquee && (!this.marquee || this.marquee.label !== model.label)) {
+          this.marquee = { label: model.label, since: frameTime, slot: slot, shown: '' };
+        }
+        if (offset === 0 && !marquee) this.marquee = null;
+        var label = marquee ? marqueeText(model.label, data.maxChars, frameTime - this.marquee.since) : truncate(model.label, data.maxChars);
+        if (marquee) this.marquee.shown = label;
         slot.textEl.setAttribute('text', {
           value: label,
           opacity: opacity,
@@ -1478,6 +1543,7 @@ if (typeof AFRAME !== 'undefined') {
 
     tick: function (time) {
       this.tickFlash(time);
+      this.tickMarquee(time);
       // Info marked liveInfo (a readout of something that changes every
       // frame, not just when you scroll) is re-read a few times a
       // second while it is showing. renderSidecar skips unchanged text.
@@ -1505,6 +1571,17 @@ if (typeof AFRAME !== 'undefined') {
           this.setCharOpacity(charEl, anim.o0 + (anim.o1 - anim.o0) * eased);
         }
       }
+    },
+
+    // The focused row's long label, one step along. Only touches the text
+    // when what it shows changes (every MARQUEE_STEP_MS while moving).
+    tickMarquee: function (time) {
+      var marquee = this.marquee;
+      if (!marquee || !this.menu.isOpen) return;
+      var text = marqueeText(marquee.label, this.data.maxChars, time - marquee.since);
+      if (text === marquee.shown) return;
+      marquee.shown = text;
+      marquee.slot.textEl.setAttribute('text', 'value', text);
     },
 
     // ---------- pointing ----------
@@ -1592,8 +1669,6 @@ if (typeof AFRAME !== 'undefined') {
       this.setEngagedHand(null);
       this.el.sceneEl.removeEventListener('input-family-changed', this.onFamilyChanged);
       this.el.removeEventListener('object3dset', this.onObject3DSet);
-      this.el.sceneEl.removeEventListener('enter-vr', this.applyEyeLayer);
-      this.el.sceneEl.removeEventListener('exit-vr', this.applyEyeLayer);
     },
   });
 

@@ -62,6 +62,7 @@ export default defineConfig({
         pistolsAtDawn: resolve(root, 'games/pistols-at-dawn/index.html'),
         menuShowcase: resolve(root, 'primitives/menus/index.html'),
         actionLab: resolve(root, 'primitives/actions/index.html'),
+        multiplayer: resolve(root, 'primitives/multiplayer/index.html'),
       },
     },
   },

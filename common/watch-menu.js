@@ -276,7 +276,8 @@ import { findMenuItem } from './menu-model.js';
         // the other hand's stick drives it.
         component.ignoreHand = self.el;
         self.crossbarTimeEl = component.titleEl;
-        self.crossbarTimeEl.setAttribute('font', 'sourcecodepro');
+        // The clock in monospace, so its digits do not shuffle about.
+        component.setFont(component.data.font, 'sourcecodepro');
         // The sidecar goes toward the middle of your view: right of a
         // left-wrist watch, left of a right-wrist one, so it is never the
         // half that ends up outside your field of view.

@@ -241,7 +241,9 @@
     // Input-source-neutral movement core. XR thumbsticks and desktop WASD
     // both express a local x/z intent and arrive here.
     applyMoveVector: function (moveX, moveY, deltaMs, sprinting, aiming) {
-      if (!this.cameraEl) return;
+      // Move: Off means off for every input — keys, touch and gamepad come
+      // through here too, not only a headset's stick.
+      if (!this.cameraEl || this.data.moveMode === 'disabled') return;
 
       var direction = new AFRAME.THREE.Vector3(moveX, 0, moveY);
       var cameraQuat = new AFRAME.THREE.Quaternion();
