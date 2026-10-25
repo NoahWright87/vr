@@ -4,6 +4,7 @@ import '../../common/visor-menu.js';
 import '../../common/desktop-controls.js';
 import { generationSettings } from '../impossible-spaces/generation-menu.js';
 import './lobby.ts';
+import './room-hud.ts';
 
 const game = () => document.querySelector('[impossible-game]')?.components['impossible-game'];
 const session = () => game()?.expansion;
@@ -49,7 +50,7 @@ const debug={kind:'submenu',id:'debug',label:'Tools & help',info:()=>session()?.
   setting('toggle','session','paused','Pause movement effects',false,'Keep real head tracking, but stop extra steps and world turning.'),
   action('expand-reanchor','Recover here','Return inside your real boundary first. This puts the game back around you.'),action('outline','Show / hide boundary'),
   action('expand-ride','Ride lift (accessible)','Use this instead of pulling the handle. Stand fully inside the lift first.'),
-  action('expand-export','Save debug report'),action('expand-clear-stats','Clear counters'),
+  action('expand-map','Show / hide debug map','Desktop-only map of the whole generated layout.'),action('expand-export','Save debug report'),action('expand-clear-stats','Clear counters'),
   {kind:'info',id:'expand-stats',label:'Walking stats',info:()=>session()?.describe()||''}
 ]};
 export function setupItems(){
@@ -75,5 +76,6 @@ document.addEventListener('menu-action',(event:any)=>{
   }
   if(id==='expand-exit'){g.cancelGeneration();g.clearLevel();g.status('Ready to explore','Generate another level, or change things in Customize.');g.scene.components['expanding-lobby']?.recenter();}
   if(id==='expand-reanchor')s.recover();if(id==='expand-ride')g.requestRide(1,true);
+  if(id==='expand-map'){const map=document.querySelector('#map');map.hidden=!map.hidden;}
   if(id==='expand-export')s.exportReport();if(id==='expand-clear-stats'&&s.walker)for(const k of Object.keys(s.walker.stats))s.walker.stats[k]=0;
 });

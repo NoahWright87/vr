@@ -51,7 +51,7 @@ export class ExpandedSession {
     if(this.walker){this.walker.experiments=this.experiments;this.walker.gain.setSettings(this.gain);this.walker.redirection.setSettings({...this.steering,steeringEnabled:this.experiments.steering,turnEnabled:this.experiments.turns});}
     const g=this.game;if(g.level?.decoration&&g.level.decoration.floorCues!==this.experiments.floorCues){g.level.decoration.floorCues=this.experiments.floorCues;this.refreshView();}
   }
-  refreshView(){const g=this.game;g.view?.dispose();g.view=new LevelView(g.level);g.world.object3D.add(g.view.root);g.view.show(g.state);}
+  refreshView(){const g=this.game;g.view?.dispose();g.view=new LevelView(g.level,{roomLabels:false});g.world.object3D.add(g.view.root);g.view.show(g.state);}
   clear(){this.growthWorker?.terminate();this.growthWorker=null;this.growthResult=null;this.seen.clear();this.grown.clear();this.growthCount=0;this.controls?.dispose();this.controls=null;this.walker=null;this.fittedRide='';}
   replaceLevel(level:any){
     const g=this.game,old=this.walker!;g.level=level;

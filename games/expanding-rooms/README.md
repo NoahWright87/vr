@@ -23,6 +23,13 @@ trace, including concavities, remains the physical limit. The separate lobby
 **Experiments** panel and watch/visor submenu edit the same settings. Short
 sidecars explain each trick; advanced numbers stay tucked away.
 
+The shared visor HUD shows a small current-room map in the top-right corner:
+room name, floor shape, doors, fences and your position/facing direction. The
+floating room-name sprite is removed here. Layout boxes no longer appear
+automatically on first headset entry; **Visor → Adjust** still previews them.
+**Visor → HUD** retains the shared show/hide, opacity and idle-fade preferences.
+The full-layout desktop debug map is tucked under **Tools & help**.
+
 ## Experiments
 
 | Setting | Behavior | When applied |
@@ -79,7 +86,8 @@ this new VR interaction loop.
 Run `npm test` and `npm run build`. Against a served production build, run
 `node tests/expanding-rooms.browser.cjs` and
 `node tests/expanding-lifts.browser.cjs` and
-`node tests/expanding-door-continuity.browser.cjs` with `VR_PLAYWRIGHT_PATH` and
+`node tests/expanding-door-continuity.browser.cjs` and
+`node tests/expanding-room-hud.browser.cjs` with `VR_PLAYWRIGHT_PATH` and
 `VR_TEST_URL` configured. Tests cover mounted lobby/watch/visor controls, boundary
 accept/cancel, transformed synthetic tracking, collisions, route look-ahead,
 stationary lift rides, semantic grabbing, worker-generated wings and exit cleanup.

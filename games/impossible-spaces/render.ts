@@ -16,7 +16,7 @@ export class LevelView {
   gates = new THREE.Group();
   panels: any[] = [];
   current: any = null;
-  constructor(public level: Level) {
+  constructor(public level: Level,public options:{roomLabels?:boolean}={}) {
     level.pieces.forEach((p, i) => this.colors.set(p.id, pieceColor(i)));
     // The same physical cabin keeps the same color before/after a ride.
     for (const p of level.portals) this.colors.set(p.b, this.colors.get(p.a)!);
@@ -96,7 +96,7 @@ export class LevelView {
       for (const poly of draw.regions) for (let i = 0; i < poly.length; i++) points.push(poly[i].x, 0.008, poly[i].y, poly[(i + 1) % poly.length].x, 0.008, poly[(i + 1) % poly.length].y);
       const lineGeo = new THREE.BufferGeometry(); lineGeo.setAttribute('position', new THREE.Float32BufferAttribute(points, 3));
       group.add(new THREE.LineSegments(lineGeo, new THREE.LineBasicMaterial({ color: '#e6f1ff', transparent: true, opacity: 0.35 })));
-      if (draw.pieceId === state.activeId) {
+      if (draw.pieceId === state.activeId && this.options.roomLabels!==false) {
         const c = centroid(this.level.pieces.find(p => p.id === draw.pieceId)!.parts[0]);
         const label = document.createElement('canvas'); label.width = 512; label.height = 128;
         const lc = label.getContext('2d')!; lc.fillStyle = '#172a41'; lc.fillRect(0, 0, 512, 128); lc.fillStyle = '#eef7ff'; lc.font = '42px sans-serif'; lc.textAlign = 'center';

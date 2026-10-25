@@ -142,13 +142,14 @@ AFRAME.registerComponent('impossible-game', {
     $('ride-back-button').classList.remove('menu-target');
     this.panel.querySelector('.elevator-surface').classList.remove('pm-surface');
   },
-  status(message: string, detail = '') {
-    if (this.message === message && this.detail === detail) return;
-    this.message = message; this.detail = detail; this.renderStatus();
+  status(message: string, detail = '', head = true) {
+    if (this.message === message && this.detail === detail && this.headMessage === head) return;
+    this.message = message; this.detail = detail; this.headMessage = head; this.renderStatus();
   },
   renderStatus() {
     if($('status'))$('status').textContent = this.message + (this.detail ? ' · ' + this.detail.replaceAll('\n',' ') : '');
     $('head-status').setAttribute('text', 'value', this.message);
+    if(this.expansion)$('head-status').object3D.visible=this.headMessage!==false&&!this.measuring();
     if(this.data.lab)$('head-status').object3D.visible=this.labMode&&!this.measuring();
     const text = $('head-status').getObject3D('text');
     if (text) { text.material.depthTest = false; text.material.depthWrite = false; text.renderOrder = 100; }
@@ -226,7 +227,7 @@ AFRAME.registerComponent('impossible-game', {
         if (this.worker !== worker) return;
         this.cancelGeneration();
         if (event.data.error) { this.status('No level fits yet', event.data.error + ' Try a wider boundary, a smaller door width, or stand farther inside.'); return; }
-        this.level = this.expansion?this.expansion.prepare(event.data.level):event.data.level; this.state = createRuntime(this.level); this.view = new LevelView(this.level); this.world.object3D.add(this.view.root);
+        this.level = this.expansion?this.expansion.prepare(event.data.level):event.data.level; this.state = createRuntime(this.level); this.view = new LevelView(this.level,{roomLabels:!this.expansion}); this.world.object3D.add(this.view.root);
         this.expansion?.start();
         this.ride = createRide(); this.outside = false;
         if (!this.xr) {
@@ -294,7 +295,7 @@ AFRAME.registerComponent('impossible-game', {
       const guide=this.expansion.walker?.redirection.guidance;
       const edge=guide?.wallDistance!=null&&guide.wallDistance<this.expansion.steering.wallMargin;
       this.status(edge?'Physical boundary nearby — turn back':`${this.xr?'':'Geometry preview · '}${p.kind} ${p.id} · ${count}`,
-        `Virtual ${this.footprint.width.toFixed(1)} × ${this.footprint.height.toFixed(1)} m · ${this.expansion.activeScale.toFixed(2)}x · seed ${this.level.params.seed}${warning}\nWatch / visor: Exit level, Experiments, Tools & help.`);
+        `Virtual ${this.footprint.width.toFixed(1)} × ${this.footprint.height.toFixed(1)} m · ${this.expansion.activeScale.toFixed(2)}x · seed ${this.level.params.seed}${warning}\nWatch / visor: Exit level, Experiments, Tools & help.`,!!edge);
       return;
     }
     this.status(`${this.xr ? '' : 'Preview · '}${p.kind} ${p.id} · ${count}`, `${this.footprint.width.toFixed(1)} × ${this.footprint.height.toFixed(1)} m · ${this.xr&&this.source==='traced'?'traced area':'reported / preview area'} · margin ${this.level.params.boundaryMargin.toFixed(2)} m · seed ${this.level.params.seed}${warning}${nearWall(this.level,this.state) ? '\nVirtual wall nearby — follow the doorway.' : ''}`);
