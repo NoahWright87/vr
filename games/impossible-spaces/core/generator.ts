@@ -303,6 +303,16 @@ function generateOnce(params: GenParams, rng: () => number): Level {
 
   // ---- start room
   const queue: string[] = [];
+  if(P.entryCabin){
+    const cabin={...structuredClone(P.entryCabin.piece),id:newId('e')},ex=P.entryCabin.exit;
+    for(let i=0;i<100&&!nodes.size;i++){
+      const room=dock(roomOrder()[0],SCALES[i%SCALES.length],ex);if(!room)continue;
+      const door=mkDoor(cabin.id,room.piece.id,ex);
+      if(!valid([cabin,room.piece],[door]))continue;
+      commit({piece:cabin,slots:[]},null,null);commit(room,cabin.id,door);
+    }
+    if(!nodes.size)throw new Error('No new wing fits this lift.');
+  }
   for (let i = 0; i < 120 && !nodes.size; i++) {
     const c = placeFree(i > 60 ? TEMPLATE_BY_NAME['room-rect'] : roomOrder()[0], SCALES[Math.floor(i / 3) % SCALES.length], P.startAt);
     if (!c || !inBounds(c.piece)) continue;
@@ -312,7 +322,7 @@ function generateOnce(params: GenParams, rng: () => number): Level {
   }
   if (!nodes.size) throw new Error('Play space too small for any room at this min width.');
   const startId = [...nodes.keys()][0];
-  queue.push(startId);
+  if(P.entryCabin)queue.push(...[...nodes.keys()].filter(id=>id!==startId));else queue.push(startId);
   const target = Math.max(2, Math.round(P.pieceCount));
 
   // one pass over the frontier; once at target, only cap open halls with rooms
@@ -324,11 +334,12 @@ function generateOnce(params: GenParams, rng: () => number): Level {
       const atTarget = nodes.size >= target;
       if (node.piece.kind === 'room') {
         if (atTarget) continue;
-        const wanted = 1 + (rng() < P.branchChance ? 1 : 0) + (rng() < P.branchChance * P.branchChance ? 1 : 0);
+        const wanted = P.elevatorBays && id===startId ? 2 : 1 + (rng() < P.branchChance ? 1 : 0) + (rng() < P.branchChance * P.branchChance ? 1 : 0);
         for (let k = 0; k < wanted && nodes.size < target; k++) {
           const exits = freeExits(node, rng() < 0.6);
           let ok = false;
-          for (const ex of exits.slice(0, 8)) { if (tryAttach(id, ex, weightedOrder(TEMPLATES), 12)) { ok = true; break; } }
+          if(P.elevatorBays&&(id===startId||rng()<.22))for(const ex of exits){if(tryElevator(id,ex)){ok=true;break;}}
+          if(!ok)for (const ex of exits.slice(0, 8)) { if (tryAttach(id, ex, weightedOrder(TEMPLATES), 12)) { ok = true; break; } }
           if (!ok) for (const ex of exits) { if (tryElevator(id, ex)) { ok = true; break; } }
           if (!ok) break;
         }

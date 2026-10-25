@@ -6,6 +6,8 @@ import { prepareFloor, containsPoint } from '../../common/floor-overlap.js';
 import { followPhysicalPose } from '../impossible-spaces/core/vr-runtime.ts';
 import type { Level, Vec } from '../impossible-spaces/core/types.ts';
 import type { RuntimeState } from '../impossible-spaces/core/runtime.ts';
+import { RoutePlanner } from './route-planner.ts';
+import { rayBoundary } from '../expansive-spaces/boundary-guidance.js';
 
 export function expandBoundary(points: Vec[], scale: number): Vec[] {
   if (!Number.isFinite(scale) || scale < 1 || scale > 2) throw new Error('World scale must be between 1 and 2.');
@@ -25,6 +27,9 @@ export class ExpandedWalker {
   previous: any = null;
   outside = false;
   blocked = false;
+  experiments: any = {};
+  adaptive = 1;
+  sampleTime: number | null = null;
   stats = { physicalMetres: 0, virtualMetres: 0, boundaryExits: 0, wallBlocks: 0, rejectedGain: 0, recoveries: 0 };
 
   constructor(level: Level, boundary: Vec[]) {
@@ -40,7 +45,7 @@ export class ExpandedWalker {
     }));
   }
 
-  resetSamples() { this.previous = null; this.gain.reset(); this.redirection.reset(); }
+  resetSamples() { this.sampleTime=null; this.adaptive=1; this.previous = null; this.gain.reset(); this.redirection.reset(); }
 
   reanchor(raw: Vec, state: RuntimeState): boolean {
     const position = { x: raw.x, z: raw.y };
@@ -64,14 +69,26 @@ export class ExpandedWalker {
     this.outside = outside;
     const distance = this.previous ? Math.hypot(raw.x - this.previous.x, raw.y - this.previous.y) : 0;
     if (distance <= .75) this.stats.physicalMetres += distance;
+    const oldRaw=this.previous;
     this.previous = { ...raw };
     const motion = this.gain.sample(position, time);
     const freeze = paused || locked || outside || this.blocked || distance > .75;
-    const extra = freeze ? { x: 0, z: 0 } : { x: motion.extraX, z: motion.extraZ };
+    const dt=this.sampleTime===null?0:(time-this.sampleTime)/1000;this.sampleTime=time;
+    if(this.experiments.routes && !(this.redirection.planner instanceof RoutePlanner))this.redirection.planner=new RoutePlanner(this.level,()=>state);
+    if(!this.experiments.routes && this.redirection.planner instanceof RoutePlanner)this.redirection.reset();
+    let extra = freeze || this.experiments.translation===false ? { x: 0, z: 0 } : { x: motion.extraX, z: motion.extraZ };
+    if(this.experiments.adaptiveGain&&this.experiments.translation!==false&&!freeze&&oldRaw&&dt>0&&dt<.25&&distance/dt>.1){
+      const heading=Math.atan2(-(raw.x-oldRaw.x),-(raw.y-oldRaw.y));
+      const runway=rayBoundary(position,heading,this.boundary)?.distance||0;
+      const route=(this.redirection.planner as any).routeInfo;
+      const wanted=route?Math.min(this.gain.settings.maxGain,Math.max(1,route.distance/Math.max(.15,runway-.25))):motion.gain;
+      this.adaptive+=(wanted-this.adaptive)*(1-Math.exp(-dt/.6));
+      extra={x:(raw.x-oldRaw.x)*(this.adaptive-1),z:(raw.y-oldRaw.y)*(this.adaptive-1)};
+    }else this.adaptive=motion.gain||1;
     const shifted = rotateXZ(extra, this.transform.yaw);
     const mapping = { x: this.transform.x + shifted.x, z: this.transform.z + shifted.z, yaw: this.transform.yaw };
     const rotation = this.redirection.sample(position, yaw, time, { paused: freeze,
-      context: { boundary: this.boundary, physicalFloor: this.floor, area: this.areas.get(state.activeId), mapping } });
+      context: { boundary: this.boundary, physicalFloor: this.floor, area: this.areas.get(state.activeId), mapping, routeGain:this.experiments.adaptiveGain?this.adaptive:1 } });
     // Keep the last in-bounds game position while the player returns to the
     // real area. Do not advance into hidden rooms outside the physical trace.
     if (outside) return { valid: false, outside, ...motion };

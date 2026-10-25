@@ -6,6 +6,20 @@ this is only for work that has been decided on and postponed.
 
 ## Expanding Rooms
 
+- **Extend the simulator to the new VR interaction loop.** The VR lobby now
+  offers doorway look-ahead, adaptive translation, fences, switches and wings
+  rebuilt/resized during stationary lift rides. Existing 2D batches still use
+  baseline settings and automatic lift behavior. Model reaching call switches,
+  looking for the opened bay and pulling a handle, expose the new switches, and
+  version reports before comparing overnight completion rates. Add obstacle-aware
+  approach paths: the first VR route planner only tests straight door approaches.
+- **Evaluate hidden adjustments before visible geometry changes.** The first
+  version only resizes/rotates wings behind closed lift doors, keeps visible
+  fences fixed, and supplies slow animated wall pictures. Use headset feedback
+  to decide whether out-of-view fence repositioning or continuous room resizing
+  helps. Do not move obstacles through the player or make a previously usable
+  doorway too narrow.
+
 - **Calibrate the simulated walker against headset feedback.** The first
   [Walking Simulator](games/expanding-rooms/simulator/README.md) now shares the
   VR movement code, runs seeded batches and replays failures. Its three profiles

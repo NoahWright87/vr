@@ -1,62 +1,83 @@
 # Expanding Rooms
 
-First playable combination of Impossible Spaces' **Original growth** generator
-and Expansive Spaces' walking gain, walking steering and head-turn gain.
+Combines Impossible Spaces' **Original growth** generator with redirected walking.
 Open `/games/expanding-rooms/` on Quest over HTTPS.
 
-1. Enter VR. Open either the watch (raise your wrist) or visor (hold an empty
-   hand beside your temple). Choose **Calibrate area → Start new calibration**.
-2. Walk and/or controller-paint your usable physical floor in passthrough.
-   Save, review the yellow outline, then confirm. This is the existing shared
-   boundary flow, in the same XR session.
-3. Stand inside the saved boundary. **Generate level → Generate new rooms**.
-   The initial virtual footprint is 1.25× the width and depth (1.5625× area).
-   Generation preserves the polygon's concavities. The physical trace is never
-   enlarged or substituted with a headset rectangle.
-4. Walk through colored rooms. Enter an elevator fully, then press its button
-   or use **Recovery → Ride elevator**. Close the menu to let the ride advance.
+## Try it
 
-Both menu surfaces share controls and values:
+1. Enter VR. The setup panel appears in front of you. Choose **Set Boundary**.
+2. Walk and/or point at the floor and hold the trigger to paint your clear floor.
+   Open the watch or visor: **Set Boundary** accepts it; **Cancel** keeps the old
+   outline. An invalid trace stays in setup so you can keep painting.
+3. Stand inside the outline and choose **Generate level**. **Customize** changes
+   the room/hall target (36 by default), room sizes, shapes and advanced building
+   settings. **Redraw Boundary** replaces your outline. Changes to generation
+   settings wait for the next explicit generation.
+4. The lobby disappears. Call a lift with its labeled button, enter the open
+   bay, grab the yellow overhead handle and pull it down. A different side may
+   open after the ride, pointing toward more usable real floor.
+5. Watch or visor → **Exit level** returns to setup with your boundary ready.
 
-- **Generate level:** scale from 1–2×, Original growth settings, new seed or
-  regenerate the selected seed. Scale and generator changes wait for explicit
-  generation; movement settings take effect live.
-- **Walking effects:** pause effects, movement gain, steering and turn gain,
-  with their speed thresholds, limits and overlap response. Steering and turn
-  gain initially enabled; movement gain ramps to 1.2× at 2 m/s. Below 0.6 m/s,
-  walking gain is 1× and walking steering is inactive. Slow head turns stay 1×.
-- **Recovery:** re-anchor here, regenerate here, show/hide the real boundary,
-  and ride elevator. To re-anchor, first return to a clear spot inside the
-  physical boundary. This explicitly maps that physical spot to the last valid
-  virtual position, preserving the active room and current yaw mapping.
-- **Debug:** physical/virtual metres, current gains, steering rate, floor overlap,
-  boundary excursions, wall blocks, rejected artificial movement and recoveries.
-  Download a local JSON report containing the exact level, seed and settings.
+The initial virtual footprint is 1.25× the physical width and depth. The original
+trace, including concavities, remains the physical limit. The separate lobby
+**Experiments** panel and watch/visor submenu edit the same settings. Short
+sidecars explain each trick; advanced numbers stay tucked away.
 
-Effects pause while either menu is open, during calibration, and during elevator
-rides; real tracked movement remains live. Added motion that would cross a wall
-is rejected. If raw walking crosses a virtual wall, the world hides and an amber
-ring marks the last valid position; menus remain usable. Physical boundary exits
-also hide the world and ask you to return. Recentring or exiting XR invalidates
-the trace; transient tracking loss resets motion samples without resetting the
-world mapping. The rig, hands and physical outline remain in tracking space;
-only the virtual world receives the inverse locomotion transform.
+## Experiments
 
-Desktop WASD is a **geometry preview**, not a fake headset locomotion test. Tab
-opens the watch; backtick opens the visor. The original 2D playground remains
-available separately. The [Walking Simulator](simulator/) uses `walking.ts`
-for accelerated seeded batches, independent gaze/travel, reports and replay.
-Both 2D tools are in the home page's **Dev Tools** section.
+| Setting | Behavior | When applied |
+| --- | --- | --- |
+| Plan the next door | Scores the approach, threshold and 45 cm into the next room; selects a likely door from travel/look direction with hysteresis | Live; on by default |
+| Longer steps | Existing speed-based translation gain, initially capped at 1.2× | Live; on by default |
+| Steps that fit | Smooths translation gain toward the distance to the chosen door divided by available physical runway, within the gain cap | Live; optional |
+| Bend my walk / Help my turns | Rate-limited walking curvature and head-turn gain | Live; on by default |
+| Fit the next wing | Up to 4% compression/expansion along the exit direction while the lift is fully shut; once per wing; cabin and threshold stay fixed | Next applicable ride |
+| Build as I explore | Replaces a never-seen wing in a worker while the lift is shut; preserves the source and return connection | First applicable ride; optional |
+| Paths around things | Small solid fences in roomy rectangular spaces with room to walk around | Next generated level/wing |
+| Things to look at | Colored wall pictures with a slowly moving light | Next generated level/wing |
+| Door switches | One off-door switch opens the room's ordinary doors | Next generated level/wing |
+| Floor pattern | Changes floor-square density without changing geometry or walking speed | Live |
 
-This prototype does not guarantee that steering can make every generated route
-fit every physical boundary. Room-floor overlap is a heuristic, not a route
-planner. A high overlap score does not prove the next doorway is reachable.
-Short generation results remain possible and are reported. The purpose is to
-find those failures in headset, with adjustable settings and repeatable reports.
-Arm-swing, slide, jump and binocular experiments remain in Expansive Spaces.
+Multiway lifts and call buttons are standard. Where generation fits multiple
+bays, the call selects one using physical clearance. Switch positions must be
+inside the current physical boundary and clear of virtual walls/fences; if no
+spot fits, a door opens without requiring the switch. Square cabins permit
+quarter-turn choices for the connected wing while preserving player position.
+Visibility and doorway-width checks reject invalid adjustments. Worker failures
+or an eight-second timeout retain the existing rooms. Exiting cancels the worker.
 
-Run `npm test` and `npm run build`. With Playwright available, run
-`node tests/expanding-rooms.browser.cjs` against a served production build,
-setting `VR_PLAYWRIGHT_PATH` and `VR_TEST_URL` as in Impossible Spaces. These
-checks exercise shared menus, generation, synthetic XR frames, transformed-world
-alignment, recovery and calibration; they do not establish headset comfort.
+**Tools & help** retains pause-effects, accessible lift activation, boundary
+outline, recovery, counters and a JSON debug report. Advanced tuning includes
+next-generation world scale, gain limits, speed thresholds and steering limits.
+Effects pause while menus are open, during calibration and during lifts. Real
+head tracking always remains live; headset, hands and boundary remain in tracking
+space. Only the virtual world receives the inverse walking transform.
+
+Added movement that crosses a virtual wall is rejected. Invalid tracked walking
+hides the world and marks the last valid position. Returning inside the physical
+boundary and using **Recover here** reanchors that valid virtual position.
+Tracking resets invalidate the trace; transient tracking loss retains the mapping.
+
+## Limits and validation
+
+This is a first experiment, not a guarantee that every route fits. Door planning
+currently tests straight approaches and falls back to room overlap when blocked;
+it does not plan a curved route around furniture. Natural head movement may still
+provide too little correction. Fences stay fixed while visible. Resizing happens
+behind closed lift doors, not as visible walls move around the player. Floor
+patterns are a perceptual experiment, not a proven speed controller.
+
+Desktop WASD is a geometry preview. Tab opens the watch; backtick opens the visor.
+Both the original 2D playground and [Walking Simulator](simulator/) remain under
+**Dev Tools** on the home page. The simulator shares baseline walking code but
+currently does **not** model the new switches, pull handles, wing rebuilding or
+new experiment settings. Its existing overnight results therefore do not validate
+this new VR interaction loop.
+
+Run `npm test` and `npm run build`. Against a served production build, run
+`node tests/expanding-rooms.browser.cjs` and
+`node tests/expanding-lifts.browser.cjs` with `VR_PLAYWRIGHT_PATH` and
+`VR_TEST_URL` configured. Tests cover mounted lobby/watch/visor controls, boundary
+accept/cancel, transformed synthetic tracking, collisions, route look-ahead,
+stationary lift rides, semantic grabbing, worker-generated wings and exit cleanup.
+Comfort, real hand reach and spontaneous human movement still need headset trials.

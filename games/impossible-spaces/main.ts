@@ -45,10 +45,10 @@ AFRAME.registerComponent('impossible-game', {
       this.rig.object3D.position.set(0,0,0);
       const look = this.camera.components['look-controls'];
       if (look) { look.yawObject.rotation.y = 0; look.pitchObject.rotation.x = 0; }
-      document.body.classList.add('xr-active'); this.status('Calibrate your usable area', 'Save and confirm your boundary, then Watch → Generate level.');
+      document.body.classList.add('xr-active'); this.status(this.expansion?'Set your boundary':'Calibrate your usable area', this.expansion?'Choose Set Boundary on the panel in front of you.':'Save and confirm your boundary, then Watch → Generate level.');
     });
     this.listen(this.scene, 'exit-vr', () => {
-      this.xr = false; document.body.classList.remove('xr-active'); this.cancelGeneration();if(this.data.lab){this.clearLevel();this.restoreLab();}else this.generate(false);
+      this.xr = false; document.body.classList.remove('xr-active'); this.cancelGeneration();if(this.expansion){this.clearLevel();this.manualBoundary=null;}else if(this.data.lab){this.clearLevel();this.restoreLab();}else this.generate(false);
     });
     this.listen(this.scene, 'headset-boundary-frame', (event: any) => this.onBoundaryFrame(event.detail));
     this.listen(this.scene, 'headset-boundary-reset', () => {
@@ -78,17 +78,17 @@ AFRAME.registerComponent('impossible-game', {
     this.listen(this.scene,'walking-calibration-invalidated',(event:any)=>{if(!event.detail.trackingOnly){this.manualBoundary=null;if(this.xr){this.cancelGeneration();this.clearLevel();}}});
     this.listen(this.scene,'walking-calibration-confirmed',(event:any)=>{
       this.manualBoundary={points:event.detail.points.map((p:any)=>({...p})),revision:event.detail.revision};this.source='traced';this.clearLevel();
-      this.status('Boundary saved — generate a level','Step inside the green outline. Watch → Generate level → Generate new rooms.');
+      this.status('Boundary saved — ready to explore',this.expansion?'Choose Generate level on the setup panel.':'Step inside the green outline. Watch → Generate level → Generate new rooms.');
       this.updateFootprintDisplay();
-      document.querySelectorAll('[hand-with-watch]').forEach(el=>{const c=el.components['hand-with-watch']?.crossbarComponent;if(c?.menu.isOpen)focusGeneration(c);});
-      const visor=this.scene.systems['visor-menu']?.component;if(visor?.menu.isOpen)focusGeneration(visor);
+      document.querySelectorAll('[hand-with-watch]').forEach(el=>{const c=el.components['hand-with-watch']?.crossbarComponent;if(c?.menu.isOpen&&!this.expansion)focusGeneration(c);});
+      const visor=this.scene.systems['visor-menu']?.component;if(visor?.menu.isOpen&&!this.expansion)focusGeneration(visor);
     });
     this.listen(this.scene, 'watch-menu-ready', () => this.renderStatus());
     this.listen($('ride-button'), 'click', () => this.requestRide());
     this.listen($('ride-back-button'),'click',()=>this.requestRide(-1));
     this.listen($('generate'), 'click', () => this.generate(true));
     this.listen($('boundary-toggle'), 'click', () => this.toggleOutline());
-    for (const id of ['shape','width','depth','door-width','margin','pieces','seed']) this.listen($(id), 'change', () => {this.syncDesktopSettings();this.generate(false);});
+    for (const id of ['shape','width','depth','door-width','margin','pieces','seed']) this.listen($(id), 'change', () => {this.syncDesktopSettings();if(!this.expansion)this.generate(false);});
     this.listen(window, 'keydown', (e: KeyboardEvent) => {
       if (this.xr || ['INPUT','SELECT','TEXTAREA','BUTTON'].includes((e.target as HTMLElement)?.tagName)) return;
       this.keys.add(e.key.toLowerCase());
@@ -100,7 +100,7 @@ AFRAME.registerComponent('impossible-game', {
     this.listen(document, 'visibilitychange', () => this.keys.clear());
     // Hardware-independent touch support, including controller-only and hand-tracked sessions.
     this.touching = new Set();
-    if(!this.data.lab)this.generate(false);
+    if(!this.data.lab&&!this.expansion)this.generate(false);
   },
   enterLabLevel(){
     if(!this.data.lab||this.labMode)return;
@@ -134,7 +134,7 @@ AFRAME.registerComponent('impossible-game', {
   },
   cancelGeneration() { this.worker?.terminate(); this.worker = null; this.generating = false; },
   clearLevel() {
-    if(this.expansion)this.expansion.walker=null;
+    this.expansion?.clear();
     this.view?.dispose(); this.view = null; this.level = null; this.state = null; this.ride = createRide();
     this.panel.object3D.visible = false; this.world.object3D.visible = false;
     this.recovery.visible = false;
@@ -217,7 +217,7 @@ AFRAME.registerComponent('impossible-game', {
       const settings=generationValues(this.style),margin=settings.boundaryMargin,minWidth=settings.minWidth;
       const startAt = this.xr ? { x: this.boundary.position.x - this.footprint.origin.x, y: this.boundary.position.y - this.footprint.origin.y } : undefined;
       const params = { boundsW:this.footprint.width, boundsH:this.footprint.height, footprint:this.footprint.polygon, boundaryMargin:margin, startAt,
-        stationaryElevators:true, minWidth, mix:DEFAULT_MIX, pieceCount:settings.pieceCount??settings.roomCount, minSizePct:settings.minSizePct??3,maxSizePct:settings.maxSizePct??15,branchChance:settings.branchChance??.3,seed:settings.seed,
+        stationaryElevators:true,elevatorBays:!!this.expansion, minWidth, mix:this.expansion?.mix()||DEFAULT_MIX, pieceCount:settings.pieceCount??settings.roomCount, minSizePct:settings.minSizePct??3,maxSizePct:settings.maxSizePct??15,branchChance:settings.branchChance??.3,seed:settings.seed,
         generationStyle:this.style,roomCount:settings.roomCount,roomsPerLayer:settings.roomsPerLayer,roomSize:settings.roomSize,connectionMode:settings.connectionMode };
       this.enterLabLevel();this.clearLevel(); this.generating = true;
       this.status('Generating rooms…', `${this.footprint.width.toFixed(1)} × ${this.footprint.height.toFixed(1)} m · ${points.length} boundary corners`);
@@ -226,7 +226,7 @@ AFRAME.registerComponent('impossible-game', {
         if (this.worker !== worker) return;
         this.cancelGeneration();
         if (event.data.error) { this.status('No level fits yet', event.data.error + ' Try a wider boundary, a smaller door width, or stand farther inside.'); return; }
-        this.level = event.data.level; this.state = createRuntime(this.level); this.view = new LevelView(this.level); this.world.object3D.add(this.view.root);
+        this.level = this.expansion?this.expansion.prepare(event.data.level):event.data.level; this.state = createRuntime(this.level); this.view = new LevelView(this.level); this.world.object3D.add(this.view.root);
         this.expansion?.start();
         this.ride = createRide(); this.outside = false;
         if (!this.xr) {
@@ -243,6 +243,7 @@ AFRAME.registerComponent('impossible-game', {
           this.onBoundaryFrame(this.boundary);
         }
         this.world.object3D.visible = !this.outside; this.view.show(this.state); this.updatePanel(); this.showRoomStatus();
+        if(this.expansion)this.scene.querySelectorAll('[crossbar-menu]').forEach(el=>el.components['crossbar-menu']?.menu.close());
       };
       worker.onerror = () => { if (this.worker === worker) { this.cancelGeneration(); this.status('Generation failed', 'Reload and retry.'); } };
       worker.postMessage(params);
@@ -255,9 +256,10 @@ AFRAME.registerComponent('impossible-game', {
     const destination=layers?(layers[index+direction]?.cabinId||(direction===1?layers[index-1]?.cabinId:undefined)):undefined;
     if(layers&&!destination){this.status('No layer in that direction','Walk back into the room.');return;}
     if (beginRide(this.level,this.state,this.ride,destination)) this.status('Doors closing', 'Stay inside the cabin.');
-    else if (this.ride.phase === 'idle') this.status('Step fully inside the elevator', 'Press RIDE once you are clear of the doorway.');
+    else if (this.ride.phase === 'idle') this.status('Step fully inside the elevator', this.expansion?'Pull the yellow handle down once you are clear of the doorway.':'Press RIDE once you are clear of the doorway.');
   },
   updatePanel() {
+    if(this.expansion){this.panel.object3D.visible=false;return;}
     const p = this.level.pieces.find((p: any) => p.id === this.state.activeId);
     const visible = p.kind === 'elevator' && !this.outside && (!this.xr || this.tracking);
     this.panel.object3D.visible = visible;
@@ -292,7 +294,7 @@ AFRAME.registerComponent('impossible-game', {
       const guide=this.expansion.walker?.redirection.guidance;
       const edge=guide?.wallDistance!=null&&guide.wallDistance<this.expansion.steering.wallMargin;
       this.status(edge?'Physical boundary nearby — turn back':`${this.xr?'':'Geometry preview · '}${p.kind} ${p.id} · ${count}`,
-        `Virtual ${this.footprint.width.toFixed(1)} × ${this.footprint.height.toFixed(1)} m · ${this.expansion.activeScale.toFixed(2)}x · seed ${this.level.params.seed}${warning}\nWatch / visor: Walking effects, Recovery, Debug.`);
+        `Virtual ${this.footprint.width.toFixed(1)} × ${this.footprint.height.toFixed(1)} m · ${this.expansion.activeScale.toFixed(2)}x · seed ${this.level.params.seed}${warning}\nWatch / visor: Exit level, Experiments, Tools & help.`);
       return;
     }
     this.status(`${this.xr ? '' : 'Preview · '}${p.kind} ${p.id} · ${count}`, `${this.footprint.width.toFixed(1)} × ${this.footprint.height.toFixed(1)} m · ${this.xr&&this.source==='traced'?'traced area':'reported / preview area'} · margin ${this.level.params.boundaryMargin.toFixed(2)} m · seed ${this.level.params.seed}${warning}${nearWall(this.level,this.state) ? '\nVirtual wall nearby — follow the doorway.' : ''}`);
@@ -329,6 +331,7 @@ AFRAME.registerComponent('impossible-game', {
       this.rig.object3D.position.set(this.state.pos.x,0,this.state.pos.y);
     }
     if (!this.outside && (!this.xr||this.tracking) && !this.expansion?.menuOpen()) advanceRide(this.level,this.state,this.ride,dt);
+    this.expansion?.tick();
     this.view.show(this.state);
     const cabin=this.level.pieces.find((p:any)=>p.id===this.state.activeId)?.kind==='elevator';
     this.view.setCabin(cabin?this.state.activeId:null,doorClosure(this.ride));this.updatePanel();

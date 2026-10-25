@@ -5,6 +5,7 @@ import { polygonArea } from '../../common/boundary-geometry.js';
 
 AFRAME.registerComponent('boundary-floor-lab', {
   schema: {
+    simple: {default:false},
     rig: {type:'selector',default:'#boundary-rig'},
     reader: {type:'selector',default:'#boundary-rig'}
   },
@@ -51,6 +52,7 @@ AFRAME.registerComponent('boundary-floor-lab', {
   },
   menuItems: function () {
     const action=(id,label)=>({kind:'action',id,label});
+    if(this.data.simple)return this.passthrough?[action('calibration-accept','Set Boundary'),action('calibration-cancel','Cancel')]:[action('calibration-start','Set Boundary')];
     if(this.pending)return [
       {kind:'info',id:'calibration-question',label:'Save this boundary?',info:()=>this.describe()},
       action('calibration-confirm','Yes, save boundary'),action('calibration-resume','Keep editing'),action('calibration-cancel','Cancel calibration')
@@ -123,7 +125,13 @@ AFRAME.registerComponent('boundary-floor-lab', {
     if(id==='calibration-start'){this.start();return;}
     if(id==='calibration-cancel') {
       this.stop();this.walk=null;this.pending=null;this.phase=this.savedPoints.length?'saved':'idle';
-      this.status='Calibration cancelled. Previous saved boundary kept.';this.redraw();return;
+      this.status='Calibration cancelled. Previous saved boundary kept.';this.redraw();this.el.emit('walking-calibration-cancelled',{},false);return;
+    }
+    if(id==='calibration-accept'&&this.data.simple) {
+      this.select('calibration-save');
+      if(this.pending)this.select('calibration-confirm');
+      else if(this.walk&&this.boundary){this.active=true;this.status+=' Close the menu and keep painting, or Cancel.';this.renderStatus();}
+      return;
     }
     if(id==='calibration-resume') {
       if(!this.walk||!this.boundary){this.status='Choose Start new calibration first.';this.renderStatus();return;}

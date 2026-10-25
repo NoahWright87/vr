@@ -24,9 +24,9 @@
 <body>
   <aside id="controls">
     <h1>Expanding Rooms</h1>
-    <p>Enter VR, save and confirm your area, then Watch → Generate level → Generate new rooms. Original growth fills an enlarged virtual footprint. Watch / visor: scale, gain, steering, turn gain, recovery and debug stats. Each color is a different space.</p>
+    <p>Enter VR and choose <strong>Set Boundary</strong> on the panel in front of you. Walk or paint your clear floor, then choose Set Boundary on your watch. Generate level starts the adventure.</p>
     <p id="status" role="status">Desktop geometry preview · simulated boundary</p>
-    <p>Elevator: enter fully, then poke or point at <strong>RIDE</strong>. The doors close and the world outside changes.</p>
+    <p>Call a lift with its glowing button. Step inside, grab the yellow handle, and pull down. Watch → Tools &amp; help has an accessible Ride option.</p>
     <details>
       <summary>Preview &amp; generation settings</summary>
       <label>Shape<select id="shape"><option value="rect">Rectangle</option><option value="l">L-shaped</option><option value="notch">Notched</option><option value="chamfer">Chamfered</option></select></label>
@@ -34,17 +34,17 @@
       <label>Depth (m)<input id="depth" type="number" min="1" max="20" step="0.5" value="5"></label>
       <label>Door width<input id="door-width" type="number" min="0.8" max="2" step="0.1" value="0.8"></label>
       <label>Margin (m)<input id="margin" type="number" min="0.1" max="0.6" step="0.05" value="0.1"></label>
-      <label>Pieces<input id="pieces" type="number" min="2" step="1" value="12"></label>
+      <label>Pieces<input id="pieces" type="number" min="2" step="1" value="36"></label>
       <label>Seed<input id="seed" type="number" min="0" max="999999" step="1" value="42"></label>
       <p>Desktop: WASD geometry preview, drag to look, E to ride; Tab watch, backtick visor. Movement effects require tracked VR walking. In VR: raise a wrist for the watch, or hold an empty hand beside your temple for the visor.</p>
     </details>
-    <button id="generate">Generate new level</button>
+    <button id="generate">Generate desktop preview</button>
     <button id="boundary-toggle">Hide outline</button>
     <p><a href="../impossible-spaces/playground/">Original 2D playground</a> · <a href="../../">All prototypes</a></p>
   </aside>
   <canvas id="map" width="480" height="440" aria-label="Top-down diagnostic map"></canvas>
   <template id="watch-crossbar-template"><a-entity visible="false"><a-entity crossbar-menu="page: expanding-watch; open: false; closeBehavior: hide; memory: none; width: 1.2; sidecarWidth: 1; maxChars: 24; sidecarChars: 30" crossbar-menu-registration></a-entity></a-entity></template>
-  <a-scene keyboard-shortcuts="enterVR: false" visor-menu="page: expanding-visor; font: sourcecodepro" boundary-floor-lab="rig: #player; reader: #boundary-reader" background="color: #101827" webxr="referenceSpaceType: local-floor; optionalFeatures: bounded-floor" xr-mode-ui="enterAREnabled: false" renderer="antialias: true; colorManagement: true">
+  <a-scene expanding-lobby keyboard-shortcuts="enterVR: false" visor-menu="page: expanding-visor; font: sourcecodepro" boundary-floor-lab="simple: true; rig: #player; reader: #boundary-reader" background="color: #101827" webxr="referenceSpaceType: local-floor; optionalFeatures: bounded-floor" xr-mode-ui="enterAREnabled: false" renderer="antialias: true; colorManagement: true">
     <a-entity id="boundary-reader" headset-boundary></a-entity>
     <!-- Tracked rig stays at the origin; inverse walking gain transforms only the virtual world. -->
     <a-entity id="player" desktop-controls="camera: #camera; leftHand: #left-hand; rightHand: #right-hand">

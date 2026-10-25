@@ -58,9 +58,11 @@ export function walkableAreas(level: Level, state: RuntimeState, opts = DEFAULTS
 export function colliderWalls(level: Level, state: RuntimeState, opts = DEFAULTS): [Vec, Vec][] {
   const I = idx(level), m = opts.radius + 0.05;
   const out = [...I.walls.get(state.activeId)!];
+  for(const poly of I.piece.get(state.activeId)!.blockers||[])out.push(...edgesOf(poly));
+  for(const d of I.doorsOf.get(state.activeId)!)if(level.closedDoors?.includes(d.id))out.push([d.p1,d.p2]);
   for (const d of I.doorsOf.get(state.activeId)!) {
     const other = d.a === state.activeId ? d.b : d.a, q = doorQuad(d, state.activeId, m, 0, m);
-    for (const [a, b] of I.walls.get(other)!) { const c = clipSegToConvex(a, b, q); if (c) out.push(c); }
+    for (const [a, b] of [...I.walls.get(other)!,...(I.piece.get(other)!.blockers||[]).flatMap(edgesOf)]) { const c = clipSegToConvex(a, b, q); if (c) out.push(c); }
   }
   return out;
 }
@@ -78,7 +80,7 @@ export function movePlayer(level: Level, state: RuntimeState, dx: number, dy: nu
   for (const [mx, my] of [[dx, dy], [dx, 0], [0, dy]]) {
     if (!mx && !my) continue;
     const p = { x: prev.x + mx, y: prev.y + my };
-    if (fits(p, areas, walls, r)) { state.pos = p; break; }
+    if (fits(p, areas, walls, r) && !(idx(level).piece.get(state.activeId)!.blockers||[]).some(poly=>insideConvex(p,poly))) { state.pos = p; break; }
   }
   crossDoors(level, state, prev);
 }
