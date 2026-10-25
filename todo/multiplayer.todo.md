@@ -6,7 +6,7 @@
   that's the budget to design for.
 - **Friends only, by room code.** No random matchmaking (costly, and
   brings in cheaters). The existing room-code flow (watch menu → Multiplayer,
-  `primitives/menus/`, `common/multiplayer.js`, the hosted relay in
+  `primitives/multiplayer/`, `common/multiplayer.js`, the hosted relay in
   `worker/`) is the starting point.
 - **Bring your own voice chat.** Expected setup: separate play spaces
   in the same house, within shouting distance, or friends over

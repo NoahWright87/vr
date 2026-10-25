@@ -19,6 +19,11 @@ How this folder relates to the rest of the repo:
   area. Each `phaseNN[-x].todo.md` is one chunk of work, in order.
 - **`export-later/`**: code built here that's headed for its own repo
   (`export-later/README.md`).
+- **`docs/actions/`**: the shared action primitives plan (melee,
+  throwing, targeting, defense, dummies, comfort budget), built in
+  `common/` and shown in `primitives/actions/`. Pistols should *use*
+  those primitives where they fit rather than building its own. Check
+  there before building any combat-feel system.
 
 ## The premise
 

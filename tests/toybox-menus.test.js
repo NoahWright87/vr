@@ -40,5 +40,5 @@ test('the experience imports the current menus and includes a visor and crossbar
   assert.doesNotMatch(page,/menu-item=|menu-chrome-slot|data-menu-page/);
   assert.match(script,/registerVisorPage\('visor', controlPage\)/);
   const vite=readFileSync(new URL('../vite.config.js',import.meta.url),'utf8');
-  assert.doesNotMatch(vite,/expansive-spaces/);
+  assert.match(vite,/modelViewer: resolve\(root, 'games\/model-viewer\/index.html'\)/);
 });

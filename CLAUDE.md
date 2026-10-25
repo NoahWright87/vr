@@ -33,6 +33,14 @@ imports nothing from outside its own folder, and the rest of the repo
 uses only its public entry, never its internals. Read
 `export-later/README.md` before touching anything in there.
 
+**`docs/actions/` is the plan for the action primitives** (autofire,
+melee, defense, throwing, targeting, comfort budget — the "feel like
+John Wick" direction). It uses paired files: `<topic>.spec.md` is what
+exists now, `<topic>.todo.md` is decided-on future work. Start with
+`docs/actions/README.md`, which holds the principles and build order;
+when you build a todo item, move its substance into the spec and delete
+it from the todo. The showcase for these is `primitives/actions/`.
+
 ## Testing without a headset
 
 Run `npm install`, then `npm run dev` for source development. Use

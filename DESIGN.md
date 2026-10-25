@@ -530,6 +530,112 @@ clamping, the drill stack and the memory modes are plain functions
 tested with `node --test`, which is the difference between "the menu
 logic is correct" and "the menu looked right in a screenshot once".
 
+## The visor HUD: a car dashboard, not a billboard
+
+Halo's HUD is clearly a display on Master Chief's visor — a curved band
+of readouts at the edge of his view, with the middle left for the world.
+The shared visor HUD (`common/visor-hud.js`) is that, in a headset, and
+the bar every game's HUD should aim for is a car dashboard: speedometer
+bottom right, fuel bottom left, the map on your phone up in the corner,
+and your eyes on the road. Read at a glance, eyes only, then back to the
+world. VR is immersive; a HUD keeps you informed without breaking that,
+or it is in the way.
+
+**Where things go.** One calibrated rectangle — the frame — holds the
+HUD and the visor menu. Its slots are suggestions with conventions, not
+rules; games will break them when they have a reason (the menus tour's
+Racing HUD puts a speedometer where a hand would go, because it is a
+car):
+
+| Slot | Usually |
+|---|---|
+| bottom-left / bottom-right | That hand: what it holds, its ammo, its charges. Left is left. |
+| bottom | Your status: health, shields, mana, stamina. |
+| top | Where you are: a place name, a compass, speed. (Halo puts shields here; a shooter may too.) |
+| top-left / top-right | The map, the score, the clock, alerts. |
+| above / below the reticle | Hints: `[X] Pick up`. The one place text is the point. |
+
+The sides at eye level are deliberately not slots: that is where the
+visor menu opens, beside whichever temple you reach for. When the menu
+is open the corners on its side go and the rest dims.
+
+**How things look** (`common/hud-draw.js` has all of these, so use it
+rather than drawing your own):
+
+- **Icons over words.** Ammo is a bullet and a number, not `AMMO: 6`; at
+  six rounds or fewer it is the rounds themselves, so a revolver always
+  shows its cylinder. Health can be hearts; drunkenness a whisky glass.
+  Names (a place) are the exception, and get the heading face.
+- **Outlined, always.** Everything sits on a near-black outline, because
+  a HUD never knows what it will be over: sky, sand, a white wall.
+- **B612 for anything you read.** It was commissioned for cockpit
+  displays: unmistakable `I l 1` and `O 0`, and every figure the same
+  width, so a counter going from 11 to 10 does not jitter. Wright Sans
+  is for headings and big moments only.
+- **Colour means something.** Accent for normal, amber for low, red for
+  danger, green for good. Never decoration.
+- **Quiet until it changes.** A readout that has not changed for a few
+  seconds dims, and lights up when it does. A hit shows a pale trail of
+  what was just lost, so it reads as "that much" rather than as a number
+  changing. Continuous things (a compass, a map) stay lit without
+  counting as news.
+- **Big enough to read with your eyes alone.** About 1.2 degrees of view
+  is the minimum for text; `box.perDegree` turns degrees into drawing
+  units.
+
+**Why canvases on a bent sheet.** Each widget is a 2D canvas, laid out on
+the flat sheet and bent with it, so content is authored flat and the
+bend is something you see rather than a remapping anyone has to think
+about — a square corner stays square however you bend the visor. It is
+also why custom fonts are free (the canvas uses web fonts; `a-text`
+needs a pre-baked atlas) and why a widget costs nothing while it does
+not change: it is redrawn only when its state does.
+
+**Depth.** The HUD is drawn over the world but in stereo, at the frame's
+distance, like the visor menu — both eyes converge where it is, which is
+what makes it comfortable. The literal Halo visor, two centimetres from
+your eyes, cannot be focused on, so "on the visor" has to come from the
+curve and the framing instead. The reticle cluster is the exception: it
+is where you are looking, so it moves out to the distance of whatever is
+locked. A centre readout at 1.8 m while you look at something 20 m away
+is seen double.
+
+**Targeting: brackets, not rings.** Three rings decide what you are
+aiming at — inner, middle, outer, each a cone in degrees, with a target's
+own size counted so a barn is easier to hold than a bottle — but the
+rings are not drawn (except while you resize them). Brackets on the
+targets stand for them: the locked one at half opacity, slowly turning;
+up to N others faint and still, brighter the nearer they are to the
+centre, so you can feel where the lock will go before it does. It is
+openly gamey, and that is the point: you are wearing a lump of plastic
+on your face, and seeing what you are aiming at beats pretending.
+
+Two things keep the lock from feeling twitchy. It only moves when the
+new target is clearly closer to the centre — a 65/35 share of their
+combined closeness, not the first frame one edges ahead — and it is not
+re-chosen while your head is whipping round, because nobody picks a
+target mid-turn. A thing that wants help aiming says how much each ring
+is worth: a throw pulls hard toward something in the inner ring and
+barely at all in the outer (`assistThrow`); a gun's auto-aim can ease
+smoothly between the weights instead (`assistStrength(..., smooth)`).
+Every aim source has its own bracket colour, so two guns can be told
+apart, and a target can override it (a weak point in red).
+
+**Putting a HUD on a game:**
+
+```js
+import { drawAmmo } from '../../common/hud-draw.js';
+var hud = sceneEl.systems['visor-hud'];
+var ammo = hud.add('bottom-right', {
+  id: 'ammo',
+  draw: function (ctx, box) { drawAmmo(ctx, 4, 50, box.w - 8, 40, box.state.count, 6, { align: 'right' }); },
+});
+ammo.set({ count: 5 });                     // redraws (and lights up) only if it changed
+hud.setHint('reload', { key: 'B', text: 'Reload' });
+// With common/aim-targeting.js imported: brackets while the knife is held.
+sceneEl.systems['aim-targeting'].request('holding-knife');
+```
+
 ## Rules learned the hard way
 
 **Never move the camera.** A view that drifts, rolls or sways

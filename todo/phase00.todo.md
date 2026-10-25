@@ -20,8 +20,9 @@ is an afternoon at most. They don't depend on each other.
 
 ## 00-b: a Utilities section on the site
 
-- A place on the landing page (`src/App.jsx`) for non-VR helper tools:
-  a Utilities section, or a gear icon on the Pistols at Dawn card
+- A place on the landing page (`src/App.jsx`, now grouped into Games,
+  Proofs of concept and Building blocks) for non-VR helper tools: a
+  Utilities group, or a gear icon on the Pistols at Dawn card
   leading to a small utilities page. Pick whichever reads better.
 - Until the Voice Lab (01-Z) or Ghost Lab (02-D) exists, it can link
   the existing menus showcase or say "coming soon." Those tracks add

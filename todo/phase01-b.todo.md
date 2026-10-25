@@ -39,7 +39,13 @@ cardboard targets at the Range. This is the engine every later duel
    holster grab or a shot before the signal is a false start, and the
    duel's rules decide the penalty.
 5. **Cardboard cowboys.** A man-shaped pop-up target that appears on
-   the signal, built on `world-targets.js` components where they fit.
+   the signal. Start from `common/dummies.js`'s `steel-silhouette`,
+   which already has hit zones and a `popup` mode
+   (`docs/actions/dummies.spec.md`), restyled as cardboard, rather than
+   building a new one. Its hits arrive as `action-hit`, while Pistols'
+   guns emit `shot`, so working out how the two meet is part of this
+   item (an adapter, not a fork). Fall back to `world-targets.js` only
+   if the dummy doesn't fit.
    For now each one has painted hit areas. Phase 02-A dresses them in
    real wardrobe items from 01-A.
 6. **Results.** Reaction time (signal to first hit), accuracy, hits,
