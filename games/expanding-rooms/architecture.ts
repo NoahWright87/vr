@@ -1,3 +1,4 @@
+import { wallControl } from './control-geometry.ts';
 import { centroid, edgesOf, distPointSeg, insideConvex, polysOverlap } from '../impossible-spaces/core/geometry.ts';
 import { seeThroughFor,computeVisibleRegions,computeVisible } from '../impossible-spaces/core/visibility.ts';
 import { clearance } from '../impossible-spaces/core/footprint.ts';
@@ -21,6 +22,10 @@ export function decorateLevel(level:Level,options:any){
     const a=level.pieces.find(p=>p.id===d.a)!,b=level.pieces.find(p=>p.id===d.b)!;
     if(a.kind==='room'&&b.kind!=='elevator')level.closedDoors.push(d.id);
   }
+  // Decide unavailable-control fallback once, during generation, never on room entry.
+  level.closedDoors=level.closedDoors.filter(id=>{const d=level.doors.find(d=>d.id===id)!;
+    return [d.a,d.b].some(owner=>{const p=level.pieces.find(p=>p.id===owner)!;return p.kind!=='elevator'&&wallControl(p,d,level.doors);});
+  });
   return level;
 }
 export function connectedWing(level:Level,to:string,from:string){

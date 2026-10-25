@@ -334,12 +334,11 @@ function generateOnce(params: GenParams, rng: () => number): Level {
       const atTarget = nodes.size >= target;
       if (node.piece.kind === 'room') {
         if (atTarget) continue;
-        const wanted = P.elevatorBays && id===startId ? 2 : 1 + (rng() < P.branchChance ? 1 : 0) + (rng() < P.branchChance * P.branchChance ? 1 : 0);
+        const wanted = 1 + (rng() < P.branchChance ? 1 : 0) + (rng() < P.branchChance * P.branchChance ? 1 : 0);
         for (let k = 0; k < wanted && nodes.size < target; k++) {
           const exits = freeExits(node, rng() < 0.6);
           let ok = false;
-          if(P.elevatorBays&&(id===startId||rng()<.22))for(const ex of exits){if(tryElevator(id,ex)){ok=true;break;}}
-          if(!ok)for (const ex of exits.slice(0, 8)) { if (tryAttach(id, ex, weightedOrder(TEMPLATES), 12)) { ok = true; break; } }
+          for (const ex of exits.slice(0, 8)) { if (tryAttach(id, ex, weightedOrder(TEMPLATES), 12)) { ok = true; break; } }
           if (!ok) for (const ex of exits) { if (tryElevator(id, ex)) { ok = true; break; } }
           if (!ok) break;
         }

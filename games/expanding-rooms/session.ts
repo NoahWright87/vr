@@ -58,7 +58,7 @@ export class ExpandedSession {
     this.walker=new ExpandedWalker(level,old.boundary.map(p=>({x:p.x,y:p.z})));
     Object.assign(this.walker.transform,old.transform);this.walker.stats=old.stats;
     for(const p of level.pieces)if(p.kind==='elevator'&&!g.state.elevators[p.id])g.state.elevators[p.id]={armed:true,charge:0};
-    this.sync();this.refreshView();if(this.controls)this.controls.active='';
+    this.sync();this.refreshView();
   }
   startGrowth(){
     const g=this.game,from=g.ride.from,to=g.ride.to;
@@ -85,6 +85,8 @@ export class ExpandedSession {
       if(result.level){const level=fitElevatorExit(result.level,g.ride.from,g.ride.to,this.walker.boundary.map(p=>({x:p.x,y:p.z})),this.walker.transform,this.experiments.adaptiveRooms);this.replaceLevel(level);}
       else {const level=fitElevatorExit(g.level,g.ride.from,g.ride.to,this.walker.boundary.map(p=>({x:p.x,y:p.z})),this.walker.transform,this.experiments.adaptiveRooms);if(level!==g.level)this.replaceLevel(level);g.status('Using the original rooms',result.error);}
     }
+    // Arrival is an explicit door event. Room entry never changes a door.
+    if(g.ride.phase==='opening'&&g.ride.switched)g.level.closedDoors=g.level.closedDoors.filter(id=>!g.level.doors.some(d=>d.id===id&&(d.a===g.ride.to||d.b===g.ride.to)));
     if(g.ride.phase==='idle')this.fittedRide='';
     this.controls?.update();
   }

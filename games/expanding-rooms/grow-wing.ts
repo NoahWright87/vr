@@ -6,7 +6,7 @@ export function growWing(level:Level,from:string,to:string,seed:number,options:a
   const ids=connectedWing(level,to,from),cabin=level.pieces.find(p=>p.id===to)!;
   const d=level.doors.find(d=>d.a===to||d.b===to)!;
   const normal=d.a===to?d.normal:{x:-d.normal.x,y:-d.normal.y};
-  const wing=generateLevel({...level.params,startAt:undefined,seed,elevatorBays:true,entryCabin:{piece:cabin,exit:{p1:d.p1,p2:d.p2,normal}}});
+  const wing=generateLevel({...level.params,startAt:undefined,seed,entryCabin:{piece:cabin,exit:{p1:d.p1,p2:d.p2,normal}}});
   decorateLevel(wing,options);
   const prefix=`wing${seed}:`,id=(old:string)=>old===wing.startPieceId?to:prefix+old;
   const next=structuredClone(level);

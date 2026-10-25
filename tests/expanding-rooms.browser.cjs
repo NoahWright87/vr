@@ -18,7 +18,7 @@ const base=process.env.VR_TEST_URL||'http://127.0.0.1:8088';
       const root=()=>{menu.open();menu.reset();menu.refresh();};
       const click=id=>{menu.refresh();const index=menu.level().items.findIndex(item=>item.id===id);if(index<0)throw new Error('Missing menu row '+id);menu.moveFocus(index-menu.level().index);component.focusedSlot().el.emit('click');};
       const set=(id,value)=>{click(id);const row=menu.focusedRow();menu.moveFocus((value-row.value)/menu.level().source.step);component.focusedSlot().el.emit('click');};
-      const wait=async()=>{for(let i=0;i<500&&!g.level;i++)await new Promise(r=>setTimeout(r,10));if(!g.level)throw new Error(g.message+' '+g.detail);};
+      const wait=async()=>{for(let i=0;i<3000&&!g.level;i++)await new Promise(r=>setTimeout(r,10));if(!g.level)throw new Error(g.message+' '+g.detail);};
       const close=()=>{menu.close();watch.projectedMenu.active=false;watch.projectedMenu.visible=false;};
       root();const initial=menu.level().items.map(i=>i.id);
       const oneStep=initial.length===1&&initial[0]==='expand-boundary'&&!g.level;

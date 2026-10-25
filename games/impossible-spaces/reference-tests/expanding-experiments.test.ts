@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { decorateLevel,fitElevatorExit,connectedWing } from '../../expanding-rooms/architecture.ts';
+import { visibleDoorSegments,wallControl } from '../../expanding-rooms/control-geometry.ts';
 import { growWing } from '../../expanding-rooms/grow-wing.ts';
 import { doorRoutes,RoutePlanner,routeClearance } from '../../expanding-rooms/route-planner.ts';
 import { ExpandedWalker } from '../../expanding-rooms/walking.ts';
@@ -38,8 +39,8 @@ test('door route includes the next room and anticipates a closed door without op
   const goal=planner.sample({x:1,z:2.5},{boundary:w.boundary,physicalFloor:w.floor,area:w.areas.get('a'),mapping:w.transform},0,{heading:-Math.PI/2,urgency:1,preferredSide:1});
   assert.ok(Math.abs(goal.correction)>.1);assert.ok(planner.routeInfo.bestClearance>planner.routeInfo.clearance);
 });
-test('generation offers elevator bays and new wings preserve the source and stationary return connection',()=>{
-  const l=generateLevel({boundsW:7,boundsH:6,footprint:rect(0,0,7,6),minWidth:1,mix:DEFAULT_MIX,pieceCount:20,minSizePct:6,maxSizePct:20,branchChance:.3,seed:42,stationaryElevators:true,elevatorBays:true});
+test('original growth and new wings preserve the source and stationary return connection',()=>{
+  const l=generateLevel({boundsW:7,boundsH:6,footprint:rect(0,0,7,6),minWidth:1,mix:DEFAULT_MIX,pieceCount:20,minSizePct:6,maxSizePct:20,branchChance:.3,seed:42,stationaryElevators:true});
   assert.ok(l.portals.length);const portal=l.portals[0],source=structuredClone(l.pieces.find(p=>p.id===portal.a));
   const next=growWing(l,portal.a,portal.b,1042,{attention:true});assert.deepEqual(next.pieces.find(p=>p.id===portal.a),source);
   assert.ok(next.portals.some(p=>p.a===portal.a&&p.b===portal.b));assert.ok(next.pieces.some(p=>p.id.startsWith('wing1042:')));
@@ -52,4 +53,20 @@ test('live gain toggles and menus never move a stationary head',()=>{
   w.sample(s.pos,0,0,s);for(let i=1;i<20;i++)w.sample({x:1+i*.01,y:2.5},0,i*10,s);
   assert.equal(w.transform.x,0);assert.equal(w.transform.z,0);w.experiments.translation=true;const before={...w.transform};
   for(let i=20;i<40;i++)w.sample({x:1.19,y:2.5},i*.03,i*10,s,true);assert.deepEqual({...w.transform},before);
+});
+
+test('closed lift is rendered through a neighboring room and its button mounts beside its own door',()=>{
+  const l=finish({pieces:[{id:'a',kind:'room',parts:[rect(0,0,2,3)]},{id:'b',kind:'room',parts:[rect(2,0,2,3)]},{id:'c',kind:'elevator',parts:[rect(4,1,1,1)]}],doors:[{id:'ab',a:'a',b:'b',p1:{x:2,y:1},p2:{x:2,y:2},normal:{x:1,y:0}},{id:'bc',a:'b',b:'c',p1:{x:4,y:1},p2:{x:4,y:2},normal:{x:1,y:0}}],portals:[]});
+  const door=l.doors[1];
+  assert.deepEqual(visibleDoorSegments(l,'a',door),[[door.p1,door.p2]]);
+  assert.deepEqual(visibleDoorSegments(l,'b',door),[[door.p1,door.p2]]);
+  const mount=wallControl(l.pieces[1],door,l.doors)!;assert.ok(mount);assert.equal(mount.point.x,4);assert.equal(mount.normal.x,-1);
+  assert.ok([door.p1,door.p2].some(p=>p.x===mount.jamb.x&&p.y===mount.jamb.y));
+});
+
+test('original growth keeps ordinary hallways and does not force a starting elevator',()=>{
+  const l=generateLevel({boundsW:6,boundsH:5,minWidth:1,mix:DEFAULT_MIX,pieceCount:36,minSizePct:3,maxSizePct:15,branchChance:.3,seed:42,stationaryElevators:true});
+  assert.ok(l.pieces.some(p=>p.kind==='hall'));
+  const neighbors=l.doors.filter(d=>d.a===l.startPieceId||d.b===l.startPieceId).map(d=>l.pieces.find(p=>p.id===(d.a===l.startPieceId?d.b:d.a))!);
+  assert.ok(neighbors.some(p=>p.kind!=='elevator'));
 });

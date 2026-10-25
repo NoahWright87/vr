@@ -33,7 +33,6 @@ export interface Portal { id: string; a: string; b: string }
 
 export interface GenParams {
   entryCabin?: { piece:Piece; exit:{p1:Vec;p2:Vec;normal:Vec} };
-  elevatorBays?: boolean;
   generationStyle?: 'growth' | 'rooms-first';
   roomCount?: number;
   roomsPerLayer?: number;

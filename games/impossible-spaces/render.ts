@@ -2,6 +2,7 @@ import type { Level, Vec } from './core/types.ts';
 import type { RuntimeState } from './core/runtime.ts';
 import { renderWalls } from './core/runtime.ts';
 import { centroid, len, sub, wallSegments, clipSegToConvex } from './core/geometry.ts';
+import { visibleDoorSegments } from '../expanding-rooms/control-geometry.ts';
 import { insetWallFace } from './core/wall-surfaces.ts';
 
 const THREE = AFRAME.THREE;
@@ -21,14 +22,14 @@ export class LevelView {
     for (const p of level.portals) this.colors.set(p.b, this.colors.get(p.a)!);
     this.root.add(this.doors);
     this.root.add(this.gates);
-    if(level.closedDoors)for(const d of level.doors){
-      const width=len(sub(d.p2,d.p1));
-      const gate=new THREE.Mesh(new THREE.PlaneGeometry(width,2.5),new THREE.MeshBasicMaterial({color:'#39526a',side:THREE.DoubleSide}));
-      gate.position.set((d.p1.x+d.p2.x)/2,1.25,(d.p1.y+d.p2.y)/2);gate.rotation.y=-Math.atan2(d.p2.y-d.p1.y,d.p2.x-d.p1.x);gate.userData.door=d;this.gates.add(gate);
-    }
+
   }
   makeView(state: RuntimeState) {
     const group = new THREE.Group();
+    if(this.level.closedDoors)for(const d of this.level.doors)for(const [a,b] of visibleDoorSegments(this.level,state.activeId,d)){
+      const gate=new THREE.Mesh(new THREE.PlaneGeometry(len(sub(b,a)),2.5),new THREE.MeshBasicMaterial({color:'#39526a',side:THREE.DoubleSide}));
+      gate.position.set((a.x+b.x)/2,1.25,(a.y+b.y)/2);gate.rotation.y=-Math.atan2(b.y-a.y,b.x-a.x);gate.userData.door=d;group.add(gate);
+    }
     const backingPositions: number[] = [];
     for (const draw of renderWalls(this.level, state)) {
       const color = this.colors.get(draw.pieceId)!;
@@ -113,10 +114,10 @@ export class LevelView {
     return group;
   }
   show(state: RuntimeState) {
-    for(const gate of this.gates.children){const d=gate.userData.door;gate.visible=!!this.level.closedDoors?.includes(d.id)&&(d.a===state.activeId||d.b===state.activeId);}
     const key = state.activeId + (state.doorsClosed ? ':closed' : ':open');
     let group = this.cache.get(key);
     if (!group) { group = this.makeView(state); this.cache.set(key, group); }
+    for(const gate of group.children.filter(o=>o.userData.door))gate.visible=!!this.level.closedDoors?.includes(gate.userData.door.id);
     for(const screen of group.children.filter(o=>o.userData.attention)){const t=performance.now()/1000;screen.material.color.setHSL(.5+.04*Math.sin(t*.4),.6,.45+.06*Math.sin(t));screen.children[0].position.set(.24*Math.sin(t*.5),.12*Math.cos(t*.7),.002);}
     if (this.current !== group) { if (this.current) this.root.remove(this.current); this.root.add(group); this.current = group; }
   }

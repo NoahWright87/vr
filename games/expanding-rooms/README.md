@@ -35,14 +35,16 @@ sidecars explain each trick; advanced numbers stay tucked away.
 | Build as I explore | Replaces a never-seen wing in a worker while the lift is shut; preserves the source and return connection | First applicable ride; optional |
 | Paths around things | Small solid fences in roomy rectangular spaces with room to walk around | Next generated level/wing |
 | Things to look at | Colored wall pictures with a slowly moving light | Next generated level/wing |
-| Door switches | One off-door switch opens the room's ordinary doors | Next generated level/wing |
+| Door switches | Wall switches open their own ordinary doors | Next generated level/wing |
 | Floor pattern | Changes floor-square density without changing geometry or walking speed | Live |
 
-Multiway lifts and call buttons are standard. Where generation fits multiple
-bays, the call selects one using physical clearance. Switch positions must be
-inside the current physical boundary and clear of virtual walls/fences; if no
-spot fits, a door opens without requiring the switch. Square cabins permit
-quarter-turn choices for the connected wing while preserving player position.
+Generation tries ordinary rooms and halls first; elevators are a fallback when
+ordinary growth cannot attach a piece. Call buttons are fixed wall plates beside
+their own door, with a visible wire to that jamb. Pressing one opens that door;
+it never closes another door. Controls persist across room transitions, and
+closed doors render through neighboring rooms using the same visibility clipping
+as the walls. Door state changes only on explicit interaction or lift arrival.
+Square cabins permit quarter-turn choices for the connected wing while preserving player position.
 Visibility and doorway-width checks reject invalid adjustments. Worker failures
 or an eight-second timeout retain the existing rooms. Exiting cancels the worker.
 
@@ -76,7 +78,8 @@ this new VR interaction loop.
 
 Run `npm test` and `npm run build`. Against a served production build, run
 `node tests/expanding-rooms.browser.cjs` and
-`node tests/expanding-lifts.browser.cjs` with `VR_PLAYWRIGHT_PATH` and
+`node tests/expanding-lifts.browser.cjs` and
+`node tests/expanding-door-continuity.browser.cjs` with `VR_PLAYWRIGHT_PATH` and
 `VR_TEST_URL` configured. Tests cover mounted lobby/watch/visor controls, boundary
 accept/cancel, transformed synthetic tracking, collisions, route look-ahead,
 stationary lift rides, semantic grabbing, worker-generated wings and exit cleanup.
