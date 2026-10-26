@@ -26,6 +26,16 @@ exists now, `<topic>.todo.md` is decided-on future work. Start with
 when you build a todo item, move its substance into the spec and delete
 it from the todo. The showcase for these is `primitives/actions/`.
 
+**`docs/prefabs/` is the plan and spec for prefabs**: usable objects
+(where hands go on a gun, which way it fires, what it weighs, where things
+attach) defined once as data for every game. Same paired-file convention as
+`docs/actions/`; start with `docs/prefabs/README.md`. The editor is
+`primitives/prefabs/` (the Prefab Workshop). Prefab and hand-pose JSON lives
+in `assets/prefabs/` and is **never edited by hand**: the workshop copies out
+what changed and `scripts/apply-prefab-export.mjs` writes it back. When
+Noah pastes you a prefab export (JSON with `"format": "prefab-export/1"`),
+save it to a scratch file and run that script, check `git diff`, and commit.
+
 ## Testing without a headset
 
 Run `npm install`, then `npm run dev` for source development. Use

@@ -6,7 +6,7 @@ import '../../common/visor-menu.js';
 import { registerMenuPage } from '../../common/menu-crossbar.js';
 import { registerVisorPage } from '../../common/visor-page.js';
 import { createToyboxCatalog, toyboxControlItems } from './toybox-menus.js';
-import { assets, creators, packsFor, toysFor, loadToy, measureToy, disposeModel } from './toy-assets.js';
+import { assets, creators, packsFor, toysFor, loadToy, measureToy, disposeModel } from '../../common/model-catalog.js';
 import { resolveToyContacts } from './toy-contacts.js';
 import { refreshCaptions } from './captions.js';
 

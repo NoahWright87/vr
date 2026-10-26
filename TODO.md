@@ -9,7 +9,23 @@ comfort budget) have their own plan in `docs/actions/` — one
 `*.todo.md` per system, with `docs/actions/README.md` as the index and
 build order.
 
+## Prefabs
+
+Usable objects (hands, emitters, weight, attachment sockets) are planned in
+`docs/prefabs/`: the format, the poses and the workshop exist, and each
+`*.todo.md` there holds one piece of what's decided and not built. The big
+ones: the shooter demo's guns move onto prefabs (that is where the
+"bullets leave the back" bug is fixed: `demo-shooter.js` turns two models
+that already face -Z round by 180°), hands actually holding prefabs (one,
+then two), weight and strength, and default wiring with overrides.
+
 ## 3D Model Toybox
+
+- **Make the Toybox's toys usable.** Models that have a prefab should come
+  out held by their grip, in their pose, with their emitters, so the
+  Toybox can show the prefab system working (weight with an arm-strength
+  slider, an override menu for what a prefab emits). See
+  `docs/prefabs/workshop.todo.md`, `weight.todo.md` and `wiring.todo.md`.
 
 - **Explore two-hand skeletal posing after the rigid-toy workflow is tested.**
   The first hand should hold the complete toy; a second hand could manipulate
