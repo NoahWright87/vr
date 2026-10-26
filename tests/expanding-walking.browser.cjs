@@ -13,7 +13,7 @@ const assert=require('node:assert/strict');
   s.tick();const walkingOnly=g.level.params.walkingOnly===true,zeroLifts=g.level.portals.length===0&&g.level.pieces.every(p=>p.kind!=='elevator');
   const halls=g.level.pieces.filter(p=>p.kind==='hall');
   const connectsRooms=halls.length>4&&halls.every(p=>g.level.doors.filter(d=>d.a===p.id||d.b===p.id).length===2);
-  const noLiftEntities=!s.controls&&!document.querySelector('[lift-pull]');
+  const noLiftEntities=!s.controls&&!document.querySelector('[lift-pull]')&&!document.querySelector('#elevator-panel .menu-target');
   const visor=scene.systems['visor-menu'].component;visor.menu.open();visor.menu.reset();click(visor,'experiments');
   const noLiftExperiments=!visor.menu.level().items.some(i=>['expand:experiments:growOnRide','expand:experiments:adaptiveRooms'].includes(i.id));
   visor.menu.back();click(visor,'debug');const noRideAction=!visor.menu.level().items.some(i=>i.id==='expand-ride');

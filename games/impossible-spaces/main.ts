@@ -251,6 +251,7 @@ AFRAME.registerComponent('impossible-game', {
     } catch (error) { this.clearLevel(); this.status('Cannot generate', (error as Error).message); }
   },
   requestRide(direction=1,fromMenu=false) {
+    if(this.level?.params.walkingOnly)return;
     if(this.expansion?.menuOpen()&&!fromMenu)return;
     if (!this.level || this.outside || (this.xr && !this.tracking)) return;
     const layers=this.level.roomsFirst?.layers,index=layers?.findIndex(l=>l.cabinId===this.state.activeId);
