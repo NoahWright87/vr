@@ -37,29 +37,33 @@ async function load(context, errors) {
 const focusLabel = (page) => page.evaluate(`(${openMenu}).focusedRow().label`);
 const title = (page) => page.evaluate(`(${openMenu}).level().title`);
 
+const watchState = (page) => page.evaluate(`({
+  open: !!(${openMenu}),
+  mode: document.querySelector('[desktop-controls]').components['desktop-controls'].mode,
+  locked: document.querySelector('a-scene').getAttribute('data-menu-locked') === 'true',
+})`);
+
+// The watch is entered with Tab then E. Right after a load a press can land
+// before the watch is ready, and Tab/E both toggle, so read the real state
+// each time instead of replaying keys blindly.
 async function openWatch(page) {
-  // The watch is entered with Tab then E; right after a load the first
-  // press can land before desktop-controls is ready, so try a few times.
-  for (let attempt = 0; attempt < 4; attempt++) {
-    await page.waitForTimeout(800);
-    await page.keyboard.press('Tab');
-    await page.waitForTimeout(800);
-    await page.keyboard.press('KeyE');
-    try {
-      await page.waitForFunction(`!!(${openMenu})`, null, { timeout: 4000 });
-      return;
-    } catch (e) {
-      await closeWatch(page);
-    }
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const s = await watchState(page);
+    if (s.open && s.locked) return;
+    if (s.mode !== 'watch') await page.keyboard.press('Tab');
+    else if (!s.locked) await page.keyboard.press('KeyE');
+    await page.waitForTimeout(1200);
   }
-  throw new Error('the watch menu never opened');
+  throw new Error('the watch menu never opened: ' + JSON.stringify(await watchState(page)));
 }
 
 async function closeWatch(page) {
-  await page.keyboard.press('Escape');
-  await page.waitForTimeout(300);
-  await page.keyboard.press('Tab');
-  await page.waitForTimeout(300);
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const s = await watchState(page);
+    if (s.mode === 'normal' && !s.locked) return;
+    await page.keyboard.press(s.locked ? 'Escape' : 'Tab');
+    await page.waitForTimeout(500);
+  }
 }
 
 // Scroll the focused level until a row whose label starts with `label` is focused.
