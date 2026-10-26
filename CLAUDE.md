@@ -82,3 +82,18 @@ worth knowing if you're moving code between these files:
 - `index.html`'s `<script>` order currently groups `core.js` first,
   then the other `core-*.js` files, then every `items-*.js`, then
   every `world-*.js`.
+
+## Pull requests and placeholder assets
+
+- **Fill in `.github/pull_request_template.md` properly.** The headset
+  playtest checklist is the point of it: concrete `- [ ]` steps with what
+  "good" looks like, taken from the phase file's "needs a headset"
+  notes. Don't delete sections or leave them as comments. Say "None" or
+  describe the gap where that's the honest answer.
+- **Placeholder assets are always marked.** Geometry built in code as a
+  stand-in for a real model gets a `// PLACEHOLDER-ASSET: <what the real
+  thing should be>` comment. Tag new placeholder geometry from now on,
+  and tag old geometry when you're touching it anyway; don't retro-tag
+  the whole codebase. Files go in the game's `assets/ASSETS.md` with
+  status (placeholder or final), source and license (default to
+  placeholder when unsure). See `docs/pistols-at-dawn/aesthetic.todo.md`.
