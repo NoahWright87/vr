@@ -5,6 +5,7 @@ import { polygonArea } from '../../common/boundary-geometry.js';
 
 AFRAME.registerComponent('boundary-floor-lab', {
   schema: {
+    simple: {default:false},
     rig: {type:'selector',default:'#boundary-rig'},
     reader: {type:'selector',default:'#boundary-rig'}
   },
@@ -51,6 +52,7 @@ AFRAME.registerComponent('boundary-floor-lab', {
   },
   menuItems: function () {
     const action=(id,label)=>({kind:'action',id,label});
+    if(this.data.simple)return this.passthrough?[action('calibration-accept','Set Boundary'),action('calibration-cancel','Cancel')]:[action('calibration-start','Set Boundary')];
     if(this.pending)return [
       {kind:'info',id:'calibration-question',label:'Save this boundary?',info:()=>this.describe()},
       action('calibration-confirm','Yes, save boundary'),action('calibration-resume','Keep editing'),action('calibration-cancel','Cancel calibration')
@@ -115,12 +117,21 @@ AFRAME.registerComponent('boundary-floor-lab', {
     if(old.locomotion)rig.setAttribute('locomotion-demo',old.locomotion);
     this.passthrough=null;
   },
-  closeWatches: function () {this.watches().forEach(w=>w.projectedMenu?.close());},
+  closeWatches: function () {
+    this.watches().forEach(w=>w.projectedMenu?.close());
+    this.el.systems['visor-menu']?.component?.menu.close();
+  },
   select: function (id) {
     if(id==='calibration-start'){this.start();return;}
     if(id==='calibration-cancel') {
       this.stop();this.walk=null;this.pending=null;this.phase=this.savedPoints.length?'saved':'idle';
-      this.status='Calibration cancelled. Previous saved boundary kept.';this.redraw();return;
+      this.status='Calibration cancelled. Previous saved boundary kept.';this.redraw();this.el.emit('walking-calibration-cancelled',{},false);return;
+    }
+    if(id==='calibration-accept'&&this.data.simple) {
+      this.select('calibration-save');
+      if(this.pending)this.select('calibration-confirm');
+      else if(this.walk&&this.boundary){this.active=true;this.status+=' Close the menu and keep painting, or Cancel.';this.renderStatus();}
+      return;
     }
     if(id==='calibration-resume') {
       if(!this.walk||!this.boundary){this.status='Choose Start new calibration first.';this.renderStatus();return;}
@@ -135,7 +146,8 @@ AFRAME.registerComponent('boundary-floor-lab', {
       if(result.error){this.status=result.error+' Choose Continue editing.';this.redraw();return;}
       this.pending={points:result.points,revision:this.boundary.revision};this.phase='review';
       this.status='Save this boundary? Review the yellow outline, then choose Yes, save boundary.';
-      this.redraw();this.watches().forEach(w=>{if(w.crossbarComponent?.menu.isOpen)this.focusCalibration(w.crossbarComponent);});return;
+      this.redraw();this.watches().forEach(w=>{if(w.crossbarComponent?.menu.isOpen)this.focusCalibration(w.crossbarComponent);});
+      const visor=this.el.systems['visor-menu']?.component;if(visor?.menu.isOpen)this.focusCalibration(visor);return;
     }
     if(id==='calibration-confirm') {
       if(!this.pending||!this.boundary)return;
@@ -151,7 +163,7 @@ AFRAME.registerComponent('boundary-floor-lab', {
     }
     if(id==='save-diagnostics')this.downloadReport();
   },
-  menuVisible: function () {return this.watches().some(w=>w.projectedMenu?.active||w.projectedMenu?.visible);},
+  menuVisible: function () {return this.watches().some(w=>w.projectedMenu?.active||w.projectedMenu?.visible)||!!this.el.systems['visor-menu']?.component?.menu.isOpen;},
   pauseDrawing: function () {
     this.walk?.endStrokes();this.pressed?.clear();this.paintCursors?.forEach(cursor=>{cursor.group.visible=false;});
   },

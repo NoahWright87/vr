@@ -21,7 +21,7 @@ export interface RuntimeState {
 export interface RuntimeOptions { radius: number; chargeTime: number }
 export const DEFAULTS: RuntimeOptions = { radius: 0.16, chargeTime: 1.2 };
 
-interface Index { piece: Map<string, Piece>; doorsOf: Map<string, Door[]>; portalOf: Map<string, string>; walls: Map<string, [Vec, Vec][]> }
+interface Index { piece: Map<string, Piece>; doorsOf: Map<string, Door[]>; portalOf: Map<string, string>; walls: Map<string, [Vec, Vec][]>; areas:Map<string,Vec[][]>; colliders:Map<string,[Vec,Vec][]> }
 const cache = new WeakMap<Level, Index>();
 function idx(level: Level): Index {
   let i = cache.get(level);
@@ -30,7 +30,7 @@ function idx(level: Level): Index {
     for (const d of level.doors) { doorsOf.get(d.a)!.push(d); doorsOf.get(d.b)!.push(d); }
     const portalOf = new Map<string, string>();
     for (const p of level.portals) { portalOf.set(p.a, p.b); portalOf.set(p.b, p.a); }
-    i = { piece: new Map(level.pieces.map(p => [p.id, p])), doorsOf, portalOf, walls: new Map(level.pieces.map(p => [p.id, wallSegments(p, level.doors)])) };
+    i = { areas:new Map(),colliders:new Map(),piece: new Map(level.pieces.map(p => [p.id, p])), doorsOf, portalOf, walls: new Map(level.pieces.map(p => [p.id, wallSegments(p, level.doors)])) };
     cache.set(level, i);
   }
   return i;
@@ -52,17 +52,25 @@ function doorQuad(d: Door, from: string, along: number, depthIn: number, depthOu
 /** Walkable area right now: the active piece, plus a short "throat" through each of its doors. */
 export function walkableAreas(level: Level, state: RuntimeState, opts = DEFAULTS): Vec[][] {
   const I = idx(level), dpt = opts.radius + 0.02;
-  return [...I.piece.get(state.activeId)!.parts, ...I.doorsOf.get(state.activeId)!.map(d => doorQuad(d, state.activeId, 0, dpt, dpt))];
+  const key=state.activeId+':'+opts.radius;let areas=I.areas.get(key);
+  if(!areas){areas=[...I.piece.get(state.activeId)!.parts, ...I.doorsOf.get(state.activeId)!.map(d => doorQuad(d, state.activeId, 0, dpt, dpt))];I.areas.set(key,areas);}
+  return areas;
 }
 /** Colliding walls: the active piece's, plus the neighbor's walls right at each doorway (so the doorway feels the same from both sides). */
-export function colliderWalls(level: Level, state: RuntimeState, opts = DEFAULTS): [Vec, Vec][] {
+export function colliderWalls(level: Level, state: RuntimeState, opts = DEFAULTS, openDoor?:string): [Vec, Vec][] {
   const I = idx(level), m = opts.radius + 0.05;
-  const out = [...I.walls.get(state.activeId)!];
-  for (const d of I.doorsOf.get(state.activeId)!) {
-    const other = d.a === state.activeId ? d.b : d.a, q = doorQuad(d, state.activeId, m, 0, m);
-    for (const [a, b] of I.walls.get(other)!) { const c = clipSegToConvex(a, b, q); if (c) out.push(c); }
+  const key=state.activeId+':'+opts.radius;let out=I.colliders.get(key);
+  if(!out){
+    out = [...I.walls.get(state.activeId)!];
+    for(const poly of I.piece.get(state.activeId)!.blockers||[])out.push(...edgesOf(poly));
+    for (const d of I.doorsOf.get(state.activeId)!) {
+      const other = d.a === state.activeId ? d.b : d.a, q = doorQuad(d, state.activeId, m, 0, m);
+      for (const [a, b] of [...I.walls.get(other)!,...(I.piece.get(other)!.blockers||[]).flatMap(edgesOf)]) { const c = clipSegToConvex(a, b, q); if (c) out.push(c); }
+    }
+    I.colliders.set(key,out);
   }
-  return out;
+  const closed=I.doorsOf.get(state.activeId)!.filter(d=>d.id!==openDoor&&level.closedDoors?.includes(d.id));
+  return closed.length?[...out,...closed.map(d=>[d.p1,d.p2] as [Vec,Vec])]:out;
 }
 function fits(p: Vec, areas: Vec[][], walls: [Vec, Vec][], r: number): boolean {
   if (!areas.some(a => insideConvex(p, a, 1e-9))) return false;
@@ -78,7 +86,7 @@ export function movePlayer(level: Level, state: RuntimeState, dx: number, dy: nu
   for (const [mx, my] of [[dx, dy], [dx, 0], [0, dy]]) {
     if (!mx && !my) continue;
     const p = { x: prev.x + mx, y: prev.y + my };
-    if (fits(p, areas, walls, r)) { state.pos = p; break; }
+    if (fits(p, areas, walls, r) && !(idx(level).piece.get(state.activeId)!.blockers||[]).some(poly=>insideConvex(p,poly))) { state.pos = p; break; }
   }
   crossDoors(level, state, prev);
 }

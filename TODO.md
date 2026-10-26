@@ -4,6 +4,27 @@ Things deliberately deferred, with enough context to pick them up cold.
 Ideas that aren't committed to yet live in DESIGN.md or in conversation;
 this is only for work that has been decided on and postponed.
 
+## Expanding Rooms
+
+- **Bring the simulator onto walking-only generation.** VR now reserves ordinary
+  hall/room pairs, includes two-corner return corridors, and uses cached swept-body
+  routes through hallway corners. Existing 2D batches still use the older baseline
+  generator and automatic lift behavior. Add an explicit recipe/version for the
+  walking-only generator and its new experiments before comparing overnight rates.
+- **Revisit hidden resizing only after the walking baseline works in headset.**
+  The lift experiments are retired from Expanding Rooms' active flow. Visible
+  fences stay fixed and room geometry does not resize during play. Use headset
+  feedback before restoring hidden adjustments or adding runtime chunk streaming;
+  preserve door continuity and already-visible geometry.
+
+- **Calibrate the simulated walker against headset feedback.** The first
+  [Walking Simulator](games/expanding-rooms/simulator/README.md) now shares the
+  VR movement code, runs seeded batches and replays failures. Its three profiles
+  are hypotheses, and its local motor planner knows current-room geometry.
+  Compare observed hesitations, scanning, speed and doorway approaches with real
+  headset trials before interpreting completion percentages as predictive.
+  Keep exploration and held-out seed ranges separate. Comfort and tracking
+  quality remain hardware tests.
 Action primitives (autofire, melee, defense, throwing, targeting, the
 comfort budget) have their own plan in `docs/actions/` — one
 `*.todo.md` per system, with `docs/actions/README.md` as the index and
@@ -429,3 +450,4 @@ yet:
   restructuring anything.
 - **Player names.** The roster only has peerId + color right now —
   there's no name entry or display anywhere.
+

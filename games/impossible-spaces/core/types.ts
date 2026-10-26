@@ -7,6 +7,7 @@ export interface Vec { x: number; y: number }
 export type PieceKind = 'room' | 'hall' | 'elevator';
 
 export interface Piece {
+  blockers?: Vec[][];
   id: string;
   kind: PieceKind;
   /** Template name, e.g. 'room-u', 'hall-x', 'alcove'. */
@@ -31,6 +32,9 @@ export interface Door {
 export interface Portal { id: string; a: string; b: string }
 
 export interface GenParams {
+  /** Grow ordinary room/hall pairs, reserving the connecting hall before committing. No portals. */
+  walkingOnly?: boolean;
+  entryCabin?: { piece:Piece; exit:{p1:Vec;p2:Vec;normal:Vec} };
   generationStyle?: 'growth' | 'rooms-first';
   roomCount?: number;
   roomsPerLayer?: number;
@@ -60,6 +64,10 @@ export interface GenParams {
 }
 
 export interface Level {
+  /** Wings already resized once behind closed lift doors. */
+  fittedWings?: string[];
+  closedDoors?: string[];
+  decoration?: { attention:boolean; floorCues:string; switches:boolean };
   roomsFirst?: { requestedRooms:number; layers:{index:number;roomIds:string[];cabinId:string}[] };
   version: 1;
   params: GenParams;

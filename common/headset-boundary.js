@@ -159,6 +159,7 @@ AFRAME.registerComponent('headset-boundary', {
       points: Array.from(this.boundedSpace.boundsGeometry, function (p) { return { x: p.x, y: p.z }; }),
       matrix: Array.from(pose.transform.matrix),
       position: { x: viewer.transform.position.x, y: viewer.transform.position.z },
+      orientation: viewer.transform.orientation ? { x: viewer.transform.orientation.x, y: viewer.transform.orientation.y, z: viewer.transform.orientation.z, w: viewer.transform.orientation.w } : null,
       revision: this.revision
     }, false);
 

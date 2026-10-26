@@ -26,18 +26,12 @@ const GROUPS = [
   {
     title: 'Proofs of concept',
     cards: [
+      { title: 'Expanding Rooms', href: '/games/expanding-rooms/', cta: 'Explore →', body: 'Paint your real floor, generate a larger world, and try space-bending experiments with shared watch and visor controls.' },
       {
         title: 'Impossible Spaces',
         href: '/games/impossible-spaces/',
         cta: 'Explore →',
         body: 'Walk a maze larger than your real room. Colored spaces overlap, and stationary elevators change the world behind closed doors.',
-      },
-      {
-        title: 'Impossible Spaces · 2D',
-        subtitle: 'Phone & laptop playground',
-        href: '/games/impossible-spaces/playground/',
-        cta: 'Draw & generate →',
-        body: 'Extend a square on a metre grid, generate inside your full boundary, and explore overlapping rooms without a headset.',
       },
       {
         title: 'Expansive Spaces',
@@ -99,6 +93,16 @@ const GROUPS = [
       },
     ],
   },
+  { title: 'Dev Tools', cards: [
+      {
+        title: 'Impossible Spaces · 2D',
+        subtitle: 'Phone & laptop playground',
+        href: '/games/impossible-spaces/playground/',
+        cta: 'Draw & generate →',
+        body: 'Extend a square on a metre grid, generate inside your full boundary, and explore overlapping rooms without a headset.',
+      },
+      { title: 'Walking Simulator', href: '/games/expanding-rooms/simulator/', cta: 'Run experiments →', body: 'Run seeded 2D walking trials, compare settings, and replay where simulated explorers get stuck.' },
+  ] },
 ];
 
 export function App() {
