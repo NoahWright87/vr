@@ -56,6 +56,16 @@ unrecorded.
 |---|---|---|
 | `shirts/README.md` | n/a | Note only; the shirt texture hookup isn't wired to anything yet. No images exist. |
 
+## Code-built wardrobe pieces (phase 01-A)
+
+All `placeholder`, built from boxes and cylinders in code.
+
+| Piece | Status | Where | Real thing should be |
+|---|---|---|---|
+| Boots (`boots-classic`, `boxy-boots`) | placeholder | `js/world-player-body.js` | A modelled pair of cowboy boots (three boxes per boot: shaft, toe, spur). |
+| Hat (`hat-classic`, `boxy-hat`) | placeholder | `js/world-player-body.js` | A modelled cowboy hat. |
+| Wardrobe hit zones (`.wardrobe-zone`) | n/a | `js/world-player-body.js` | Invisible gameplay spheres, not art. Add `?zones` to the URL to draw them. |
+
 ## Not in this folder
 
 - Shared models (Kenney, CC0) live in the repo-root `assets/models/` and

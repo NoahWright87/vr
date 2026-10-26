@@ -1329,7 +1329,7 @@
             if (!holsterable) return;
 
             var eligible =
-              holsterable.state === 'holstered' ||
+              (holsterable.state === 'holstered' && !holsterable.isLocked()) ||
               holsterable.state === 'resting' ||
               (holsterable.state === 'dangling' && holsterable.hand === self.el);
             if (!eligible) return;

@@ -202,8 +202,12 @@
                — yes, you can wear a gun on your head like a hat. `swap` (see
                anchor-slot's own comment) means trying on a wardrobe hat while
                already wearing one just replaces it instead of bouncing off a
-               full slot — the old hat falls, exactly like an evicted belt. -->
-          <a-entity id="head-anchor" class="anchor-slot" anchor-slot="size: medium; swap: true" position="0 0.1 0"></a-entity>
+               full slot — the old hat falls, exactly like an evicted belt.
+               `locked` + `wardrobe-slot` make it a wardrobe slot (see
+               WARDROBE in js/world-player-body.js): the hat can't be
+               grabbed off, only tipped, and it is dressed from the
+               outfit at load. -->
+          <a-entity id="head-anchor" class="anchor-slot" anchor-slot="size: medium; swap: true; locked: true" wardrobe-slot="type: hat" position="0 0.1 0"></a-entity>
 
           <!-- Drunk vision. Parented to the camera on purpose: rigidly
                head-locked means there is no relative motion for your
@@ -301,9 +305,10 @@
 
       <!-- ============================================================
            BODY ANCHORS
-           Three invisible anchor points track the player's body: the
+           Four invisible anchor points track the player's body: the
            waist (medium — belt-sized), chest (medium — vest-sized),
-           and a back-center bandolier point (large — shotgun-sized).
+           the feet (medium — boots), and a back-center bandolier point
+           (large — shotgun-sized).
            There's no real body tracking on a Quest, so body-anchor
            approximates all three from the headset:
            position and yaw (turning left/right) only, deliberately
@@ -321,7 +326,14 @@
            The waist and chest anchors have anchor-slot's `swap` flag set:
            bringing new equipment to either replaces whatever is already
            worn there rather than requiring the old piece to be pulled off.
-           The waist starts stocked with belt-classic,
+           The head, chest, waist and feet are LOCKED wardrobe slots
+           (anchor-slot `locked`, plus `wardrobe-slot`): what you wear
+           can't be grabbed off you, each has one shootable hit zone
+           that exists only while something is worn there, and they are
+           dressed at load from the outfit (RENTAL_OUTFIT in
+           js/world-player-body.js) rather than a `stocked` attribute.
+           The feet are estimated (body-anchor side: feet) since feet
+           aren't tracked. The waist starts with belt-classic,
            which is what actually carries the two hip holsters pistols
            start in now — see STOCK AND PERISHING and `belt`'s own
            comment for where the old standalone hip-left/hip-right
@@ -330,8 +342,9 @@
            has: stocked once at scene load, never refilled, a shotgun
            on your back when you start and a pocket after that.
       ============================================================ -->
-      <a-entity id="waist-anchor" data-area-persistent class="anchor-slot" body-anchor="side: waist" anchor-slot="size: medium; swap: true" stocked="item: belt-classic"></a-entity>
-      <a-entity id="chest-anchor" data-area-persistent class="anchor-slot" body-anchor="side: chest" anchor-slot="size: medium; swap: true; idleHidden: true; indicatorScale: 0.5; revealDistance: 0.2" stocked="item: vest-classic"></a-entity>
+      <a-entity id="waist-anchor" data-area-persistent class="anchor-slot" body-anchor="side: waist" anchor-slot="size: medium; swap: true; locked: true" wardrobe-slot="type: belt"></a-entity>
+      <a-entity id="chest-anchor" data-area-persistent class="anchor-slot" body-anchor="side: chest" anchor-slot="size: medium; swap: true; locked: true; idleHidden: true; indicatorScale: 0.5; revealDistance: 0.2" wardrobe-slot="type: vest"></a-entity>
+      <a-entity id="boots-anchor" data-area-persistent class="anchor-slot" body-anchor="side: feet" anchor-slot="size: medium; swap: true; locked: true; idleHidden: true; indicatorScale: 0.5; revealDistance: 0.2" wardrobe-slot="type: boots"></a-entity>
       <a-entity id="back-anchor" data-area-persistent class="anchor-slot" body-anchor="side: back" anchor-slot="size: large" stocked="item: shotgun"></a-entity>
       <!-- DOM home for props carried out of a disposable area. Their three.js
            parent remains the hand/body/item slot that actually poses them. -->
