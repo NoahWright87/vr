@@ -62,6 +62,20 @@ var teleport = {
   },
 };
 
+// One row per duel in js/duel.js's catalog (a new duel needs no menu
+// change), plus a way out. "duel-start-<id>" travels to the Range if need be.
+var duels = {
+  kind: 'submenu', id: 'pistols-duels', label: 'Duels',
+  items: function () {
+    var catalog = window.DUEL_CATALOG || {};
+    var rows = Object.keys(catalog).map(function (id) {
+      return { kind: 'action', id: 'duel-start-' + id, label: catalog[id].title };
+    });
+    rows.push({ kind: 'action', id: 'duel-abort', label: 'Cancel duel' });
+    return rows;
+  },
+};
+
 var hud = { kind: 'toggle', id: 'pistols-hud', label: 'HUD', value: true };
 
 // Shared by the wrist watch and visor. Environment state belongs to the
@@ -123,7 +137,7 @@ var aim = { kind: 'select', id: 'pistols-aim', label: 'Aim', value: 'toggle', op
 registerMenuPage('pistols-watch', {
   // The clock: hand-with-watch writes the time into the title.
   title: '',
-  items: [targets, teleport, hud, environment, debug, aim],
+  items: [targets, teleport, duels, hud, environment, debug, aim],
   // Every value is read fresh as the watch opens: the target settings
   // and toggles belong to pistols-watch-menu, the tunables are globals,
   // and either watch (or the keyboard) may have changed any of them.

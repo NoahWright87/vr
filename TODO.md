@@ -357,6 +357,30 @@ the split should be shaped once more code moves into a shared library):
   current batched path as the low/default tier: it is deliberately one draw
   call and avoids multiplying the real-time shadow-map workload.
 
+## Duels (Pistols at Dawn)
+
+Work deferred out of phase 01-B (`docs/pistols-at-dawn/dueling.todo.md`
+"What phase 01-B built" has the background):
+
+- **Emit `gun-fired` from `firearm.fire()` itself.** `js/duel.js` wraps
+  `AFRAME.components.firearm.Component.prototype.fire` to announce
+  `gun-fired` (bubbling, before the shot's own `shot` hits) because
+  `items-guns.js` was not 01-B's to edit. Move the one-line `emit` into
+  `fire()` (only when `holsterable.state === 'held'`) and delete
+  `installGunFiredEvent`.
+- **A real holster grab/holster event.** The duel polls
+  `holsterable.state` for "a gun left its holster" because the holster
+  announces nothing. When 01-A (or anyone) adds an event for it, have
+  `duel-director.tick` listen instead of polling.
+- **A pedestal to start the sample duel at the Range.** The watch menu
+  (Duels) is the only way in today. A pedestal needs a deliberate input
+  that isn't a shot (a shot is a false start the moment a duel is
+  waiting): a hand-press button on a post, like the carriage ticket
+  stall, would do.
+- **A facing check for "turn" signals** (head yaw against the lane) and
+  the announcer counting the paces aloud: see "Ten paces" in
+  `dueling.todo.md`.
+
 ## Weapons not built yet
 
 Ideas that have been agreed as worth doing, in rough order of
