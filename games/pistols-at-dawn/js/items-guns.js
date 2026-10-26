@@ -1041,6 +1041,7 @@
                 point: hit.point.clone(),
                 direction: direction.clone(),
                 damage: this.data.damage,
+                source: this.el,
               }, false);
               hitCount++;
             } else {

@@ -14,6 +14,29 @@ comfort budget) have their own plan in `docs/actions/` — one
 `*.todo.md` per system, with `docs/actions/README.md` as the index and
 build order.
 
+## Pistols at Dawn wardrobe (follow-ups to phase 01-A)
+
+- **The saloon's wardrobe pegs can no longer dress you.** Head, chest,
+  waist and feet are locked slots (`anchor-slot` `locked`), and the only
+  ways onto them are retrieving your own item or `wearItem()`. The bar's
+  `hat-tan` / `belt-silver` pegs still stock and can be grabbed, but
+  dropping one on your head is refused (it isn't yours). The clothier
+  (Boots & Suits) and the watch menu's Wardrobe page are meant to call
+  `wearItem(slotType, itemEl)` / `takeOffItem(slotType)` in
+  `js/world-player-body.js`; until one exists there is no in-game way to
+  change outfit. Phase 04 owns the shop; the watch page is unscheduled.
+- **Dropped or shaken-loose items do not hit wardrobe zones; thrown ones
+  do.** `wardrobeShotCounts` in `world-player-body.js` ignores `shot`s
+  cast by a loose object that nobody threw, so a belt shot off you
+  doesn't fall past your boots and knock them off too. Explosion debris
+  is thrown through `throwWithVelocity` without `wasThrown`, so it is
+  ignored as well, consistent with "explosions only strip you through
+  shrapnel" (`wardrobe.todo.md`); shrapnel projectiles will need to be
+  marked as attacks when they exist.
+- **`shot.source` is the gun or projectile, not a duelist.** The
+  `wardrobe-changed` / `ghost-stripped` `shooter` is that entity. Mapping
+  it to a player is for the duel (01-B) and multiplayer work.
+
 ## 3D Model Toybox
 
 - **Explore two-hand skeletal posing after the rigid-toy workflow is tested.**
@@ -357,6 +380,30 @@ the split should be shaped once more code moves into a shared library):
   current batched path as the low/default tier: it is deliberately one draw
   call and avoids multiplying the real-time shadow-map workload.
 
+## Duels (Pistols at Dawn)
+
+Work deferred out of phase 01-B (`docs/pistols-at-dawn/dueling.todo.md`
+"What phase 01-B built" has the background):
+
+- **Emit `gun-fired` from `firearm.fire()` itself.** `js/duel.js` wraps
+  `AFRAME.components.firearm.Component.prototype.fire` to announce
+  `gun-fired` (bubbling, before the shot's own `shot` hits) because
+  `items-guns.js` was not 01-B's to edit. Move the one-line `emit` into
+  `fire()` (only when `holsterable.state === 'held'`) and delete
+  `installGunFiredEvent`.
+- **A real holster grab/holster event.** The duel polls
+  `holsterable.state` for "a gun left its holster" because the holster
+  announces nothing. When 01-A (or anyone) adds an event for it, have
+  `duel-director.tick` listen instead of polling.
+- **A pedestal to start the sample duel at the Range.** The watch menu
+  (Duels) is the only way in today. A pedestal needs a deliberate input
+  that isn't a shot (a shot is a false start the moment a duel is
+  waiting): a hand-press button on a post, like the carriage ticket
+  stall, would do.
+- **A facing check for "turn" signals** (head yaw against the lane) and
+  the announcer counting the paces aloud: see "Ten paces" in
+  `dueling.todo.md`.
+
 ## Weapons not built yet
 
 Ideas that have been agreed as worth doing, in rough order of
@@ -432,5 +479,17 @@ yet:
   room-code sidecar, which is deliberately non-interactive) precisely
   so a kick button can be added to each row later without
   restructuring anything.
-- **Player names.** The roster only has peerId + color right now —
-  there's no name entry or display anywhere.
+- **Player names on the roster.** Pistols at Dawn now has a saved name
+  (`window.PROFILE.name`, entered at watch menu → Profile → Name; phase
+  01-C), but the multiplayer roster still only shows peerId + color.
+  Sending the name and showing it is phase 03-B's job.
+- **Backup code and name entry inside a headset.** `PROFILE.exportCode()`
+  / `importCode()` are the whole feature, but the only UI is a 2D DOM
+  panel (`PROFILE.showBackupPanel`, watch menu → Profile → Backup), which
+  a Quest immersive session does not draw. Export/restore currently works
+  on desktop and phone; in a headset it wants an in-world presentation
+  (chunked code on the watch, or a paste-in-the-pre-VR-page flow). Name
+  entry is ten single-letter select rows (`pistols-name-0..9`) plus a
+  "Quick pick" list, the crude stand-in until the multi-slot item kind
+  above exists; when it does, swap those rows for one control that reads
+  and writes `PROFILE.name` (max `NAME_MAX` = 10 characters).

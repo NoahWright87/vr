@@ -419,7 +419,15 @@
           this.el.sceneEl.object3D.attach(this.el.object3D);
           this.el.object3D.position.copy(this._world);
           if (detail.hitEl && detail.hitEl.object3D) {
-            detail.hitEl.object3D.attach(this.el.object3D);
+            // Sticking into something that is itself stuck into THIS blade
+            // would make each the other's parent (found by the randomized
+            // soak: a star in a knife in a star...), and a cycle in the
+            // scene graph overflows the stack on the next matrix update.
+            var cycle = false;
+            for (var up = detail.hitEl.object3D; up; up = up.parent) {
+              if (up === this.el.object3D) { cycle = true; break; }
+            }
+            if (!cycle) detail.hitEl.object3D.attach(this.el.object3D);
           }
 
           holsterable.fallVelocity.set(0, 0, 0);

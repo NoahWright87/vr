@@ -492,6 +492,38 @@ The knock-on: what a pistol IS had to move out of markup and into a
 maker function so a rack could build one, and once it had, three props
 in markup became one prop and three sockets.
 
+## Clothes are the health bar: a locked slot and one rule
+
+You're a ghost, so nothing hurts, but the costume you wear can be shot
+off, and a ghost with nothing on has lost. It is built almost entirely
+out of things that already existed, which is the point.
+
+The costume slots were already `anchor-slot`s, and the bug that started
+this ("reached for my gun, grabbed my belt") was a *slot* problem: a
+worn belt was just a grabbable thing. So the fix is an option on the
+slot, `locked`, not anything about belts. What sits in a locked slot
+can't be grabbed out of it, and what may go *into* one is decided by a
+single function (`wardrobeCanWear`), so the later rule options
+(conservation of clothes, anyone's, hardcore) replace one function.
+The hat tip is the same move one level up: `liftable` means "can be
+picked up but always goes home," and a hat is just something that opts
+in; letting go in any way, including a drunken slip, goes through
+`returnHome`.
+
+A hit is the existing `shot` event landing on a hit zone, the same size
+for every slot and live only while something is worn there. The item
+leaves through `throwWithVelocity`, the throw path explosions use, so a
+knocked-off hat is catchable in the air and shootable on the ground.
+Nothing in the shooting code learned a new word.
+
+Two things the soak test found, both of which were already true before
+the wardrobe made them likelier. A dropped object that casts `shot`s as
+it falls will strip you of your boots when you drop your belt, so only
+thrown objects count as attacks (`wardrobeShotCounts`). And a throwing
+knife can stick into a star that is stuck in the knife, making each
+other's parent; the next matrix update overflows the stack, so a blade
+no longer sticks to something that is stuck to it.
+
 ## A menu is data; a surface decides how much of it fits
 
 The same lesson, arrived at from the other end. The watch's teleport

@@ -18,6 +18,7 @@
       var BACK_DEPTH_OFFSET = 0.3; // meters behind the body centerline — the headset sits at the FRONT of your head, so a small offset puts the bandolier inside your chest and makes the shotgun nearly impossible to reach
       var CHEST_HEAD_DROP = 0.41;
       var CHEST_DEPTH_OFFSET = -0.18; // local -Z is forward: reachable without putting the vest inside the ghost torso
+      var FEET_FLOOR_RISE = 0.1; // meters above the rig's floor that the boots anchor sits. Feet aren't tracked, so unlike the other body anchors this one follows only your x/z and yaw and rests on the floor
       var BELT_TUBE_RADIUS = 0.012;
       var BELT_COLOR = '#4a3220'; // matches the hip holster leather
       var BELT_BUCKLE_COLOR = '#c9962c'; // matches other brass trim (e.g. boxy-sniper's trigger)
@@ -195,7 +196,7 @@
       // ==============================================================
       registerComponent('body-anchor', {
         schema: {
-          side: { type: 'string', default: 'waist' }, // 'waist' | 'back' | 'chest'
+          side: { type: 'string', default: 'waist' }, // 'waist' | 'back' | 'chest' | 'feet'
         },
 
         init: function () {
@@ -211,6 +212,13 @@
           } else if (this.data.side === 'chest') {
             this.localOffset = new THREE.Vector3(0, 0, CHEST_DEPTH_OFFSET);
             this.headDrop = CHEST_HEAD_DROP;
+          } else if (this.data.side === 'feet') {
+            // Estimated, like the hips: feet are not tracked, so they are
+            // assumed to be under the headset, on the floor.
+            this.localOffset = new THREE.Vector3(0, 0, 0);
+            this.headDrop = 0;
+            this.rig = document.querySelector('#player-rig');
+            this.rigPos = new THREE.Vector3();
           } else {
             this.localOffset = new THREE.Vector3(0, 0, 0);
             this.headDrop = HIP_HEAD_DROP;
@@ -229,9 +237,15 @@
 
           this.offsetVec.copy(this.localOffset).applyAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
 
+          var y = Math.max(this.camPos.y - this.headDrop, 0.3);
+          if (this.rigPos) {
+            // Boots rest on the floor whatever your height or crouch.
+            this.rig.object3D.getWorldPosition(this.rigPos);
+            y = this.rigPos.y + FEET_FLOOR_RISE;
+          }
           this.el.object3D.position.set(
             this.camPos.x + this.offsetVec.x,
-            Math.max(this.camPos.y - this.headDrop, 0.3),
+            y,
             this.camPos.z + this.offsetVec.z
           );
           this.el.object3D.rotation.set(0, yaw, 0);
@@ -331,10 +345,31 @@
 
           this.onDisplaced = this.onDisplaced.bind(this);
           el.addEventListener('displaced', this.onDisplaced);
+          this.onKnockedOff = this.onKnockedOff.bind(this);
+          el.addEventListener('knocked-off', this.onKnockedOff);
         },
 
         remove: function () {
           this.el.removeEventListener('displaced', this.onDisplaced);
+          this.el.removeEventListener('knocked-off', this.onKnockedOff);
+        },
+
+        // Shot off the wearer (see knockOffWardrobe): the belt flies away,
+        // and whatever was holstered on it does NOT go with it -- it drops
+        // where it hung, at the wearer's feet, so the guns can be grabbed
+        // back. (Sending them to the shooter would snowball; see
+        // wardrobe.todo.md "The belt question".) Each falls with a little
+        // sideways scatter so two pistols don't land as one clump.
+        onKnockedOff: function () {
+          this.hipSlots.forEach(function (slotEl) {
+            var slotComp = slotEl.components['anchor-slot'];
+            if (!slotComp) return;
+            slotComp.occupants.slice().forEach(function (occupant) {
+              occupant.evict();
+              occupant.fallVelocity.set((Math.random() - 0.5) * 0.8, 0.3, (Math.random() - 0.5) * 0.8);
+              occupant.angularVelocity.set((Math.random() - 0.5) * 6, 0, (Math.random() - 0.5) * 6);
+            });
+          });
         },
 
         onDisplaced: function (evt) {
@@ -796,6 +831,56 @@
       });
 
       // ==============================================================
+      // lockedSlotAdmits
+      // What a LOCKED slot (see anchor-slot's `locked`) will take from a
+      // hand during play. The mechanics live here: it has to be empty,
+      // and if something is out on a lift only that thing may come back.
+      // WHO may put WHAT back is a rule, and it lives in exactly one
+      // place (wardrobeCanWear, world-player-body.js) so the later
+      // rule options (conservation of clothes, anyone's, hardcore...)
+      // replace one function and nothing else. A locked slot with no
+      // rule function admits nothing.
+      // ==============================================================
+      function lockedSlotAdmits(slotComp, holsterable) {
+        if (slotComp.occupants.length >= slotComp.data.capacity) return false;
+        var lifted = slotComp.lifted;
+        if (lifted && lifted !== holsterable && lifted.liftHome === slotComp.el && lifted.el.isConnected) return false;
+        if (typeof wardrobeCanWear !== 'function') return false;
+        return wardrobeCanWear(slotComp.el, holsterable);
+      }
+
+      // ==============================================================
+      // COMPONENT: liftable
+      // "Can be lifted, but always comes back." A worn item in a locked
+      // slot normally can't be grabbed at all; one that opts in with this
+      // can be picked up by a hand, and letting go ALWAYS puts it back in
+      // its slot, wherever the hand is (holsterable.returnHome) -- so it
+      // can't be dropped or thrown by accident in the middle of a fight.
+      // A hat tip is this component on a hat; nothing here knows what a
+      // hat is. `event` is the name announced (bubbling, from the item)
+      // when it's lifted, so a style system can listen for a specific
+      // gesture without every liftable item sharing one event name.
+      // ==============================================================
+      registerComponent('liftable', {
+        schema: {
+          event: { type: 'string', default: 'lifted' },
+        },
+
+        init: function () {
+          this.onLifted = this.onLifted.bind(this);
+          this.el.addEventListener('lifted', this.onLifted);
+        },
+
+        remove: function () {
+          this.el.removeEventListener('lifted', this.onLifted);
+        },
+
+        onLifted: function (evt) {
+          if (this.data.event && this.data.event !== 'lifted') this.el.emit(this.data.event, evt.detail, true);
+        },
+      });
+
+      // ==============================================================
       // COMPONENT: anchor-slot
       // The generic "you can snap a compatible item here" socket.
       // Purely declarative on its own (just a size — small/medium/
@@ -827,10 +912,12 @@
           indicatorScale: { type: 'number', default: 1 }, // shrink the indicator sphere — a slot right in front of your eyes wants to be a dot, not a ball
           revealDistance: { type: 'number', default: 0 }, // with idleHidden, how close a compatible item must be before the indicator appears at all (0 = the slot's usual approach radius)
           swap: { type: 'boolean', default: false }, // a full slot normally just isn't a candidate (see holsterable.findNearestSlot) — a swap slot stays one, and holsterable.occupySlot evicts whatever was there instead of refusing the newcomer. Built for the waist anchor (see `belt`), so bringing a new belt to an already-worn one replaces it rather than needing it taken off by hand first.
+          locked: { type: 'boolean', default: false }, // what sits here can't be grabbed out of it during play (the wardrobe slots: head, chest, waist, feet). Only a `liftable` item can be picked up at all, and it always goes back (see holsterable.returnHome). Putting something INTO a locked slot is decided by lockedSlotAdmits, and outfits change through a deliberate call (wearItem / takeOffItem in world-player-body.js), never by grabbing. Slots ON a worn item (the belt's holsters, the vest's packs) are ordinary, unlocked slots.
         },
 
         init: function () {
           this.occupants = [];
+          this.lifted = null; // locked slots only: the holsterable currently lifted out of here by a hand, which will return
           this.accepting = true; // machinery can temporarily close a socket without dismantling it (see cannon hatch)
           this.wasInRange = false;
           this.clickElapsed = null; // ms into the click bounce, or null when idle
@@ -865,6 +952,7 @@
           if (!this.accepting) return false;
           if (!holsterable) return false;
           if (this.occupants.indexOf(holsterable) !== -1) return true;
+          if (this.data.locked) return lockedSlotAdmits(this, holsterable);
           if (this.data.swap) return true;
           if (this.occupants.length >= this.data.capacity) return false;
           if (!this.data.capacityUnits) return true;
@@ -893,7 +981,7 @@
           // A swap slot stays "live" even while full — the indicator
           // should still glow as a replacement approaches, the same
           // invitation an empty slot gives.
-          if (this.isFull() && !this.data.swap) {
+          if (this.isFull() && !(this.data.swap && !this.data.locked)) {
             this.setIndicatorVisible(false);
             this.wasInRange = false;
             this.clickElapsed = null;
@@ -1181,6 +1269,7 @@
           this.hand = null; // the hand entity currently holding/dangling this object
           this.supportHand = null; // a SECOND hand steadying it by its support grip, if it has one
           this.currentSlotEl = null; // the anchor-slot entity this object currently occupies, if holstered
+          this.liftHome = null; // the LOCKED slot this was lifted out of (see `liftable`); letting go always returns it there
 
           // Where this object sits in whatever stack currently holds
           // it — a hand's fistful or a slot's fan. Both default to
@@ -1563,9 +1652,17 @@
         // in to grab(), so it's the one place a slot ever needs to be
         // freed up again).
         grab: function (handEl) {
+          var homeSlotEl = this.currentSlotEl;
+          var homeSlot = homeSlotEl && homeSlotEl.components['anchor-slot'];
+          var lifting = !!(homeSlot && homeSlot.data.locked && this.el.components.liftable);
           this.state = 'held';
           this.hand = handEl;
           this.vacateSlot();
+          if (lifting) {
+            this.liftHome = homeSlotEl;
+            homeSlot.lifted = this;
+            this.el.emit('lifted', { item: this.el, hand: handEl, slotEl: homeSlotEl }, true);
+          }
           this.applyHandPose(handEl);
           this.angularVelocity.set(0, 0, 0);
           this.extraPitchDeg = 0;
@@ -1606,6 +1703,7 @@
         // happened near an anchor.
         release: function (fingerOnTrigger) {
           this.wasThrown = false;
+          if (this.returnHome()) return;
           if (fingerOnTrigger) {
             this.startDangling();
             return;
@@ -1629,6 +1727,7 @@
         // spin and all, not just drop it straight down.
         endDangle: function () {
           this.wasThrown = false;
+          if (this.returnHome()) return;
           var throwVelocity = computeThrowVelocity(this.hand, this.stackIndex, this.stackCount, this);
           if (throwVelocity) {
             this.wasThrown = true;
@@ -1672,6 +1771,7 @@
         // tryHolsterElse's fallback, or updateDangle's own safety net
         // below if this.hand ever goes missing mid-dangle.
         startFalling: function () {
+          if (this.returnHome()) return;
           this.state = 'falling';
           this.hand = null;
           this.el.sceneEl.object3D.attach(this.el.object3D); // no-op if already world-parented
@@ -1764,6 +1864,39 @@
           this.occupySlot(slotEl);
         },
 
+        // A lifted item (see `liftable`) never leaves its locked slot for
+        // good: every way of letting go -- release, a twirl ending, a slip
+        // -- comes through here first and puts it back, wherever the hand
+        // happens to be. Returns true if it did. If something else took
+        // the slot in the meantime the lift just ends and the item falls
+        // like anything else.
+        returnHome: function () {
+          var homeEl = this.liftHome;
+          if (!homeEl) return false;
+          var home = homeEl.components['anchor-slot'];
+          this.liftHome = null;
+          if (home && home.lifted === this) home.lifted = null;
+          if (!home || home.occupants.length >= home.data.capacity) return false;
+
+          this.state = 'holstered';
+          this.hand = null;
+          this.wasThrown = false;
+          this.angularVelocity.set(0, 0, 0);
+          this._returning = true;
+          this.occupySlot(homeEl);
+          this._returning = false;
+          this.el.emit('lift-returned', { item: this.el, slotEl: homeEl }, true);
+          return true;
+        },
+
+        // True while this sits in a locked slot and nothing lets a hand
+        // take it out. A `liftable` item is lifted rather than taken, so it
+        // stays grabbable (and goes straight back on release).
+        isLocked: function () {
+          var slot = this.currentSlotEl && this.currentSlotEl.components['anchor-slot'];
+          return !!(slot && slot.data.locked && !this.el.components.liftable);
+        },
+
         // Claiming and releasing a place in a slot's fan. Both end in
         // a reflow, so the slot's other occupants shuffle over to make
         // room (or close the gap) rather than staying where they were.
@@ -1785,8 +1918,12 @@
             }, this);
           }
 
-          if (slotComp.occupants.indexOf(this) === -1) slotComp.occupants.push(this);
+          var wasThere = slotComp.occupants.indexOf(this) !== -1;
+          if (!wasThere) slotComp.occupants.push(this);
           slotComp.reflow();
+          // Announced rather than acted on: the wardrobe (and anything
+          // else that cares what's in a slot) listens on the slot.
+          if (!wasThere) slotEl.emit('slot-occupied', { item: this.el, returned: !!this._returning }, false);
         },
 
         // Forced out of a slot by something else claiming it (see
@@ -2019,6 +2156,7 @@
             point: hit.point.clone(),
             direction: this._impactDir.clone(),
             damage: this.data.impactDamage,
+            source: this.el,
           }, false);
           this.el.emit('impact', {
             point: hit.point.clone(),
