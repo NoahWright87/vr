@@ -479,5 +479,17 @@ yet:
   room-code sidecar, which is deliberately non-interactive) precisely
   so a kick button can be added to each row later without
   restructuring anything.
-- **Player names.** The roster only has peerId + color right now —
-  there's no name entry or display anywhere.
+- **Player names on the roster.** Pistols at Dawn now has a saved name
+  (`window.PROFILE.name`, entered at watch menu → Profile → Name; phase
+  01-C), but the multiplayer roster still only shows peerId + color.
+  Sending the name and showing it is phase 03-B's job.
+- **Backup code and name entry inside a headset.** `PROFILE.exportCode()`
+  / `importCode()` are the whole feature, but the only UI is a 2D DOM
+  panel (`PROFILE.showBackupPanel`, watch menu → Profile → Backup), which
+  a Quest immersive session does not draw. Export/restore currently works
+  on desktop and phone; in a headset it wants an in-world presentation
+  (chunked code on the watch, or a paste-in-the-pre-VR-page flow). Name
+  entry is ten single-letter select rows (`pistols-name-0..9`) plus a
+  "Quick pick" list, the crude stand-in until the multi-slot item kind
+  above exists; when it does, swap those rows for one control that reads
+  and writes `PROFILE.name` (max `NAME_MAX` = 10 characters).

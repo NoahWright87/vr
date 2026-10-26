@@ -16,6 +16,8 @@
 //   carriage-ticket-stall               menu-action: carriage-<id>
 //   below                               menu-commit: pistols-aim, the
 //                                       desktop-controls preference
+//   profile (this file, over PROFILE)   menu-commit: pistols-name-*;
+//                                       menu-action: pistols-backup-*
 // ==============================================================
 
 import { registerMenuPage, findMenuItem } from '../../../common/menu-crossbar.js';
@@ -134,15 +136,100 @@ var debug = {
 // whole time you are aiming.
 var aim = { kind: 'select', id: 'pistols-aim', label: 'Aim', value: 'toggle', options: options(['toggle', 'hold'], ['Toggle', 'Hold']) };
 
+// ---------- the player profile ----------
+
+// Name entry. There is no multi-slot letter control yet (TODO.md), so a
+// name is NAME_MAX single-letter selects: crude, but it works on every
+// input family and nothing waits on the nicer control. A "Quick pick"
+// row skips the typing. Saving, money and the backup code live in
+// profile.js / profile-core.js; this is only the menu over them.
+var NAME_SLOTS = 10;
+var NAME_ALPHABET = ' ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-\''.split('');
+var NAME_PRESETS = ['DUSTY', 'LUCKY', 'SUNDOWN', 'BISCUIT', 'MAVERICK', 'CALAMITY', 'TUMBLEWEED', 'WIDOWMAKER'];
+
+function profileApi() { return window.PROFILE; }
+
+var nameSlots = [];
+for (var slotIndex = 0; slotIndex < NAME_SLOTS; slotIndex++) {
+  nameSlots.push({
+    kind: 'select', id: 'pistols-name-' + slotIndex, label: 'Letter ' + (slotIndex + 1), value: ' ',
+    options: options(NAME_ALPHABET, NAME_ALPHABET.map(function (ch) { return ch === ' ' ? '(blank)' : ch; })),
+  });
+}
+var namePreset = {
+  kind: 'select', id: 'pistols-name-preset', label: 'Quick pick', value: '',
+  options: options([''].concat(NAME_PRESETS), ['Choose one'].concat(NAME_PRESETS)),
+};
+var nameMenu = {
+  kind: 'submenu', id: 'pistols-name', label: 'Name',
+  items: [namePreset].concat(nameSlots, [{ kind: 'action', id: 'pistols-name-clear', label: 'Clear name' }]),
+};
+var moneyRow = { kind: 'info', id: 'pistols-profile-money', label: 'Money', info: ['MONEY', 'What you have to', 'spend at the shops.'] };
+var savingRow = { kind: 'info', id: 'pistols-profile-saving', label: 'Saving', info: ['SAVING', 'Your name and money', 'are kept on this device.'] };
+var backupMenu = {
+  kind: 'submenu', id: 'pistols-backup', label: 'Backup',
+  items: [
+    { kind: 'action', id: 'pistols-backup-export', label: 'Show backup code' },
+    { kind: 'action', id: 'pistols-backup-import', label: 'Restore backup' },
+    {
+      kind: 'info', id: 'pistols-backup-about', label: 'About',
+      info: ['BACKUP', 'A text code for your', 'profile. Browser data', 'can be cleared, so', 'keep one somewhere.'],
+    },
+  ],
+};
+var profile = {
+  kind: 'submenu', id: 'pistols-profile', label: 'Profile',
+  items: [nameMenu, moneyRow, savingRow, backupMenu],
+};
+
+function syncProfile() {
+  var api = profileApi();
+  if (!api) return;
+  var name = api.name || '';
+  nameMenu.label = 'Name: ' + (name || '(none)');
+  var chars = (name + '          ').slice(0, NAME_SLOTS).split('');
+  nameSlots.forEach(function (slot, i) { slot.value = chars[i]; });
+  namePreset.value = '';
+  moneyRow.label = 'Money: $' + api.money;
+  savingRow.label = 'Saving: ' + (api.persistent ? 'On' : 'Off');
+  savingRow.info = api.persistent
+    ? ['SAVING', 'Your name and money', 'are kept on this device.']
+    : ['SAVING', 'Off: this browser is', 'blocking storage. Make a', 'backup to keep progress.'];
+}
+
+document.addEventListener('menu-commit', function (evt) {
+  var api = profileApi();
+  var id = evt.detail.id;
+  if (!api || typeof id !== 'string' || id.indexOf('pistols-name-') !== 0) return;
+  if (id === 'pistols-name-preset') {
+    if (!evt.detail.value) return;
+    api.setName(evt.detail.value);
+    syncProfile();
+    return;
+  }
+  api.setName(nameSlots.map(function (slot) { return slot.value; }).join(''));
+  nameMenu.label = 'Name: ' + (api.name || '(none)');
+});
+
+document.addEventListener('menu-action', function (evt) {
+  var api = profileApi();
+  var id = evt.detail.id;
+  if (!api) return;
+  if (id === 'pistols-name-clear') { api.setName(''); syncProfile(); }
+  else if (id === 'pistols-backup-export') api.showBackupPanel('export');
+  else if (id === 'pistols-backup-import') api.showBackupPanel('import');
+});
+
 registerMenuPage('pistols-watch', {
   // The clock: hand-with-watch writes the time into the title.
   title: '',
-  items: [targets, teleport, duels, hud, environment, debug, aim],
+  items: [targets, teleport, duels, profile, hud, environment, debug, aim],
   // Every value is read fresh as the watch opens: the target settings
   // and toggles belong to pistols-watch-menu, the tunables are globals,
   // and either watch (or the keyboard) may have changed any of them.
   onOpen: function () {
     syncEnvironment();
+    syncProfile();
     var page = this;
     var set = function (id, value) {
       var item = findMenuItem(page.items, id);
