@@ -4,6 +4,11 @@ Things deliberately deferred, with enough context to pick them up cold.
 Ideas that aren't committed to yet live in DESIGN.md or in conversation;
 this is only for work that has been decided on and postponed.
 
+The plan for turning Pistols at Dawn into a complete game (the ghost
+premise, wardrobe-as-health, duels, style, the economy, multiplayer, and
+phased work) lives in `docs/pistols-at-dawn/`. Start at
+`docs/pistols-at-dawn/todo.md`.
+
 Action primitives (autofire, melee, defense, throwing, targeting, the
 comfort budget) have their own plan in `docs/actions/` — one
 `*.todo.md` per system, with `docs/actions/README.md` as the index and

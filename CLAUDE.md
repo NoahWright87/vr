@@ -18,6 +18,23 @@ by accident rather than on purpose, and add to it (with real context,
 not just a title) when you defer something rather than letting it
 evaporate.
 
+**`docs/pistols-at-dawn/` holds the plan for turning Pistols at Dawn
+into a full game**, and is specific to that game only. Its `todo.md`
+is the big picture and the decisions made so far, `<topic>.todo.md`
+holds per-topic design, and `phaseNN[-x].todo.md` is the ordered work.
+Tracks sharing a phase number (`phase01-a`, `phase01-b`, ...) can run
+in parallel. If you're picking up a phase, read
+`docs/pistols-at-dawn/todo.md` and the topic files it links first.
+Plans for other prototypes or shared systems get their own
+`docs/<name>/` folder, the same way.
+
+**`export-later/` holds code that's going to leave this repo.** Each
+`export-later/packages/<name>/` is a self-contained package built here
+for convenience and headed for its own repo and npm package. It
+imports nothing from outside its own folder, and the rest of the repo
+uses only its public entry, never its internals. Read
+`export-later/README.md` before touching anything in there.
+
 **`docs/actions/` is the plan for the action primitives** (autofire,
 melee, defense, throwing, targeting, comfort budget — the "feel like
 John Wick" direction). It uses paired files: `<topic>.spec.md` is what
