@@ -38,10 +38,21 @@ const focusLabel = (page) => page.evaluate(`(${openMenu}).focusedRow().label`);
 const title = (page) => page.evaluate(`(${openMenu}).level().title`);
 
 async function openWatch(page) {
-  await page.keyboard.press('Tab');
-  await page.waitForTimeout(600);
-  await page.keyboard.press('KeyE');
-  await page.waitForFunction(`!!(${openMenu})`);
+  // The watch is entered with Tab then E; right after a load the first
+  // press can land before desktop-controls is ready, so try a few times.
+  for (let attempt = 0; attempt < 4; attempt++) {
+    await page.waitForTimeout(800);
+    await page.keyboard.press('Tab');
+    await page.waitForTimeout(800);
+    await page.keyboard.press('KeyE');
+    try {
+      await page.waitForFunction(`!!(${openMenu})`, null, { timeout: 4000 });
+      return;
+    } catch (e) {
+      await closeWatch(page);
+    }
+  }
+  throw new Error('the watch menu never opened');
 }
 
 async function closeWatch(page) {
