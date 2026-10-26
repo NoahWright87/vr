@@ -180,7 +180,7 @@ async function setLetter(page, n, ch) {
     await openWatch(page3);
     await enter(page3, 'Profile');
     await focus(page3, 'Saving: Off');
-    await enter(page3, 'Name');
+    await enter(page3, 'Name', 'ArrowUp');
     await setLetter(page3, 1, 'Z');
     assert.equal(await page3.evaluate(() => PROFILE.name), 'Z', 'names still work for this visit');
     assert.equal(await page3.evaluate(() => PROFILE.earn(5, 'x') && PROFILE.money), 5);
