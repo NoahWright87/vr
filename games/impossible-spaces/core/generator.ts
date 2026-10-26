@@ -1,7 +1,7 @@
 import type { GenParams, Level, Piece, Door, Portal, Vec } from './types.ts';
 import { mulberry32, pieceInBounds, polysOverlap, add, sub, mul, dot, len, norm, rot, centroid, bboxOf, distPointSeg as distToSeg } from './geometry.ts';
 import { seeThroughFor, computeVisibleRegions, computeVisible, type Cache } from './visibility.ts';
-import { TEMPLATES, TEMPLATE_BY_NAME, ALCOVE, type Template, type Slot } from './templates.ts';
+import { TEMPLATES, TEMPLATE_BY_NAME, ALCOVE, WALKING_FOLD, type Template, type Slot } from './templates.ts';
 import { pieceInFootprint, clearance } from './footprint.ts';
 import { insideConvex, wallSegments } from './geometry.ts';
 
@@ -31,6 +31,7 @@ export function generateLevel(params: GenParams): Level {
     if (!best || lv.pieces.length > best.pieces.length) best = lv;
     if (!lv.warning) break;
   }
+  if(params.walkingOnly&&best!.pieces.length<3)throw new Error('No room-and-hall connection fits. Try a wider outline or a smaller hall width.');
   return best!;
 }
 
@@ -38,7 +39,12 @@ function generateOnce(params: GenParams, rng: () => number): Level {
   const P = { ...params, mix: { ...params.mix } };
   const W = P.boundsW, H = P.boundsH, w = P.minWidth;
   const roomMin = Math.max(1.5 * w, w + 0.4);
-  const inBounds = (p: Piece) => pieceInBounds(p, W, H) && (!P.footprint || pieceInFootprint(p, P.footprint, P.boundaryMargin ?? 0));
+  const rectangular=P.footprint?.length===4&&P.footprint.every(v=>(Math.abs(v.x)<1e-8||Math.abs(v.x-W)<1e-8)&&(Math.abs(v.y)<1e-8||Math.abs(v.y-H)<1e-8));
+  const inBounds = (p: Piece) => {
+    if(!pieceInBounds(p,W,H))return false;if(!P.footprint)return true;
+    const margin=P.boundaryMargin??0;
+    return rectangular?p.parts.every(poly=>poly.every(v=>v.x>=margin-1e-7&&v.x<=W-margin+1e-7&&v.y>=margin-1e-7&&v.y<=H-margin+1e-7)):pieceInFootprint(p,P.footprint,margin);
+  };
   if (P.startAt && P.footprint && clearance(P.startAt, P.footprint) < (P.boundaryMargin ?? 0) + 0.16) throw new Error('Step farther inside your boundary, then press Generate.');
   const rand = (a: number, b: number) => a + rng() * (b - a);
   const pick = <T,>(arr: T[]) => arr[Math.floor(rng() * arr.length)];
@@ -239,7 +245,47 @@ function generateOnce(params: GenParams, rng: () => number): Level {
     }
     return false;
   }
+  // Reserve the whole room-to-room connection. A hall is never committed hoping
+  // its destination will fit later; a failed room placement leaves nothing behind.
+  const walkingBudget=Math.min(3500,Math.max(1200,P.pieceCount*35));
+  let walkingAttempts=0;const reservedHalls=new Map<string,any>();
+  function futureHall(hall:any,room:any,entry:Door,door:Door){
+    doors.push(door);const exits=freeExits({...room,parent:hall.piece.id,children:0},true);doors.pop();
+    for(const exit of exits.slice(0,6))for(const t of [WALKING_FOLD,TEMPLATE_BY_NAME['hall-l'],TEMPLATE_BY_NAME['hall-bend45']]){
+      if(++walkingAttempts>walkingBudget)return null;
+      const next=dock(t,.25,exit);if(!next||!inBounds(next.piece))continue;
+      const d=mkDoor(room.piece.id,next.piece.id,exit);
+      if(valid([hall.piece,room.piece,next.piece],[entry,door,d]))return {hall:next,entry:d,exit};
+    }
+    return false;
+  }
+  function tryWalkingBranch(parentId:string,ex:Exit):boolean {
+    if(walkingAttempts>=walkingBudget)return false;
+    const reserved=reservedHalls.get(parentId);
+    function* candidates(){
+      if(reserved&&len(sub(reserved.exit.p1,ex.p1))<1e-6&&len(sub(reserved.exit.p2,ex.p2))<1e-6)yield {hall:reserved.hall,entry:reserved.entry};
+      for(const template of [WALKING_FOLD,...weightedOrder(TEMPLATES.filter(t=>t.kind==='hall'))])for(const k of [.25,.45,.7,1,.1])for(let rep=0;rep<2;rep++){
+        if(++walkingAttempts>walkingBudget)return;
+        const hall=dock(template,k,ex);if(!hall||!inBounds(hall.piece)||quickReject(parentId,hall.piece,ex))continue;
+        const entry=mkDoor(parentId,hall.piece.id,ex);if(valid([hall.piece],[entry]))yield {hall,entry};
+      }
+    }
+    for(const {hall,entry}of candidates()){
+      doors.push(entry);const exits=freeExits({...hall,parent:parentId,children:0},false);doors.pop();
+      for(const exit of exits.slice(0,6))for(const roomTemplate of roomOrder().slice(0,3))for(const rk of [1,.7,.45,.25]){
+        if(++walkingAttempts>walkingBudget)return false;
+        const room=dock(roomTemplate,rk,exit);if(!room||!inBounds(room.piece))continue;
+        const door=mkDoor(hall.piece.id,room.piece.id,exit);
+        if(!valid([hall.piece,room.piece],[entry,door]))continue;
+        const next=nodes.size+2<target?futureHall(hall,room,entry,door):null;
+        if(nodes.size+2<target&&!next)continue;
+        commit(hall,parentId,entry);commit(room,hall.piece.id,door);if(next)reservedHalls.set(room.piece.id,next);queue.push(room.piece.id);return true;
+      }
+    }
+    return false;
+  }
   function tryElevator(parentId: string, ex: Exit): boolean {
+    if(P.walkingOnly)return false;
     const alA = dock(ALCOVE, 1, ex);
     if (!alA) return false;
     const doorA = mkDoor(parentId, alA.piece.id, ex);
@@ -303,6 +349,7 @@ function generateOnce(params: GenParams, rng: () => number): Level {
 
   // ---- start room
   const queue: string[] = [];
+  if(P.entryCabin&&P.walkingOnly)throw new Error('Walking-only generation cannot start in a lift.');
   if(P.entryCabin){
     const cabin={...structuredClone(P.entryCabin.piece),id:newId('e')},ex=P.entryCabin.exit;
     for(let i=0;i<100&&!nodes.size;i++){
@@ -334,11 +381,12 @@ function generateOnce(params: GenParams, rng: () => number): Level {
       const atTarget = nodes.size >= target;
       if (node.piece.kind === 'room') {
         if (atTarget) continue;
-        const wanted = 1 + (rng() < P.branchChance ? 1 : 0) + (rng() < P.branchChance * P.branchChance ? 1 : 0);
+        const wanted = P.walkingOnly?1:1 + (rng() < P.branchChance ? 1 : 0) + (rng() < P.branchChance * P.branchChance ? 1 : 0);
         for (let k = 0; k < wanted && nodes.size < target; k++) {
           const exits = freeExits(node, rng() < 0.6);
+          if(P.walkingOnly&&reservedHalls.has(id))exits.unshift(reservedHalls.get(id).exit);
           let ok = false;
-          for (const ex of exits.slice(0, 8)) { if (tryAttach(id, ex, weightedOrder(TEMPLATES), 12)) { ok = true; break; } }
+          for (const ex of exits.slice(0, 8)) { if (P.walkingOnly?tryWalkingBranch(id,ex):tryAttach(id, ex, weightedOrder(TEMPLATES), 12)) { ok = true; break; } }
           if (!ok) for (const ex of exits) { if (tryElevator(id, ex)) { ok = true; break; } }
           if (!ok) break;
         }
@@ -370,7 +418,7 @@ function generateOnce(params: GenParams, rng: () => number): Level {
     seeThrough, visible: computeVisible(visibleRegions), visibleRegions, startPieceId: startId,
     startPos: P.startAt ? { ...P.startAt } : centroid(big),
   };
-  if (finalPieces.length < target) level.warning = `Placed ${finalPieces.length} of ${target} pieces; no valid spot for more.`;
+  if (finalPieces.length < target) level.warning = `Placed ${finalPieces.length} of ${target} pieces; ${P.walkingOnly&&walkingAttempts>=walkingBudget?'hallway search budget reached. Try another seed or smaller rooms.':'no valid spot for more.'}`;
   return level;
 }
 function area(p: Vec[]) { let s = 0; for (let i = 0; i < p.length; i++) { const a = p[i], b = p[(i + 1) % p.length]; s += a.x * b.y - b.x * a.y; } return s / 2; }

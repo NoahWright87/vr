@@ -4,7 +4,7 @@ const assert=require('node:assert/strict');
 const page=await browser.newPage({viewport:{width:1400,height:1000}}),errors=[];page.on('pageerror',e=>errors.push(e.message));
 await page.goto((process.env.VR_TEST_URL||'http://127.0.0.1:8088')+'/games/expanding-rooms/');
 await page.waitForFunction(()=>document.querySelector('[impossible-game]')?.components['impossible-game']?.expansion);
-await page.locator('#generate').click();await page.waitForFunction(()=>document.querySelector('[impossible-game]').components['impossible-game'].level);
+await page.locator('#controls summary').click();await page.locator('#pieces').fill('12');await page.locator('#pieces').dispatchEvent('change');await page.locator('#generate').click();await page.waitForFunction(()=>document.querySelector('[impossible-game]').components['impossible-game'].level);
 const result=await page.evaluate(async()=>{
  const scene=document.querySelector('a-scene'),g=document.querySelector('[impossible-game]').components['impossible-game'],s=g.expansion,T=AFRAME.THREE;
  scene.pause();for(const el of scene.querySelectorAll('[crossbar-menu]'))el.components['crossbar-menu']?.menu.close();

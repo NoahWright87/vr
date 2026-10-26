@@ -81,6 +81,8 @@ export class RedirectionTracker {
     this.walkSpeed += (speed - this.walkSpeed) * (1 - Math.exp(-dt / .12));
     this.turnRate += (angularSpeed - this.turnRate) * (1 - Math.exp(-dt / .04));
     const s = this.settings;
+    // Tracking samples stay fresh while menus are open; geometry searches do not run.
+    if (paused || (!s.steeringEnabled && !s.turnEnabled)) { this.steeringRate = 0; this.turnGain = 1; return neutral(); }
     const heading = speed > .15 ? Math.atan2(-dx, -dz) : yaw;
     this.guidance = planGuidance(position, heading, Math.min(speed, this.walkSpeed), context, s, this.planner, timeMs, this.bias);
     if (Math.abs(this.guidance.correction) > .05) this.bias = Math.sign(this.guidance.correction);

@@ -114,3 +114,11 @@ test('saved legacy curve modes migrate to overlap guidance and numeric settings 
   const s=sanitizeRedirectionSettings({maxCurvature:Infinity,steeringSpeed:0,maxSteeringRate:100,maxTurnGain:-1,turnSpeed:NaN});
   assert.equal(s.maxCurvature,5);assert.equal(s.steeringSpeed,.8);assert.equal(s.maxSteeringRate,30);assert.equal(s.minTurnGain,.5);assert.equal(s.maxTurnGain,1);
 });
+
+
+test('paused effects keep tracking samples current without running the geometry planner',()=>{
+ const tracker=new RedirectionTracker({steeringEnabled:true,turnEnabled:true});
+ tracker.sample({x:0,z:0},0,0);let plans=0;tracker.planner.sample=()=>{plans++;throw Error('paused planner ran');};
+ for(let i=1;i<30;i++)assert.equal(tracker.sample({x:i*.001,z:0},i*.001,i*1000/72,{paused:true}).yawDelta,0);
+ assert.equal(plans,0);assert.equal(tracker.previous.timeMs,29*1000/72);
+});

@@ -134,6 +134,13 @@ export const ALCOVE: Template = { name: 'alcove', kind: 'elevator', label: 'Elev
   return { parts: [q], slots: [S(0, q[3], q[0])] };
 } };
 
+// Two corners hide the next room from the previous one. The empty middle of
+// the U leaves room beside a room's doorway for another ordinary connection.
+export const WALKING_FOLD:Template={name:'hall-u',kind:'hall',label:'Return hall',make:c=>{
+  const w=c.w,h=2.2*w+Math.min(c.extra,.5*w),across=3.3*w;
+  return {parts:[R(0,0,w,h),R(w,h-w,across-w,h),R(across-w,0,across,h)],slots:[S(0,P(0,0),P(w,0)),S(2,P(across-w,0),P(across,0))]};
+}};
+
 export const TEMPLATES: Template[] = [roomRect, roomL, roomT, roomU, roomNotch, roomChamfer, hallStraight, hallL, hallT, hallX, hallBend, hallY];
 export const TEMPLATE_BY_NAME: Record<string, Template> = Object.fromEntries([...TEMPLATES, ALCOVE].map(t => [t.name, t]));
 

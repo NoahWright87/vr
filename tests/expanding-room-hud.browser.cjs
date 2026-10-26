@@ -12,7 +12,7 @@ const assert=require('node:assert/strict');
   return {noAutomaticBoxes:!hud.firstRunUntil&&!hud.previewLines.visible&&hud.previewWidgets.every(w=>!w.mesh.visible),noLobbyMap:!hud.get('expanding-room-map').visible,firstRunDisabled:!hud.data.firstRunHint};
  });
  for(const [key,value]of Object.entries(startup))assert.equal(value,true,key);
- await page.locator('#generate').click();await page.waitForFunction(()=>document.querySelector('[impossible-game]').components['impossible-game'].level,null,{timeout:30000});
+ await page.locator('#controls summary').click();await page.locator('#pieces').fill('12');await page.locator('#pieces').dispatchEvent('change');await page.locator('#generate').click();await page.waitForFunction(()=>document.querySelector('[impossible-game]').components['impossible-game'].level,null,{timeout:30000});
  await page.waitForFunction(()=>document.querySelector('a-scene').systems['visor-hud'].get('expanding-room-map').mesh.visible,null,{timeout:5000}).catch(async e=>{console.log(errors);console.log(await page.evaluate(()=>{const s=document.querySelector('a-scene'),w=s.systems['visor-hud'].get('expanding-room-map');return {visible:w.visible,rect:w.rect,opacity:w.opacity,state:Object.keys(w.state),prefs:s.systems['visor-hud'].prefs,side:s.systems['visor-hud'].menuSide};}));throw e;});
  const result=await page.evaluate(async()=>{
   const scene=document.querySelector('a-scene'),g=document.querySelector('[impossible-game]').components['impossible-game'],c=scene.components['expanding-room-hud'],hud=scene.systems['visor-hud'],w=c.widget;

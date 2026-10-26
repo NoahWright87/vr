@@ -26,7 +26,7 @@ export class LevelView {
   }
   makeView(state: RuntimeState) {
     const group = new THREE.Group();
-    if(this.level.closedDoors)for(const d of this.level.doors)for(const [a,b] of visibleDoorSegments(this.level,state.activeId,d)){
+    if(this.level.decoration?.switches||this.level.closedDoors?.length)for(const d of this.level.doors)for(const [a,b] of visibleDoorSegments(this.level,state.activeId,d)){
       const gate=new THREE.Mesh(new THREE.PlaneGeometry(len(sub(b,a)),2.5),new THREE.MeshBasicMaterial({color:'#39526a',side:THREE.DoubleSide}));
       gate.position.set((a.x+b.x)/2,1.25,(a.y+b.y)/2);gate.rotation.y=-Math.atan2(b.y-a.y,b.x-a.x);gate.userData.door=d;group.add(gate);
     }

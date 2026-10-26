@@ -218,7 +218,7 @@ AFRAME.registerComponent('impossible-game', {
       const settings=generationValues(this.style),margin=settings.boundaryMargin,minWidth=settings.minWidth;
       const startAt = this.xr ? { x: this.boundary.position.x - this.footprint.origin.x, y: this.boundary.position.y - this.footprint.origin.y } : undefined;
       const params = { boundsW:this.footprint.width, boundsH:this.footprint.height, footprint:this.footprint.polygon, boundaryMargin:margin, startAt,
-        stationaryElevators:true,minWidth, mix:this.expansion?.mix()||DEFAULT_MIX, pieceCount:settings.pieceCount??settings.roomCount, minSizePct:settings.minSizePct??3,maxSizePct:settings.maxSizePct??15,branchChance:settings.branchChance??.3,seed:settings.seed,
+        stationaryElevators:true,walkingOnly:!!this.expansion,minWidth, mix:this.expansion?.mix()||DEFAULT_MIX, pieceCount:settings.pieceCount??settings.roomCount, minSizePct:settings.minSizePct??3,maxSizePct:settings.maxSizePct??15,branchChance:settings.branchChance??.3,seed:settings.seed,
         generationStyle:this.style,roomCount:settings.roomCount,roomsPerLayer:settings.roomsPerLayer,roomSize:settings.roomSize,connectionMode:settings.connectionMode };
       this.enterLabLevel();this.clearLevel(); this.generating = true;
       this.status('Generating rooms…', `${this.footprint.width.toFixed(1)} × ${this.footprint.height.toFixed(1)} m · ${points.length} boundary corners`);
@@ -317,6 +317,7 @@ AFRAME.registerComponent('impossible-game', {
     ctx.globalAlpha=1;ctx.fillStyle='#ffe29a';ctx.beginPath();ctx.arc(ox+this.state.pos.x*scale,oy+this.state.pos.y*scale,5,0,Math.PI*2);ctx.fill();
   },
   tick(time: number, delta: number) {
+    this.expansion?.observeFrame(delta);
     if(!this.data.lab||this.labMode)document.querySelectorAll('.calibration-status').forEach(el=>{el.object3D.visible=this.xr&&this.measuring();});
     if(this.measuring())return;
     if (!this.level) return;

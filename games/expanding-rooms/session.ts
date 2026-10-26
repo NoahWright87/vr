@@ -14,6 +14,8 @@ export class ExpandedSession {
   roomTypes = 'mixed';
   experiments = { routes:true,translation:true,adaptiveGain:false,steering:true,turns:true,adaptiveRooms:false,growOnRide:false,blockers:false,attention:false,switches:false,floorCues:'normal' };
   controls: BuildingControls | null = null;
+  lastSeenRoom='';
+  frameMs=0;worstFrameMs=0;walkMs=0;worstWalkMs=0;
   fittedRide = '';
   growthWorker:Worker|null=null;growthResult:any=null;growthStarted=0;growthCount=0;
   seen=new Set<string>();grown=new Set<string>();
@@ -43,8 +45,9 @@ export class ExpandedSession {
     const g = this.game, o = g.footprint.origin;
     this.walker = new ExpandedWalker(g.level, this.physical.map(p => ({ x: p.x - o.x, y: p.y - o.y })));
     this.sync();
-    this.controls?.dispose();this.controls=new BuildingControls(g);
+    this.controls?.dispose();this.controls=null;this.syncControls();
   }
+  syncControls(){const g=this.game,needed=g.level.pieces.some(p=>p.kind==='elevator')||g.level.decoration?.switches;if(needed)this.controls??=new BuildingControls(g);else{this.controls?.dispose();this.controls=null;}}
   prepare(level:any){return decorateLevel(level,this.experiments);}
   mix(){return Object.fromEntries(Object.entries(DEFAULT_MIX).map(([key,value])=>[key,this.roomTypes==='simple'&&key.startsWith('room-')&&key!=='room-rect'?0:this.roomTypes==='bendy'&&key==='room-rect'?0:value]));}
   sync() {
@@ -52,13 +55,13 @@ export class ExpandedSession {
     const g=this.game;if(g.level?.decoration&&g.level.decoration.floorCues!==this.experiments.floorCues){g.level.decoration.floorCues=this.experiments.floorCues;this.refreshView();}
   }
   refreshView(){const g=this.game;g.view?.dispose();g.view=new LevelView(g.level,{roomLabels:false});g.world.object3D.add(g.view.root);g.view.show(g.state);}
-  clear(){this.growthWorker?.terminate();this.growthWorker=null;this.growthResult=null;this.seen.clear();this.grown.clear();this.growthCount=0;this.controls?.dispose();this.controls=null;this.walker=null;this.fittedRide='';}
+  clear(){this.growthWorker?.terminate();this.growthWorker=null;this.growthResult=null;this.seen.clear();this.lastSeenRoom='';this.grown.clear();this.growthCount=0;this.controls?.dispose();this.controls=null;this.walker=null;this.fittedRide='';}
   replaceLevel(level:any){
     const g=this.game,old=this.walker!;g.level=level;
     this.walker=new ExpandedWalker(level,old.boundary.map(p=>({x:p.x,y:p.z})));
     Object.assign(this.walker.transform,old.transform);this.walker.stats=old.stats;
     for(const p of level.pieces)if(p.kind==='elevator'&&!g.state.elevators[p.id])g.state.elevators[p.id]={armed:true,charge:0};
-    this.sync();this.refreshView();
+    this.sync();this.refreshView();this.syncControls();
   }
   startGrowth(){
     const g=this.game,from=g.ride.from,to=g.ride.to;
@@ -70,7 +73,7 @@ export class ExpandedSession {
   }
   tick(){
     const g=this.game;if(!g.level||!this.walker)return;
-    if(g.ride.phase==='idle')for(const id of g.level.visible[g.state.activeId]||[])this.seen.add(id);
+    if(g.ride.phase==='idle'&&this.lastSeenRoom!==g.state.activeId){this.lastSeenRoom=g.state.activeId;for(const id of g.level.visible[g.state.activeId]||[])this.seen.add(id);}
     if(g.ride.phase!=='closed'){this.growthWorker?.terminate();this.growthWorker=null;this.growthResult=null;}
     if(this.menuOpen()||g.outside||g.xr&&!g.tracking)return;
     if(g.ride.phase==='closed'&&this.fittedRide!==g.ride.from+'>'+g.ride.to){
@@ -103,7 +106,9 @@ export class ExpandedSession {
       this.direction.negate().transformDirection(this.inverse.copy(g.transform).invert());
     }
     const yaw = Math.atan2(-this.direction.x, -this.direction.z);
+    const sampleStarted=performance.now();
     const result = w.sample(target, yaw, performance.now(), g.state, this.paused || this.menuOpen(), g.ride.phase !== 'idle');
+    const elapsed=performance.now()-sampleStarted;this.walkMs+=(elapsed-this.walkMs)*.05;this.worstWalkMs=Math.max(this.worstWalkMs,elapsed);
     // Keep headset, hands, menus and physical boundary in tracked coordinates.
     // Move the virtual world by the inverse locomotion mapping instead.
     this.rotation.makeRotationY(w.transform.yaw);
@@ -115,12 +120,13 @@ export class ExpandedSession {
   recover() {
     const g = this.game;
     if (!g.xr || !g.tracking || !this.walker || !g.boundary || g.measuring() || g.ride.phase !== 'idle') {
-      g.status('Recovery unavailable', 'Finish calibration or the elevator ride, and wait for tracking.'); return;
+      g.status('Recovery unavailable', 'Finish boundary setup and wait for tracking.'); return;
     }
     const o = g.footprint.origin, raw = { x: g.boundary.position.x - o.x, y: g.boundary.position.y - o.y };
     if (!this.walker.reanchor(raw, g.state)) { g.status('Step inside your physical boundary', 'Return to a clear spot in your traced area before re-anchoring.'); return; }
     g.onBoundaryFrame(g.boundary); g.showRoomStatus();
   }
+  observeFrame(delta:number){if(delta>0&&delta<1000){this.frameMs=this.frameMs?this.frameMs+(delta-this.frameMs)*.05:delta;this.worstFrameMs=Math.max(this.worstFrameMs,delta);}}
   describe() {
     const w = this.walker;
     if (!w) return `Next world: ${this.scale.toFixed(2)}x width/depth. Save a boundary, then Generate.`;
@@ -134,12 +140,16 @@ export class ExpandedSession {
       `Boundary exits ${s.boundaryExits} / wall blocks ${s.wallBlocks}`,
       `Rejected gain ${s.rejectedGain} / recoveries ${s.recoveries}`,
       `Next door ${(w.redirection.planner as any).routeInfo?.door||'—'} / runway ${(w.redirection.planner as any).routeInfo?.clearance?.toFixed(2)??'—'} m`,
+      `Frame ${this.frameMs.toFixed(1)} ms / ${this.frameMs?(1000/this.frameMs).toFixed(0):'—'} fps / worst ${this.worstFrameMs.toFixed(1)} ms`,
+      `Walking CPU ${this.walkMs.toFixed(2)} ms / worst ${this.worstWalkMs.toFixed(2)} ms`,
+      `Draw calls ${this.game.scene.renderer.info.render.calls} / triangles ${this.game.scene.renderer.info.render.triangles}`,
       this.paused ? 'Movement effects paused' : 'Effects pause while a menu is open'].join('\n');
   }
   exportReport() {
     const g = this.game;
     const report = { version: 1, activity: 'expanding-rooms', physicalBoundary: this.physical,
       activeScale: this.activeScale, nextScale: this.scale, gain: this.gain, steering: this.steering, experiments:this.experiments,
+      performance:{frameMeanMs:this.frameMs,frameWorstMs:this.worstFrameMs,walkingMeanMs:this.walkMs,walkingWorstMs:this.worstWalkMs,drawCalls:g.scene.renderer.info.render.calls,triangles:g.scene.renderer.info.render.triangles},
       level: g.level, state: g.state, stats: this.walker?.stats, mapping: this.walker?.transform };
     const url = URL.createObjectURL(new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' }));
     const link = document.createElement('a'); link.href = url; link.download = `expanding-rooms-${g.level?.params.seed ?? 'setup'}.json`; link.click();

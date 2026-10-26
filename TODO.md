@@ -6,19 +6,16 @@ this is only for work that has been decided on and postponed.
 
 ## Expanding Rooms
 
-- **Extend the simulator to the new VR interaction loop.** The VR lobby now
-  offers doorway look-ahead, adaptive translation, fences, switches and wings
-  rebuilt/resized during stationary lift rides. Existing 2D batches still use
-  baseline settings and automatic lift behavior. Model reaching call switches,
-  looking for the opened bay and pulling a handle, expose the new switches, and
-  version reports before comparing overnight completion rates. Add obstacle-aware
-  approach paths: the first VR route planner only tests straight door approaches.
-- **Evaluate hidden adjustments before visible geometry changes.** The first
-  version only resizes/rotates wings behind closed lift doors, keeps visible
-  fences fixed, and supplies slow animated wall pictures. Use headset feedback
-  to decide whether out-of-view fence repositioning or continuous room resizing
-  helps. Do not move obstacles through the player or make a previously usable
-  doorway too narrow.
+- **Bring the simulator onto walking-only generation.** VR now reserves ordinary
+  hall/room pairs, includes two-corner return corridors, and uses cached swept-body
+  routes through hallway corners. Existing 2D batches still use the older baseline
+  generator and automatic lift behavior. Add an explicit recipe/version for the
+  walking-only generator and its new experiments before comparing overnight rates.
+- **Revisit hidden resizing only after the walking baseline works in headset.**
+  The lift experiments are retired from Expanding Rooms' active flow. Visible
+  fences stay fixed and room geometry does not resize during play. Use headset
+  feedback before restoring hidden adjustments or adding runtime chunk streaming;
+  preserve door continuity and already-visible geometry.
 
 - **Calibrate the simulated walker against headset feedback.** The first
   [Walking Simulator](games/expanding-rooms/simulator/README.md) now shares the

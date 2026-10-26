@@ -32,6 +32,8 @@ export interface Door {
 export interface Portal { id: string; a: string; b: string }
 
 export interface GenParams {
+  /** Grow ordinary room/hall pairs, reserving the connecting hall before committing. No portals. */
+  walkingOnly?: boolean;
   entryCabin?: { piece:Piece; exit:{p1:Vec;p2:Vec;normal:Vec} };
   generationStyle?: 'growth' | 'rooms-first';
   roomCount?: number;

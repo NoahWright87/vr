@@ -16,12 +16,12 @@ function setting(kind:string,group:string,key:string,label:string,value:any,info
 const num=(group,key,label,value,min,max,step,suffix='')=>setting('number',group,key,label,value,key==='scale'?'Used next time you Generate level. This changes the floor plan size.':'Advanced setting. Change a little, then try walking.',{min,max,step,suffix});
 const toggle=(key,label,value,info)=>setting('toggle','experiments',key,label,value,info);
 // Original growth remains the only generator. A target may be shortened when space is tight.
-for(const item of generationSettings.growth)if(item.id==='growth:minWidth')item.value=1;
-for(const item of generationSettings.growth)if(item.id==='growth:pieceCount'){item.value=36;item.label='Room + hall target';item.max=100;item.info='Try to make this many rooms, halls and lifts. Small boundaries may fit fewer.';}
+for(const item of generationSettings.growth)if(item.id==='growth:minWidth')item.value=.8;
+for(const item of generationSettings.growth)if(item.id==='growth:pieceCount'){item.value=36;item.label='Room + hall target';item.max=100;item.info='Try to make this many rooms and halls. Small boundaries may fit fewer.';}
 const customize={kind:'submenu',id:'customize',label:'Customize',info:'Build your kind of place. Changes are used next time you Generate level.',items:[
   ...generationSettings.growth.filter(i=>['growth:pieceCount','growth:minSizePct','growth:maxSizePct'].includes(i.id)),
   setting('select','session','roomTypes','Room shapes','mixed','Choose familiar rectangles or a mix of shapes. Used for the next level.',{options:[{value:'mixed',label:'Mixed shapes'},{value:'simple',label:'Simple rectangles'},{value:'bendy',label:'Bendy rooms'}]}),
-  {kind:'submenu',id:'generation-advanced',label:'More building options',items:generationSettings.growth.filter(i=>!['growth:pieceCount','growth:minSizePct','growth:maxSizePct'].includes(i.id))}
+  {kind:'submenu',id:'generation-advanced',label:'More building options',items:generationSettings.growth.filter(i=>!['growth:pieceCount','growth:minSizePct','growth:maxSizePct','growth:branchChance'].includes(i.id))}
 ]};
 const advanced={kind:'submenu',id:'advanced-effects',label:'Advanced tuning',info:'For grown-up experiments. You do not need these to play.',items:[
   num('session','scale','World width / depth',1.25,1,2,.05,'x'),
@@ -37,8 +37,6 @@ export const experimentItems=[
   toggle('adaptiveGain','Steps that fit',false,'When a door is far away, your game steps can gently grow. This helps you reach it with fewer real steps. Works while you play.'),
   toggle('steering','Bend my walk',true,'A tiny turn of the world can make a straight-looking walk follow a gentle curve. Works while you walk.'),
   toggle('turns','Help my turns',true,'When you turn your head, the game can turn a little more or less. This aims your next walk toward open floor.'),
-  toggle('adaptiveRooms','Fit the next wing',false,'Inside a closed lift, the next rooms can turn and stretch a little to fit your floor. The lift and things inside it stay still.'),
-  toggle('growOnRide','Build as I explore',false,'The first time you ride to a new place, we build its rooms while the lift is shut. Places you have seen stay the same. The lift may wait a moment.'),
   toggle('blockers','Paths around things',false,'Fences make a path around the room. You can see across them, but walk around them. Used for the next level.'),
   toggle('attention','Things to look at',false,'Wall pictures glow and move so there are fun things to look at. You do not have to look at them to keep playing. Used for the next level.'),
   toggle('switches','Door switches',false,'Some doors have a switch off to the side. Walk to it, then come back through the door. Used for the next level.'),
@@ -49,7 +47,6 @@ const experiments={kind:'submenu',id:'experiments',label:'Experiments',info:'Try
 const debug={kind:'submenu',id:'debug',label:'Tools & help',info:()=>session()?.describe()||'',items:[
   setting('toggle','session','paused','Pause movement effects',false,'Keep real head tracking, but stop extra steps and world turning.'),
   action('expand-reanchor','Recover here','Return inside your real boundary first. This puts the game back around you.'),action('outline','Show / hide boundary'),
-  action('expand-ride','Ride lift (accessible)','Use this instead of pulling the handle. Stand fully inside the lift first.'),
   action('expand-map','Show / hide debug map','Desktop-only map of the whole generated layout.'),action('expand-export','Save debug report'),action('expand-clear-stats','Clear counters'),
   {kind:'info',id:'expand-stats',label:'Walking stats',info:()=>session()?.describe()||''}
 ]};
@@ -77,5 +74,5 @@ document.addEventListener('menu-action',(event:any)=>{
   if(id==='expand-exit'){g.cancelGeneration();g.clearLevel();g.status('Ready to explore','Generate another level, or change things in Customize.');g.scene.components['expanding-lobby']?.recenter();}
   if(id==='expand-reanchor')s.recover();if(id==='expand-ride')g.requestRide(1,true);
   if(id==='expand-map'){const map=document.querySelector('#map');map.hidden=!map.hidden;}
-  if(id==='expand-export')s.exportReport();if(id==='expand-clear-stats'&&s.walker)for(const k of Object.keys(s.walker.stats))s.walker.stats[k]=0;
+  if(id==='expand-export')s.exportReport();if(id==='expand-clear-stats'&&s.walker){for(const k of Object.keys(s.walker.stats))s.walker.stats[k]=0;s.worstFrameMs=0;s.worstWalkMs=0;}
 });
