@@ -6,7 +6,8 @@ this is only for work that has been decided on and postponed.
 
 The plan for turning Pistols at Dawn into a complete game (the ghost
 premise, wardrobe-as-health, duels, style, the economy, multiplayer, and
-phased work) lives in `todo/`. Start at `todo/todo.md`.
+phased work) lives in `docs/pistols-at-dawn/`. Start at
+`docs/pistols-at-dawn/todo.md`.
 
 Action primitives (autofire, melee, defense, throwing, targeting, the
 comfort budget) have their own plan in `docs/actions/` — one

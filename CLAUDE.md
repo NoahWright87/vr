@@ -18,13 +18,15 @@ by accident rather than on purpose, and add to it (with real context,
 not just a title) when you defer something rather than letting it
 evaporate.
 
-**`todo/` holds the plan for turning Pistols at Dawn into a full
-game.** `todo/todo.md` is the big picture and the decisions made so
-far, `todo/<topic>.todo.md` holds per-topic design, and
-`todo/phaseNN[-x].todo.md` is the ordered work. Tracks sharing a phase
-number (`phase01-a`, `phase01-b`, ...) can run in parallel. If you're
-picking up a phase, read `todo/todo.md` and the topic files it links
-first.
+**`docs/pistols-at-dawn/` holds the plan for turning Pistols at Dawn
+into a full game**, and is specific to that game only. Its `todo.md`
+is the big picture and the decisions made so far, `<topic>.todo.md`
+holds per-topic design, and `phaseNN[-x].todo.md` is the ordered work.
+Tracks sharing a phase number (`phase01-a`, `phase01-b`, ...) can run
+in parallel. If you're picking up a phase, read
+`docs/pistols-at-dawn/todo.md` and the topic files it links first.
+Plans for other prototypes or shared systems get their own
+`docs/<name>/` folder, the same way.
 
 **`export-later/` holds code that's going to leave this repo.** Each
 `export-later/packages/<name>/` is a self-contained package built here

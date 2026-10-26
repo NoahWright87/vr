@@ -12,9 +12,9 @@ How this folder relates to the rest of the repo:
 - **`DESIGN.md`** (repo root): how the systems work and why. The
   "build systems, not features" bet applies to everything here.
 - **`TODO.md`** (repo root): smaller deferred items across the whole
-  repo. Still in use. It may move into this folder one day as topic
-  files (`menus.todo.md`, `liquids.todo.md`, ...).
-- **`todo/*.todo.md`**: this plan. `todo.md` (this file) is the big
+  repo, all prototypes. Still in use.
+- **`docs/pistols-at-dawn/*.todo.md`** (this folder): this plan, and
+  only for Pistols at Dawn. `todo.md` (this file) is the big
   picture. Each `<topic>.todo.md` holds the design decisions for one
   area. Each `phaseNN[-x].todo.md` is one chunk of work, in order.
 - **`export-later/`**: code built here that's headed for its own repo

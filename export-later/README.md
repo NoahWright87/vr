@@ -35,4 +35,4 @@ The only things outside the package that are allowed to mention it:
 
 - `packages/voice/`: text-driven, Animal Crossing-style character
   voices, plus a non-VR Voice Lab page for tuning them. Planned in
-  `todo/phase01-z.todo.md`.
+  `docs/pistols-at-dawn/phase01-z.todo.md`.
