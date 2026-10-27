@@ -1,4 +1,5 @@
 import kenney from '../../assets/models/kenney/catalog.json';
+import thumbnails from '../../assets/models/thumbnails/index.json';
 import { models } from '../../assets/models/catalog.js';
 import { createModel, disposeModel } from '../../common/model-library.js';
 
@@ -11,6 +12,17 @@ export const assets = [
   ...models.map(model => ({ ...model, creatorId: 'originals', creator: 'Noah’s VR projects', pack: model.category,
     packName: model.category, file: `/assets/models/starter/${model.id}.gltf`, format: 'procedural' })),
 ];
+// A model's tile picture: its cell of its collection's atlas (rendered by
+// scripts/render-toy-thumbnails.mjs), as the grid menu takes it. null for
+// a model added since the atlases were last rendered.
+export function thumbnailFor(id) {
+  const entry = thumbnails.models[id];
+  if (!entry) return null;
+  const atlas = thumbnails.atlases[entry[0]];
+  const column = entry[1] % atlas.columns, row = Math.floor(entry[1] / atlas.columns);
+  // v runs up from the bottom of the image; rows count down from the top.
+  return { src: atlas.file, rect: [column / atlas.columns, 1 - (row + 1) / atlas.rows, 1 / atlas.columns, 1 / atlas.rows] };
+}
 export function packsFor(creatorId) {
   return [...new Map(assets.filter(a => a.creatorId === creatorId).map(a => [a.pack, { id: a.pack, name: a.packName }])).values()];
 }

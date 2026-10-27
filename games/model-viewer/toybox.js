@@ -3,10 +3,11 @@ import '../../common/locomotion.js';
 import '../../common/desktop-controls.js';
 import '../../common/checker-floor.js';
 import '../../common/visor-menu.js';
+import '../../common/menu-grid.js';
 import { registerMenuPage } from '../../common/menu-crossbar.js';
 import { registerVisorPage } from '../../common/visor-page.js';
 import { createToyboxCatalog, toyboxControlItems } from './toybox-menus.js';
-import { assets, creators, packsFor, toysFor, loadToy, measureToy, disposeModel } from './toy-assets.js';
+import { assets, creators, packsFor, toysFor, loadToy, measureToy, disposeModel, thumbnailFor } from './toy-assets.js';
 import { resolveToyContacts } from './toy-contacts.js';
 import { refreshCaptions } from './captions.js';
 
@@ -20,6 +21,22 @@ registerMenuPage('toybox-catalog', createToyboxCatalog(assets, creators, asset =
   return [asset.name, `${asset.creator} · ${asset.license}`, asset.packName,
     ...(selected && current.selectedSize ? ['Authored: '+dimensions(current.selectedSize)] : []),
     selected && current.previewMessage ? current.previewMessage : 'Confirm to take out a copy.'];
+}, {
+  thumbnail: asset => thumbnailFor(asset.id),
+  // Read every draw, so the authored size appears once the preview has
+  // loaded and measured it.
+  details: asset => {
+    const current = toybox(), selected = current?.selected?.id === asset.id;
+    return {
+      subtitle: `${asset.creator} · ${asset.license}`,
+      stats: [
+        { label: 'Collection', text: asset.packName },
+        { label: 'Authored size', text: selected && current.selectedSize ? dimensions(current.selectedSize) : '…' },
+        ...(asset.rigged ? [{ label: 'Rig', text: 'Skeleton included' }] : []),
+      ],
+      text: selected && current.previewMessage ? current.previewMessage : '',
+    };
+  },
 }));
 const controlPage = { title: 'TOYBOX', items: () => toyboxControlItems(state), info: () => `${state().count} / 32 toys out.\nGrip to arrange; release to toss.` };
 registerMenuPage('toybox-watch', controlPage);
@@ -77,10 +94,10 @@ AFRAME.registerComponent('toybox', {
     this.menu = this.trigger.components['projected-menu']; this.panel = this.menu.panelEl;
     this.trigger.addEventListener('projected-crossbar-ready', event => {
       this.catalog = event.detail.menu;
-      this.previewHost = this.catalog.sidecarContentEl.object3D;
+      this.previewHost = this.catalog.detailsContentEl.object3D;
       const logo = document.createElement('a-image'); logo.setAttribute('src','/assets/models/kenney/logo.png');
       logo.setAttribute('width','0.55'); logo.setAttribute('height','0.18');
-      this.catalog.sidecarContentEl.appendChild(logo); this.brandEl = logo;
+      this.catalog.detailsContentEl.appendChild(logo); this.brandEl = logo;
       this.catalog.menu.on('change', () => this.onCatalogChange());
       this.catalog.menu.on('open', () => this.focusPending());
       this.onCatalogChange(); refreshCaptions();
@@ -131,6 +148,9 @@ AFRAME.registerComponent('toybox', {
     if (!this.catalog) return;
     const info = this.catalog.menu.getInfo(), id = info?.item?.modelId;
     if (this.preview) this.preview.visible = Boolean(id);
+    // The live model takes the details slot from the thumbnail once it
+    // is there; the Kenney logo does too.
+    this.catalog.holdDetailsSlot(Boolean(id && this.preview && this.selected?.id === id) || (!id && info?.item?.creatorId === 'kenney'));
     if (this.brandEl) this.brandEl.object3D.visible = !id && info?.item?.creatorId === 'kenney';
     if (id && this.selected?.id !== id) this.select(id);
     refreshCaptions();
@@ -184,6 +204,7 @@ AFRAME.registerComponent('toybox', {
       preview.scale.setScalar(0.48/Math.max(size.x,size.y,size.z)); preview.rotation.y = Math.PI*1.15;
       this.previewHost.add(preview); this.preview = preview; this.previewMessage = '';
       preview.visible = this.catalog?.menu.getInfo()?.item?.modelId === id;
+      this.onCatalogChange();
     } catch (error) {
       if (token === this.previewToken) this.previewMessage = 'Could not load. Select again to retry.';
       console.error('Toy preview failed', definition.id, error);

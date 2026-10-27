@@ -3,10 +3,17 @@
 Open **3D Model Toybox** on the home page, or `/games/model-viewer/`.
 Poke the chest's latch to open the shared projected menu in VR. Its top-level
 creator choices are **Kenney** (with his official logo and website link) and
-**Originals**. Choose a collection, pick a model to see its live 3D sidecar
-preview, then confirm the focused row to take out a copy. Repeat to set out
-multiple toys. The chest, watches and visor all use the current shared crossbar
-menu system; scrolling previews a choice and confirming activates it.
+**Originals**. Choose a collection and its toys appear as a grid of thumbnails,
+twelve at a time; focus one to see its live 3D preview, credit and authored size
+in the details pane, then confirm to take out a copy. Repeat to set out
+multiple toys. The chest is the shared grid menu (`common/menu-grid.js`); the
+watches and visor are the shared crossbar menu. Both draw the same menu model,
+so moving focus previews a choice and confirming activates it.
+
+The thumbnails are one atlas per collection in `thumbnails/`, rendered offline
+from the same files the Toybox loads by `node scripts/render-toy-thumbnails.mjs`
+(headless Chromium through Playwright). Rerun it after importing or changing
+models; a model without a thumbnail still works, its tile just has no picture.
 
 ## Play
 
@@ -15,8 +22,9 @@ menu system; scrolling previews a choice and confirming activates it.
   independently hold a toy. Each model is one rigid toy; skeletal posing is
   not implemented.
 - **Desktop:** Open the chest with the screen button, or walk up to its latch
-  and press E. Click a row to focus it; click the focused row to select it.
-  W/S scroll, D enters/selects, A goes back, and E/Esc leaves an entered menu.
+  and press E. Click a tile to focus it; click the focused tile to select it.
+  W/A/S/D move around the grid, Enter selects, Q (or A from the first column)
+  goes back, and E/Esc leaves an entered menu.
   WASD walks outside menus; drag the scene to look. Look at a nearby toy
   and press F to grab/drop, R to rotate, T to toss. Tab opens the shared watch.
   Backtick opens the shared visor. The optional screen browser provides the

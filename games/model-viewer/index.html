@@ -36,11 +36,13 @@
 
   <template id="toybox-menu-template">
     <a-entity class="toybox-panel" visible="false">
-      <!-- Invisible framing geometry covers the list and preview together. -->
-      <a-plane width="2.5" height="1.7" material="visible: false"></a-plane>
-      <a-entity class="toybox-catalog" position="-0.55 0 0"
-        crossbar-menu="page: toybox-catalog; width: 1.2; rowHeight: 0.17; windowSize: 7; maxChars: 26; open: false; closeBehavior: hide; memory: permanent; hint: false; stickRange: 3; plateOpacity: 0.94; sidecar: right; sidecarWidth: 0.8; sidecarChars: 24; sidecarContentHeight: 0.58; titleMotion: none; crumbs: title; breadcrumbDepth: 1"
-        crossbar-menu-registration></a-entity>
+      <!-- Invisible framing geometry covers the grid and details together. -->
+      <a-plane width="2.3" height="1.55" material="visible: false"></a-plane>
+      <!-- A grid menu (common/menu-grid.js): twelve toys at a time, each
+           with its thumbnail, and the focused one's live model and credit
+           in the details pane. -->
+      <a-entity class="toybox-catalog"
+        grid-menu="page: toybox-catalog; columns: 4; rows: 3; tileWidth: 0.28; gap: 0.03; labelChars: 13; open: false; closeBehavior: hide; memory: permanent; hint: false; stickRange: 3; plateOpacity: 0.94; detailsWidth: 0.85; detailsChars: 30; detailsContentHeight: 0.5"></a-entity>
     </a-entity>
   </template>
 

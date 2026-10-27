@@ -27,6 +27,14 @@
 //
 // Both are driven by the same windowing code below, which is most of
 // the reason the model is this small.
+//
+// A list level can also be laid out as a GRID — a shop, an armory, a
+// toybox — when its page or submenu says `layout: 'grid'` and the
+// surface drawing it can (`gridColumns` > 0; a crossbar cannot, so the
+// same page still reads as a list on a watch). A grid is the same list
+// with the same focus index, folded into rows: up and down move a row,
+// left and right move a column, and left off the first column is the
+// outward verb, exactly as it is in a list. See the GRIDS section.
 // ============================================================
 
 export var MENU_DEFAULTS = {
@@ -55,6 +63,12 @@ export var MENU_DEFAULTS = {
   // level. The renderer fades them; this only caps how many it hears
   // about, since a watch face has room for about one.
   breadcrumbDepth: 3,
+  // Columns a grid level is folded into, on a surface that can draw
+  // grids. 0 means it cannot, and every level is a list. A page or
+  // submenu can ask for its own count with `columns`.
+  gridColumns: 0,
+  // Rows of a grid a surface shows at once. The rest scroll.
+  gridRows: 3,
 };
 
 var VALID_MEMORY = ['none', 'temporary', 'permanent'];
@@ -178,6 +192,8 @@ function makeListLevel(title, items, index, source) {
     items: items,
     index: clampInt(index || 0, 0, Math.max(0, items.length - 1)),
     source: source || null,
+    // The first grid row in view; unused by a list.
+    scroll: 0,
   };
 }
 
@@ -296,6 +312,8 @@ export function MenuModel(page, options) {
     ? MENU_DEFAULTS.breadcrumbDepth
     : opts.breadcrumbDepth;
   this.chrome = opts.chrome || MENU_DEFAULTS.chrome;
+  this.gridColumns = Math.max(0, opts.gridColumns || MENU_DEFAULTS.gridColumns) | 0;
+  this.gridRows = Math.max(1, opts.gridRows || MENU_DEFAULTS.gridRows) | 0;
   // Injectable so memory expiry is testable without waiting a minute.
   this.now = typeof opts.now === 'function' ? opts.now : function () { return Date.now(); };
 
@@ -349,6 +367,7 @@ MenuModel.prototype.refresh = function () {
     if (typeof source !== 'function') continue;
     level.items = resolveItems(source);
     level.index = clampInt(level.index, 0, Math.max(0, level.items.length - 1));
+    this.syncScroll(level);
   }
   this.emit('refresh', {});
 };
@@ -446,6 +465,7 @@ MenuModel.prototype.moveFocus = function (delta) {
   }
   if (next === level.index) return false;
   level.index = next;
+  this.syncScroll(level);
   this.emit('focus', { index: next, row: this.focusedRow() });
   // A value level previews as you scroll unless the item opted out -
   // watching the target count change while you pick it is most of why
@@ -457,6 +477,9 @@ MenuModel.prototype.moveFocus = function (delta) {
 
 MenuModel.prototype.levelWraps = function (level) {
   if (level.kind === 'number') return false;
+  // A grid's edges are where left and right mean something else (see
+  // moveGrid), so it never wraps.
+  if (this.isGrid(level)) return false;
   return this.wrapEnabled && levelCount(level) > this.windowSize;
 };
 
@@ -524,6 +547,14 @@ MenuModel.prototype.activate = function () {
   }
 
   if (item.kind === 'action') {
+    // Something with a price you cannot pay is refused here rather than
+    // left to every game to check: the surface says so (a red flash, the
+    // price in red) and the game never hears an action it would only
+    // have to turn down.
+    if (!this.canAfford(item)) {
+      this.emit('denied', { item: item, id: item.id, reason: 'price', price: this.priceOf(item) });
+      return true;
+    }
     this.emit('action', { item: item, id: item.id });
     if (item.closeOnActivate) this.close();
     return true;
@@ -532,21 +563,29 @@ MenuModel.prototype.activate = function () {
   if (item.kind === 'submenu') {
     var items = resolveItems(item.items);
     this.stack.push(makeListLevel(item.label, items, 0, item));
+    this.syncScroll(this.level());
     this.emit('push', { title: item.label, depth: this.depth() });
     return true;
   }
 
   if (item.kind === 'select') {
     var options = resolveItems(item.options).map(function (option) {
-      return { kind: 'option', label: option.label, value: option.value, info: option.info };
+      return {
+        kind: 'option', label: option.label, value: option.value, info: option.info,
+        // A select laid out as a grid (swatches, outfits) shows its
+        // options the way any other grid shows its items.
+        thumbnail: option.thumbnail, subtitle: option.subtitle, badge: option.badge, details: option.details,
+      };
     });
     this.stack.push(makeListLevel(item.label, options, optionIndexOf(item, item.value), item));
+    this.syncScroll(this.level());
     this.emit('push', { title: item.label, depth: this.depth() });
     return true;
   }
 
   if (item.kind === 'number') {
     this.stack.push(makeNumberLevel(item));
+    this.syncScroll(this.level());
     this.emit('push', { title: item.label, depth: this.depth() });
     return true;
   }
@@ -598,6 +637,359 @@ MenuModel.prototype.applyLevelValue = function (level, phase) {
   item.value = value;
   this.emit(phase, { item: item, value: value });
 };
+
+// ============================================================
+// GRIDS
+//
+// A level is a grid when the surface can draw one (gridColumns > 0) and
+// the level asks for one: `layout: 'grid'` on the submenu that opens it,
+// or on the page for the root. A select inherits its own item's layout,
+// so a select of swatches can be a grid of swatches. Number levels are
+// always lists — a 0-20 dial folded into rows is no easier to read.
+//
+// The focus is still one index into the same list, so everything else —
+// activation, info, refresh, memory — is unchanged. What a grid adds is
+// a second axis to move along, and a scroll position: the focus stays in
+// view with a row of context below it where there is one, so you always
+// see what scrolling would bring in before it does.
+// ============================================================
+
+MenuModel.prototype.isGrid = function (level) {
+  level = level || this.level();
+  if (!this.gridColumns || level.kind !== 'list') return false;
+  var source = level.source || (this.stack[0] === level ? this.page : null);
+  return Boolean(source && source.layout === 'grid');
+};
+
+// Columns the level is drawn in: 1 for a list.
+MenuModel.prototype.levelColumns = function (level) {
+  level = level || this.level();
+  if (!this.isGrid(level)) return 1;
+  var source = level.source || this.page;
+  return Math.max(1, (source.columns | 0) || this.gridColumns);
+};
+
+// Only a grid surface scrolls this way; a crossbar centres its window on
+// the focus instead (getWindow). A list or a number level on a grid
+// surface scrolls as one column, by the same rule.
+MenuModel.prototype.syncScroll = function (level) {
+  if (!level || !this.gridColumns) return;
+  level.scroll = level.scroll || 0;
+  var columns = this.levelColumns(level);
+  var total = Math.ceil(levelCount(level) / columns);
+  var visible = this.gridRows;
+  var row = Math.floor(level.index / columns);
+  // A tile that was pointed at is already in view, and scrolling it to
+  // make room for context would slide it out from under the pointer — so
+  // the second tap, the one that picks, would land on its neighbour.
+  if (this.holdScroll && row >= level.scroll && row < level.scroll + visible) return;
+  // One row of context past the focus, unless the window is too short
+  // to spare it.
+  var margin = visible >= 3 ? 1 : 0;
+  var scroll = clampInt(level.scroll || 0, row - visible + 1 + margin, row - margin);
+  level.scroll = clampInt(scroll, 0, Math.max(0, total - visible));
+};
+
+// Move in two dimensions. On a list this is the crossbar's own verbs —
+// up/down step, right goes in, left comes out — so a renderer can send
+// every stick and key through here without asking what kind of level it
+// is on. On a grid:
+//
+//   - up/down move a whole row, keeping the column; moving down into a
+//     short last row lands on its last cell rather than doing nothing;
+//   - left/right move within the row and stop at its ends — wrapping
+//     from the end of one row to the start of the next makes the focus
+//     jump across the panel, which in a headset reads as losing it;
+//   - left off the first column is back(), the same outward verb it is
+//     everywhere else. Right never goes in: confirming is a button, as
+//     it is for every other cell.
+MenuModel.prototype.moveGrid = function (dx, dy) {
+  if (this.chromeIndex !== null || !this.isGrid()) {
+    if (dy) return this.moveFocus(dy);
+    if (dx > 0) return this.forward();
+    if (dx < 0) return this.back();
+    return false;
+  }
+  var level = this.level();
+  var count = levelCount(level);
+  if (!count) return dx < 0 ? this.back() : false;
+  var columns = this.levelColumns(level);
+  var row = Math.floor(level.index / columns);
+  var column = level.index % columns;
+  var next = level.index;
+  if (dy) {
+    var lastRow = Math.floor((count - 1) / columns);
+    var targetRow = clampInt(row + dy, 0, lastRow);
+    if (targetRow === row) return false;
+    next = Math.min(targetRow * columns + column, count - 1);
+  } else if (dx) {
+    var target = column + dx;
+    if (target < 0) return this.back();
+    if (target >= columns || row * columns + target >= count) return false;
+    next = row * columns + target;
+  }
+  return this.focusIndex(next);
+};
+
+// Focus a cell (or row) by its index in the level — what pointing at a
+// tile does. Returns whether anything moved. `options.keepScroll` leaves
+// the grid where it is if that cell is already in view, which is what a
+// pointer wants (see syncScroll).
+MenuModel.prototype.focusIndex = function (index, options) {
+  if (this.chromeIndex !== null) {
+    this.chromeIndex = null;
+    this.emit('chrome-focus', { control: null });
+  }
+  var level = this.level();
+  var count = levelCount(level);
+  if (!count) return false;
+  index = clampInt(index | 0, 0, count - 1);
+  if (index === level.index) return false;
+  this.holdScroll = Boolean(options && options.keepScroll);
+  try {
+    return this.moveFocus(index - level.index);
+  } finally {
+    this.holdScroll = false;
+  }
+};
+
+// What a grid surface draws: the visible rows of cells, in reading order.
+// `rows` is how many the surface shows and `rowCount` how many there are,
+// which is all a scroll bar needs. On a list level this is still a
+// usable answer (one column, the window around the focus), so a grid
+// surface can show any level without a second code path.
+MenuModel.prototype.getGrid = function () {
+  var level = this.level();
+  var columns = this.levelColumns(level);
+  var count = levelCount(level);
+  var rowCount = Math.ceil(count / columns);
+  var cells = [];
+  // A list here is one column, scrolled the way a grid is (syncScroll),
+  // so the focus moves down the column rather than the column moving
+  // under a fixed focus.
+  var first = level.scroll || 0;
+  var inChrome = this.chromeIndex !== null;
+  for (var r = first; r < Math.min(rowCount, first + this.gridRows); r++) {
+    for (var c = 0; c < columns; c++) {
+      var index = r * columns + c;
+      if (index >= count) break;
+      var row = levelRowAt(level, index);
+      if (!row) continue;
+      row.index = index;
+      row.row = r;
+      row.column = c;
+      row.focused = !inChrome && index === level.index;
+      decorateCell(this, row);
+      cells.push(row);
+    }
+  }
+  return {
+    columns: columns,
+    rows: this.gridRows,
+    firstRow: first,
+    rowCount: rowCount,
+    count: count,
+    grid: this.isGrid(level),
+    cells: cells,
+  };
+};
+
+// The parts of an item only a picture-led surface has room for. All
+// optional; a crossbar ignores them.
+//
+//   thumbnail  an image for the tile: a URL, a canvas, an atlas cell
+//              { src, rect: [u, v, w, h] } (0..1, v up), or a function of
+//              the item returning one of those
+//   subtitle   a short second line under the label ("x3", "Lv 12")
+//   badge      a corner tag ("NEW", "OWNED", "EQUIPPED")
+//   price      a number in the menu's first currency, or { gold: 30,
+//              gems: 1 } — see priceOf
+//   details    what the details pane shows when it is focused; see
+//              getDetails
+//   actionLabel  what confirming does, for the details pane's prompt
+//              ("Buy", "Equip", "Take out")
+function resolveValue(value, item) {
+  return typeof value === 'function' ? value(item) : value;
+}
+
+function decorateCell(menu, row) {
+  var item = row.item;
+  if (!item) return row;
+  row.thumbnail = resolveValue(item.thumbnail, item) || null;
+  row.subtitle = resolveValue(item.subtitle, item) || '';
+  row.badge = resolveValue(item.badge, item) || '';
+  row.price = menu.priceOf(item);
+  row.affordable = menu.canAfford(item);
+  return row;
+}
+
+// ============================================================
+// CURRENCIES AND PRICES
+//
+// A shop says what you can pay with on its page or submenu:
+//
+//   currencies: [
+//     { id: 'gold', label: 'Gold', value: () => player.gold, icon },
+//     { id: 'gems', label: 'Gems', value: () => player.gems },
+//   ]
+//
+// and the innermost level that has some is the one shown, so a store
+// inside a bigger menu can have its own. `value` is read every time it is
+// asked for, which keeps the wallet honest after a purchase without the
+// game telling the menu anything. `format` (value => text) is optional.
+// ============================================================
+
+MenuModel.prototype.getCurrencies = function () {
+  var list = this.currencySource();
+  return list.map(function (currency) {
+    var value = Number(resolveValue(currency.value, currency)) || 0;
+    return {
+      id: currency.id,
+      label: currency.label || currency.id,
+      icon: currency.icon || null,
+      value: value,
+      text: typeof currency.format === 'function' ? currency.format(value) : String(value),
+      // Whether `text` already says what it is ($25), or needs the label.
+      formatted: typeof currency.format === 'function',
+    };
+  });
+};
+
+MenuModel.prototype.currencySource = function () {
+  for (var i = this.stack.length - 1; i >= 0; i--) {
+    var source = i === 0 ? this.page : this.stack[i].source;
+    var list = source && resolveValue(source.currencies, source);
+    if (Array.isArray(list) && list.length) return list;
+  }
+  return [];
+};
+
+// An item's price as one entry per currency it costs:
+// [{ id, label, amount, have, affordable, text }]. A bare number is in
+// the first currency; an empty array means free (or not for sale).
+// A price in a currency the menu does not list is unaffordable rather
+// than ignored — better a shop that says no than one that hands it over.
+MenuModel.prototype.priceOf = function (item) {
+  var price = item && resolveValue(item.price, item);
+  if (price === undefined || price === null || price === '') return [];
+  var currencies = this.getCurrencies();
+  var amounts = {};
+  if (typeof price === 'number') {
+    if (!currencies.length) return [{ id: '', label: '', amount: price, have: 0, affordable: false, text: String(price) }];
+    amounts[currencies[0].id] = price;
+  } else {
+    amounts = price;
+  }
+  var result = [];
+  for (var id in amounts) {
+    var amount = Number(amounts[id]) || 0;
+    var currency = null;
+    for (var c = 0; c < currencies.length; c++) if (currencies[c].id === id) currency = currencies[c];
+    var source = null;
+    var list = this.currencySource();
+    for (var s = 0; s < list.length; s++) if (list[s].id === id) source = list[s];
+    result.push({
+      id: id,
+      label: currency ? currency.label : id,
+      amount: amount,
+      have: currency ? currency.value : 0,
+      haveText: currency ? currency.text : '0',
+      affordable: Boolean(currency) && currency.value >= amount,
+      // As it reads on a price tag: the currency's own format ($25), or
+      // the amount and its name (25 Gold).
+      text: source && typeof source.format === 'function'
+        ? source.format(amount)
+        : (currency && currency.label ? amount + ' ' + currency.label : String(amount)),
+    });
+  }
+  return result;
+};
+
+MenuModel.prototype.canAfford = function (item) {
+  var price = this.priceOf(item);
+  for (var i = 0; i < price.length; i++) if (!price[i].affordable) return false;
+  return true;
+};
+
+// ============================================================
+// DETAILS
+//
+// The details pane is the sidecar for a surface with room: a title and
+// subtitle, a column of stats, a paragraph of flavour text, and the
+// price and what confirming does. An item gives it with `details`:
+//
+//   details: {
+//     title: 'Peacemaker',          // defaults to the item's label
+//     subtitle: 'Revolver · Rare',
+//     stats: [
+//       { label: 'Damage', value: 34, max: 50 },   // drawn as a bar
+//       { label: 'Rounds', text: '6' },             // drawn as text
+//       { label: 'Reload', value: 2.1, max: 4, delta: -0.4 },
+//     ],
+//     text: 'Flavour, lore, or what it does.',
+//   }
+//
+// or a function of the item returning that, read every draw. An item
+// with no `details` falls back to its `info`, and a level with no
+// focused details (the title bar has the focus, or the row has nothing)
+// to the innermost level's `info` — the same order the sidecar uses.
+// `delta` on a stat is how it compares to what you have now; a surface
+// can colour it.
+// ============================================================
+
+MenuModel.prototype.getDetails = function () {
+  var row = this.chromeIndex === null ? this.focusedRow() : null;
+  var item = row && row.item;
+  var details = item ? resolveValue(item.details, item) : null;
+  var info = this.getInfo();
+  if (!details && !item && !info) return null;
+  var result = {
+    item: item || (info && info.item) || null,
+    title: '',
+    subtitle: '',
+    stats: [],
+    text: '',
+    price: item ? this.priceOf(item) : [],
+    affordable: item ? this.canAfford(item) : true,
+    actionLabel: '',
+    thumbnail: null,
+    from: details ? 'details' : (info ? info.from : 'row'),
+  };
+  if (details) {
+    result.title = details.title !== undefined ? String(details.title) : (row ? row.label : '');
+    result.subtitle = details.subtitle ? String(details.subtitle) : '';
+    result.stats = Array.isArray(details.stats) ? details.stats.map(normaliseStat) : [];
+    result.text = Array.isArray(details.text) ? details.text.join('\n') : (details.text ? String(details.text) : '');
+  } else {
+    result.title = row ? row.label : '';
+    result.text = info ? info.text : '';
+  }
+  if (item) {
+    result.subtitle = result.subtitle || String(resolveValue(item.subtitle, item) || '');
+    result.thumbnail = resolveValue(item.thumbnail, item) || null;
+    result.actionLabel = item.actionLabel || defaultActionLabel(item);
+  }
+  return result;
+};
+
+function normaliseStat(stat) {
+  var hasValue = typeof stat.value === 'number';
+  return {
+    label: String(stat.label || ''),
+    value: hasValue ? stat.value : null,
+    max: typeof stat.max === 'number' && stat.max > 0 ? stat.max : null,
+    delta: typeof stat.delta === 'number' ? stat.delta : 0,
+    text: stat.text !== undefined ? String(stat.text) : (hasValue ? String(stat.value) : ''),
+  };
+}
+
+function defaultActionLabel(item) {
+  if (item.disabled) return '';
+  if (item.kind === 'submenu' || item.kind === 'select' || item.kind === 'number') return 'Open';
+  if (item.kind === 'toggle') return item.value ? 'Turn off' : 'Turn on';
+  if (item.kind === 'action' || item.kind === 'custom') return 'Select';
+  return '';
+}
 
 // ---------- what a renderer draws ----------
 

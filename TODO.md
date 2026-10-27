@@ -14,6 +14,10 @@ comfort budget) have their own plan in `docs/actions/` — one
 `*.todo.md` per system, with `docs/actions/README.md` as the index and
 build order.
 
+The shared menu system (the crossbar and grid surfaces, page data, and
+what's next for shops and catalogs: tabs, quantities, compare, filters)
+has its plan in `docs/menus/`, starting at `docs/menus/README.md`.
+
 ## 3D Model Toybox
 
 - **Explore two-hand skeletal posing after the rigid-toy workflow is tested.**

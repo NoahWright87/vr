@@ -234,6 +234,24 @@ function resolveFont(name) {
   return MENU_FONTS[name] || { font: name, negate: false };
 }
 
+// For the other menu surfaces (menu-grid.js), so a name means the same
+// face everywhere.
+export var resolveMenuFont = resolveFont;
+
+// The menu surfaces a projected panel or the hint system can hold: the
+// crossbar here, and the grid in menu-grid.js. Each exposes the same
+// handful of methods the stick system drives (step, forward, back,
+// activate, setLocked, setEngagedHand, getWorldPosition) and a `menu`.
+export var MENU_SURFACES = ['crossbar-menu', 'grid-menu'];
+
+export function menuSurfaceOf(el) {
+  if (!el || !el.components) return null;
+  for (var i = 0; i < MENU_SURFACES.length; i++) {
+    if (el.components[MENU_SURFACES[i]]) return el.components[MENU_SURFACES[i]];
+  }
+  return null;
+}
+
 if (typeof AFRAME !== 'undefined') {
   var THREE = AFRAME.THREE;
 
@@ -1963,7 +1981,7 @@ if (typeof AFRAME !== 'undefined') {
       if (!hints || typeof hints.getDesktopCandidate !== 'function') return null;
       var candidate = hints.getDesktopCandidate('menu');
       if (!candidate || !candidate.zone) return null;
-      var component = candidate.zone.el.components['crossbar-menu'];
+      var component = menuSurfaceOf(candidate.zone.el);
       if (!component) return null;
       // A collapsed panel is still offerable — that is the whole point
       // of collapsing rather than vanishing. Entering it opens it.
@@ -2114,8 +2132,12 @@ if (typeof AFRAME !== 'undefined') {
       switch (evt.code) {
         case 'KeyW': case 'ArrowUp': locked.step(-1); break;
         case 'KeyS': case 'ArrowDown': locked.step(1); break;
-        case 'KeyD': case 'ArrowRight': locked.forward(); break;
-        case 'KeyA': case 'ArrowLeft': locked.back(); break;
+        // A grid moves sideways on these; a crossbar goes in and out.
+        case 'KeyD': case 'ArrowRight': if (locked.horizontal) locked.horizontal(1); else locked.forward(); break;
+        case 'KeyA': case 'ArrowLeft': if (locked.horizontal) locked.horizontal(-1); else locked.back(); break;
+        // Back as a key of its own, for a grid, where A only goes back
+        // from the first column.
+        case 'KeyQ': case 'Backspace': locked.back(); break;
         case 'Enter': case 'Space': locked.activate(); break;
         case 'Escape': this.release(); break;
         default: handled = false;
@@ -2157,6 +2179,13 @@ if (typeof AFRAME !== 'undefined') {
       var y = axes[3] !== undefined ? axes[3] : (axes[1] || 0);
       var x = axes[2] !== undefined ? axes[2] : (axes[0] || 0);
 
+      // A grid's columns are a second list to scroll, so sideways repeats
+      // there the way up and down do; see stepAxis. (Only the move does:
+      // leaving the grid off its first column waits for a fresh push.)
+      if (Math.abs(x) > Math.abs(y) && state.menu.horizontal && state.menu.horizontalRepeats()) {
+        this.stepAxis(state, x, time, 'x');
+        return;
+      }
       // Horizontal is hierarchy: inward goes deeper, outward comes back
       // and, at the root, onto the title bar. One detent, no repeat --
       // walking down levels by holding the stick is not something anyone
@@ -2171,7 +2200,14 @@ if (typeof AFRAME !== 'undefined') {
         return;
       }
 
-      var magnitude = Math.abs(y);
+      this.stepAxis(state, y, time, 'y');
+    },
+
+    // One detent, then repeat while held, along one axis. The two axes
+    // share the arming state, so swinging the stick from up to right
+    // without passing through the centre does not fire twice.
+    stepAxis: function (state, value, time, axis) {
+      var magnitude = Math.abs(value);
       if (magnitude < STEP_OFF) {
         state.armed = true;
         state.armedX = true;
@@ -2180,18 +2216,21 @@ if (typeof AFRAME !== 'undefined') {
       }
       if (magnitude < STEP_ON) return;
 
-      var direction = y > 0 ? 1 : -1;
+      var direction = value > 0 ? 1 : -1;
+      var move = axis === 'x'
+        ? function (repeat) { state.menu.horizontal(direction, repeat); }
+        : function (repeat) { state.menu.step(direction, repeat); };
       if (state.armed) {
         state.armed = false;
         state.repeatAt = time + REPEAT_DELAY_MS;
-        state.menu.step(direction);
+        move(false);
         return;
       }
       // Held: repeat, so scrolling a long list (or an alphabet) is one
       // sustained push rather than thirty presses.
       if (state.repeatAt && time >= state.repeatAt) {
         state.repeatAt = time + REPEAT_INTERVAL_MS;
-        state.menu.step(direction);
+        move(true);
       }
     },
   });
@@ -2211,7 +2250,9 @@ if (typeof AFRAME !== 'undefined') {
   //   - off a headset the keys go to the open menu, the way they go to
   //     any menu you have entered.
   //
-  // The watch, the wall screen and the pedestal button are all this.
+  // The watch, the wall screen and the pedestal button are all this. A
+  // grid-menu (menu-grid.js) in the panel works the same way — the shop
+  // counter and the toybox chest are this too.
   // ============================================================
   AFRAME.registerComponent('projected-crossbar', {
     dependencies: ['projected-menu'],
@@ -2228,14 +2269,14 @@ if (typeof AFRAME !== 'undefined') {
       this.projectedMenu = pm;
       this.component = null;
       if (!pm || !pm.panelEl) return;
-      var menuEl = pm.panelEl.querySelector('[crossbar-menu]');
+      var menuEl = pm.panelEl.querySelector(MENU_SURFACES.map(function (name) { return '[' + name + ']'; }).join(', '));
       if (!menuEl) {
-        console.warn('[projected-crossbar] the panel has no crossbar-menu in it');
+        console.warn('[projected-crossbar] the panel has no crossbar-menu or grid-menu in it');
         return;
       }
       this.menuEl = menuEl;
       this.bind = this.bind.bind(this);
-      if (menuEl.hasLoaded && menuEl.components['crossbar-menu']) this.bind();
+      if (menuEl.hasLoaded && menuSurfaceOf(menuEl)) this.bind();
       else menuEl.addEventListener('loaded', function onLoaded() {
         menuEl.removeEventListener('loaded', onLoaded);
         self.bind();
@@ -2247,7 +2288,7 @@ if (typeof AFRAME !== 'undefined') {
       var pm = this.projectedMenu;
       var trigger = this.el;
       var menuEl = this.menuEl;
-      var component = menuEl.components['crossbar-menu'];
+      var component = menuSurfaceOf(menuEl);
       this.component = component;
 
       Array.prototype.forEach.call(menuEl.querySelectorAll('.menu-target'), function (target) {

@@ -43,6 +43,11 @@ exists now, `<topic>.todo.md` is decided-on future work. Start with
 when you build a todo item, move its substance into the spec and delete
 it from the todo. The showcase for these is `primitives/actions/`.
 
+**`docs/menus/` is the plan for the shared menu system** — one model
+(`common/menu-model.js`), two surfaces (the crossbar list and the grid
+of tiles), same page data for both. Same spec/todo pairing. Read its
+README before adding a menu type, a surface, or a page-data field.
+
 ## Testing without a headset
 
 Run `npm install`, then `npm run dev` for source development. Use

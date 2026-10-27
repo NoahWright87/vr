@@ -133,6 +133,11 @@
       <template id="tpl-wanted">
         <a-entity visible="false"><a-entity crossbar-menu="page: wanted; width: 0.9; rowHeight: 0.13; maxChars: 20; open: false; closeBehavior: hide; memory: temporary; hint: false; stickRange: 0.6; plateOpacity: 0.9; font: b612; titleFont: wright" crossbar-menu-registration></a-entity></a-entity>
       </template>
+      <!-- A grid menu (common/menu-grid.js): tiles, a details pane and a
+           wallet, for the general store. -->
+      <template id="tpl-store">
+        <a-entity visible="false"><a-entity grid-menu="page: general-store; columns: 3; rows: 3; tileWidth: 0.25; gap: 0.025; labelChars: 11; open: false; closeBehavior: hide; memory: temporary; hint: false; stickRange: 0.8; plateOpacity: 0.92; font: b612; titleFont: wright; detailsWidth: 0.72; detailsChars: 30; detailsContentHeight: 0.26; accent: #ffc56b"></a-entity></a-entity>
+      </template>
       <template id="tpl-lamp">
         <a-entity visible="false"><a-entity crossbar-menu="page: lamp; width: 0.9; rowHeight: 0.13; maxChars: 18; open: false; closeBehavior: hide; memory: temporary; hint: false; stickRange: 0.6; plateOpacity: 0.9; font: b612; titleFont: wright" crossbar-menu-registration></a-entity></a-entity>
       </template>
@@ -340,6 +345,17 @@
           <a-text value="WANTED" align="center" color="#5a2a10" width="0.4" position="0 0.08 0.02" font="/vendor/fonts/WrightSans-Bold-msdf.json" negate="false"></a-text>
           <a-text value="WANTED" align="center" color="#5a2a10" width="0.4" position="0.15 0.05 0.02" font="/vendor/fonts/WrightSans-Bold-msdf.json" negate="false"></a-text>
         </a-entity>
+        <!-- The general store's sign, on a post to your left. -->
+        <a-cylinder radius="0.03" height="1.1" position="0.62 0.55 0.42" color="#5b4a3a"></a-cylinder>
+        <a-entity id="frontier-store" position="0.62 1.2 0.42" rotation="0 200 0"
+          geometry="primitive: box; width: 0.5; height: 0.24; depth: 0.03" material="color: #7a5a3a"
+          hint-zone="action: grab; radius: 0.36; maxReach: 1.0; gazeThreshold: 0.88; priority: 20; desktopKey: F; desktopLabel: Open the store; xrKey: GRIP; xrLabel: Open; hintOffset: 0 0.25 0"
+          projected-menu="template: #tpl-store; mode: laser; laserScale: 0.7; offset: 0 0.6 0; closeDistance: 3"
+          projected-crossbar
+          grab-to-open
+        >
+          <a-text value="GENERAL STORE" align="center" color="#f0d8a0" width="0.9" position="0 0 0.02" font="/vendor/fonts/WrightSans-Bold-msdf.json" negate="false"></a-text>
+        </a-entity>
         <!-- The fence and its bottles. -->
         <a-box width="3" height="0.06" depth="0.06" position="0 0.9 4.2" color="#6b4a2e"></a-box>
         <a-box width="3" height="0.06" depth="0.06" position="0 0.55 4.2" color="#6b4a2e"></a-box>
@@ -356,6 +372,7 @@
     <script type="module" src="../../common/visor-menu.js"></script>
     <script type="module" src="../../common/watch-menu.js"></script>
     <script type="module" src="../../common/menu-crossbar.js"></script>
+    <script type="module" src="../../common/menu-grid.js"></script>
     <script type="module" src="../../common/locomotion.js"></script>
     <script type="module" src="../../common/desktop-controls.js"></script>
     <script type="module" src="./tour.js"></script>

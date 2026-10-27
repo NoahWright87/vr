@@ -6,7 +6,9 @@
 // and a pocket watch up top. The wanted board is a menu of bounties; pick
 // one and the sheriff briefs you — a talking portrait in the corner of
 // your visor, with his words typed out along the top, the way a strategy
-// game or a sci-fi shooter puts someone on your comms.
+// game or a sci-fi shooter puts someone on your comms. Across from the
+// board is the general store, where the bounty gets spent: a grid menu
+// (common/menu-grid.js; the page is in frontier-store.js).
 // ============================================================
 
 import { registerMenuPage } from '../../common/menu-crossbar.js';
@@ -14,6 +16,7 @@ import {
   HUD_COLORS, drawIcon, drawText, drawBar, drawAmmo, drawIconMeter, roundRect,
 } from '../../common/hud-draw.js';
 import { hud, heldItem, holding, actionKey, resetProps, sceneEl } from './tour-core.js';
+import { registerFrontierStore, buyFromStore } from './frontier-store.js';
 
 var BOUNTIES = {
   bart: { label: 'Black Bart', reward: 500, line: 'Black Bart held up the noon stage and shot the driver. Five hundred dollars, and I want him breathing.' },
@@ -37,6 +40,13 @@ registerMenuPage('wanted', {
     };
   }),
 });
+
+registerFrontierStore(state);
+
+function onStore(evt) {
+  if (evt.detail.id.indexOf('store-buy-') !== 0) return;
+  buyFromStore(state, evt.detail.item);
+}
 
 function setEl() { return document.querySelector('#set-frontier'); }
 
@@ -198,6 +208,7 @@ export default {
       { kind: 'info', id: 'frontier-f-cylinder', label: 'Six-shooter cylinder', info: ['THE CYLINDER', 'Six rounds or fewer show', 'as the rounds themselves,', 'spent ones dim. Shoot', 'the bottles on the fence.'] },
       { kind: 'info', id: 'frontier-f-whisky', label: 'Whisky glass', info: ['WHISKY', 'Drink from the bottle', '(trigger, or hold it to', 'your mouth): the glass', 'fills, then empties as', 'it wears off.'] },
       { kind: 'info', id: 'frontier-f-bounty', label: 'Bounty and watch', info: ['BOUNTY AND WATCH', 'Top left: dollars earned,', 'ten a bottle. Top right:', 'the real time, on a', 'pocket watch.'] },
+      { kind: 'info', id: 'frontier-f-store', label: 'The general store', info: ['THE GENERAL STORE', 'Left of the table. Grab', 'the sign: a grid menu', 'with pictures, stats and', 'a wallet. Shoot bottles', 'for dollars to spend.'] },
       { kind: 'info', id: 'frontier-f-board', label: 'The wanted board', info: ['THE WANTED BOARD', 'Beside the table. Grab', 'it: each poster is a', 'row, with the reward in', 'the sidecar.'] },
       { kind: 'action', id: 'frontier-reset', label: 'Set up the bottles' },
     ];
@@ -213,10 +224,14 @@ export default {
 
   enter: function () {
     document.addEventListener('menu-action', onWanted);
+    document.addEventListener('menu-action', onStore);
   },
 
   exit: function () {
     document.removeEventListener('menu-action', onWanted);
+    document.removeEventListener('menu-action', onStore);
+    var store = document.querySelector('#frontier-store').components['projected-menu'];
+    if (store) store.close();
     resetProps(setEl());
     state.talk = null;
     var pm = document.querySelector('#frontier-board').components['projected-menu'];
