@@ -1,0 +1,74 @@
+{
+  "grenade-a": {
+    "name": "Grenade",
+    "model": "kenney-blaster-kit-grenade-a",
+    "fit": { "pos": [0.0098, -0.077, 0.0065], "rot": [0, 0, 0], "scale": 0.65 },
+    "massKg": 0.4,
+    "interactions": [
+      {
+        "id": "hold",
+        "hands": "either",
+        "occupants": [{ "pose": "hold", "pos": [0.03, 0, -0.03], "rot": [0, 0, -90] }]
+      }
+    ]
+  },
+  "pistol-h": {
+    "name": "Pistol",
+    "model": "kenney-blaster-kit-blaster-h",
+    "fit": { "pos": [0, 0.0702, -0.1957], "rot": [0, 0, 0], "scale": 0.8 },
+    "massKg": 1,
+    "interactions": [
+      {
+        "id": "grip",
+        "hands": "either",
+        "occupants": [
+          { "pose": "pistol-grip", "pos": [0.03, -0.023, -0.02], "rot": [-49, 0, -90] },
+          { "pose": "wrap-over", "pos": [0.042, -0.02, -0.03], "rot": [-49, 0, -90] }
+        ]
+      }
+    ],
+    "emitters": [{ "id": "muzzle", "role": "muzzle", "pos": [0, 0.0874, -0.4612], "rot": [0, 0, 0] }]
+  },
+  "rifle-a": {
+    "name": "Rifle",
+    "model": "kenney-blaster-kit-blaster-a",
+    "fit": { "pos": [0, 0.115, -0.127], "rot": [0, 0, 0], "scale": 0.65 },
+    "massKg": 3.4,
+    "interactions": [
+      {
+        "id": "grip",
+        "hands": "either",
+        "occupants": [{ "pose": "pistol-grip", "pos": [0.03, -0.017, -0.025], "rot": [-33.5, 0, -90] }]
+      },
+      {
+        "id": "foregrip",
+        "hands": "either",
+        "occupants": [{ "pose": "cradle", "pos": [0, -0.03, -0.27], "rot": [0, 0, 180] }]
+      }
+    ],
+    "emitters": [{ "id": "muzzle", "role": "muzzle", "pos": [0, 0.149, -0.375], "rot": [0, 0, 0] }]
+  },
+  "smg-d": {
+    "name": "SMG",
+    "model": "kenney-blaster-kit-blaster-d",
+    "fit": { "pos": [0, 0.034, -0.084], "rot": [0, 0, 0], "scale": 0.65 },
+    "massKg": 2.4,
+    "interactions": [
+      {
+        "id": "grip",
+        "hands": "either",
+        "occupants": [{ "pose": "pistol-grip", "pos": [0.03, -0.02, -0.023], "rot": [-41, 0, -90] }]
+      },
+      {
+        "id": "foregrip",
+        "hands": "either",
+        "occupants": [{ "pose": "cradle", "pos": [0, -0.03, -0.24], "rot": [0, 0, 180] }]
+      }
+    ],
+    "emitters": [{ "id": "muzzle", "role": "muzzle", "pos": [0, 0.07, -0.385], "rot": [0, 0, 0] }],
+    "attachments": [
+      { "id": "rail", "accepts": ["optic"], "pos": [0, 0.155, -0.06], "rot": [0, 0, 0] },
+      { "id": "muzzle", "accepts": ["suppressor"], "pos": [0, 0.07, -0.385], "rot": [0, 0, 0] }
+    ]
+  }
+}

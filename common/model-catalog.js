@@ -1,6 +1,8 @@
-import kenney from '../../assets/models/kenney/catalog.json';
-import { models } from '../../assets/models/catalog.js';
-import { createModel, disposeModel } from '../../common/model-library.js';
+// The model catalogs as one list, and loading any entry as a three.js object:
+// the Toybox and the prefab workshop both start from here.
+import kenney from '../assets/models/kenney/catalog.json';
+import { models } from '../assets/models/catalog.js';
+import { createModel, disposeModel } from './model-library.js';
 
 export const creators = [
   { id: 'kenney', name: 'Kenney', site: 'https://kenney.nl', license: 'CC0-1.0', logo: '/assets/models/kenney/logo.png' },
