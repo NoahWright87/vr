@@ -69,6 +69,15 @@ export var MENU_DEFAULTS = {
   gridColumns: 0,
   // Rows of a grid a surface shows at once. The rest scroll.
   gridRows: 3,
+  // How long a confirmation has to be held, in ms, before it happens
+  // (see holdFor). A stick nudged by drift or a bumped button starts the
+  // wheel and lets go before it fills, so nothing happens by accident.
+  // Going in is quick, because it is easy to undo; coming back out a
+  // little slower; an action — which may do something you cannot see
+  // undone — slower again. An item asks for its own with `hold`: a
+  // number of ms, one of these names ('long' for "are you sure"), or
+  // false for none.
+  holds: { enter: 220, pick: 220, back: 420, action: 380, close: 600, long: 1500 },
 };
 
 var VALID_MEMORY = ['none', 'temporary', 'permanent'];
@@ -313,6 +322,8 @@ export function MenuModel(page, options) {
     : opts.breadcrumbDepth;
   this.chrome = opts.chrome || MENU_DEFAULTS.chrome;
   this.gridColumns = Math.max(0, opts.gridColumns || MENU_DEFAULTS.gridColumns) | 0;
+  // The page can slow (or speed) every hold at once: `holds` on the page.
+  this.holds = Object.assign({}, MENU_DEFAULTS.holds, opts.holds, this.page && this.page.holds);
   this.gridRows = Math.max(1, opts.gridRows || MENU_DEFAULTS.gridRows) | 0;
   // Injectable so memory expiry is testable without waiting a minute.
   this.now = typeof opts.now === 'function' ? opts.now : function () { return Date.now(); };
@@ -990,6 +1001,66 @@ function defaultActionLabel(item) {
   if (item.kind === 'action' || item.kind === 'custom') return 'Select';
   return '';
 }
+
+// ============================================================
+// HOLD TO CONFIRM
+//
+// How long the verb you are about to use needs holding, for whatever is
+// focused right now: 0 means it happens on the press. Pure policy; the
+// input layer (menu-stick-control) runs the wheel and the surface draws
+// it. Moving the focus is never held — only going in, coming out and
+// confirming are — so scrolling a list stays as quick as it always was.
+//
+//   'forward'   right on the stick, D. Going into the focused row.
+//   'activate'  the trigger / A, Enter. Confirming the focused row.
+//   'back'      left on the stick, B / grip, Q.
+// ============================================================
+
+function resolveHold(hold, base, holds) {
+  if (hold === undefined || hold === null || hold === true) return base;
+  if (hold === false) return 0;
+  if (typeof hold === 'string') return holds[hold] !== undefined ? holds[hold] : base;
+  var ms = Number(hold);
+  return ms > 0 ? ms : 0;
+}
+
+MenuModel.prototype.holdFor = function (verb) {
+  var holds = this.holds;
+  if (verb === 'back') {
+    // On the title bar there is nowhere further out to go.
+    if (this.chromeIndex !== null) return 0;
+    // At the root, back only moves onto the title bar — or does nothing,
+    // on a menu with no title-bar controls.
+    if (this.stack.length <= 1) return this.chrome.length ? holds.enter : 0;
+    return holds.back;
+  }
+  if (this.chromeIndex !== null) {
+    // Stepping off the title bar back into the list is only moving.
+    if (verb === 'forward') return 0;
+    var control = this.getChromeFocus();
+    return resolveHold(control && control.hold, holds.close, holds);
+  }
+  var level = this.level();
+  var row = this.focusedRow();
+  if (!row || row.disabled) return 0;
+  // Picking a value: you have been watching it preview, so it is quick.
+  if (level.kind === 'number' || (level.source && level.source.kind === 'select')) {
+    return resolveHold(level.source && level.source.pickHold, holds.pick, holds);
+  }
+  var item = row.item;
+  if (!item || item.kind === 'info') return 0;
+  var opens = item.kind === 'submenu' || item.kind === 'select' || item.kind === 'number';
+  return resolveHold(item.hold, opens ? holds.enter : holds.action, holds);
+};
+
+// Whether a hold is a deliberate "are you sure" rather than the ordinary
+// guard against drift: long enough that a keyboard or a pointer, which
+// do not drift, should be held too.
+MenuModel.prototype.holdIsSerious = function (verb) {
+  return this.holdFor(verb) >= SERIOUS_HOLD_MS;
+};
+
+export var SERIOUS_HOLD_MS = 1000;
 
 // ---------- what a renderer draws ----------
 

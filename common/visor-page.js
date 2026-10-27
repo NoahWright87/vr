@@ -19,6 +19,7 @@
 // ============================================================
 
 import { registerMenuPage, findMenuItem } from './menu-crossbar.js';
+import { STICK_DRIFT, getStickDriftName, setStickDrift } from './stick-drift.js';
 
 var DEG = function (value) { return value + '°'; };
 var CM = function (value) { return value + 'cm'; };
@@ -136,6 +137,14 @@ function settingsItem() {
         kind: 'select', id: 'visor-scrim', label: 'Scrim', value: 'off',
         options: [{ value: 'on', label: 'On' }, { value: 'off', label: 'Off' }],
       },
+      // How far a thumbstick has to be pushed before it walks you, turns
+      // you or moves a menu — for every game, since it is about your
+      // controllers (common/stick-drift.js).
+      {
+        kind: 'select', id: 'visor-stick-drift', label: 'Stick dead zone', value: getStickDriftName(),
+        options: Object.keys(STICK_DRIFT).map(function (name) { return { value: name, label: STICK_DRIFT[name].label }; }),
+        info: ['STICK DEAD ZONE', 'How far a thumbstick has', 'to be pushed before it', 'walks you or moves a', 'menu. Larger if yours', 'drifts on its own.'],
+      },
       // How the temple gesture triggers. While you are in here the two
       // spheres and your hands are drawn as maps beside the menu, since
       // you can never see the real ones.
@@ -162,6 +171,7 @@ function syncSettings(page) {
   var s = system.settings;
   var a = system.activation;
   var set = function (id, value) { var item = findMenuItem(page.items, id); if (item) item.value = value; };
+  set('visor-stick-drift', getStickDriftName());
   var display = hud();
   if (display) {
     for (var id in FRAME) set(id, display.frame[FRAME[id]]);
@@ -222,6 +232,7 @@ function wireHandlers() {
     if (!system) return;
     var id = evt.detail.id;
     var value = evt.detail.value;
+    if (id === 'visor-stick-drift') { setStickDrift(value); return; }
     var display = hud();
     if (display) {
       if (FRAME[id]) { var frame = {}; frame[FRAME[id]] = value; display.setFrame(frame); }
@@ -279,7 +290,8 @@ export function registerVisorPage(name, page) {
   wireHandlers();
   var own = page.items || [];
   var settings = settingsItem();
-  var exit = { kind: 'action', id: 'visor-exit', label: 'Exit VR' };
+  // Leaving the headset is not something to do by brushing a button.
+  var exit = { kind: 'action', id: 'visor-exit', label: 'Exit VR', hold: 'long' };
   var full = {
     title: page.title || 'VISOR',
     info: page.info,

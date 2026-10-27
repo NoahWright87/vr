@@ -26,11 +26,18 @@ function grid(page) {
   return component;
 }
 
+// The real system's stick and hold code, on a clock the test turns.
 function stick(component) {
   const system = Object.create(systems['menu-stick-control']);
+  system.holders = [];
+  let clock = 0;
+  system.now = () => clock;
   const state = { menu: component, axes: [0, 0, 0, 0], armed: true, armedX: true, repeatAt: 0 };
   return {
-    push(x, y, time) { state.axes = [0, 0, x, y]; system.pumpStick(state, time); },
+    system, state,
+    // Push the stick to (x, y) at `time`, and let the hold wheel run.
+    push(x, y, time) { clock = time; state.axes = [0, 0, x, y]; system.pumpStick(state, time); system.updateHolds(time); },
+    wait(time) { clock = time; system.updateHolds(time); },
   };
 }
 
@@ -60,31 +67,83 @@ test('holding left runs to the first column but does not back out of the level',
   assert.equal(focus(component), 'item-0');
   // Still held: the repeat stops at the edge rather than leaving.
   s.push(-1, 0, 700);
-  s.push(-1, 0, 900);
+  s.push(-1, 0, 2000);
   assert.equal(component.menu.depth(), 1);
-  // A fresh push off the first column is back, as everywhere else.
-  s.push(0, 0, 1000);
-  s.push(-1, 0, 1100);
+  // A fresh push off the first column is back, held until the wheel fills.
+  s.push(0, 0, 2100);
+  s.push(-1, 0, 2200);
+  assert.equal(component.menu.depth(), 1);
+  s.push(-1, 0, 2200 + component.menu.holds.back + 10);
   assert.equal(component.menu.depth(), 0);
 });
 
-test('on a list level a grid surface keeps the crossbar\'s one-detent in and out', () => {
-  const component = grid({ title: 'L', items: [{ kind: 'submenu', id: 'sub', label: 'Sub', items: items(3) }, ...items(2)] });
+test('going in is a hold: let go early and nothing happens; hold on and it happens once', () => {
+  const sub = { kind: 'submenu', id: 'sub', label: 'Sub', items: [{ kind: 'submenu', id: 'deeper', label: 'Deeper', items: items(2) }] };
+  const component = grid({ title: 'L', items: [sub, ...items(2)] });
   assert.equal(component.horizontalRepeats(), false);
   const s = stick(component);
+  const enter = component.menu.holds.enter;
   s.push(1, 0, 0);
+  s.push(1, 0, enter / 2);
+  assert.equal(component.menu.depth(), 0);
+  s.push(0, 0, enter / 2 + 10); // let go: cancelled
+  s.push(0, 0, enter * 3);
+  assert.equal(component.menu.depth(), 0);
+  s.push(1, 0, 1000);
+  s.push(1, 0, 1000 + enter + 1);
   assert.equal(component.menu.depth(), 1);
-  s.push(1, 0, 600); // held: no repeat into the row
+  // Still held: it does not go on into the next level.
+  s.push(1, 0, 1000 + enter * 4);
   assert.equal(component.menu.depth(), 1);
 });
 
-test('a crossbar is unchanged: right goes in, once', () => {
+test('a drifting stick moves nothing', () => {
+  const component = grid({ title: 'L', items: [{ kind: 'submenu', id: 'sub', label: 'Sub', items: items(3) }, ...items(4)] });
+  const s = stick(component);
+  for (let t = 0; t < 5000; t += 100) s.push(0.45, 0.5, t);
+  assert.equal(component.menu.depth(), 0);
+  assert.equal(focus(component), 'sub');
+});
+
+test('moving the focus during a hold drops it', () => {
+  const component = grid({ title: 'L', items: [{ kind: 'action', id: 'a', label: 'A' }, { kind: 'action', id: 'b', label: 'B' }] });
+  const actions = [];
+  component.menu.on('action', e => actions.push(e.id));
+  const s = stick(component);
+  s.system.beginHold(s.state, component, 'activate', 'activate-button');
+  s.wait(100);
+  component.menu.moveFocus(1);
+  s.wait(5000);
+  assert.deepEqual(actions, []);
+  // A fresh press on B, held through, fires B once.
+  s.system.beginHold(s.state, component, 'activate', 'activate-button');
+  s.wait(5000 + component.menu.holds.action + 1);
+  s.wait(9000);
+  assert.deepEqual(actions, ['b']);
+  s.system.endHold(s.state, 'activate-button');
+});
+
+test('a serious item needs the long hold; releasing a different input does not cancel it', () => {
+  const component = grid({ title: 'L', items: [{ kind: 'action', id: 'wipe', label: 'Wipe', hold: 'long' }] });
+  const actions = [];
+  component.menu.on('action', e => actions.push(e.id));
+  const s = stick(component);
+  s.system.beginHold(s.state, component, 'activate', 'activate-button');
+  s.system.endHold(s.state, 'back-button');
+  s.wait(component.menu.holds.action + 50);
+  assert.deepEqual(actions, []);
+  s.wait(component.menu.holds.long + 1);
+  assert.deepEqual(actions, ['wipe']);
+});
+
+test('a crossbar is unchanged but held: right goes in, once', () => {
   const crossbar = Object.create(components['crossbar-menu']);
-  crossbar.menu = createMenu({ title: 'C', items: [{ kind: 'submenu', id: 'sub', label: 'Sub', items: items(3) }] });
+  crossbar.menu = createMenu({ title: 'C', items: [{ kind: 'submenu', id: 'sub', label: 'Sub', items: [{ kind: 'submenu', id: 'deeper', label: 'D', items: items(1) }] }] });
   crossbar.menu.open();
   assert.equal(crossbar.horizontal, undefined);
   const s = stick(crossbar);
   s.push(1, 0, 0);
   s.push(1, 0, 600);
+  s.push(1, 0, 2000);
   assert.equal(crossbar.menu.depth(), 1);
 });

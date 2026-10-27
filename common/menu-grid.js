@@ -36,7 +36,7 @@
 // ============================================================
 
 import { createMenu, truncateLabel, marqueeText } from './menu-model.js';
-import { getMenuPage, resolveMenuFont } from './menu-crossbar.js';
+import { getMenuPage, resolveMenuFont, createHoldRing, createPointerConfirm } from './menu-crossbar.js';
 
 if (typeof AFRAME !== 'undefined') {
   var THREE = AFRAME.THREE;
@@ -52,6 +52,12 @@ if (typeof AFRAME !== 'undefined') {
   var FOCUS_SCALE = 1.07;
   var LIVE_MS = 250;
   var MAX_CURRENCIES = 3;
+  // Breadcrumb segments shown; deeper paths show their last few.
+  var MAX_CRUMBS = 4;
+  // How much each level above the one you are in fades, as on the
+  // crossbar: the level you are in at full, its parent at 70%, on up to
+  // the title.
+  var LEVEL_FADE = [1, 0.7, 0.49, 0.34, 0.24];
 
   // ---------- thumbnails ----------
   //
@@ -168,6 +174,16 @@ if (typeof AFRAME !== 'undefined') {
     return isFinite(height) ? height : 0;
   }
 
+  function textWidth(el) {
+    var mesh = el.getObject3D('text');
+    var position = mesh && mesh.geometry && mesh.geometry.attributes && mesh.geometry.attributes.position;
+    if (!position || !position.count) return 0;
+    mesh.geometry.computeBoundingBox();
+    var box = mesh.geometry.boundingBox;
+    var width = (box.max.x - box.min.x) * Math.abs(mesh.scale.x);
+    return isFinite(width) ? width : 0;
+  }
+
   function priceText(price) {
     return price.map(function (p) { return p.text; }).join(' + ');
   }
@@ -244,6 +260,7 @@ if (typeof AFRAME !== 'undefined') {
         page = { title: data.title || '', items: [] };
       }
       this.page = page;
+      this.pointerConfirm = createPointerConfirm(this);
       this.menu = createMenu(page, {
         gridColumns: Math.max(1, data.columns),
         gridRows: Math.max(1, data.rows),
@@ -337,16 +354,38 @@ if (typeof AFRAME !== 'undefined') {
         width: m.gridWidth * 0.9, size: m.text * 1.35,
       }, 'title');
       this.titleEl.setAttribute('position', { x: m.gridLeft, y: m.titleY, z: 0.002 });
+      // Inside a submenu the title is a way back as well as the corner
+      // button and the breadcrumb.
+      this.titleTarget = this.plane(content, data.accent, 0, true);
+      this.titleTarget.setAttribute('geometry', { primitive: 'plane', width: m.gridWidth * 0.6, height: 0.07 });
+      this.titleTarget.setAttribute('position', { x: m.gridLeft + m.gridWidth * 0.3, y: m.titleY, z: 0.001 });
+      this.titleTarget.addEventListener('click', function () { self.menu.back(); });
+      this.titleTarget.object3D.visible = false;
 
       // The breadcrumb line is the way back for a pointer: clicking it
       // goes up one level, like the crossbar's rail.
       this.crumbTarget = this.plane(content, data.accent, 0, true);
       this.crumbTarget.addEventListener('click', function () { self.menu.back(); });
-      this.crumbEl = this.text(content, {
-        value: '', align: 'left', anchor: 'left', baseline: 'center', opacity: 0.75,
-        width: m.gridWidth * 0.9, size: m.text,
-      });
-      this.crumbEl.setAttribute('position', { x: m.gridLeft, y: m.crumbY, z: 0.002 });
+      // One label per level, so each can fade by its distance from the
+      // level you are in; laid end to end by flowCrumbs.
+      this.crumbEl = document.createElement('a-entity');
+      content.appendChild(this.crumbEl);
+      // The › between them is its own label, centred in the gap, so each
+      // segment's measured width is only its words.
+      this.crumbSegments = [];
+      this.crumbSeparators = [];
+      for (var cs = 0; cs < MAX_CRUMBS; cs++) {
+        var segment = this.text(this.crumbEl, {
+          value: '', align: 'left', anchor: 'left', baseline: 'center', width: m.gridWidth * 0.9, size: m.text,
+        });
+        segment.addEventListener('object3dset', function () { self.flowCrumbs(); });
+        this.crumbSegments.push(segment);
+        var separator = this.text(this.crumbEl, {
+          value: '›', align: 'left', anchor: 'left', baseline: 'center', width: m.gridWidth * 0.9, size: m.text, opacity: 0.5,
+        });
+        separator.object3D.visible = false;
+        this.crumbSeparators.push(separator);
+      }
 
       this.countEl = this.text(content, {
         value: '', align: 'right', anchor: 'right', baseline: 'center', opacity: 0.6,
@@ -368,18 +407,18 @@ if (typeof AFRAME !== 'undefined') {
         this.currencySlots.push({ el: slot, icon: icon, labelEl: label });
       }
 
-      if (data.closable) {
-        var close = this.plane(content, data.accent, 0, true);
-        close.setAttribute('geometry', { primitive: 'plane', width: m.closeSize, height: m.closeSize });
-        close.setAttribute('position', { x: m.gridRight - m.closeSize / 2 + m.scrollGutter, y: m.titleY, z: 0.002 });
-        close.addEventListener('click', function () {
-          if (self.menu.depth() > 0) self.menu.back();
-          else self.menu.close();
-        });
-        this.closeGlyphEl = this.text(close, { value: 'X', align: 'center', color: data.accent, width: m.closeSize * 4, size: m.text * 1.35 });
-        this.closeGlyphEl.setAttribute('position', { x: 0, y: 0, z: 0.002 });
-        this.closeEl = close;
-      }
+      // X at the top of a closable menu; < inside any submenu, closable
+      // or not, so there is always a way back up for a pointer.
+      var close = this.plane(content, data.accent, 0, true);
+      close.setAttribute('geometry', { primitive: 'plane', width: m.closeSize, height: m.closeSize });
+      close.setAttribute('position', { x: m.gridRight - m.closeSize / 2 + m.scrollGutter, y: m.titleY, z: 0.002 });
+      close.addEventListener('click', function () {
+        if (self.menu.depth() > 0) self.menu.back();
+        else if (self.data.closable) self.menu.close();
+      });
+      this.closeGlyphEl = this.text(close, { value: 'X', align: 'center', color: data.accent, width: m.closeSize * 4, size: m.text * 1.35 });
+      this.closeGlyphEl.setAttribute('position', { x: 0, y: 0, z: 0.002 });
+      this.closeEl = close;
 
       var rule = this.plane(content, data.accent, 0.45, false);
       rule.setAttribute('geometry', { primitive: 'plane', width: m.width - 2 * m.pad, height: 0.004 });
@@ -424,6 +463,14 @@ if (typeof AFRAME !== 'undefined') {
       this.glowEl = glow;
 
       if (data.details !== 'none') this.buildDetails(content);
+
+      // The hold-to-confirm wheel: over the focused tile's picture, or on
+      // the corner button for going back.
+      var ringEl = document.createElement('a-entity');
+      this.holdRing = createHoldRing(m.thumbSize * 0.34, m.thumbSize * 0.1, data.accent);
+      ringEl.setObject3D('ring', this.holdRing.object3D);
+      content.appendChild(ringEl);
+      this.holdRingEl = ringEl;
 
       var hint = {
         action: 'menu', radius: data.hintRadius, maxReach: data.hintRadius, priority: 5,
@@ -478,6 +525,13 @@ if (typeof AFRAME !== 'undefined') {
       tile.setAttribute('geometry', { primitive: 'plane', width: m.tileWidth, height: m.tileHeight });
       tile.dataset.tileSlot = String(slot);
       tile.addEventListener('click', function () { self.onTileClick(slot); });
+      // A serious tile (a long `hold`) is held, not tapped.
+      tile.addEventListener('mousedown', function () {
+        var t = self.tiles[slot];
+        if (t && t.cell && t.cell.focused) self.pointerConfirm.down();
+      });
+      tile.addEventListener('mouseup', function () { self.pointerConfirm.up(); });
+      tile.addEventListener('mouseleave', function () { self.pointerConfirm.up(); });
 
       var thumb = makeThumbnail(m.thumbSize);
       thumb.position.set(0, m.tileHeight / 2 - 0.02 - m.thumbSize / 2, 0.003);
@@ -617,7 +671,10 @@ if (typeof AFRAME !== 'undefined') {
       this.el.object3D.visible = open || collapsed;
       this.contentEl.object3D.visible = open || collapsed;
 
-      setText(this.titleEl, { value: (data.title || this.menu.getTitle() || '').toUpperCase(), opacity: open ? (this.locked ? 1 : 0.75) : 0.45 });
+      var held = this.locked || Boolean(this.engagedHand);
+      var above = LEVEL_FADE[Math.min(this.menu.depth(), LEVEL_FADE.length - 1)];
+      setText(this.titleEl, { value: (data.title || this.menu.getTitle() || '').toUpperCase(), opacity: open ? (held ? 1 : 0.75) * above : 0.45 });
+      this.titleTarget.object3D.visible = open && this.menu.depth() > 0;
       if (!open) {
         for (var h = 0; h < this.tiles.length; h++) this.tiles[h].el.object3D.visible = false;
         [this.crumbEl, this.countEl, this.trackEl, this.thumbEl, this.emptyEl, this.footerEl, this.closeEl, this.detailsEl]
@@ -630,7 +687,7 @@ if (typeof AFRAME !== 'undefined') {
       setPlate(this.backingEl, this.locked ? Math.max(0.94, data.plateOpacity) : data.plateOpacity);
       this.crumbEl.object3D.visible = true;
       this.countEl.object3D.visible = true;
-      if (this.closeEl) this.closeEl.object3D.visible = true;
+      this.closeEl.object3D.visible = data.closable || this.menu.depth() > 0;
       if (this.detailsEl) this.detailsEl.object3D.visible = true;
       this.footerEl.object3D.visible = this.locked;
 
@@ -731,15 +788,16 @@ if (typeof AFRAME !== 'undefined') {
       var data = this.data;
       var crumbs = [];
       for (var i = 1; i < this.menu.stack.length; i++) crumbs.push(this.menu.stack[i].title);
-      var crumbText = crumbs.join('  ›  ');
-      setText(this.crumbEl, { value: crumbText });
-      // Clickable where there is somewhere to go back to.
-      this.crumbTarget.object3D.visible = crumbs.length > 0;
-      if (crumbs.length) {
-        var w = Math.min(m.gridWidth * 0.7, (crumbText.length + 4) * m.gridWidth * 0.9 / 46);
-        this.crumbTarget.setAttribute('geometry', { primitive: 'plane', width: w, height: 0.06 });
-        this.crumbTarget.object3D.position.set(m.gridLeft + w / 2, m.crumbY, 0.001);
+      crumbs = crumbs.slice(-MAX_CRUMBS);
+      for (var k = 0; k < this.crumbSegments.length; k++) {
+        var title = crumbs[k];
+        var last = k === crumbs.length - 1;
+        // Faded by distance from the level you are in, the last one.
+        var fade = title ? LEVEL_FADE[Math.min(crumbs.length - 1 - k, LEVEL_FADE.length - 1)] : 0;
+        setText(this.crumbSegments[k], { value: title || '', opacity: fade, color: last ? data.accent : data.color });
       }
+      this.crumbCount = crumbs.length;
+      this.flowCrumbs();
       var level = this.menu.level();
       var focus = grid.count ? level.index + 1 : 0;
       setText(this.countEl, { value: grid.count > 1 ? focus + ' / ' + grid.count : '' });
@@ -747,7 +805,7 @@ if (typeof AFRAME !== 'undefined') {
       // The wallet, right-aligned in the header before the close button,
       // laid out right to left: icon then amount, or name then amount.
       var currencies = this.menu.getCurrencies();
-      var x = m.gridRight + m.scrollGutter - (this.closeEl ? m.closeSize + m.text : 0);
+      var x = m.gridRight + m.scrollGutter - m.closeSize - m.text;
       for (var c = 0; c < this.currencySlots.length; c++) {
         var slot = this.currencySlots[c];
         var currency = currencies[currencies.length - 1 - c];
@@ -766,11 +824,9 @@ if (typeof AFRAME !== 'undefined') {
         x -= m.text * 1.5;
       }
 
-      if (this.closeEl) {
-        var inChrome = this.menu.inChrome();
-        setPlate(this.closeEl, inChrome ? 0.4 : 0);
-        setText(this.closeGlyphEl, { value: this.menu.depth() > 0 ? '<' : 'X', opacity: inChrome ? 1 : 0.55 });
-      }
+      var inChrome = this.menu.inChrome();
+      setPlate(this.closeEl, inChrome ? 0.4 : 0);
+      setText(this.closeGlyphEl, { value: this.menu.depth() > 0 ? '<' : 'X', opacity: inChrome ? 1 : 0.55 });
     },
 
     renderScroll: function (grid) {
@@ -840,6 +896,38 @@ if (typeof AFRAME !== 'undefined') {
       if (this.menu.inChrome()) action = this.confirmKey() + '   Close';
       else if (details && details.actionLabel) action = this.confirmKey() + '   ' + details.actionLabel;
       setText(this.detailActionEl, { value: action });
+    },
+
+    // Lay the breadcrumb's segments end to end by their measured widths,
+    // and size the back target to cover them.
+    flowCrumbs: function () {
+      var m = this.metrics;
+      if (!this.crumbSegments) return;
+      var x = m.gridLeft;
+      var gap = m.text * 2.2;
+      for (var i = 0; i < this.crumbSegments.length; i++) {
+        var segment = this.crumbSegments[i];
+        var separator = this.crumbSeparators[i];
+        segment.object3D.visible = i < this.crumbCount;
+        separator.object3D.visible = i < this.crumbCount - 1;
+        segment.object3D.position.set(x, m.crumbY, 0.002);
+        var cache = segment._textCache;
+        if (!cache || !cache.value) continue;
+        // Until its font has loaded, a segment's width is guessed from
+        // its length; object3dset flows the line again once it has.
+        x += textWidth(segment) || cache.value.length * m.text * 0.6;
+        // Left-anchored a little past the middle of the gap, less half the
+        // glyph: a lone glyph centred on its anchor drifts by its own
+        // side bearing.
+        separator.object3D.position.set(x + gap * 0.42, m.crumbY, 0.002);
+        x += gap;
+      }
+      this.crumbTarget.object3D.visible = this.crumbCount > 0;
+      if (this.crumbCount) {
+        var w = Math.min(m.gridWidth * 0.8, x - m.gridLeft);
+        this.crumbTarget.setAttribute('geometry', { primitive: 'plane', width: w, height: 0.06 });
+        this.crumbTarget.object3D.position.set(m.gridLeft + w / 2, m.crumbY, 0.001);
+      }
     },
 
     // Stack the details column — title, subtitle, stats, text — by the
@@ -925,6 +1013,7 @@ if (typeof AFRAME !== 'undefined') {
     },
 
     tick: function (time) {
+      this.pointerConfirm.tick(performance.now());
       if (this.flashT0) {
         var focused = this.focusedTile();
         var value = focused ? this.flashOpacity(time, TILE_FOCUS) : null;
@@ -950,6 +1039,10 @@ if (typeof AFRAME !== 'undefined') {
         this.liveAt = time;
         if (this.grid) this.renderHeader(this.grid);
         this.renderDetails();
+        // A label's geometry can be rebuilt after object3dset (a font that
+        // was still loading), so measure the stacked text again.
+        this.flowCrumbs();
+        this.flowDetails();
       }
     },
 
@@ -967,8 +1060,36 @@ if (typeof AFRAME !== 'undefined') {
     onTileClick: function (slot) {
       var tile = this.tiles[slot];
       if (!tile || !tile.cell) return;
-      if (tile.cell.focused) this.menu.activate();
-      else this.menu.focusIndex(tile.cell.index, { keepScroll: true });
+      if (tile.cell.focused) {
+        if (!this.pointerConfirm.click()) this.menu.activate();
+      } else {
+        this.menu.focusIndex(tile.cell.index, { keepScroll: true });
+      }
+    },
+
+    // Fill the wheel for a hold (menu-stick-control's beginHold), or hide
+    // it (null).
+    setHold: function (verb, fraction) {
+      if (!this.holdRing) return;
+      if (verb === null || verb === undefined || fraction === null || fraction === undefined) {
+        this.holdRing.set(null);
+        return;
+      }
+      var position = this.holdRingEl.object3D.position;
+      if (verb === 'back' || this.menu.inChrome()) {
+        if (!this.closeEl.object3D.visible) { this.holdRing.set(null); return; }
+        position.copy(this.closeEl.object3D.position);
+      } else {
+        var tile = this.focusedTile();
+        if (!tile) { this.holdRing.set(null); return; }
+        // Over the picture, which is where you are looking; a wide list
+        // tile has its picture (if any) at its left end.
+        tile.el.object3D.updateMatrix();
+        position.copy(tile.thumb.position).applyMatrix4(tile.el.object3D.matrix);
+        if (!tile.thumb.visible) position.copy(tile.el.object3D.position);
+      }
+      position.z += 0.02;
+      this.holdRing.set(fraction);
     },
 
     // ---------- what menu-stick-control drives ----------
@@ -1010,7 +1131,7 @@ if (typeof AFRAME !== 'undefined') {
       this.glowEl.object3D.visible = Boolean(handEl) || this.locked;
       if (previous) previous.emit('menu-stick-released', { menuEl: this.el }, false);
       if (handEl) handEl.emit('menu-stick-engaged', { menuEl: this.el }, false);
-      this.renderDetails();
+      this.render();
     },
 
     getWorldPosition: function (target) {

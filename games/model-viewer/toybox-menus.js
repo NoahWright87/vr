@@ -58,6 +58,6 @@ export function toyboxControlItems(state) {
       { kind: 'action', id: 'toy-recall', label: 'Bring here' },
       { kind: 'action', id: 'toy-remove', label: 'Put away' },
     ] },
-    { kind: 'action', id: 'toy-clear', label: 'Put ALL toys away', info: `${current.count} / 32 toys out. Clears this playroom.` },
+    { kind: 'action', id: 'toy-clear', label: 'Put ALL toys away', hold: 'long', info: `${current.count} / 32 toys out. Clears this playroom.` },
   ];
 }

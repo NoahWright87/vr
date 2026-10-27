@@ -85,10 +85,15 @@ also ignores; the page is then an ordinary list.
 - **Input.** Registers with `menu-stick-control` itself (no separate
   registration component). Stick: vertical steps rows, horizontal steps columns
   with repeat on a grid level (the repeat stops at the first column rather than
-  backing out; a fresh push does that), one detent in/out on a list level.
-  Keys once entered: W/S/A/D or arrows move, Enter/Space confirms,
+  backing out; a fresh push does that, held), one held detent in/out on a list
+  level. Keys once entered: W/S/A/D or arrows move, Enter/Space confirms,
   Q/Backspace goes back, E/Esc leaves. Buttons in XR: trigger/A/X confirm,
-  B/Y/grip back. Pointing: tap a tile to focus it, tap it again to pick it.
+  B/Y/grip back, both held until the wheel fills (see `holds.spec.md`).
+  Pointing: tap a tile to focus it, tap it again to pick it.
+- **The way back.** Inside a submenu the corner shows `<` whether or not the
+  menu is `closable`, and the title and the breadcrumb go back too. The
+  breadcrumb is one label per level, faded by distance from the level you are
+  in (and the title above them), with each `›` its own label.
 - **Events** (bubbling, like the crossbar's): `menu-action`, `menu-commit`,
   `menu-preview`, and `menu-denied` (`{ id, item, reason, price }`). It also
   emits `crossbar-menu-close` so `projected-crossbar` puts its panel away.

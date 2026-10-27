@@ -22,6 +22,8 @@
 // ============================================================
 
 import { createMenu, findMenuItem, truncateLabel, marqueeText } from './menu-model.js';
+import { getStickDrift } from './stick-drift.js';
+import { pulseHaptics } from './haptics.js';
 
 export { findMenuItem };
 
@@ -196,6 +198,113 @@ export function overlayAll(el) {
   });
 }
 
+// The hold-to-confirm wheel: a ring that fills clockwise from twelve
+// o'clock while a confirmation is held (see menu-model.js holdFor, and
+// menu-stick-control below, which runs the timing). A faint full track
+// shows where the fill is going, so the first frames of a hold read as a
+// wheel starting rather than a speck. Raw three.js, built once; filling
+// it only changes a draw range.
+var RING_SEGMENTS = 40;
+export function createHoldRing(radius, thickness, color) {
+  var T = AFRAME.THREE;
+  var positions = new Float32Array((RING_SEGMENTS + 1) * 2 * 3);
+  var indices = [];
+  var inner = radius - thickness / 2;
+  var outer = radius + thickness / 2;
+  for (var k = 0; k <= RING_SEGMENTS; k++) {
+    var angle = Math.PI / 2 - (2 * Math.PI * k) / RING_SEGMENTS;
+    var c = Math.cos(angle), s = Math.sin(angle), o = k * 6;
+    positions[o] = c * inner; positions[o + 1] = s * inner; positions[o + 2] = 0;
+    positions[o + 3] = c * outer; positions[o + 4] = s * outer; positions[o + 5] = 0;
+    if (k < RING_SEGMENTS) {
+      var a = k * 2;
+      indices.push(a, a + 2, a + 1, a + 1, a + 2, a + 3);
+    }
+  }
+  function mesh(opacity) {
+    var geometry = new T.BufferGeometry();
+    geometry.setAttribute('position', new T.BufferAttribute(positions.slice(), 3));
+    geometry.setIndex(indices);
+    geometry.computeBoundingSphere();
+    return new T.Mesh(geometry, new T.MeshBasicMaterial({
+      color: new T.Color(color), transparent: true, opacity: opacity, depthWrite: false, side: T.DoubleSide,
+    }));
+  }
+  var group = new T.Group();
+  var track = mesh(0.18);
+  var fill = mesh(0.95);
+  fill.renderOrder = 1;
+  fill.position.z = 0.0005;
+  group.add(track);
+  group.add(fill);
+  group.visible = false;
+  return {
+    object3D: group,
+    // fraction 0..1, or null to hide.
+    set: function (fraction) {
+      if (fraction === null || fraction === undefined) { group.visible = false; return; }
+      group.visible = true;
+      var filled = Math.round(Math.max(0, Math.min(1, fraction)) * RING_SEGMENTS);
+      fill.visible = filled > 0;
+      fill.geometry.setDrawRange(0, filled * 6);
+    },
+  };
+}
+
+// A tap on something that needs a serious hold (menu-model.js
+// holdIsSerious). A mouse or a laser can be held: pressing starts the
+// wheel and letting go before it fills cancels it. A fingertip poke
+// cannot be held, so the first poke fills the wheel halfway and a second
+// within a couple of seconds confirms. Either way one stray click cannot
+// do something you would have been asked about.
+var POKE_CONFIRM_MS = 2500;
+export function createPointerConfirm(component) {
+  var owner = { pointer: true };
+  var armed = null;
+  function system() { return component.el.sceneEl.systems['menu-stick-control']; }
+  function key() {
+    var menu = component.menu;
+    return menu.depth() + ':' + menu.level().index + ':' + menu.chromeIndex;
+  }
+  return {
+    // True when the press was taken: a serious row was pressed.
+    down: function () {
+      if (!component.menu.holdIsSerious('activate')) return false;
+      owner.pressed = true;
+      system().beginHold(owner, component, 'activate', 'pointer');
+      return true;
+    },
+    up: function () {
+      if (system()) system().endHold(owner, 'pointer');
+      // The click that follows this mouseup belongs to the press; one that
+      // never comes (let go somewhere else) must not swallow a later poke.
+      setTimeout(function () { owner.pressed = false; }, 0);
+    },
+    // True when the click was taken (the row should not activate now).
+    click: function () {
+      if (!component.menu.holdIsSerious('activate')) return false;
+      // A press that was held already did its work, or was let go early.
+      if (owner.pressed) { owner.pressed = false; return true; }
+      var now = performance.now();
+      if (armed && armed.key === key() && now - armed.at < POKE_CONFIRM_MS) {
+        armed = null;
+        component.setHold(null);
+        component.menu.activate();
+        return true;
+      }
+      armed = { key: key(), at: now };
+      component.setHold('activate', 0.5);
+      return true;
+    },
+    tick: function (now) {
+      if (armed && (now - armed.at >= POKE_CONFIRM_MS || armed.key !== key())) {
+        armed = null;
+        if (!owner.hold) component.setHold(null);
+      }
+    },
+  };
+}
+
 // The faces a menu can be set in (crossbar-menu's `font` and
 // `titleFont`). A-Frame text needs a pre-baked MSDF atlas rather than a
 // web font; ours are in vendor/fonts (see its README). Root-relative:
@@ -265,11 +374,11 @@ if (typeof AFRAME !== 'undefined') {
   // buttons.
   var PLATE_OPACITY = 0.22;
 
-  // Stick handling. A step fires when the axis crosses ON, and cannot
-  // fire again until it falls back under OFF — otherwise a stick held
-  // at 0.7 machine-guns through the list.
-  var STEP_ON = 0.6;
-  var STEP_OFF = 0.25;
+  // Stick handling. A step fires when the axis crosses the player's
+  // stick-drift `step` (common/stick-drift.js), and cannot fire again
+  // until it falls back under `release` — otherwise a stick held at 0.7
+  // machine-guns through the list. Both are well clear of what a worn,
+  // drifting stick rests at.
   var REPEAT_DELAY_MS = 450;
   var REPEAT_INTERVAL_MS = 200;
 
@@ -289,7 +398,23 @@ if (typeof AFRAME !== 'undefined') {
 
   var ACTIVATE_EVENTS = ['triggerdown', 'abuttondown', 'xbuttondown'];
   var BACK_EVENTS = ['bbuttondown', 'ybuttondown', 'gripdown'];
-  var RELEASE_EVENTS = ['triggerup', 'abuttonup', 'xbuttonup', 'bbuttonup', 'ybuttonup', 'gripup'];
+  var ACTIVATE_RELEASE_EVENTS = ['triggerup', 'abuttonup', 'xbuttonup'];
+  var BACK_RELEASE_EVENTS = ['bbuttonup', 'ybuttonup', 'gripup'];
+  var RELEASE_EVENTS = ACTIVATE_RELEASE_EVENTS.concat(BACK_RELEASE_EVENTS);
+
+  // The verbs a hold ends in, on any surface.
+  function performVerb(component, verb) {
+    if (verb === 'forward') component.forward();
+    else if (verb === 'back') component.back();
+    else component.activate();
+  }
+
+  // What a hold is about: if the focus moves while you hold, the hold is
+  // for something you are no longer looking at, and is dropped.
+  function focusKey(component) {
+    var menu = component.menu;
+    return menu.depth() + ':' + menu.level().index + ':' + menu.chromeIndex + ':' + menu.isOpen;
+  }
 
   function handIsHolding(handEl) {
     var semantic = handEl && handEl.components && handEl.components['semantic-hand'];
@@ -317,7 +442,16 @@ if (typeof AFRAME !== 'undefined') {
   // How often a liveInfo sidecar is re-read (see tick).
   var LIVE_INFO_MS = 200;
   var CRUMB_STAGGER_MS = 22;
-  var CRUMB_PITCH = 0.64;
+  // Letter spacing, before the font has loaded and its real glyph widths
+  // can be read (see glyphAdvance). Only ever seen for a frame or two.
+  var CRUMB_PITCH = 0.9;
+  // Space added between breadcrumb letters, as a fraction of a character
+  // cell. A title face is heavy, and set a letter at a time it reads
+  // better with a little air than packed the way a word mesh would be.
+  var CRUMB_TRACKING = 0.06;
+  // How much each level above the one you are in fades: the breadcrumb
+  // you are in at full, its parent at 70%, and so on up to the title.
+  var CRUMB_FADE = [1, 0.7, 0.49, 0.34, 0.24];
   // Segments in the progress arc. Enough that the fill moves smoothly.
   var ARC_SEGMENTS = 48;
 
@@ -346,6 +480,35 @@ if (typeof AFRAME !== 'undefined') {
     var mesh = el.getObject3D('mesh');
     if (mesh && mesh.material) mesh.material.opacity = value;
     else el.setAttribute('material', 'opacity', value);
+  }
+
+  // A text mesh's opacity, where its shader reads it. A-Frame's msdf and
+  // sdf shaders take an `opacity` uniform; material.opacity is ignored.
+  function setTextOpacity(el, value) {
+    var mesh = el.getObject3D('mesh') || el.getObject3D('text');
+    var material = mesh && mesh.material;
+    if (!material) return;
+    if (material.uniforms && material.uniforms.opacity) material.uniforms.opacity.value = value;
+    material.opacity = value;
+  }
+
+  // The loaded font behind an a-text, once there is one.
+  function glyphFont(el) {
+    var text = el && el.components && el.components.text;
+    return text && text.currentFont && text.currentFont.chars ? text.currentFont : null;
+  }
+
+  // A glyph's advance in character cells (see crumbLayout).
+  var ADVANCES = new WeakMap();
+  function glyphAdvance(font, code) {
+    if (!font || !font.widthFactor) return CRUMB_PITCH;
+    var table = ADVANCES.get(font);
+    if (!table) {
+      table = {};
+      for (var i = 0; i < font.chars.length; i++) table[font.chars[i].id] = font.chars[i].xadvance / font.widthFactor;
+      ADVANCES.set(font, table);
+    }
+    return table[code] !== undefined ? table[code] : (table[63] || 1);
   }
 
   // 'inboard' means "toward the centre of the view", which depends on
@@ -545,6 +708,9 @@ if (typeof AFRAME !== 'undefined') {
       this._panelPosition = new THREE.Vector3();
 
       this.onRowClick = this.onRowClick.bind(this);
+      this.onRowDown = this.onRowDown.bind(this);
+      this.onRowUp = this.onRowUp.bind(this);
+      this.pointerConfirm = createPointerConfirm(this);
       this.onCrumbClick = this.onCrumbClick.bind(this);
       this.onCloseClick = this.onCloseClick.bind(this);
       this.locked = false;
@@ -725,28 +891,38 @@ if (typeof AFRAME !== 'undefined') {
       content.appendChild(title);
       this.titleEl = title;
 
-      // The close button. It is a focus target, not only a click
-      // target: pressing outward at the root lands on it, and a second
-      // press confirms. That is the whole reason closing is no longer
-      // something a stray press can do by accident.
-      if (data.closable) {
-        var close = document.createElement('a-entity');
-        close.classList.add('menu-target');
-        close.setAttribute('material', 'color: ' + data.accent + '; shader: flat; opacity: 0; transparent: true; depthWrite: false');
-        var closeGlyph = document.createElement('a-text');
-        closeGlyph.setAttribute('font', data.font);
-        closeGlyph.setAttribute('value', 'X');
-        closeGlyph.setAttribute('align', 'center');
-        closeGlyph.setAttribute('color', data.accent);
-        closeGlyph.setAttribute('wrap-count', data.maxChars);
-        closeGlyph.setAttribute('position', '0 0 0.004');
-        this.setTextFont(closeGlyph, 'body');
-        close.appendChild(closeGlyph);
-        close.addEventListener('click', this.onCloseClick);
-        content.appendChild(close);
-        this.closeEl = close;
-        this.closeGlyphEl = closeGlyph;
-      }
+      // Inside a submenu the title is a way back too: the biggest thing
+      // to aim at that means "up". Sized in layout, shown in render.
+      var titleTarget = document.createElement('a-entity');
+      titleTarget.classList.add('menu-target');
+      titleTarget.setAttribute('material', 'color: ' + data.accent + '; shader: flat; opacity: 0; transparent: true; depthWrite: false');
+      titleTarget.addEventListener('click', this.onCrumbClick);
+      titleTarget.object3D.visible = false;
+      content.appendChild(titleTarget);
+      this.titleTargetEl = titleTarget;
+
+      // The corner button. At the top level of a closable menu it is X,
+      // and a focus target as well as a click target: pressing outward at
+      // the root lands on it, and a second press confirms, which is the
+      // whole reason closing is not something a stray press can do. Inside
+      // a submenu it is < on every menu, closable or not — a fixture
+      // still needs a way back up for a finger or a pointer.
+      var close = document.createElement('a-entity');
+      close.classList.add('menu-target');
+      close.setAttribute('material', 'color: ' + data.accent + '; shader: flat; opacity: 0; transparent: true; depthWrite: false');
+      var closeGlyph = document.createElement('a-text');
+      closeGlyph.setAttribute('font', data.font);
+      closeGlyph.setAttribute('value', 'X');
+      closeGlyph.setAttribute('align', 'center');
+      closeGlyph.setAttribute('color', data.accent);
+      closeGlyph.setAttribute('wrap-count', data.maxChars);
+      closeGlyph.setAttribute('position', '0 0 0.004');
+      this.setTextFont(closeGlyph, 'body');
+      close.appendChild(closeGlyph);
+      close.addEventListener('click', this.onCloseClick);
+      content.appendChild(close);
+      this.closeEl = close;
+      this.closeGlyphEl = closeGlyph;
 
       if (data.frame) {
         var rule = document.createElement('a-plane');
@@ -767,6 +943,9 @@ if (typeof AFRAME !== 'undefined') {
         row.setAttribute('material', 'color: ' + data.accent + '; shader: flat; opacity: 0; transparent: true; depthWrite: false');
         row.dataset.rowSlot = String(i);
         row.addEventListener('click', this.onRowClick);
+        row.addEventListener('mousedown', this.onRowDown);
+        row.addEventListener('mouseup', this.onRowUp);
+        row.addEventListener('mouseleave', this.onRowUp);
 
         var text = document.createElement('a-text');
         text.setAttribute('font', data.font);
@@ -824,7 +1003,17 @@ if (typeof AFRAME !== 'undefined') {
         }
 
         content.appendChild(crumb);
-        this.crumbs.push({ el: crumb, chars: chars, targetEl: crumbTarget, title: '' });
+        var crumbState = { el: crumb, chars: chars, targetEl: crumbTarget, title: '' };
+        this.crumbs.push(crumbState);
+        // The letters were spaced before their font had loaded; space them
+        // again by its real glyph widths once it has.
+        chars[0].addEventListener('textfontset', (function (state, self) {
+          return function () {
+            if (!state.title) return;
+            state.dirty = true;
+            self.render();
+          };
+        })(crumbState, this));
       }
 
       // Built for any plateless surface even at zero, so it can be turned
@@ -872,6 +1061,13 @@ if (typeof AFRAME !== 'undefined') {
 
       if (data.progressArc) this.buildArc();
       this.buildSidecar();
+
+      // The hold-to-confirm wheel, moved to whatever the hold is about.
+      var ringEl = document.createElement('a-entity');
+      this.holdRing = createHoldRing(data.rowHeight * 0.3, data.rowHeight * 0.12, data.accent);
+      ringEl.setObject3D('ring', this.holdRing.object3D);
+      content.appendChild(ringEl);
+      this.holdRingEl = ringEl;
 
       this.layout();
 
@@ -933,6 +1129,9 @@ if (typeof AFRAME !== 'undefined') {
       this.titleEl.setAttribute('width', W * 0.92);
       this.titleEl.setAttribute('align', align);
       this.titleEl.setAttribute('position', { x: edgeX(this.textAlign, W, 0.04), y: titleY, z: 0.001 });
+
+      this.titleTargetEl.setAttribute('geometry', { primitive: 'plane', width: W * 0.94, height: rh * 0.8 });
+      this.titleTargetEl.setAttribute('position', { x: 0, y: titleY - rh * 0.05, z: 0.0015 });
 
       if (this.closeEl) {
         this.closeEl.setAttribute('geometry', { primitive: 'plane', width: rh * 0.8, height: rh * 0.8 });
@@ -1161,20 +1360,32 @@ if (typeof AFRAME !== 'undefined') {
       }
     },
 
-    // Letter pitch for the breadcrumb. Each letter is its own a-text, so
-    // spacing is ours to choose; a full character cell reads as
-    // "S e t t i n g s", because proportional glyphs are much narrower
-    // than the cell. About two thirds of it reads as a word.
-    crumbAdvance: function () {
-      return (this.data.width * 0.92) / CRUMB_WRAP * CRUMB_PITCH;
+    // Where each letter of a breadcrumb goes. Each letter is its own
+    // a-text, so spacing is ours to choose — and it has to come from the
+    // font. A fixed pitch was tuned for Roboto's narrow letters at about
+    // two thirds of a character cell, and Wright Sans, whose letters are
+    // wider than a cell, came out as overlapping smears. A-Frame scales a
+    // glyph so the font's average digit fills one cell (its widthFactor),
+    // so a letter's width in cells is its xadvance over that.
+    crumbLayout: function (crumb, text) {
+      var cell = (this.data.width * 0.92) / CRUMB_WRAP;
+      var font = glyphFont(crumb.chars[0]);
+      var centres = [];
+      var x = 0;
+      for (var i = 0; i < text.length; i++) {
+        var advance = (glyphAdvance(font, text.charCodeAt(i)) + CRUMB_TRACKING) * cell;
+        centres.push(x + advance / 2);
+        x += advance;
+      }
+      for (var k = 0; k < centres.length; k++) centres[k] -= x / 2;
+      return { centres: centres, width: x };
     },
 
     // How far a flat (title-mode) crumb is shifted so its letters line
     // up with the title instead of centring on the panel.
-    crumbShift: function (length) {
+    crumbShift: function (width) {
       if (this.data.crumbs !== 'title' || this.textAlign === 'center') return 0;
-      var advance = this.crumbAdvance();
-      var edge = this.data.width / 2 - 0.04 - (length * advance) / 2;
+      var edge = this.data.width / 2 - 0.04 - width / 2;
       return this.textAlign === 'right' ? edge : -edge;
     },
 
@@ -1275,7 +1486,16 @@ if (typeof AFRAME !== 'undefined') {
       this.contentEl.object3D.visible = open || collapsed;
       this.el.object3D.visible = open || collapsed || Boolean(this.arcShown);
       if (this.footerEl && !open) this.footerEl.object3D.visible = false;
-      if (this.titleEl) this.titleEl.setAttribute('text', 'opacity', open ? (this.locked ? 1 : 0.6) : 0.4);
+      if (this.titleEl) {
+        // Everything above the level you are in fades with distance (see
+        // CRUMB_FADE): the breadcrumb you are in, its parents, and the
+        // menu's title at the top of them all. Without a breadcrumb rail
+        // the title is the only heading there is, so it stays put.
+        var held = this.locked || Boolean(this.engagedHand);
+        var above = this.crumbs.length ? CRUMB_FADE[Math.min(this.menu.depth(), CRUMB_FADE.length - 1)] : 1;
+        this.titleEl.setAttribute('text', 'opacity', open ? (held ? 1 : 0.6) * above : 0.4);
+      }
+      if (this.titleTargetEl) this.titleTargetEl.object3D.visible = open && this.menu.depth() > 0;
       this.renderSidecar(open);
       if (collapsed) {
         for (var h = 0; h < this.rows.length; h++) this.rows[h].el.object3D.visible = false;
@@ -1285,7 +1505,7 @@ if (typeof AFRAME !== 'undefined') {
         return;
       }
       if (!open) return;
-      if (this.closeEl) this.closeEl.object3D.visible = true;
+      if (this.closeEl) this.closeEl.object3D.visible = this.data.closable || this.menu.depth() > 0;
       if (this.backingEl) {
         this.backingEl.setAttribute('material', 'opacity',
           this.locked ? Math.max(0.82, data.plateOpacity) : data.plateOpacity);
@@ -1397,10 +1617,10 @@ if (typeof AFRAME !== 'undefined') {
       if (crumb.dirty) animate = false;
       crumb.dirty = false;
       crumb.title = text;
-      var shift = this.crumbShift(text.length);
+      var placed = this.crumbLayout(crumb, text);
+      var shift = this.crumbShift(placed.width);
 
       var data = this.data;
-      var advance = this.crumbAdvance();
       // A flat title is pressed where its letters are, which on a
       // left-aligned panel is nowhere near the panel's middle — and a
       // target centred there missed a poke or click on the word itself.
@@ -1408,12 +1628,12 @@ if (typeof AFRAME !== 'undefined') {
       // nothing to go back to.
       crumb.targetEl.object3D.visible = Boolean(text);
       if (data.crumbs === 'title' && text) {
-        crumb.targetEl.setAttribute('geometry', { primitive: 'plane', width: text.length * advance + data.rowHeight, height: data.rowHeight * 0.7 });
+        crumb.targetEl.setAttribute('geometry', { primitive: 'plane', width: placed.width + data.rowHeight, height: data.rowHeight * 0.7 });
         crumb.targetEl.object3D.position.set(shift, 0, 0);
       } else {
         crumb.targetEl.object3D.position.set(0, 0, 0);
       }
-      var opacity = FADE[Math.min(depth, FADE.length - 1)];
+      var opacity = CRUMB_FADE[Math.min(depth, CRUMB_FADE.length - 1)];
       var fly = animate && data.titleMotion === 'fly';
       var now = (this.el.sceneEl && this.el.sceneEl.time) || performance.now();
 
@@ -1432,7 +1652,7 @@ if (typeof AFRAME !== 'undefined') {
       for (var i = 0; i < crumb.chars.length; i++) {
         var charEl = crumb.chars[i];
         var glyph = text.charAt(i);
-        var targetX = shift + (i - (text.length - 1) / 2) * advance;
+        var targetX = shift + placed.centres[i];
 
         if (!glyph) {
           // Letters that are no longer part of the title fly back out
@@ -1451,7 +1671,7 @@ if (typeof AFRAME !== 'undefined') {
         charEl.object3D.visible = true;
         if (!fly || !origin) {
           charEl.object3D.position.set(targetX, 0, 0);
-          this.setCharOpacity(charEl, opacity);
+          this.setCharOpacity(charEl, opacity, true);
           charEl._anim = null;
           continue;
         }
@@ -1475,13 +1695,21 @@ if (typeof AFRAME !== 'undefined') {
       this.setCharOpacity(charEl, fromOpacity);
     },
 
-    // Straight at the material, not through setAttribute: this runs for
-    // every letter every frame while a title is moving, and a-text's
-    // update path does more work than assigning a uniform.
-    setCharOpacity: function (charEl, value) {
+    // Straight at the shader while a letter is moving: this runs for every
+    // letter every frame then, and a-text's update path does more work
+    // than assigning a uniform. It has to be the uniform — A-Frame's text
+    // shaders read an `opacity` uniform and ignore material.opacity, which
+    // is what this used to write, so no breadcrumb ever actually faded.
+    // `settle` also records it on the component (one setAttribute, once
+    // the letter is still), so the next update to the letter — a new
+    // glyph, its font arriving — keeps the value instead of resetting it.
+    setCharOpacity: function (charEl, value, settle) {
       charEl._opacity = value;
-      var mesh = charEl.getObject3D('mesh');
-      if (mesh && mesh.material) mesh.material.opacity = value;
+      setTextOpacity(charEl, value);
+      if (settle && charEl._settledOpacity !== value) {
+        charEl._settledOpacity = value;
+        charEl.setAttribute('opacity', value);
+      }
     },
 
     // tick() is handed the scene clock, so anything scheduling against
@@ -1561,6 +1789,7 @@ if (typeof AFRAME !== 'undefined') {
 
     tick: function (time) {
       this.tickFlash(time);
+      this.pointerConfirm.tick(performance.now());
       this.tickMarquee(time);
       // Info marked liveInfo (a readout of something that changes every
       // frame, not just when you scroll) is re-read a few times a
@@ -1579,14 +1808,15 @@ if (typeof AFRAME !== 'undefined') {
           if (!anim) continue;
           var progress = (time - anim.t0 - anim.delay) / CRUMB_FLY_MS;
           if (progress < 0) continue;
-          if (progress >= 1) {
+          var done = progress >= 1;
+          if (done) {
             progress = 1;
             charEl._anim = null;
             if (anim.hideAfter) charEl.object3D.visible = false;
           }
           var eased = 1 - Math.pow(1 - progress, 3);
           charEl.object3D.position.lerpVectors(anim.from, anim.to, eased);
-          this.setCharOpacity(charEl, anim.o0 + (anim.o1 - anim.o0) * eased);
+          this.setCharOpacity(charEl, anim.o0 + (anim.o1 - anim.o0) * eased, done);
         }
       }
     },
@@ -1610,8 +1840,45 @@ if (typeof AFRAME !== 'undefined') {
       // Tapping the focused row selects; tapping any other row only
       // scrolls to it. Two taps to reach anything visible, and no way
       // to fire the wrong thing by aiming a row off.
-      if (slot.offset === 0) this.menu.activate();
-      else this.menu.focusOffset(slot.offset);
+      if (slot.offset === 0) {
+        // A serious row is held, not tapped (createPointerConfirm).
+        if (!this.pointerConfirm.click()) this.menu.activate();
+      } else {
+        this.menu.focusOffset(slot.offset);
+      }
+    },
+
+    onRowDown: function (evt) {
+      var slot = this.rows[Number(evt.currentTarget.dataset.rowSlot)];
+      if (slot && slot.row && slot.offset === 0 && !this.menu.inChrome()) this.pointerConfirm.down();
+    },
+
+    onRowUp: function () {
+      this.pointerConfirm.up();
+    },
+
+    // Fill the wheel for a hold (menu-stick-control's beginHold), or hide
+    // it (null). Going in or confirming rings the selected row's inner
+    // end, where its › is; going back rings the corner button that does
+    // the same thing when pressed.
+    setHold: function (verb, fraction) {
+      if (!this.holdRing) return;
+      if (verb === null || verb === undefined || fraction === null || fraction === undefined) {
+        this.holdRing.set(null);
+        return;
+      }
+      var position = this.holdRingEl.object3D.position;
+      if (verb === 'back' || this.menu.inChrome()) {
+        if (!this.closeEl || !this.closeEl.object3D.visible) { this.holdRing.set(null); return; }
+        position.copy(this.closeEl.object3D.position);
+      } else {
+        var slot = this.focusedSlot();
+        if (!slot) { this.holdRing.set(null); return; }
+        position.copy(slot.el.object3D.position);
+        position.x += slot.chevronEl.object3D.position.x;
+      }
+      position.z += 0.008;
+      this.holdRing.set(fraction);
     },
 
     onCrumbClick: function () {
@@ -1621,7 +1888,7 @@ if (typeof AFRAME !== 'undefined') {
     // X at the top level, < inside a submenu (see render).
     onCloseClick: function () {
       if (this.menu.depth() > 0) this.menu.back();
-      else this.menu.close();
+      else if (this.data.closable) this.menu.close();
     },
 
     // ---------- stick control ----------
@@ -1672,6 +1939,8 @@ if (typeof AFRAME !== 'undefined') {
       if (this.glowEl) this.glowEl.object3D.visible = Boolean(handEl) || Boolean(this.locked);
       if (previous) previous.emit('menu-stick-released', { menuEl: this.el }, false);
       if (handEl) handEl.emit('menu-stick-engaged', { menuEl: this.el }, false);
+      // The title brightens while a hand has it, as it does for the keys.
+      if (this.menu) this.render();
     },
 
     step: function (delta) { this.menu.moveFocus(delta); },
@@ -1728,6 +1997,11 @@ if (typeof AFRAME !== 'undefined') {
       // is bound on purpose rather than resolved by distance.
       this.pinned = [];
       this.bindings = [];
+      // Everything with a hold running: hands, the keyboard, pointers.
+      this.holders = [];
+      this.keyOwner = { keyboard: true };
+      this.onKeyUp = this.onKeyUp.bind(this);
+      window.addEventListener('keyup', this.onKeyUp);
       this.onKeyDown = this.onKeyDown.bind(this);
       window.addEventListener('keydown', this.onKeyDown);
       this.onActionIntent = this.onActionIntent.bind(this);
@@ -1758,12 +2032,14 @@ if (typeof AFRAME !== 'undefined') {
         handEl.addEventListener('axismove', function (evt) {
           if (evt.detail && evt.detail.axis) state.axes = evt.detail.axis;
         });
+        // A press starts the wheel; holding it until the wheel fills is
+        // what confirms (see beginHold). Letting go early cancels.
         ACTIVATE_EVENTS.forEach(function (name) {
           handEl.addEventListener(name, function (evt) {
             if (!state.menu) return;
             evt.stopPropagation();
             state.pressedAt = performance.now();
-            state.menu.activate();
+            self.beginHold(state, state.menu, 'activate', 'activate-button');
           });
         });
 
@@ -1772,8 +2048,14 @@ if (typeof AFRAME !== 'undefined') {
             if (!state.menu) return;
             evt.stopPropagation();
             state.pressedAt = performance.now();
-            state.menu.back();
+            self.beginHold(state, state.menu, 'back', 'back-button');
           });
+        });
+        ACTIVATE_RELEASE_EVENTS.forEach(function (name) {
+          handEl.addEventListener(name, function () { self.endHold(state, 'activate-button'); });
+        });
+        BACK_RELEASE_EVENTS.forEach(function (name) {
+          handEl.addEventListener(name, function () { self.endHold(state, 'back-button'); });
         });
         // The laser those presses lit lingers after the button comes back
         // up, so the grace runs from the release too — a press held for a
@@ -1816,6 +2098,7 @@ if (typeof AFRAME !== 'undefined') {
     },
 
     tick: function (time, delta) {
+      this.updateHolds(this.now());
       // A collapsed panel is still reachable. It was not, and that made
       // closing one in a headset a one-way door: the scan only offered
       // open menus, and in XR there is no walk-up E prompt to bring it
@@ -1843,6 +2126,7 @@ if (typeof AFRAME !== 'undefined') {
         for (var r = 0; r < this.hands.length; r++) {
           var idle = this.hands[r];
           if (idle.menu) {
+            this.endHold(idle);
             if (idle.menu.engagedHand === idle.el) idle.menu.setEngagedHand(null);
             idle.menu = null;
             this.setHandGlow(idle, false);
@@ -1958,6 +2242,7 @@ if (typeof AFRAME !== 'undefined') {
         if (next && !next.menu.isOpen) next.menu.open();
 
         if (hand.menu !== next) {
+          this.endHold(hand);
           if (hand.menu && hand.menu.engagedHand === hand.el) hand.menu.setEngagedHand(null);
           hand.menu = next;
           if (next) next.setEngagedHand(hand.el);
@@ -1968,6 +2253,64 @@ if (typeof AFRAME !== 'undefined') {
         if (hand.menu) this.pumpStick(hand, time);
       }
       this.publishCapturedSticks();
+    },
+
+    // ---------- hold to confirm ----------
+    //
+    // A No Man's Sky style wheel: going in, coming back and confirming
+    // start a fill on the surface, and only happen once it is full. A
+    // stick drifting or bumped past its step, or a button brushed, lets go
+    // before then, and nothing happens. How long each takes is the
+    // model's call (holdFor): quick to go in, slower to come back, slower
+    // again to act, and as long as an item asks for when it is serious.
+    //
+    // `owner` is whatever is holding: a hand's state, the keyboard, a
+    // pointer. One hold per owner; starting another replaces it.
+    beginHold: function (owner, component, verb, source) {
+      this.endHold(owner);
+      var ms = component.menu && typeof component.menu.holdFor === 'function' ? component.menu.holdFor(verb) : 0;
+      if (!(ms > 0)) {
+        performVerb(component, verb);
+        return;
+      }
+      owner.hold = { component: component, verb: verb, source: source, ms: ms, start: this.now(), key: focusKey(component), fired: false };
+      if (this.holders.indexOf(owner) === -1) this.holders.push(owner);
+      if (component.setHold) component.setHold(verb, 0);
+    },
+
+    // The clock holds run on; a test can replace it.
+    now: function () { return performance.now(); },
+
+    // Let go. `source` limits it to the hold that input started, so
+    // releasing the trigger does not cancel a back held on the stick.
+    endHold: function (owner, source) {
+      var hold = owner && owner.hold;
+      if (!hold || (source && hold.source !== source)) return;
+      owner.hold = null;
+      if (!hold.fired && hold.component.setHold) hold.component.setHold(null);
+    },
+
+    updateHolds: function (now) {
+      for (var i = this.holders.length - 1; i >= 0; i--) {
+        var owner = this.holders[i];
+        var hold = owner.hold;
+        if (!hold) { this.holders.splice(i, 1); continue; }
+        if (hold.fired) continue;
+        if (focusKey(hold.component) !== hold.key) { this.endHold(owner); continue; }
+        // The finger laser lights on these buttons; a hand holding one
+        // down for a menu is not pointing (see justPressed).
+        if (owner.el) owner.pressedAt = now;
+        var fraction = (now - hold.start) / hold.ms;
+        if (fraction < 1) {
+          if (hold.component.setHold) hold.component.setHold(hold.verb, fraction);
+          continue;
+        }
+        // Full. It happens once per press: holding on does not repeat.
+        hold.fired = true;
+        if (hold.component.setHold) hold.component.setHold(null);
+        performVerb(hold.component, hold.verb);
+        if (owner.el) pulseHaptics(owner.el, 0.3, 25);
+      }
     },
 
     // ---------- the flat lock ----------
@@ -2032,6 +2375,7 @@ if (typeof AFRAME !== 'undefined') {
       for (var i = this.pinned.length - 1; i >= 0; i--) {
         if (component && this.pinned[i].component !== component) continue;
         var entry = this.pinned[i];
+        this.endHold(entry.state);
         if (entry.state.menu === entry.component) {
           entry.component.setEngagedHand(null);
           entry.state.menu = null;
@@ -2138,7 +2482,15 @@ if (typeof AFRAME !== 'undefined') {
         // Back as a key of its own, for a grid, where A only goes back
         // from the first column.
         case 'KeyQ': case 'Backspace': locked.back(); break;
-        case 'Enter': case 'Space': locked.activate(); break;
+        // Keys do not drift, so only a serious confirmation is held here;
+        // the rest happen on the press, as they always have.
+        case 'Enter': case 'Space':
+          if (locked.menu.holdIsSerious && locked.menu.holdIsSerious('activate')) {
+            if (!evt.repeat) this.beginHold(this.keyOwner, locked, 'activate', 'key');
+          } else {
+            locked.activate();
+          }
+          break;
         case 'Escape': this.release(); break;
         default: handled = false;
       }
@@ -2167,8 +2519,13 @@ if (typeof AFRAME !== 'undefined') {
       state.glowEl.object3D.visible = engaged;
     },
 
+    onKeyUp: function (evt) {
+      if (evt.code === 'Enter' || evt.code === 'Space') this.endHold(this.keyOwner, 'key');
+    },
+
     remove: function () {
       window.removeEventListener('keydown', this.onKeyDown);
+      window.removeEventListener('keyup', this.onKeyUp);
       this.el.removeEventListener('semantic-action-intent', this.onActionIntent);
     },
 
@@ -2182,23 +2539,34 @@ if (typeof AFRAME !== 'undefined') {
       // A grid's columns are a second list to scroll, so sideways repeats
       // there the way up and down do; see stepAxis. (Only the move does:
       // leaving the grid off its first column waits for a fresh push.)
-      if (Math.abs(x) > Math.abs(y) && state.menu.horizontal && state.menu.horizontalRepeats()) {
+      var drift = getStickDrift();
+      var sideways = Math.abs(x) > Math.abs(y);
+      var grid = sideways && state.menu.horizontal && state.menu.horizontalRepeats();
+      // Off the first column a grid's left is back, like everywhere else.
+      if (grid && !(x < 0 && state.menu.atLeftEdge())) {
+        // Moving along the row; the stick has to come back to the middle
+        // before a push left can count as going back.
+        if (Math.abs(x) >= drift.step) state.armedX = false;
         this.stepAxis(state, x, time, 'x');
         return;
       }
       // Horizontal is hierarchy: inward goes deeper, outward comes back
       // and, at the root, onto the title bar. One detent, no repeat --
       // walking down levels by holding the stick is not something anyone
-      // means to do.
-      if (Math.abs(x) > Math.abs(y)) {
-        if (Math.abs(x) < STEP_OFF) state.armedX = true;
-        else if (Math.abs(x) >= STEP_ON && state.armedX !== false) {
+      // means to do -- and held: pushing starts the wheel, and the stick
+      // has to stay pushed until it fills.
+      if (sideways) {
+        if (Math.abs(x) < drift.release) {
+          state.armedX = true;
+          this.endHold(state, 'stick');
+        } else if (Math.abs(x) >= drift.step && state.armedX !== false) {
           state.armedX = false;
-          if (x > 0) state.menu.forward();
-          else state.menu.back();
+          this.beginHold(state, state.menu, x > 0 ? 'forward' : 'back', 'stick');
         }
         return;
       }
+      // Swinging up or down abandons a sideways hold.
+      this.endHold(state, 'stick');
 
       this.stepAxis(state, y, time, 'y');
     },
@@ -2207,14 +2575,15 @@ if (typeof AFRAME !== 'undefined') {
     // share the arming state, so swinging the stick from up to right
     // without passing through the centre does not fire twice.
     stepAxis: function (state, value, time, axis) {
+      var drift = getStickDrift();
       var magnitude = Math.abs(value);
-      if (magnitude < STEP_OFF) {
+      if (magnitude < drift.release) {
         state.armed = true;
         state.armedX = true;
         state.repeatAt = 0;
         return;
       }
-      if (magnitude < STEP_ON) return;
+      if (magnitude < drift.step) return;
 
       var direction = value > 0 ? 1 : -1;
       var move = axis === 'x'

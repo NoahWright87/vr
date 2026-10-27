@@ -70,6 +70,7 @@ export default {
       { kind: 'toggle', id: 'basics-stars', label: 'Stars', value: state.stars, info: ['A TOGGLE', 'Flips in place: no', 'submenu for on and off.'] },
       { kind: 'number', id: 'basics-sun', label: 'Sunlight', value: state.sun, min: 0, max: 1.5, step: 0.1, format: function (v) { return Math.round(v / 1.5 * 100) + '%'; }, info: ['A NUMBER', 'Scrolls like a list that', 'never ends, and changes', 'the light as you go.'] },
       { kind: 'action', id: 'basics-wink', label: 'Blink the lamp', info: ['AN ACTION', 'Does one thing. Every', 'confirm flashes, so you', 'know it landed even when', 'the effect is behind you.'] },
+      { kind: 'action', id: 'basics-serious', label: 'Lights out (hold)', hold: 'long', info: ['A SERIOUS ACTION', 'Hold to confirm: the', 'wheel has to fill, which', 'takes longer for this', 'one. Let go early and', 'nothing happens. Every', 'confirm is a short hold,', 'so drift cannot press.'] },
       {
         kind: 'submenu', id: 'basics-deeper', label: 'Go deeper',
         info: ['A SUBMENU', 'Its title flies up into', 'the breadcrumbs as you', 'go in, and back down', 'as you come out.'],
@@ -88,6 +89,11 @@ export default {
   },
 
   onAction: function (id) {
+    if (id === 'basics-serious') {
+      state.lampOn = !state.lampOn;
+      applyRoom();
+      return;
+    }
     if (id !== 'basics-wink') return;
     var was = state.lampOn;
     var steps = 0;

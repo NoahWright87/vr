@@ -1,4 +1,5 @@
   import './control-mode.js';
+  import { getStickDrift, setStickDrift } from './stick-drift.js';
 
   AFRAME.registerComponent('locomotion-demo', {
     schema: {
@@ -15,16 +16,18 @@
       vignetteSoftness: { default: 0.45 },
       vignetteInset: { default: 0.78 },
       vignetteRadius: { default: 0.95 },
-      moveDeadzone: { default: 0.2 },
-      turnDeadzone: { default: 0.25 },
-      teleportDeadzone: { default: 0.55 },
-      teleportCommitDeadzone: { default: 0.12 },
+      // The dead zones come from the player's stick-drift setting
+      // (common/stick-drift.js) unless a page sets them here.
+      moveDeadzone: { default: -1 },
+      turnDeadzone: { default: -1 },
+      teleportDeadzone: { default: -1 },
+      teleportCommitDeadzone: { default: -1 },
       teleportMinDistance: { default: 1.0 },
-      driftMode: { default: 'medium' },
     },
 
     init: function () {
       this.rigEl = this.el;
+
       this.cameraEl = this.el.querySelector('a-camera') || document.querySelector('a-camera');
       this.controlMode = this.el.sceneEl.systems['control-mode'];
       this.turnCooldown = 0;
@@ -122,19 +125,18 @@
       this.updateVignetteStyle();
     },
 
+    // The shared setting, for every game at once (see stick-drift.js).
     setStickDriftCompensation: function (preset) {
-      var map = {
-        off: { move: 0.08, turn: 0.08, teleport: 0.35, teleportCommit: 0.05 },
-        low: { move: 0.14, turn: 0.16, teleport: 0.45, teleportCommit: 0.08 },
-        medium: { move: 0.2, turn: 0.25, teleport: 0.55, teleportCommit: 0.12 },
-        high: { move: 0.28, turn: 0.35, teleport: 0.68, teleportCommit: 0.18 },
-      };
-      var next = map[preset] || map.medium;
-      this.data.driftMode = preset || 'medium';
-      this.data.moveDeadzone = next.move;
-      this.data.turnDeadzone = next.turn;
-      this.data.teleportDeadzone = next.teleport;
-      this.data.teleportCommitDeadzone = next.teleportCommit;
+      setStickDrift(preset);
+    },
+
+    // A dead zone: the page's own if it set one, otherwise the player's
+    // stick-drift setting. Read every frame rather than copied into
+    // data, so the setting applies the moment it changes and a later
+    // setAttribute on this component cannot reset it.
+    deadzone: function (which) {
+      var own = this.data[which + 'Deadzone'];
+      return own >= 0 ? own : getStickDrift()[which];
     },
 
     updateVignetteStyle: function () {
@@ -179,14 +181,14 @@
       var axes = hand === 'right' ? this.rightAxes : this.leftAxes;
       var axisX = axes[2] !== undefined ? axes[2] : axes[0] || 0;
       var axisY = axes[3] !== undefined ? axes[3] : axes[1] || 0;
-      var active = this.data.moveMode === 'teleport' && (Math.abs(axisX) > this.data.teleportCommitDeadzone || Math.abs(axisY) > this.data.teleportCommitDeadzone);
+      var active = this.data.moveMode === 'teleport' && (Math.abs(axisX) > this.deadzone('teleportCommit') || Math.abs(axisY) > this.deadzone('teleportCommit'));
       if (!active) {
         this.teleportPreview.setAttribute('visible', false);
         return;
       }
 
       var stickDistance = Math.hypot(axisX, axisY);
-      if (stickDistance < this.data.teleportDeadzone) {
+      if (stickDistance < this.deadzone('teleport')) {
         this.teleportPreview.setAttribute('visible', false);
         return;
       }
@@ -233,7 +235,7 @@
       var moveX = this.leftAxes[2] !== undefined ? this.leftAxes[2] : this.leftAxes[0] || 0;
       var moveY = this.leftAxes[3] !== undefined ? this.leftAxes[3] : this.leftAxes[1] || 0;
       var moveAmount = Math.hypot(moveX, moveY);
-      if (moveAmount < this.data.moveDeadzone) return;
+      if (moveAmount < this.deadzone('move')) return;
 
       this.applyMoveVector(moveX, moveY, deltaMs);
     },
@@ -294,14 +296,14 @@
     applySmoothTurn: function (deltaMs) {
       if (this.stickTakenBy('right')) return;
       var turnX = this.rightAxes[2] !== undefined ? this.rightAxes[2] : this.rightAxes[0] || 0;
-      if (Math.abs(turnX) < this.data.turnDeadzone) return;
+      if (Math.abs(turnX) < this.deadzone('turn')) return;
       this.rigEl.object3D.rotation.y -= turnX * 1.25 * (deltaMs / 1000);
     },
 
     applySnapTurn: function () {
       if (this.stickTakenBy('right')) { this.turnCooldown = 0; return; }
       var turnX = this.rightAxes[2] !== undefined ? this.rightAxes[2] : this.rightAxes[0] || 0;
-      if (Math.abs(turnX) < Math.max(0.8, this.data.turnDeadzone + 0.4)) {
+      if (Math.abs(turnX) < Math.max(0.8, this.deadzone('turn') + 0.4)) {
         this.turnCooldown = 0;
         return;
       }
@@ -326,8 +328,8 @@
         var moveY = teleportAxes[3] !== undefined ? teleportAxes[3] : teleportAxes[1] || 0;
         var stickDistance = Math.hypot(moveX, moveY);
 
-        if (Math.abs(moveX) < this.data.teleportCommitDeadzone && Math.abs(moveY) < this.data.teleportCommitDeadzone) {
-          if (this._teleportReady && this._teleportAimMag >= this.data.teleportDeadzone) {
+        if (Math.abs(moveX) < this.deadzone('teleportCommit') && Math.abs(moveY) < this.deadzone('teleportCommit')) {
+          if (this._teleportReady && this._teleportAimMag >= this.deadzone('teleport')) {
             var cameraPos = new AFRAME.THREE.Vector3();
             this.cameraEl.object3D.getWorldPosition(cameraPos);
             var cameraQuat = new AFRAME.THREE.Quaternion();
@@ -349,7 +351,7 @@
           this._teleportAimY = 0;
           this._teleportAimMag = 0;
           this.teleportPreview.setAttribute('visible', false);
-        } else if (stickDistance > this.data.teleportDeadzone) {
+        } else if (stickDistance > this.deadzone('teleport')) {
           this._teleportReady = true;
           this._teleportAimX = moveX;
           this._teleportAimY = moveY;

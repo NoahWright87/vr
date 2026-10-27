@@ -309,3 +309,49 @@ test('on the title bar the details fall back to the level', () => {
   assert.equal(details.title, '');
   assert.equal(details.item.title, 'SHOP');
 });
+
+// ------------------------------------------------------------
+// Hold to confirm
+// ------------------------------------------------------------
+
+test('holds: going in is quick, back slower, actions slower, and items can ask for long', () => {
+  const menu = createMenu({ title: 'M', items: [
+    { kind: 'submenu', id: 'sub', label: 'Sub', items: [{ kind: 'action', id: 'x', label: 'X' }] },
+    { kind: 'action', id: 'go', label: 'Go' },
+    { kind: 'action', id: 'wipe', label: 'Wipe save', hold: 'long' },
+    { kind: 'action', id: 'now', label: 'Now', hold: false },
+    { kind: 'action', id: 'slow', label: 'Slow', hold: 2500 },
+    { kind: 'info', id: 'about', label: 'About', info: 'Hi' },
+    { kind: 'select', id: 'size', label: 'Size', value: 1, options: [{ value: 1, label: 'S' }, { value: 2, label: 'L' }] },
+  ] });
+  menu.open();
+  const h = menu.holds;
+  assert.ok(h.enter < h.back && h.enter < h.action && h.action < h.long);
+  assert.equal(menu.holdFor('forward'), h.enter);
+  assert.equal(menu.holdFor('back'), h.enter); // root: onto the title bar
+  menu.moveFocus(1); assert.equal(menu.holdFor('activate'), h.action);
+  menu.moveFocus(1); assert.equal(menu.holdFor('activate'), h.long); assert.equal(menu.holdIsSerious('activate'), true);
+  menu.moveFocus(1); assert.equal(menu.holdFor('activate'), 0);
+  menu.moveFocus(1); assert.equal(menu.holdFor('activate'), 2500);
+  menu.moveFocus(1); assert.equal(menu.holdFor('activate'), 0); // info rows do nothing
+  menu.moveFocus(1); assert.equal(menu.holdFor('forward'), h.enter);
+  menu.forward(); // into the select
+  assert.equal(menu.holdFor('activate'), h.pick);
+  assert.equal(menu.holdFor('back'), h.back);
+  menu.back(); menu.moveFocus(-6); menu.forward();
+  assert.equal(menu.depth(), 1);
+  assert.equal(menu.holdFor('back'), h.back);
+});
+
+test('holds: the title bar, a menu with no close, and page-wide timings', () => {
+  const menu = createMenu({ title: 'M', holds: { action: 900 }, items: [{ kind: 'action', id: 'go', label: 'Go' }] });
+  menu.open();
+  assert.equal(menu.holdFor('activate'), 900);
+  menu.back();
+  assert.equal(menu.inChrome(), true);
+  assert.equal(menu.holdFor('activate'), menu.holds.close);
+  assert.equal(menu.holdFor('forward'), 0);
+  assert.equal(menu.holdFor('back'), 0);
+  const fixture = createMenu({ title: 'F', items: [{ kind: 'action', id: 'go', label: 'Go' }] }, { chrome: [] });
+  assert.equal(fixture.holdFor('back'), 0);
+});

@@ -54,7 +54,16 @@ One **model**, several **surfaces**.
 4. **Built once.** A surface creates every entity it will ever show when it is
    built; navigation changes text, opacity, textures and positions. Creating
    entities while a menu is in use is a dropped frame on a Quest.
-5. **The menu refuses what it can.** Something you can't afford is refused by
+5. **Nothing happens by accident.** A drifting stick never counts (one shared
+   dead zone, `common/stick-drift.js`), and going in, coming out and confirming
+   are held until a wheel fills, longer for serious rows. See
+   [`holds.spec.md`](holds.spec.md).
+6. **There is always a way back.** Inside any submenu, on any surface, the
+   corner `<`, the title and the breadcrumb all go up one level, whether or not
+   the menu can be closed. Everything above the level you are in fades with
+   distance from it: the level you are in at full, its parent at 70%, and so
+   on up to the title.
+7. **The menu refuses what it can.** Something you can't afford is refused by
    the model (`denied`), visibly, so games only hear about purchases that can
    happen.
 
@@ -62,3 +71,5 @@ One **model**, several **surfaces**.
 
 - [`grid.spec.md`](grid.spec.md) — the grid menu as it is.
 - [`grid.todo.md`](grid.todo.md) — what's decided next for it.
+- [`holds.spec.md`](holds.spec.md) — hold to confirm, and stick dead zones.
+- [`holds.todo.md`](holds.todo.md) — what's decided next for those.
