@@ -473,7 +473,9 @@ if (typeof AFRAME !== 'undefined') {
       this.holdRingEl = ringEl;
 
       var hint = {
-        action: 'menu', radius: data.hintRadius, maxReach: data.hintRadius, priority: 5,
+        action: 'menu',
+        // Off a headset only: in XR a menu is reached for, not entered.
+        modes: 'desktop', radius: data.hintRadius, maxReach: data.hintRadius, priority: 5,
         desktopKey: data.hintKey, desktopLabel: data.hintLabel, touchKey: 'TAP', touchLabel: data.hintLabel,
         hintOffset: { x: 0, y: m.height / 2 + 0.12, z: 0 }, highlight: '#' + backing.getAttribute('id'),
       };

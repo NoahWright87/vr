@@ -392,6 +392,11 @@ AFRAME.registerComponent('hint-zone', {
     highlightOpacity: { default: 0.2 },
     highlightScale: { default: 1.035 },
     enabled: { default: true },
+    // Which play this zone is for. A prompt that only means something
+    // with a keyboard — a menu's "E Menu", which in a headset you reach
+    // for instead — is 'desktop', and in XR is neither highlighted nor
+    // carded. 'desktop' covers every flat input (keys, touch, gamepad).
+    modes: { default: 'all', oneOf: ['all', 'desktop', 'xr'] },
   },
 
   init: function () {
@@ -487,8 +492,10 @@ AFRAME.registerComponent('hint-zone', {
     return target;
   },
 
-  isAvailable: function () {
+  isAvailable: function (mode) {
     if (!this.data.enabled || !visibleInHierarchy(this.el.object3D)) return false;
+    // Anything that is not a headset is flat play, whatever its family.
+    if (mode && this.data.modes !== 'all' && this.data.modes !== (mode === 'xr' ? 'xr' : 'desktop')) return false;
     var grabbable = this.el.components['simple-grabbable'];
     if (grabbable && grabbable.state === 'held') return false;
     var menu = this.el.components['projected-menu'];
@@ -574,16 +581,6 @@ AFRAME.registerComponent('hint-zone', {
     var stationaryDelay = grabbable && grabbable.state === 'held'
       ? grabbable.data.dropHintDelay
       : 0;
-    var show = shouldShowInteractionHint(
-      context.hintMode,
-      selectedForMs,
-      context.hintDelay,
-      context.stationaryForMs,
-      stationaryDelay
-    );
-    this.hintShouldShow = show;
-    if (!show) return;
-
     var isXr = context.isXr;
     var family = context.inputFamily || (isXr ? 'xr' : 'keyboard');
     // Touch has no physical key to show a glyph for -- the affordance
@@ -604,6 +601,21 @@ AFRAME.registerComponent('hint-zone', {
         : (family === 'touch'
           ? (this.dynamicDesktopLabel || this.data.touchLabel || this.data.desktopLabel)
           : (this.dynamicDesktopLabel || this.data.desktopLabel)));
+    var show = shouldShowInteractionHint(
+      context.hintMode,
+      selectedForMs,
+      context.hintDelay,
+      context.stationaryForMs,
+      stationaryDelay
+    );
+    // A card with nothing to say for the input in use does not show at
+    // all. A menu's walk-up prompt is keyboard-only ("E Menu", then "E
+    // Exit menu") — in a headset you reach for a menu instead — so in XR
+    // it used to come up as an empty key tile floating over the panel.
+    show = show && Boolean(key || label);
+    this.hintShouldShow = show;
+    if (!show) return;
+
     this.keyTextEl.setAttribute('text', 'value', key || '');
     this.labelTextEl.setAttribute('text', 'value', label || '');
 

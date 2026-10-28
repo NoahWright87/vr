@@ -313,7 +313,7 @@ AFRAME.registerComponent('grab-to-open', {
       if (evt.detail.action !== 'grab') return;
       var pm = self.el.components['projected-menu'];
       if (pm.active) pm.close();
-      else pm.open();
+      else pm.open(evt.detail.handEl);
     };
     this.el.addEventListener('semantic-action', this.onAction);
   },

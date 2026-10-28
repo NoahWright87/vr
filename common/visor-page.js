@@ -20,6 +20,7 @@
 
 import { registerMenuPage, findMenuItem } from './menu-crossbar.js';
 import { STICK_DRIFT, getStickDriftName, setStickDrift } from './stick-drift.js';
+import { TOUCH_MENU_OPTIONS, getTouchMenus, setTouchMenus } from './menu-preferences.js';
 
 var DEG = function (value) { return value + '°'; };
 var CM = function (value) { return value + 'cm'; };
@@ -145,6 +146,14 @@ function settingsItem() {
         options: Object.keys(STICK_DRIFT).map(function (name) { return { value: name, label: STICK_DRIFT[name].label }; }),
         info: ['STICK DEAD ZONE', 'How far a thumbstick has', 'to be pushed before it', 'walks you or moves a', 'menu. Larger if yours', 'drifts on its own.'],
       },
+      // Menus opened by touching or grabbing something (a loot box, a gun
+      // case): whether they close when that hand goes away. Each menu has
+      // its own default; this can override them all (menu-preferences.js).
+      {
+        kind: 'select', id: 'visor-touch-menus', label: 'Touch menus', value: getTouchMenus(),
+        options: TOUCH_MENU_OPTIONS,
+        info: ['TOUCH MENUS', 'Menus you open by', 'touching or grabbing', 'something. Close when', 'let go: quick looks.', 'Stay open: drive them', 'with either hand.'],
+      },
       // How the temple gesture triggers. While you are in here the two
       // spheres and your hands are drawn as maps beside the menu, since
       // you can never see the real ones.
@@ -172,6 +181,7 @@ function syncSettings(page) {
   var a = system.activation;
   var set = function (id, value) { var item = findMenuItem(page.items, id); if (item) item.value = value; };
   set('visor-stick-drift', getStickDriftName());
+  set('visor-touch-menus', getTouchMenus());
   var display = hud();
   if (display) {
     for (var id in FRAME) set(id, display.frame[FRAME[id]]);
@@ -233,6 +243,7 @@ function wireHandlers() {
     var id = evt.detail.id;
     var value = evt.detail.value;
     if (id === 'visor-stick-drift') { setStickDrift(value); return; }
+    if (id === 'visor-touch-menus') { setTouchMenus(value); return; }
     var display = hud();
     if (display) {
       if (FRAME[id]) { var frame = {}; frame[FRAME[id]] = value; display.setFrame(frame); }

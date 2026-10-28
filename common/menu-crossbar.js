@@ -1077,6 +1077,8 @@ if (typeof AFRAME !== 'undefined') {
       // shouting over the other.
       var hint = {
         action: 'menu',
+        // Off a headset only: in XR a menu is reached for, not entered.
+        modes: 'desktop',
         radius: data.hintRadius,
         maxReach: data.hintRadius,
         priority: 5,

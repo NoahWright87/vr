@@ -14,7 +14,8 @@
 // title bars that used to live in this file are gone; every menu in the
 // repo is page data now.
 // ============================================================
-import { chooseAutomaticMenuIntent, chooseProjectedMenuMode } from './projected-menu-mode.js';
+import { chooseAutomaticMenuIntent, chooseProjectedMenuMode, chooseAutoClose, resolveAutoClose } from './projected-menu-mode.js';
+import { getTouchMenus } from './menu-preferences.js';
 // A panel's poke targets each get a collider; this keeps hidden ones
 // from costing a frame. See the module for numbers.
 import './obb-collider-visibility.js';
@@ -53,11 +54,29 @@ import './obb-collider-visibility.js';
       // other wrist, held to your temple), and a scripted pose must not
       // read as a raised watch. See hand-with-watch's setSuppressed.
       enabled: { default: true },
+      // Auto or manual, for a menu opened by touching or grabbing its
+      // trigger (a loot box, a gun case). Auto (true) closes it once the
+      // hand that opened it has gone further than autoCloseDistance from
+      // the trigger for autoCloseDelay ms — quick to check a box and move
+      // on, at the price of driving it with that hand's stick, or the
+      // other hand, while you look. Manual (false) leaves it open until it
+      // is closed, walked away from or looked away from, as before. This
+      // is the menu's default; the player can override every menu at once
+      // (menu-preferences.js touchMenus, on every visor). Only in a
+      // headset, where there is a real hand to take away.
+      autoClose: { default: false },
+      autoCloseDistance: { default: 0.35 },
+      autoCloseDelay: { default: 350 },
     },
 
     init: function () {
       var self = this;
       var el = this.el;
+      // The hand that opened this, for autoClose.
+      this.openerEl = null;
+      this.awaySince = null;
+      this._openerPosition = new AFRAME.THREE.Vector3();
+      this._triggerPosition = new AFRAME.THREE.Vector3();
       this.active = false;
       this.mode = 'closed';
       this.scale = 0.0001;
@@ -90,7 +109,9 @@ import './obb-collider-visibility.js';
       el.setAttribute('obb-collider', '');
       el.addEventListener('obbcollisionstarted', function (evt) {
         var poker = evt.detail.withEl;
-        if (poker.handComponent && poker.handComponent.isPointing && !self.active) self.open();
+        if (poker.handComponent && poker.handComponent.isPointing && !self.active) {
+          self.open(poker.handComponent.el || poker);
+        }
       });
 
       this.pmTargets = [];
@@ -155,6 +176,7 @@ import './obb-collider-visibility.js';
           this.active = false;
         }
       }
+      if (this.active && this.shouldAutoClose(time)) this.close();
       if (this.active) {
         var mode = this.computeMode();
         if (!mode) this.active = false;
@@ -316,13 +338,44 @@ import './obb-collider-visibility.js';
       this.el.emit('projected-menu-automatic-changed', { automatic: this.data.automatic });
     },
 
-    open: function () {
+    // `handEl`: the hand that opened it, when one did (a poke, a grab).
+    open: function (handEl) {
       if (this.data.enabled === false) return;
       this.automaticDismissed = false;
       this.active = true;
+      this.openerEl = handEl && handEl.object3D ? handEl : null;
+      this.awaySince = null;
     },
     close: function () {
       this.automaticDismissed = this.data.automatic;
       this.active = false;
+      this.openerEl = null;
+      this.awaySince = null;
+    },
+
+    // Whether this menu closes when its opening hand goes away, right now:
+    // its own setting unless the player has chosen for every menu.
+    autoClosing: function () {
+      return resolveAutoClose(this.data.autoClose, getTouchMenus());
+    },
+
+    setAutoClose: function (autoClose) {
+      this.data.autoClose = Boolean(autoClose);
+      this.awaySince = null;
+    },
+
+    shouldAutoClose: function (time) {
+      if (!this.openerEl || !this.autoClosing()) return false;
+      var mode = this.el.sceneEl.systems['control-mode'];
+      if (!mode || !mode.isMode('xr')) return false;
+      this.openerEl.object3D.getWorldPosition(this._openerPosition);
+      this.el.object3D.getWorldPosition(this._triggerPosition);
+      var next = chooseAutoClose(this.awaySince, this._openerPosition.distanceTo(this._triggerPosition), time, {
+        distance: this.data.autoCloseDistance,
+        delay: this.data.autoCloseDelay,
+      });
+      this.awaySince = next.awaySince;
+      if (next.close) this.el.emit('projected-menu-auto-closed', { handEl: this.openerEl }, false);
+      return next.close;
     },
   });

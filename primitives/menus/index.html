@@ -194,12 +194,13 @@
           hint-zone="action: grab; radius: 0.22; maxReach: 1.0; gazeThreshold: 0.9; priority: 11; desktopKey: F; desktopLabel: Grab grenade; xrKey: GRIP; xrLabel: Grab; hintScale: 0.5; hintOffset: 0 0.18 0"
           tour-throwable
         ><a-entity gltf-model="../../assets/models/kenney/blaster-kit/grenade-a.glb" scale="0.5 0.5 0.5" position="0 -0.06 0"></a-entity></a-entity>
-        <!-- The gun case, on a stand to your right as you face the range. -->
+        <!-- The gun case, on a stand to your right as you face the range.
+             autoClose: grab it to swap guns, let go and it shuts. -->
         <a-box width="0.3" height="0.7" depth="0.3" color="#2c2f36" position="-0.62 0.35 0.42"></a-box>
         <a-entity id="shooter-case" position="-0.62 0.78 0.42"
           geometry="primitive: box; width: 0.42; height: 0.16; depth: 0.26" material="visible: false"
           hint-zone="action: grab; radius: 0.34; maxReach: 1.0; gazeThreshold: 0.88; priority: 20; desktopKey: F; desktopLabel: Open gun case; xrKey: GRIP; xrLabel: Open; hintOffset: 0 0.3 0"
-          projected-menu="template: #tpl-gun-case; mode: laser; laserScale: 0.6; offset: 0 0.55 0; closeDistance: 3"
+          projected-menu="template: #tpl-gun-case; autoClose: true; mode: laser; laserScale: 0.6; offset: 0 0.55 0; closeDistance: 3"
           projected-crossbar
           grab-to-open
         ><a-entity gltf-model="../../assets/models/kenney/blaster-kit/crate-wide.glb" scale="0.5 0.5 0.5" position="0 -0.08 0"></a-entity></a-entity>
@@ -293,11 +294,12 @@
           simple-grabbable="heldPosition: 0 0 -0.02; floorY: 0; throwEnabled: true; halfExtents: 0.15 0.15 0.03"
           hint-zone="action: grab; radius: 0.26; maxReach: 1.0; gazeThreshold: 0.9; priority: 11; desktopKey: F; desktopLabel: Grab shield; xrKey: GRIP; xrLabel: Grab; hintScale: 0.5; hintOffset: 0 0.2 0"
         ><a-entity class="fantasy-shield-model" scale="0.4 0.4 0.4"></a-entity></a-entity>
-        <!-- The chest: the armoury, on your right. -->
+        <!-- The chest: the armoury, on your right. autoClose, like the
+             gun case: a look inside, not a place to browse. -->
         <a-entity id="fantasy-chest" position="-0.62 0.5 0.42"
           geometry="primitive: box; width: 0.42; height: 0.3; depth: 0.3" material="visible: false"
           hint-zone="action: grab; radius: 0.36; maxReach: 1.0; gazeThreshold: 0.88; priority: 20; desktopKey: F; desktopLabel: Open chest; xrKey: GRIP; xrLabel: Open; hintOffset: 0 0.35 0"
-          projected-menu="template: #tpl-chest; mode: laser; laserScale: 0.6; offset: 0 0.8 0; closeDistance: 3"
+          projected-menu="template: #tpl-chest; autoClose: true; mode: laser; laserScale: 0.6; offset: 0 0.8 0; closeDistance: 3"
           projected-crossbar
           grab-to-open
         >

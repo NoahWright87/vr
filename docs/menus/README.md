@@ -63,7 +63,9 @@ One **model**, several **surfaces**.
    the menu can be closed. Everything above the level you are in fades with
    distance from it: the level you are in at full, its parent at 70%, and so
    on up to the title.
-7. **The menu refuses what it can.** Something you can't afford is refused by
+7. **Prompts are for the input in use.** A keyboard prompt never shows in a
+   headset, and a hint with nothing to say for the current input does not show.
+8. **The menu refuses what it can.** Something you can't afford is refused by
    the model (`denied`), visibly, so games only hear about purchases that can
    happen.
 
@@ -73,3 +75,5 @@ One **model**, several **surfaces**.
 - [`grid.todo.md`](grid.todo.md) — what's decided next for it.
 - [`holds.spec.md`](holds.spec.md) — hold to confirm, and stick dead zones.
 - [`holds.todo.md`](holds.todo.md) — what's decided next for those.
+- [`touch-menus.spec.md`](touch-menus.spec.md) — menus opened by touching or
+  grabbing something: auto-close when the hand leaves, and per-mode prompts.
