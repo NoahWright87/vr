@@ -530,6 +530,11 @@ if (typeof AFRAME !== 'undefined') {
   function buildScrimCanvas(outward) {
     var size = 128;
     var canvas = document.createElement('canvas');
+    // An id, and a different one per side: A-Frame caches a canvas texture
+    // by its id, and every canvas without one shares a single cache entry,
+    // so the second side got the first side's gradient, back to front —
+    // solid toward the middle of the view where it should have faded.
+    canvas.id = 'crossbar-scrim-' + (outward < 0 ? 'left' : 'right');
     canvas.width = size;
     canvas.height = 4;
     var ctx = canvas.getContext('2d');

@@ -75,5 +75,7 @@ One **model**, several **surfaces**.
 - [`grid.todo.md`](grid.todo.md) — what's decided next for it.
 - [`holds.spec.md`](holds.spec.md) — hold to confirm, and stick dead zones.
 - [`holds.todo.md`](holds.todo.md) — what's decided next for those.
+- [`scrim.spec.md`](scrim.spec.md), [`scrim.todo.md`](scrim.todo.md) — the
+  comfort scrim round the edges of view: in menus, while moving, or always.
 - [`touch-menus.spec.md`](touch-menus.spec.md) — menus opened by touching or
   grabbing something: auto-close when the hand leaves, and per-mode prompts.

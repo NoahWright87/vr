@@ -21,6 +21,7 @@
 import { registerMenuPage, findMenuItem } from './menu-crossbar.js';
 import { STICK_DRIFT, getStickDriftName, setStickDrift } from './stick-drift.js';
 import { TOUCH_MENU_OPTIONS, getTouchMenus, setTouchMenus } from './menu-preferences.js';
+import { SCRIM_SHOW, SCRIM_SHAPES } from './comfort-scrim.js';
 
 var DEG = function (value) { return value + '°'; };
 var CM = function (value) { return value + 'cm'; };
@@ -55,6 +56,25 @@ function inXR() {
 
 // The visor's whole setup as text, for its sidecar. Read on every draw,
 // so it follows each setting as you change it.
+// The scrim system, if this scene has one.
+function scrimSystem() { var scene = sceneEl(); return scene && scene.systems['comfort-scrim']; }
+var SCRIM = {
+  'visor-scrim-show': 'show', 'visor-scrim-shape': 'shape', 'visor-scrim-size': 'size',
+  'visor-scrim-darkness': 'darkness', 'visor-scrim-softness': 'softness',
+};
+function scrimSummary() {
+  var system = scrimSystem();
+  return system ? ['SCRIM', system.describe()].join('\n') : '';
+}
+function applyScrim(id, value, save) {
+  var system = scrimSystem();
+  if (!system || !SCRIM[id]) return false;
+  var change = {};
+  change[SCRIM[id]] = value;
+  system.setSettings(change, { save: save });
+  return true;
+}
+
 function visorSummary() {
   var system = visor();
   return system ? system.describe() : '';
@@ -134,9 +154,24 @@ function settingsItem() {
         kind: 'select', id: 'visor-draw', label: 'Draw', value: 'world',
         options: [{ value: 'world', label: 'World' }, { value: 'screen', label: 'Screen' }],
       },
+      // The comfort scrim (comfort-scrim.js): a dark wash round the edges
+      // of the view, for reading menus and for comfort while moving. Shown
+      // while you are in here, whatever it is set to, so you can see what
+      // you are changing (page data `scrim: true`).
       {
-        kind: 'select', id: 'visor-scrim', label: 'Scrim', value: 'off',
-        options: [{ value: 'on', label: 'On' }, { value: 'off', label: 'Off' }],
+        kind: 'submenu', id: 'visor-scrim', label: 'Scrim', scrim: true, info: scrimSummary,
+        items: [
+          {
+            kind: 'select', id: 'visor-scrim-show', label: 'Show', value: 'moving', options: SCRIM_SHOW,
+            info: ['SHOW', 'When moving: while the', 'stick, smooth turning or', 'a vehicle moves you, not', 'your own head. Cuts the', 'motion at the edges of', 'your view that makes', 'moving sickening.'],
+          },
+          { kind: 'select', id: 'visor-scrim-shape', label: 'Shape', value: 'sides', options: SCRIM_SHAPES },
+          // How far in from the edge of view it reaches.
+          { kind: 'number', id: 'visor-scrim-size', label: 'Size', value: 0.35, min: 0.05, max: 0.9, step: 0.05, format: PCT },
+          { kind: 'number', id: 'visor-scrim-darkness', label: 'Darkness', value: 0.75, min: 0.1, max: 1, step: 0.05, format: PCT },
+          // How much of it is a fade rather than solid.
+          { kind: 'number', id: 'visor-scrim-softness', label: 'Softness', value: 0.7, min: 0.05, max: 1, step: 0.05, format: PCT },
+        ],
       },
       // How far a thumbstick has to be pushed before it walks you, turns
       // you or moves a menu — for every game, since it is about your
@@ -197,7 +232,11 @@ function syncSettings(page) {
   }
   set('visor-crumbs', s.crumbs);
   set('visor-draw', system.drawMode);
-  set('visor-scrim', system.scrim > 0 ? 'on' : 'off');
+  var scrim = scrimSystem();
+  if (scrim) {
+    var values = scrim.getSettings();
+    for (var scrimId in SCRIM) set(scrimId, values[SCRIM[scrimId]]);
+  }
   set('visor-zone-radius', Math.round(a.radius * 100));
   set('visor-zone-side', Math.round(a.side * 100));
   set('visor-zone-forward', Math.round(a.forward * 100));
@@ -256,7 +295,7 @@ function wireHandlers() {
       system.setLayout(change);
     }
     if (id === 'visor-draw') system.setDraw(value);
-    if (id === 'visor-scrim') system.setScrim(value === 'on' ? 0.7 : 0);
+    if (applyScrim(id, value, true)) { system.refreshInfo(); return; }
     if (ACTIVATION[id]) system.setActivation(ACTIVATION[id](value));
   });
   // Number rows preview while you scroll them, so the visor moves as you
@@ -266,6 +305,8 @@ function wireHandlers() {
     var system = visor();
     if (!system) return;
     if (ACTIVATION[evt.detail.id]) { system.setActivation(ACTIVATION[evt.detail.id](evt.detail.value)); return; }
+    // The scrim changes as you scroll its rows; backing out saves.
+    if (applyScrim(evt.detail.id, evt.detail.value, false)) { system.refreshInfo(); return; }
     var display = hud();
     if (display && FRAME[evt.detail.id]) {
       var frame = {};

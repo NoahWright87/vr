@@ -33,7 +33,9 @@
       </a-entity>
     </template>
 
-    <a-scene keyboard-shortcuts="enterVR: false" visor-menu="page: expansive-visor; font: sourcecodepro" background="color: #b1d5ef" webxr="referenceSpaceType: local-floor; optionalFeatures: bounded-floor">
+    <!-- comfort-scrim ignoreMotion: the rig is moved under you on purpose
+         (redirected walking), and a scrim would give it away. -->
+    <a-scene keyboard-shortcuts="enterVR: false" visor-menu="page: expansive-visor; font: sourcecodepro" comfort-scrim="ignoreMotion: true" background="color: #b1d5ef" webxr="referenceSpaceType: local-floor; optionalFeatures: bounded-floor">
       <a-light type="ambient" color="#e4edff" intensity=".85"></a-light>
       <a-light type="directional" color="#fff4df" intensity=".5" position="1 3 1"></a-light>
       <a-entity id="space-room" expansive-space>

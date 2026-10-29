@@ -11,7 +11,12 @@
       aimMultiplier: { default: 0.5 },
       snapAngle: { default: 30 },
       teleportDistance: { default: 2.8 },
-      comfortVignette: { default: true },
+      // The old comfort dimmer: a flat dark plane over the whole view while
+      // the left stick was off centre (0.12 — which a drifting stick is).
+      // Off by default now: the comfort scrim (comfort-scrim.js, Visor ▸
+      // Scrim) does this job properly, darkening only the edges of view,
+      // and only while you are actually being moved.
+      comfortVignette: { default: false },
       vignetteStrength: { default: 0.2 },
       vignetteSoftness: { default: 0.45 },
       vignetteInset: { default: 0.78 },

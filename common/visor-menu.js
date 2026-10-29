@@ -27,6 +27,9 @@
 // ============================================================
 
 import { overlayAll } from './menu-crossbar.js';
+// Every game with a visor gets the comfort scrim, whose settings live in
+// the visor (Visor ▸ Scrim).
+import './comfort-scrim.js';
 // The visor's frame and HUD. Where this menu goes is the frame's call
 // (Visor ▸ Adjust), so every visor page gets the HUD system with it.
 import './visor-hud.js';
@@ -144,7 +147,6 @@ if (typeof AFRAME !== 'undefined') {
         radius: this.data.zoneRadius, side: this.data.zoneSide, forward: this.data.zoneForward,
         openMs: this.data.openMs, closeMs: this.data.closeMs,
       };
-      this.scrim = 0;
       // Where each hand was last frame, head-local, for the zone view.
       this.handReadings = [];
       this._local = new THREE.Vector3();
@@ -184,8 +186,9 @@ if (typeof AFRAME !== 'undefined') {
         font: this.data.font,
         side: this.panelSide,
         align: 'inboard',
-        // Floating text: no backing, no wash behind it, no frame. The
-        // visor's own Scrim row can still bring the wash back.
+        // Floating text: no backing, no wash behind it, no frame. The wash
+        // that helps it read is the comfort scrim (comfort-scrim.js), round
+        // both edges of the view rather than behind the menu alone.
         scrim: 0,
         plate: false,
         frame: false,
@@ -410,6 +413,9 @@ if (typeof AFRAME !== 'undefined') {
       // `frame: true` / `rings: true` on those submenus).
       var hud = this.sceneEl.systems['visor-hud'];
       if (hud) hud.setPreview({ frame: menu.isOpen && menu.inside('frame'), rings: menu.isOpen && menu.inside('rings') });
+      // And the scrim, whatever it is set to show for, while you tune it.
+      var scrim = this.sceneEl.systems['comfort-scrim'];
+      if (scrim) scrim.setPreview(menu.isOpen && menu.inside('scrim'));
       var zones = menu.isOpen && menu.inside('zones');
       if (zones && !this.zonesEl.object3D.visible) this.rebuildZones();
       this.zonesEl.object3D.visible = zones;
@@ -431,7 +437,7 @@ if (typeof AFRAME !== 'undefined') {
         '',
         'MENU',
         'Titles ' + titles[s.crumbs] + '  Draw ' + (this.drawMode === 'screen' ? 'Screen' : 'World'),
-        'Scrim ' + (this.scrim > 0 ? 'On' : 'Off'),
+        this.sceneEl.systems['comfort-scrim'] ? this.sceneEl.systems['comfort-scrim'].describe() : '',
         '',
         'ACTIVATION',
         'Radius ' + cm(a.radius) + '  Side ' + cm(a.side),
@@ -534,12 +540,6 @@ if (typeof AFRAME !== 'undefined') {
     setDraw: function (mode) {
       this.drawMode = mode;
       this.applySurface();
-      this.refreshInfo();
-    },
-
-    setScrim: function (opacity) {
-      this.scrim = opacity;
-      if (this.component) this.component.setScrim(opacity);
       this.refreshInfo();
     },
 
