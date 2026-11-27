@@ -61,6 +61,7 @@ export default defineConfig({
         menuShowcase: resolve(root, 'primitives/menus/index.html'),
         actionLab: resolve(root, 'primitives/actions/index.html'),
         multiplayer: resolve(root, 'primitives/multiplayer/index.html'),
+        prefabWorkshop: resolve(root, 'primitives/prefabs/index.html'),
       },
     },
   },

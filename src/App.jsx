@@ -91,6 +91,13 @@ const GROUPS = [
         body: 'Walk or paint a floor boundary, then generate rooms in that same VR session. Also includes controller haptics tests.',
       },
       {
+        title: 'Prefab Workshop',
+        subtitle: 'Usable objects',
+        href: '/primitives/prefabs/',
+        cta: 'Open workshop →',
+        body: 'Set up the things you hold once, for every game: where hands go on a gun, which way it fires, what it weighs. Edit on a normal screen, then copy out what changed.',
+      },
+      {
         title: '3D Model Toybox',
         subtitle: 'Models & grabbing',
         href: '/games/model-viewer/',
