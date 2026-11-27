@@ -114,6 +114,76 @@ and you're back in. That only works when gear flies to the shooter
 (conservation of clothes). Under the other wardrobe rules, decide
 whether Boot Hill hits send the item to you anyway.
 
+## What phase 01-B built
+
+The framework runs. Where things live:
+
+- `games/pistols-at-dawn/js/duel-model.js`: pure round/match logic,
+  signal plans, modifier stack, weapon-takeover orchestration, board
+  text. No A-Frame; `tests/duel-model.test.js` runs under `node --test`.
+- `games/pistols-at-dawn/js/duel.js` (persistent module): the catalog of
+  duels as data (`DUEL_CATALOG`), the `duel-director` system, the gear
+  swap and the modifiers (`time-of-day`, `fog`).
+- `js/world-targets.js` (loads with the Range): `cardboard-cowboy`,
+  `duel-lane` (cutouts, board, signal props), `duel-coin`.
+- `tests/duel-range.browser.cjs`: Playwright through real input.
+
+Facts worth keeping:
+
+- **The model never reads a clock**; every call takes `now`. Signals are
+  plans of timed steps (`signalPlan`), and a step either fires the signal
+  or (`waitForEvent`) leaves it to the world, which is how the coin toss
+  waits for `landed`.
+- **There is no holster grab event.** The holster is 01-A's, and it
+  announces nothing when a gun leaves it. The director polls every
+  firearm's `holsterable.state` (`held`/`dangling` means drawn) only
+  while a duel is running. If 01-A adds a real event, swap the poll for
+  it.
+- **Guns announce nothing when they fire either** (only the thing they
+  hit gets a `shot`). `duel.js` wraps `firearm.fire` once to emit
+  `gun-fired`; the one-line fix belongs in `items-guns.js` (TODO.md).
+- **Hits meet through an adapter, not a fork.** The cardboard cowboy is a
+  `steel-silhouette` (hit zones, rock-and-fall) with `shot` turned into
+  `combat-target.applyHit` by nearest zone, and `action-hit` re-announced
+  as `cutout-hit`. A knife or fist reaching the same `action-hit` is
+  counted too.
+- **Weapon takeover** sets guns aside by moving them into a hidden,
+  closed `anchor-slot` (`#duel-stash`) with `vacateSlot`/`occupySlot`,
+  and puts them back the same way. A gun that was in a hand goes back to
+  the holster it was built for. A full holster does NOT stop a pistol
+  falling through to the waist anchor, which swaps the belt off: a test
+  that holstered into the wrong hip found this. 01-A's locked slots
+  should make it impossible.
+
+### Ten paces: what worked
+
+Only the **plain count** was built (`signal: { kind: 'ten-paces',
+stepMs }`): the board counts 1 to 10, ticks on each, and says TURN!.
+Findings, headless only (nobody has stood in a headset for it yet):
+
+- It asks for no space and moves nobody, so it can never break the
+  comfort rule and works in every play space. That is why it is the
+  one to ship first.
+- It is the only option that fits the Range, where you already face the
+  targets. "Turn" is pure flavour there; it only means something once a
+  duel starts you facing away, which needs the facing check (below).
+- Ten paces is about 7.6 m. Most play spaces can't walk that, so the
+  **thumbstick-walk** option needs a visible ground marker and has to
+  stay optional. It also has to decide what counts as "turned" and
+  what happens if you stop early. Not built: it's a separate comfort
+  conversation (the game never walks you), and the cardboard cowboys
+  don't walk away to give it a reason.
+- **AI walks off while you stand still** is a phase 03-A thing: there is
+  no opponent that walks yet.
+- Open for the headset: is text on the board enough to count by, or does
+  it need the announcer's voice (cast.todo.md) before it feels like a
+  ritual? The tick is a placeholder beep. Counting at 650 ms a pace
+  takes about seven seconds; check that waiting that long, hands off the
+  gun, isn't tedious. If it is, shorten `stepMs` or count in twos.
+
+Next for paces: a "face away, turn on TURN" duel (check head yaw against
+the lane), and the announcer counting aloud.
+
 ## Open questions
 
 - **Ten paces in a living room.** You can't actually walk ten paces in
@@ -124,6 +194,8 @@ whether Boot Hill hits send the item to you anyway.
   - only the AI walks off while you stand still facing away
   - paces is just a count that ends in "turn!"
 
-  Try them in phase 01-B.
-- How many rounds by default: best of 3?
+  Try them in phase 01-B. **Tried, see "What phase 01-B learned" below:
+  the plain count is built and is the default; the other two are not.**
+- How many rounds by default: best of 3? (01-B's sample duel is best of
+  3, a signal demo is a single round; both are just `rules.rounds`.)
 - When the AI shoots, do you see the bullet or just your hat leaving?

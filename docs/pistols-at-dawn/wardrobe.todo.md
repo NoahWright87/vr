@@ -59,9 +59,75 @@ end up in weird combinations of other people's outfits.
 
 ## Which slots
 
-To decide in phase 01-A by trying it out. Suggested start: **hat,
-vest, belt, boots**, then add **gloves** and **bandana** once the hit
-zones feel right.
+**Decided in phase 01-A: hat, vest, belt, boots. Four lives.** Each is
+a locked `anchor-slot` carrying a `wardrobe-slot` (`#head-anchor`,
+`#chest-anchor`, `#waist-anchor`, `#boots-anchor`).
+
+Why these four:
+
+- They are the four slots that already existed or fall out of the body
+  anchors for free: head, chest and waist were wardrobe-shaped slots
+  before this phase, and boots reuse `body-anchor` (a new `feet` side).
+  Nothing new to track, and the belt and vest are the two items that
+  already carry other slots.
+- Four spreads over the whole body, so the zones don't overlap (hat
+  0.1m above the headset, vest 0.41m below, belt 0.75m below, boots on
+  the floor) and each one can be aimed at on purpose. Four lives is
+  short enough to end a duel quickly and long enough that a fight has
+  an arc (the open question's "4-6" range, low end).
+- Boots are the weak one: feet aren't tracked, so the zone sits at
+  the headset's x/z and yaw, on the rig's floor (`FEET_FLOOR_RISE`
+  0.1m above it). Whether a ground-level zone is fun or just
+  fiddly is a headset question (see the 01-A playtest notes in
+  `phase01-a.todo.md`).
+- Gloves and bandana are deliberately not in: gloves move with the
+  hands (a moving hit zone is the open question below), and a bandana
+  is a second head slot that would sit inside the hat's zone. Both are
+  one `RENTAL_OUTFIT` row, one `WARDROBE_ITEMS` row, one body anchor and
+  one `wardrobe-slot` in markup, whenever the four feel right.
+
+Other decisions made while building it:
+
+- **Hit zone: one sphere, radius `WARDROBE_ZONE_RADIUS` (0.15m), centred
+  on the slot, invisible, `.shootable`.** It is live (visible to
+  raycasts) only while the slot holds something, which is how "the less
+  you wear, the less there is to hit" falls out with no special case. A
+  worn item itself is *not* shootable; a loose one is. Add `?zones` to
+  the URL to draw the zones as red wireframes for tuning.
+- **"Right type" is a `wearable` component on the item** (`slot: hat`),
+  not the item size, because everything medium used to fit the head
+  slot (a gun on your head). With a locked slot, only a `wearable` of
+  the right kind, owned by the wearer, goes on an empty slot by hand.
+  The owner is stamped the first time an item is worn. Items from the
+  bar's wardrobe pegs have no owner, so they can't be dropped onto your
+  head any more; that goes through `wearItem` (the clothier).
+- **The one rule function is `wardrobeCanWear(slotEl, holsterable)`** in
+  `js/world-player-body.js`. The slot supplies the mechanics (empty,
+  nothing mid-lift); the rule supplies who and what. Phase 03-B/04
+  replace that one function for conservation of clothes and the rest.
+- **The deliberate path is `wearItem(slotTypeOrEl, itemEl)` and
+  `takeOffItem(slotTypeOrEl)`**, also in `world-player-body.js`. The
+  clothier and watch menu call these; nothing else may change an outfit.
+- **Outfit = data:** `RENTAL_OUTFIT` (slot type -> item id) read through
+  `currentOutfit()`; 01-C swaps the body of that one function.
+  `WARDROBE_ITEMS` (item id -> slot + optional `lift` event) is how an
+  item becomes clothing, so a new cosmetic is a row, not code.
+- **Hat tip is the general `liftable` component** (core-equip.js): a
+  locked item that opts in can be lifted, and *every* way of letting go
+  (release, a twirl ending, a drunk slip) goes back to the slot via
+  `holsterable.returnHome()`. The hat's `liftable` names `hat-tipped`.
+  A tipped hat still counts as worn for `filled`, but its zone is off
+  (nothing on the head to hit while it's in your hand).
+- **Events** go out on the scene: `wardrobe-changed { kind: 'knocked-off'
+  | 'worn' | 'removed', slot, slotEl, item, shooter, filled, total }`,
+  `ghost-stripped { shooter, item, total }`, and bubbling `hat-tipped`.
+  `shooter` is the firing entity (gun or projectile) taken from the new
+  `source` on `shot` events; mapping a gun to a duelist is 01-B/02's job.
+  The opening outfit does not announce itself.
+- **Belt knock-off:** the belt flies off with the shot; its own
+  `knocked-off` listener drops the holstered guns at the wearer's feet.
+  The hat and vest carry anything in their slots away with them. Revisit
+  after playtesting (see "The belt question").
 
 - Hands are tracked, so a glove hit zone moves a lot. Is that fun or
   just hard?

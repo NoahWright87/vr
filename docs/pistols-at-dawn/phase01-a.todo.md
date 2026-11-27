@@ -1,5 +1,9 @@
 # Phase 01-A: wardrobe slots
 
+**Status: built.** What exists now, and where each decision is recorded,
+is in the "Built" section at the bottom; the Work list below is kept for
+its intent. Only the headset items remain open.
+
 **Runs alongside** 01-B and 01-C. **Depends on:** nothing.
 **Design:** `wardrobe.todo.md`.
 
@@ -71,3 +75,32 @@ only through events.
 - A random soak test (DESIGN.md) still runs clean.
 - Recorded as needing a headset: hit-zone size and placement, how the
   hat tip feels, whether boot zones are reachable.
+
+## Built
+
+Everything in "Work" is in. Decisions (slot list and why, the rule
+function, events, belt behaviour) are recorded in `wardrobe.todo.md`.
+
+- `anchor-slot` gained `locked`; `liftable` is the general "lift but
+  always return" behaviour (hat tip is `liftable` on the hat).
+  `holsterable.isLocked / returnHome`, and a `slot-occupied` event on the
+  slot. `hand-rig.findGrabbableObject` skips locked items (one line).
+- Wardrobe lives in `js/world-player-body.js` (WARDROBE section):
+  `wardrobe-slot`, `wearable`, `wardrobeCanWear`, `knockOffWardrobe`,
+  `wearItem` / `takeOffItem`, `RENTAL_OUTFIT` / `currentOutfit()`,
+  `WARDROBE_ITEMS`, boots (`boxy-boots`, placeholder).
+- `body-anchor` has a `feet` side; `#boots-anchor` is new in markup.
+  The head hat moved out of `areas/range.html` into the outfit.
+- `shot` events now carry `source` (the firing gun or projectile).
+- Test: `tests/pistols-wardrobe.browser.cjs` (needs `npm run preview`).
+
+### Still needs a headset
+
+- Hit-zone size (`WARDROBE_ZONE_RADIUS`, 0.15m) and placement for all
+  four slots; open the page with `?zones` to see them.
+- How the hat tip feels: is the hat's 0.35m grab radius too generous,
+  does lifting it ever steal a grab from a pistol held near the face.
+- Whether the boots zone is reachable and fun, or just awkward to aim at.
+- Whether shooting a belt off and dropping its guns at your feet reads
+  well.
+- Estimated feet position vs. a real stance (crouching, leaning).

@@ -1,7 +1,7 @@
 import { Layout, Container, Heading, Text, Card, CardGrid } from '@noahwright/design';
 import { SiteHeader, SiteFooter } from './SiteChrome.jsx';
 
-// Everything on the site, in three groups. Every page gets a card in one
+// Everything on the site, in four groups. Every page gets a card in one
 // of them — nothing lives in a footnote link.
 const GROUPS = [
   {
@@ -99,6 +99,18 @@ const GROUPS = [
       },
     ],
   },
+  {
+    // Non-VR helper tools that work on a laptop or phone. New tools (the
+    // Voice Lab, the Ghost Lab, ...) add their own card here.
+    title: 'Utilities',
+    cards: [
+      {
+        title: 'Pistols at Dawn tools',
+        subtitle: 'No headset needed',
+        body: 'Tuning pages for Pistols at Dawn that run in a normal browser: a Voice Lab for character voices and a Ghost Lab for faces. Coming soon.',
+      },
+    ],
+  },
 ];
 
 export function App() {
@@ -123,12 +135,12 @@ export function App() {
           <CardGrid gap="lg" minCardWidth="340px">
             {group.cards.map((card) => (
               <Card
-                key={card.href}
+                key={card.title}
                 title={card.title}
                 subtitle={card.subtitle}
                 href={card.href}
-                interactive
-                footer={<Text tone="muted">{card.cta}</Text>}
+                interactive={Boolean(card.href)}
+                footer={card.cta ? <Text tone="muted">{card.cta}</Text> : undefined}
               >
                 {card.body}
               </Card>
